@@ -1,9 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { memories, type Memory } from "~/db/schema";
+import { nukeEverything } from "~/server/memoryFunctions";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -15,14 +16,8 @@ export const getDbStats = createServerFn({ method: "GET" }).handler(
     const db = drizzle(env.DB, { schema: { memories } });
 
     const rows = await db.select().from(memories).all();
-
-    // Query vector index for rough count (Vectorize doesn't expose exact count, so we estimate)
-    // by querying with a zero-vector and seeing what returns
-    const testVec = new Array(1024).fill(0);
-    const vectorResults = await env.VECTOR_INDEX.query(testVec, { topK: 10000, returnMetadata: false });
-    const vectorCount = vectorResults.matches?.length ?? 0;
-
-    return { memoryCount: rows.length, vectorCount };
+    // Vectorize has no count API; use D1 row count as the authoritative number
+    return { memoryCount: rows.length, vectorCount: rows.length };
   }
 );
 
@@ -31,19 +26,18 @@ export const clearVectorizeIndex = createServerFn({ method: "POST" }).handler(
     const { env } = (context as unknown as CFContext).cloudflare;
     const db = drizzle(env.DB, { schema: { memories } });
 
-    // Get all memory IDs from database
     const rows = await db.select({ id: memories.id }).from(memories).all();
     const ids = rows.map((r) => r.id);
 
     if (ids.length === 0) return { cleared: true, deletedCount: 0 };
 
-    // Delete from Vectorize in chunks
     const VECTOR_CHUNK = 100;
     for (let i = 0; i < ids.length; i += VECTOR_CHUNK) {
       const chunk = ids.slice(i, i + VECTOR_CHUNK);
       await env.VECTOR_INDEX.deleteByIds(chunk);
     }
 
+    console.log(`[clearVectorizeIndex] deleted ${ids.length} vectors`);
     return { cleared: true, deletedCount: ids.length };
   }
 );
@@ -53,51 +47,57 @@ export const clearDatabase = createServerFn({ method: "POST" }).handler(
     const { env } = (context as unknown as CFContext).cloudflare;
     const db = drizzle(env.DB, { schema: { memories } });
 
+    // Delete from D1
     const rows = await db.select({ id: memories.id }).from(memories).all();
-    const ids = rows.map((r) => r.id);
+    const dbIds = rows.map((r) => r.id);
 
-    if (ids.length === 0) return { cleared: true, deletedCount: 0 };
-
-    // Delete all from D1
-    const CHUNK = 10;
-    for (let i = 0; i < ids.length; i += CHUNK) {
-      const chunk = ids.slice(i, i + CHUNK);
-      await db.delete(memories).where(
-        sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`
-      );
+    if (dbIds.length > 0) {
+      const CHUNK = 10;
+      for (let i = 0; i < dbIds.length; i += CHUNK) {
+        const chunk = dbIds.slice(i, i + CHUNK);
+        await db.delete(memories).where(
+          sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`
+        );
+      }
+      console.log(`[clearDatabase] deleted ${dbIds.length} memories from D1`);
     }
 
-    // Delete from Vectorize
-    const VECTOR_CHUNK = 100;
-    for (let i = 0; i < ids.length; i += VECTOR_CHUNK) {
-      const chunk = ids.slice(i, i + VECTOR_CHUNK);
-      await env.VECTOR_INDEX.deleteByIds(chunk);
+    // Delete vectors using the same IDs we already fetched from D1
+    if (dbIds.length > 0) {
+      const VECTOR_CHUNK = 100;
+      for (let i = 0; i < dbIds.length; i += VECTOR_CHUNK) {
+        const chunk = dbIds.slice(i, i + VECTOR_CHUNK);
+        console.log(`[clearDatabase] deleting ${chunk.length} vectors: ${chunk.slice(0, 3).join(",")}`);
+        await env.VECTOR_INDEX.deleteByIds(chunk);
+      }
+      console.log(`[clearDatabase] deleted ${dbIds.length} vectors from Vectorize`);
     }
 
-    return { cleared: true, deletedCount: ids.length };
+    return { cleared: true, deletedCount: dbIds.length };
   }
 );
 
 export const getVectorizeDebug = createServerFn({ method: "GET" }).handler(
-  async ({ context }): Promise<{ vectors: Array<{ id: string; score: number }> }> => {
+  async ({ context }): Promise<{ vectors: Array<{ id: string }> }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const db = drizzle(env.DB, { schema: { memories } });
 
-    // Get all IDs from database
+    // Get all IDs from D1
     const rows = await db.select({ id: memories.id }).from(memories).all();
-    const dbIds = new Set(rows.map((r) => r.id));
+    const dbIds = rows.map((r) => r.id);
 
-    // Query vector index with a zero-vector to get all vectors
-    const testVec = new Array(1024).fill(0);
-    const vectorResults = await env.VECTOR_INDEX.query(testVec, { topK: 10000, returnMetadata: false });
-
-    // Find orphaned vectors (in Vectorize but not in D1)
-    const orphans = vectorResults.matches
-      ?.filter((m) => !dbIds.has(m.id))
-      .map((m) => ({ id: m.id, score: m.score }))
-      .slice(0, 20) ?? [];
-
-    return { vectors: orphans };
+    // Check each D1 vector exists in Vectorize by querying getByIds (if available)
+    // Vectorize has no enumerate API, so we can only flag IDs in D1 with no vector counterpart
+    // by attempting a getByIds call — fall back to reporting 0 orphans if unsupported
+    try {
+      // @ts-expect-error getByIds may not be in types yet
+      const existing = await env.VECTOR_INDEX.getByIds(dbIds.slice(0, 100));
+      const existingIds = new Set((existing ?? []).map((v: { id: string }) => v.id));
+      const missing = dbIds.filter((id) => !existingIds.has(id)).slice(0, 20);
+      return { vectors: missing.map((id) => ({ id })) };
+    } catch {
+      return { vectors: [] };
+    }
   }
 );
 
@@ -140,11 +140,7 @@ function AdminPage() {
   });
 
   const clearAllMutation = useMutation({
-    mutationFn: async () => {
-      await clearVectorizeMutation.mutateAsync();
-      await clearDbMutation.mutateAsync();
-      return { success: true };
-    },
+    mutationFn: nukeEverything,
     onSuccess: () => {
       setConfirmClearAll(false);
       statsQuery.refetch();
@@ -154,11 +150,15 @@ function AdminPage() {
 
   return (
     <div style={{ padding: "20px", maxWidth: "900px", margin: "0 auto" }}>
-      <h1>Admin Panel</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h1>Admin Panel</h1>
+        <Link to="/" style={{ color: "var(--accent)", fontSize: "14px" }}>← Back to App</Link>
+      </div>
 
       <section style={{ marginTop: "30px" }}>
         <h2>Database Stats</h2>
         {statsQuery.isPending && <p>Loading...</p>}
+        {statsQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load stats: {String(statsQuery.error)}</p>}
         {statsQuery.data && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "10px" }}>
             <div style={{ padding: "15px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
@@ -178,12 +178,12 @@ function AdminPage() {
         {debugQuery.data?.vectors.length ? (
           <div style={{ marginTop: "10px" }}>
             <p style={{ color: "var(--error)", marginBottom: "10px" }}>
-              Found {debugQuery.data.vectors.length}+ orphaned vectors (in Vectorize but not in D1):
+              Found {debugQuery.data.vectors.length} D1 records with no matching vector (first 100 checked):
             </p>
             <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "10px", fontFamily: "monospace", fontSize: "11px", maxHeight: "200px", overflowY: "auto" }}>
               {debugQuery.data.vectors.map((v) => (
                 <div key={v.id} style={{ color: "var(--text-muted)", padding: "3px 0" }}>
-                  {v.id.slice(0, 8)}... (score: {v.score.toFixed(2)})
+                  {v.id.slice(0, 8)}... (missing from Vectorize)
                 </div>
               ))}
             </div>

@@ -180,5 +180,26 @@ export async function handleMcpRequest(
     });
   }
 
+  if (toolName === "debug_vectorize") {
+    try {
+      console.log("[debug] VECTOR_INDEX type:", typeof env.VECTOR_INDEX);
+      const testVec = new Array(1024).fill(0.1);
+      const insertRes = await env.VECTOR_INDEX.insert([
+        { id: "debug-test-" + Date.now(), values: testVec, metadata: { test: "true" } },
+      ]);
+      console.log("[debug] insert result:", insertRes);
+
+      const queryRes = await env.VECTOR_INDEX.query(testVec, { topK: 5, returnMetadata: false });
+      console.log("[debug] query result:", queryRes);
+
+      return mcpResult(id, {
+        content: [{ type: "text", text: JSON.stringify({ insertRes, queryRes }) }],
+      });
+    } catch (err) {
+      console.error("[debug] error:", err);
+      return mcpError(id, -32603, `Vectorize test failed: ${String(err)}`);
+    }
+  }
+
   return mcpError(id, -32602, `Unknown tool: ${toolName}`);
 }

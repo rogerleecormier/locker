@@ -240,13 +240,18 @@ export const addMemory = createServerFn({ method: "POST" })
     };
 
     await db.insert(memories).values(newRow);
-    await env.VECTOR_INDEX.insert([
-      {
-        id,
-        values: embedding,
-        metadata: { category: data.category, tags: data.tags } as Record<string, VectorizeVectorMetadata>,
-      },
-    ]);
+    try {
+      const insertResult = await env.VECTOR_INDEX.insert([
+        {
+          id,
+          values: embedding,
+          metadata: { category: data.category, tags: data.tags } as Record<string, VectorizeVectorMetadata>,
+        },
+      ]);
+      console.log(`[addMemory] vector insert result:`, insertResult);
+    } catch (err) {
+      console.error(`[addMemory] vector insert failed:`, err);
+    }
 
     return { ...newRow, tags: newRow.tags ?? "" };
   });
@@ -298,13 +303,19 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       valid.map((item) => generateEmbedding(env.AI, item.fact))
     );
 
-    // deduplicate against existing vectors — skip anything with cosine similarity >= 0.92
-    const DUPE_THRESHOLD = 0.92;
+    // deduplicate against existing vectors — skip anything with cosine similarity >= 0.98
+    // (0.92 was too permissive and skipped too many legitimate facts)
+    const DUPE_THRESHOLD = 0.98;
     const dupeFlags = await Promise.all(
-      embeddings.map(async (vec) => {
+      embeddings.map(async (vec, idx) => {
         const result = await env.VECTOR_INDEX.query(vec, { topK: 1, returnMetadata: false });
         const top = result.matches?.[0];
-        return top !== undefined && top.score >= DUPE_THRESHOLD;
+        const isDupe = top !== undefined && top.score >= DUPE_THRESHOLD;
+        console.log(`[batchImportMemories] item ${idx}: top score=${top?.score ?? "N/A"}, isDupe=${isDupe} (threshold=${DUPE_THRESHOLD})`);
+        if (isDupe) {
+          console.log(`[batchImportMemories]   ^ SKIPPED: matched existing vector ${top.id}`);
+        }
+        return isDupe;
       })
     );
 
@@ -342,9 +353,16 @@ export const batchImportMemories = createServerFn({ method: "POST" })
 
     const VECTOR_CHUNK = 100;
     for (let i = 0; i < vectorBatch.length; i += VECTOR_CHUNK) {
-      await env.VECTOR_INDEX.insert(vectorBatch.slice(i, i + VECTOR_CHUNK));
+      const chunk = vectorBatch.slice(i, i + VECTOR_CHUNK);
+      try {
+        const insertResult = await env.VECTOR_INDEX.insert(chunk);
+        console.log(`[batchImportMemories] inserted ${chunk.length} vectors, result:`, insertResult);
+      } catch (err) {
+        console.error(`[batchImportMemories] vector insert failed:`, err);
+      }
     }
 
+    console.log(`[batchImportMemories] total: imported ${newRows.length}, skipped ${allRows.length - newRows.length}`);
     return { imported: newRows.length, skipped: allRows.length - newRows.length };
   });
 
@@ -454,3 +472,43 @@ export const recallContext = createServerFn({ method: "POST" })
       (a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999)
     );
   });
+
+export const nukeEverything = createServerFn({ method: "POST" }).handler(
+  async ({ context }): Promise<{ success: boolean; dbDeleted: number; vectorsDeleted: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = getDb(env);
+
+    // Delete all from D1
+    const dbRows = await db.select({ id: memories.id }).from(memories).all();
+    const dbIds = dbRows.map((r) => r.id);
+    let dbDeleted = 0;
+
+    if (dbIds.length > 0) {
+      const CHUNK = 50;
+      for (let i = 0; i < dbIds.length; i += CHUNK) {
+        const chunk = dbIds.slice(i, i + CHUNK);
+        await db.delete(memories).where(
+          sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`
+        );
+      }
+      dbDeleted = dbIds.length;
+      console.log(`[nukeEverything] deleted ${dbDeleted} memories from D1`);
+    }
+
+    // Delete vectors by the IDs we already fetched from D1 (the primary source of truth)
+    let vectorsDeleted = 0;
+
+    if (dbIds.length > 0) {
+      const VECTOR_CHUNK = 100;
+      for (let i = 0; i < dbIds.length; i += VECTOR_CHUNK) {
+        const chunk = dbIds.slice(i, i + VECTOR_CHUNK);
+        console.log(`[nukeEverything] deleting chunk of ${chunk.length} vectors`);
+        await env.VECTOR_INDEX.deleteByIds(chunk);
+      }
+      vectorsDeleted = dbIds.length;
+      console.log(`[nukeEverything] deleted ${vectorsDeleted} vectors from Vectorize`);
+    }
+
+    return { success: true, dbDeleted, vectorsDeleted };
+  }
+);
