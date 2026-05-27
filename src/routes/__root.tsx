@@ -17,7 +17,7 @@ interface RouterContext {
   queryClient: QueryClient;
 }
 
-const PUBLIC_PATHS = ["/login", "/signup"];
+const PUBLIC_PATHS = ["/", "/login", "/signup"];
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({
@@ -66,14 +66,21 @@ function AuthGate({ children }: { children: ReactNode }) {
     return null;
   }
 
-  if (session && isPublic) {
+  if (session && (pathname === "/login" || pathname === "/signup")) {
     if (typeof window !== "undefined") {
-      window.location.href = "/";
+      window.location.href = "/memories";
     }
     return null;
   }
 
-  if (!session) return <>{children}</>;
+  if (!session) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+        <LandingNav />
+        <main style={{ flex: 1 }}>{children}</main>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
@@ -86,6 +93,29 @@ function AuthGate({ children }: { children: ReactNode }) {
 }
 
 const ADMIN_USER_ID = "r6T9s9AcwyaASSlextIlB07IgR5wwzKU";
+
+function LandingNav() {
+  return (
+    <nav style={navStyles.nav}>
+      <div style={navStyles.brand}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <Link to="/" style={{ ...navStyles.brandName, textDecoration: "none", color: "var(--text)" }}>Locker</Link>
+      </div>
+      <div style={{ flex: 1 }} />
+      <div style={navStyles.right}>
+        <Link to="/login" style={{ padding: "5px 12px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", borderRadius: 6, fontSize: 12, textDecoration: "none" }}>
+          Sign in
+        </Link>
+        <Link to="/signup" style={{ padding: "5px 12px", background: "var(--accent)", color: "#fff", borderRadius: 6, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
+          Get started
+        </Link>
+      </div>
+    </nav>
+  );
+}
 
 function Nav({ user }: { user: { id: string; name: string; email: string } }) {
   async function handleSignOut() {
@@ -100,11 +130,11 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
-        <span style={navStyles.brandName}>Locker</span>
+        <Link to="/" style={{ ...navStyles.brandName, textDecoration: "none", color: "var(--text)" }}>Locker</Link>
       </div>
 
       <div style={navStyles.links}>
-        <Link to="/" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+        <Link to="/memories" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Memories
         </Link>
         <Link to="/import" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>

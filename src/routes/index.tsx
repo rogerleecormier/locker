@@ -1,874 +1,557 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
-import { getMemories, addMemory, deleteMemory, bulkDeleteMemories, updateMemory } from "~/server/memoryFunctions";
-import type { Memory } from "~/db/schema";
+import { useEffect, useRef, useState } from "react";
 
 export const Route = createFileRoute("/")({
-  component: Dashboard,
+  component: LandingPage,
 });
 
-
-const CATEGORY_LABELS: Record<string, string> = {
-  rules: "Rules",
-  projects: "Projects",
-  references: "References",
-};
-
-const CATEGORY_COLORS: Record<string, string> = {
-  rules: "#818cf8",
-  projects: "#34d399",
-  references: "#fbbf24",
-};
-
-function CategoryBadge({ category }: { category: string }) {
-  const color = CATEGORY_COLORS[category] ?? "#7b80a0";
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 8px",
-        borderRadius: 20,
-        fontSize: 11,
-        fontWeight: 600,
-        letterSpacing: "0.04em",
-        color,
-        background: `${color}18`,
-        border: `1px solid ${color}40`,
-        textTransform: "uppercase",
-      }}
-    >
-      {CATEGORY_LABELS[category] ?? category}
-    </span>
-  );
-}
-
-function TagChip({ tag }: { tag: string }) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "1px 7px",
-        borderRadius: 4,
-        fontSize: 11,
-        background: "var(--tag-bg)",
-        border: "1px solid var(--tag-border)",
-        color: "var(--text-muted)",
-        marginRight: 4,
-        marginBottom: 2,
-      }}
-    >
-      {tag}
-    </span>
-  );
-}
-
-function MemoryRow({
-  memory,
-  selected,
-  onToggleSelect,
-}: {
-  memory: Memory;
-  selected: boolean;
-  onToggleSelect: (id: string) => void;
-}) {
-  const queryClient = useQueryClient();
-  const [confirming, setConfirming] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editFact, setEditFact] = useState(memory.fact);
-  const [editCategory, setEditCategory] = useState(memory.category);
-  const [editTags, setEditTags] = useState(memory.tags);
-
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteMemory({ data: { id: memory.id } }),
-    onMutate: () => {
-      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
-        old ? old.filter((m) => m.id !== memory.id) : []
-      );
-    },
-    onError: () => {
-      queryClient.invalidateQueries({ queryKey: ["memories"] });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: () => updateMemory({ data: { id: memory.id, fact: editFact, category: editCategory, tags: editTags } }),
-    onSuccess: (updated) => {
-      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
-        old ? old.map((m) => m.id === updated.id ? updated : m) : []
-      );
-      setEditing(false);
-    },
-    onError: () => {
-      queryClient.invalidateQueries({ queryKey: ["memories"] });
-    },
-  });
-
-  function cancelEdit() {
-    setEditFact(memory.fact);
-    setEditCategory(memory.category);
-    setEditTags(memory.tags);
-    setEditing(false);
-  }
-
-  const tags = memory.tags
-    ? memory.tags.split(",").map((t) => t.trim()).filter(Boolean)
-    : [];
-
-  if (editing) {
-    return (
-      <div
-        style={{
-          padding: "14px 18px",
-          borderBottom: "1px solid var(--border)",
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: "8px 16px",
-          background: "rgba(99,102,241,0.04)",
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={() => onToggleSelect(memory.id)}
-          style={{ marginTop: 3, cursor: "pointer", accentColor: "var(--accent)" }}
-        />
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <textarea
-            value={editFact}
-            onChange={(e) => setEditFact(e.target.value)}
-            rows={3}
-            autoFocus
-            style={{ width: "100%", padding: "8px 10px", fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
-          />
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <select
-              value={editCategory}
-              onChange={(e) => setEditCategory(e.target.value as "rules" | "projects" | "references")}
-              style={{ padding: "5px 8px", fontSize: 12 }}
-            >
-              <option value="rules">Rules</option>
-              <option value="projects">Projects</option>
-              <option value="references">References</option>
-            </select>
-            <input
-              type="text"
-              value={editTags}
-              onChange={(e) => setEditTags(e.target.value)}
-              placeholder="tags (comma-separated)"
-              style={{ flex: 1, padding: "5px 8px", fontSize: 12, minWidth: 120 }}
-            />
-            <button
-              onClick={() => updateMutation.mutate()}
-              disabled={updateMutation.isPending || !editFact.trim()}
-              style={{
-                padding: "5px 14px",
-                background: "var(--accent)",
-                color: "#fff",
-                fontWeight: 600,
-                fontSize: 12,
-                borderRadius: "var(--radius)",
-              }}
-            >
-              {updateMutation.isPending ? "Saving…" : "Save"}
-            </button>
-            <button
-              onClick={cancelEdit}
-              disabled={updateMutation.isPending}
-              style={{
-                padding: "5px 10px",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                color: "var(--text-muted)",
-                fontSize: 12,
-                borderRadius: "var(--radius)",
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-          {updateMutation.isError && (
-            <span style={{ fontSize: 11, color: "var(--error)" }}>Save failed. Try again.</span>
-          )}
-        </div>
-      </div>
+// ── Intersection-observer fade-in hook ────────────────────────────────────────
+function useFadeIn(threshold = 0.15) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
+      { threshold }
     );
-  }
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+  return { ref, visible };
+}
 
+function FadeIn({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: React.CSSProperties }) {
+  const { ref, visible } = useFadeIn();
   return (
     <div
+      ref={ref}
       style={{
-        padding: "14px 18px",
-        borderBottom: "1px solid var(--border)",
-        display: "grid",
-        gridTemplateColumns: "auto 1fr auto",
-        gap: "8px 16px",
-        alignItems: "start",
-        background: selected ? "rgba(99,102,241,0.05)" : undefined,
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(20px)",
+        transition: `opacity 0.6s ease ${delay}ms, transform 0.6s ease ${delay}ms`,
+        ...style,
       }}
     >
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={() => onToggleSelect(memory.id)}
-        style={{ marginTop: 3, cursor: "pointer", accentColor: "var(--accent)" }}
-      />
-      <div style={{ minWidth: 0 }}>
-        <p style={{ marginBottom: tags.length ? 6 : 0, lineHeight: 1.5, wordBreak: "break-word" }}>
-          {memory.fact}
-        </p>
-        {tags.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap" }}>
-            {tags.map((tag) => (
-              <TagChip key={tag} tag={tag} />
-            ))}
-          </div>
-        )}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, minWidth: 110 }}>
-        <CategoryBadge category={memory.category} />
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          {new Date(memory.timestamp).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })}
-        </span>
-        <div style={{ display: "flex", gap: 4 }}>
-          <button
-            onClick={() => setEditing(true)}
-            style={{
-              padding: "3px 8px",
-              background: "transparent",
-              border: "1px solid transparent",
-              color: "var(--text-muted)",
-              fontSize: 11,
-              borderRadius: "var(--radius)",
-              opacity: 0.5,
-              transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
-            }}
-            onMouseEnter={(e) => {
-              const b = e.currentTarget as HTMLButtonElement;
-              b.style.opacity = "1";
-              b.style.borderColor = "rgba(99,102,241,0.4)";
-              b.style.color = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              const b = e.currentTarget as HTMLButtonElement;
-              b.style.opacity = "0.5";
-              b.style.borderColor = "transparent";
-              b.style.color = "var(--text-muted)";
-            }}
-          >
-            Edit
-          </button>
-          {confirming ? (
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Delete?</span>
-              <button
-                onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
-                style={{
-                  padding: "3px 10px",
-                  background: "rgba(239,68,68,0.15)",
-                  border: "1px solid rgba(239,68,68,0.4)",
-                  color: "var(--error)",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                {deleteMutation.isPending ? "…" : "Yes"}
-              </button>
-              <button
-                onClick={() => setConfirming(false)}
-                disabled={deleteMutation.isPending}
-                style={{
-                  padding: "3px 8px",
-                  background: "var(--surface2)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-muted)",
-                  fontSize: 11,
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                No
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirming(true)}
-              style={{
-                padding: "3px 8px",
-                background: "transparent",
-                border: "1px solid transparent",
-                color: "var(--text-muted)",
-                fontSize: 11,
-                borderRadius: "var(--radius)",
-                opacity: 0.5,
-                transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                const b = e.currentTarget as HTMLButtonElement;
-                b.style.opacity = "1";
-                b.style.borderColor = "rgba(239,68,68,0.4)";
-                b.style.color = "var(--error)";
-              }}
-              onMouseLeave={(e) => {
-                const b = e.currentTarget as HTMLButtonElement;
-                b.style.opacity = "0.5";
-                b.style.borderColor = "transparent";
-                b.style.color = "var(--text-muted)";
-              }}
-            >
-              Delete
-            </button>
-          )}
-        </div>
-      </div>
+      {children}
     </div>
   );
 }
 
-function NewMemoryModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const queryClient = useQueryClient();
-  const [fact, setFact] = useState("");
-  const [category, setCategory] = useState<"rules" | "projects" | "references">("references");
-  const [tags, setTags] = useState("");
-
-  const mutation = useMutation({
-    mutationFn: () => addMemory({ data: { fact, category, tags } }),
-    onSuccess: (newMemory) => {
-      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
-        old ? [newMemory, ...old] : [newMemory]
-      );
-      onSaved();
-      onClose();
-    },
-  });
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 50,
-        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--surface)", border: "1px solid var(--border)",
-          borderRadius: "var(--radius)", width: "100%", maxWidth: 520,
-          boxShadow: "0 24px 48px rgba(0,0,0,0.4)",
-        }}
-      >
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontWeight: 600 }}>New Memory</span>
-          <button onClick={onClose} style={{ background: "none", color: "var(--text-muted)", fontSize: 18, padding: "0 4px" }}>✕</button>
-        </div>
-        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Fact</label>
-            <textarea
-              autoFocus
-              value={fact}
-              onChange={(e) => setFact(e.target.value)}
-              rows={4}
-              placeholder="Enter the memory fact…"
-              style={{ width: "100%", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
-            />
-          </div>
-          <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Category</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as "rules" | "projects" | "references")}
-                style={{ width: "100%", padding: "8px 10px", fontSize: 13 }}
-              >
-                <option value="references">References</option>
-                <option value="rules">Rules</option>
-                <option value="projects">Projects</option>
-              </select>
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Tags</label>
-              <input
-                type="text"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                placeholder="comma-separated"
-                style={{ width: "100%", padding: "8px 10px", fontSize: 13 }}
-              />
-            </div>
-          </div>
-          {mutation.isError && (
-            <div style={{ padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
-              {(mutation.error as Error).message}
-            </div>
-          )}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-            <button onClick={onClose} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13 }}>
-              Cancel
-            </button>
-            <button
-              onClick={() => mutation.mutate()}
-              disabled={!fact.trim() || mutation.isPending}
-              style={{ padding: "8px 20px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13 }}
-            >
-              {mutation.isPending ? "Saving…" : "Save Memory"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+// ── Animated counter ──────────────────────────────────────────────────────────
+function Counter({ to, suffix = "" }: { to: number; suffix?: string }) {
+  const [val, setVal] = useState(0);
+  const { ref, visible } = useFadeIn(0.5);
+  useEffect(() => {
+    if (!visible) return;
+    let start = 0;
+    const step = to / 40;
+    const id = setInterval(() => {
+      start += step;
+      if (start >= to) { setVal(to); clearInterval(id); }
+      else setVal(Math.floor(start));
+    }, 30);
+    return () => clearInterval(id);
+  }, [visible, to]);
+  return <span ref={ref}>{val}{suffix}</span>;
 }
 
-function MemoryTable({
-  memories,
-  filter,
-  categoryFilter,
-}: {
-  memories: Memory[];
-  filter: string;
-  categoryFilter: string;
-}) {
-  const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkConfirming, setBulkConfirming] = useState(false);
+// ── Mockup components ─────────────────────────────────────────────────────────
 
-  const filtered = useMemo(() => {
-    const q = filter.toLowerCase();
-    return memories.filter((m) => {
-      const matchesCat = !categoryFilter || m.category === categoryFilter;
-      const matchesText =
-        !q ||
-        m.fact.toLowerCase().includes(q) ||
-        m.tags.toLowerCase().includes(q);
-      return matchesCat && matchesText;
-    });
-  }, [memories, filter, categoryFilter]);
-
-  const filteredIds = useMemo(() => new Set(filtered.map((m) => m.id)), [filtered]);
-  const allSelected = filtered.length > 0 && filtered.every((m) => selected.has(m.id));
-  const someSelected = filtered.some((m) => selected.has(m.id));
-  const selectedInView = filtered.filter((m) => selected.has(m.id));
-
-  const bulkDeleteMutation = useMutation({
-    mutationFn: (ids: string[]) => bulkDeleteMemories({ data: { ids } }),
-    onMutate: (ids) => {
-      const idSet = new Set(ids);
-      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
-        old ? old.filter((m) => !idSet.has(m.id)) : []
-      );
-      setSelected(new Set());
-      setBulkConfirming(false);
-    },
-    onError: () => {
-      queryClient.invalidateQueries({ queryKey: ["memories"] });
-    },
-  });
-
-  function toggleSelectAll() {
-    if (allSelected) {
-      setSelected((prev) => {
-        const next = new Set(prev);
-        filteredIds.forEach((id) => next.delete(id));
-        return next;
-      });
-    } else {
-      setSelected((prev) => {
-        const next = new Set(prev);
-        filteredIds.forEach((id) => next.add(id));
-        return next;
-      });
-    }
-  }
-
-  function toggleOne(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  if (filtered.length === 0) {
-    return (
-      <div
-        style={{
-          textAlign: "center",
-          padding: "48px 24px",
-          color: "var(--text-muted)",
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius)",
-        }}
-      >
-        {memories.length === 0 ? "No memories stored yet." : "No memories match your filters."}
-      </div>
-    );
-  }
-
+function MemoryVaultMockup() {
+  const rows = [
+    { cat: "rules", color: "#818cf8", fact: "Always prefer TypeScript strict mode with no implicit any.", tags: "typescript, rules" },
+    { cat: "projects", color: "#34d399", fact: "Locker — encrypted memory vault for AI context. Stack: TanStack Start, Cloudflare Workers, D1.", tags: "locker, active" },
+    { cat: "references", color: "#fbbf24", fact: "Lives in Florida. Prefers concise, no-filler responses.", tags: "identity, preferences" },
+    { cat: "rules", color: "#818cf8", fact: "Never add trailing summaries or restate what was just done.", tags: "feedback, style" },
+  ];
   return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius)",
-        overflow: "hidden",
-      }}
-    >
-      {/* Table header with select-all and bulk actions */}
-      <div
-        style={{
-          padding: "10px 18px",
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          background: "var(--surface2)",
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={allSelected}
-          ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
-          onChange={toggleSelectAll}
-          style={{ cursor: "pointer", accentColor: "var(--accent)" }}
-        />
-        {someSelected ? (
-          <>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {selectedInView.length} selected
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", fontFamily: "monospace" }}>
+      <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8, background: "var(--surface2)" }}>
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#ef4444", opacity: 0.7 }} />
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#f59e0b", opacity: 0.7 }} />
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#22c55e", opacity: 0.7 }} />
+        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)" }}>Memories — 367 entries</span>
+      </div>
+      <div>
+        {rows.map((r, i) => (
+          <div key={i} style={{ padding: "10px 16px", borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none", display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: r.color, background: `${r.color}18`, border: `1px solid ${r.color}40`, borderRadius: 20, padding: "2px 7px", whiteSpace: "nowrap", marginTop: 1 }}>
+              {r.cat}
             </span>
-            {bulkConfirming ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
-                <span style={{ fontSize: 12, color: "var(--error)" }}>
-                  Delete {selectedInView.length} memor{selectedInView.length !== 1 ? "ies" : "y"}?
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.5 }}>{r.fact}</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>{r.tags}</div>
+            </div>
+            <div style={{ fontSize: 10, color: "#22c55e", opacity: 0.6, marginTop: 1 }}>🔒</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function McpCallMockup() {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setStep((s) => (s + 1) % 4), 1800);
+    return () => clearInterval(id);
+  }, []);
+  const steps = [
+    { label: "AI sends recall_context", color: "#6366f1", icon: "→" },
+    { label: "Bearer token verified", color: "#22c55e", icon: "🔑" },
+    { label: "Semantic search in Vectorize", color: "#fbbf24", icon: "⚡" },
+    { label: "Decrypted facts returned", color: "#818cf8", icon: "←" },
+  ];
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, fontFamily: "monospace" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>MCP Request Flow</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {steps.map((s, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, background: step === i ? `${s.color}15` : "var(--surface2)", border: `1px solid ${step === i ? s.color + "50" : "var(--border)"}`, transition: "all 0.4s ease" }}>
+            <span style={{ fontSize: 14 }}>{s.icon}</span>
+            <span style={{ fontSize: 11, color: step === i ? s.color : "var(--text-muted)", fontWeight: step === i ? 600 : 400, transition: "color 0.4s" }}>{s.label}</span>
+            {step === i && <span style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: "50%", background: s.color, animation: "pulse 1s infinite" }} />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TokenMockup() {
+  const tools = ["recall_context", "commit_memory"];
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--surface2)", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        API Tokens
+      </div>
+      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+        {[{ name: "Claude Desktop", perms: [0, 1] }, { name: "Codex (read-only)", perms: [0] }].map((tok, i) => (
+          <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>{tok.name}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {tools.map((t, j) => (
+                <span key={j} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: tok.perms.includes(j) ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)", border: `1px solid ${tok.perms.includes(j) ? "rgba(99,102,241,0.4)" : "var(--border)"}`, color: tok.perms.includes(j) ? "var(--accent)" : "var(--text-muted)", fontFamily: "monospace" }}>
+                  {tok.perms.includes(j) ? "✓" : "✗"} {t}
                 </span>
-                <button
-                  onClick={() => bulkDeleteMutation.mutate(selectedInView.map((m) => m.id))}
-                  disabled={bulkDeleteMutation.isPending}
-                  style={{
-                    padding: "4px 12px",
-                    background: "rgba(239,68,68,0.15)",
-                    border: "1px solid rgba(239,68,68,0.4)",
-                    color: "var(--error)",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    borderRadius: "var(--radius)",
-                  }}
-                >
-                  {bulkDeleteMutation.isPending ? "Deleting…" : "Yes, delete"}
-                </button>
-                <button
-                  onClick={() => setBulkConfirming(false)}
-                  disabled={bulkDeleteMutation.isPending}
-                  style={{
-                    padding: "4px 10px",
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text-muted)",
-                    fontSize: 12,
-                    borderRadius: "var(--radius)",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setBulkConfirming(true)}
-                style={{
-                  marginLeft: "auto",
-                  padding: "4px 12px",
-                  background: "rgba(239,68,68,0.1)",
-                  border: "1px solid rgba(239,68,68,0.3)",
-                  color: "var(--error)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                Delete selected
-              </button>
-            )}
-          </>
-        ) : (
-          <>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {filtered.length} memor{filtered.length !== 1 ? "ies" : "y"}
-            </span>
-            {filtered.length > 0 && (
-              <button
-                onClick={() => {
-                  setSelected(new Set(filtered.map((m) => m.id)));
-                  setBulkConfirming(true);
-                }}
-                style={{
-                  marginLeft: "auto",
-                  padding: "4px 10px",
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.25)",
-                  color: "var(--error)",
-                  fontSize: 11,
-                  borderRadius: "var(--radius)",
-                  opacity: 0.6,
-                }}
-              >
-                Delete All
-              </button>
-            )}
-          </>
-        )}
+              ))}
+            </div>
+          </div>
+        ))}
+        <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 8, padding: "8px 12px", fontSize: 11, color: "var(--accent)", fontFamily: "monospace" }}>
+          lkr_a8f3c2e1d9b7...  <span style={{ color: "var(--text-muted)" }}>shown once</span>
+        </div>
       </div>
+    </div>
+  );
+}
 
-      {filtered.map((m) => (
-        <MemoryRow
-          key={m.id}
-          memory={m}
-          selected={selected.has(m.id)}
-          onToggleSelect={toggleOne}
-        />
+function PlatformGrid() {
+  const platforms = [
+    { label: "Claude Desktop", color: "#d4956a" },
+    { label: "Claude Code", color: "#c97b53" },
+    { label: "Cursor", color: "#00e5ff" },
+    { label: "Cline", color: "#ff6b6b" },
+    { label: "Roo Code", color: "#ff8787" },
+    { label: "Continue", color: "#2f80ed" },
+    { label: "GitHub Copilot", color: "#6f42c1" },
+    { label: "VS Code", color: "#007acc" },
+    { label: "ChatGPT", color: "#10a37f" },
+    { label: "Gemini", color: "#4285f4" },
+    { label: "Grok", color: "#e7e7e7" },
+    { label: "Perplexity", color: "#20b2aa" },
+  ];
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+      {platforms.map((p, i) => (
+        <FadeIn key={p.label} delay={i * 40}>
+          <div style={{ padding: "6px 14px", borderRadius: 20, background: `${p.color}15`, border: `1px solid ${p.color}40`, color: p.color, fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>
+            {p.label}
+          </div>
+        </FadeIn>
       ))}
     </div>
   );
 }
 
-function Dashboard() {
-  const queryClient = useQueryClient();
-  const [filter, setFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [showNewMemory, setShowNewMemory] = useState(false);
+// ── Encryption visualiser ─────────────────────────────────────────────────────
+function EncryptionMockup() {
+  const [flipped, setFlipped] = useState(false);
+  useEffect(() => {
+    const id = setInterval(() => setFlipped((f) => !f), 2400);
+    return () => clearInterval(id);
+  }, []);
+  const plain = "Prefers TypeScript strict mode. Lives in Florida.";
+  const enc   = "a3f9d2c1e8b5:9f2a1c4b8e7d3f6a2c5b9e1d4f7a3c6b2e8d5f1a4c7b3e9d6f2a5c8b4e1d7f3a6c2b5e8d4f1...";
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, fontFamily: "monospace" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>AES-256-GCM at rest</div>
+      <div style={{ position: "relative", height: 64 }}>
+        <div style={{ position: "absolute", inset: 0, padding: "10px 12px", borderRadius: 8, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", fontSize: 11, color: "#22c55e", lineHeight: 1.5, opacity: flipped ? 0 : 1, transition: "opacity 0.5s ease" }}>
+          <span style={{ color: "var(--text-muted)", fontSize: 10 }}>plaintext </span>{plain}
+        </div>
+        <div style={{ position: "absolute", inset: 0, padding: "10px 12px", borderRadius: 8, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", fontSize: 10, color: "var(--accent)", lineHeight: 1.5, wordBreak: "break-all", opacity: flipped ? 1 : 0, transition: "opacity 0.5s ease" }}>
+          <span style={{ color: "var(--text-muted)" }}>encrypted </span>{enc}
+        </div>
+      </div>
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-muted)" }}>
+        <span style={{ color: "#22c55e" }}>●</span> Decrypted on read · never stored plaintext
+      </div>
+    </div>
+  );
+}
 
-  const { data: memories = [], isLoading, isError } = useQuery({
-    queryKey: ["memories"],
-    queryFn: () => getMemories(),
-  });
+// ── Section wrapper ───────────────────────────────────────────────────────────
+function Section({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <section style={{ padding: "80px 24px", maxWidth: 1040, margin: "0 auto", ...style }}>
+      {children}
+    </section>
+  );
+}
 
-  function invalidate() {
-    queryClient.invalidateQueries({ queryKey: ["memories"] });
-  }
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14, background: "var(--accent-dim)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 20, padding: "4px 12px" }}>
+      {children}
+    </div>
+  );
+}
 
-  const totalByCategory = useMemo(() => {
-    const counts: Record<string, number> = { rules: 0, projects: 0, references: 0 };
-    for (const m of memories) counts[m.category] = (counts[m.category] ?? 0) + 1;
-    return counts;
-  }, [memories]);
+// ── Feature card ──────────────────────────────────────────────────────────────
+function FeatureCard({ icon, title, desc, delay }: { icon: React.ReactNode; title: string; desc: string; delay?: number }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <FadeIn delay={delay}>
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ background: "var(--surface)", border: `1px solid ${hovered ? "rgba(99,102,241,0.4)" : "var(--border)"}`, borderRadius: 12, padding: "22px 20px", height: "100%", transition: "border-color 0.2s, transform 0.2s, box-shadow 0.2s", transform: hovered ? "translateY(-3px)" : "none", boxShadow: hovered ? "0 8px 24px rgba(99,102,241,0.12)" : "none" }}
+      >
+        <div style={{ marginBottom: 12 }}>{icon}</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{title}</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>{desc}</div>
+      </div>
+    </FadeIn>
+  );
+}
+
+// ── How it works step ─────────────────────────────────────────────────────────
+function Step({ num, title, desc, delay }: { num: string; title: string; desc: string; delay?: number }) {
+  return (
+    <FadeIn delay={delay} style={{ display: "flex", gap: 18 }}>
+      <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: "50%", background: "var(--accent-dim)", border: "1px solid rgba(99,102,241,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "var(--accent)" }}>
+        {num}
+      </div>
+      <div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>{title}</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>{desc}</div>
+      </div>
+    </FadeIn>
+  );
+}
+
+// ── Main landing page ─────────────────────────────────────────────────────────
+function LandingPage() {
+  const [heroVisible, setHeroVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setHeroVisible(true), 60); return () => clearTimeout(t); }, []);
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 20px" }}>
-      <header style={{ marginBottom: 32 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="3" />
-            <path d="M3 9h18M9 21V9" />
-          </svg>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>Locker</h1>
-          <span
-            style={{
-              fontSize: 11,
-              background: "var(--accent-dim)",
-              color: "var(--accent)",
-              border: "1px solid rgba(99,102,241,0.3)",
-              borderRadius: 20,
-              padding: "2px 8px",
-              fontWeight: 600,
-            }}
-          >
-            Memory Manager
-          </span>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-            <Link
-              to="/admin"
-              style={{
-                padding: "6px 12px",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                color: "var(--text-muted)",
-                fontSize: 12,
-                borderRadius: "var(--radius)",
-                textDecoration: "none",
-                transition: "all 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                (e.target as HTMLElement).style.borderColor = "var(--text-muted)";
-                (e.target as HTMLElement).style.color = "var(--text)";
-              }}
-              onMouseLeave={(e) => {
-                (e.target as HTMLElement).style.borderColor = "var(--border)";
-                (e.target as HTMLElement).style.color = "var(--text-muted)";
-              }}
-            >
-              Admin
-            </Link>
-            <button
-              onClick={() => setShowNewMemory(true)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "7px 16px",
-                background: "var(--accent)",
-                color: "#fff",
-                fontWeight: 600,
-                fontSize: 13,
-                borderRadius: "var(--radius)",
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+    <div style={{ overflowX: "hidden" }}>
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+        @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+        @keyframes spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+      `}</style>
+
+      {/* ── HERO ── */}
+      <div style={{ position: "relative", padding: "100px 24px 80px", textAlign: "center", overflow: "hidden" }}>
+        {/* radial glow */}
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-60%)", width: 700, height: 700, borderRadius: "50%", background: "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
+
+        <div style={{ position: "relative", maxWidth: 720, margin: "0 auto" }}>
+          {/* lock icon animated */}
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
+            <div style={{ width: 64, height: 64, borderRadius: 18, background: "var(--accent-dim)", border: "1px solid rgba(99,102,241,0.35)", display: "flex", alignItems: "center", justifyContent: "center", animation: "float 4s ease-in-out infinite", opacity: heroVisible ? 1 : 0, transition: "opacity 0.6s ease" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
-              New Memory
-            </button>
-          </div>
-        </div>
-        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-          Long-term technical context. Semantic retrieval via{" "}
-          <code style={{ color: "var(--accent)", fontSize: 12 }}>/api/mcp</code> MCP endpoint.
-        </p>
-      </header>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 28 }}>
-        {[
-          { label: "Total", value: memories.length, color: "var(--text)" },
-          { label: "Rules", value: totalByCategory.rules, color: CATEGORY_COLORS.rules },
-          { label: "Projects", value: totalByCategory.projects, color: CATEGORY_COLORS.projects },
-          { label: "References", value: totalByCategory.references, color: CATEGORY_COLORS.references },
-        ].map(({ label, value, color }) => (
-          <div
-            key={label}
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius)",
-              padding: "14px 18px",
-            }}
-          >
-            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
-              {label}
             </div>
-            <div style={{ fontSize: 28, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
           </div>
-        ))}
+
+          <div style={{ opacity: heroVisible ? 1 : 0, transform: heroVisible ? "none" : "translateY(24px)", transition: "opacity 0.7s ease 0.1s, transform 0.7s ease 0.1s" }}>
+            <h1 style={{ fontSize: "clamp(36px, 6vw, 60px)", fontWeight: 800, letterSpacing: "-0.04em", color: "var(--text)", lineHeight: 1.1, marginBottom: 20 }}>
+              Your AI memory,{" "}
+              <span style={{ color: "var(--accent)" }}>encrypted & portable</span>
+            </h1>
+            <p style={{ fontSize: 18, color: "var(--text-muted)", lineHeight: 1.7, maxWidth: 540, margin: "0 auto 36px", fontWeight: 400 }}>
+              Locker is a personal memory vault that securely stores your context and makes it available to any AI tool — via a universal MCP endpoint.
+            </p>
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+              <Link to="/memories" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px", background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 14, borderRadius: 10, textDecoration: "none", transition: "background 0.15s, transform 0.15s" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent-hover)"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent)"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
+                Open Vault
+              </Link>
+              <Link to="/connect" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "transparent", color: "var(--text-muted)", fontWeight: 600, fontSize: 14, borderRadius: 10, border: "1px solid var(--border)", textDecoration: "none", transition: "border-color 0.15s, color 0.15s" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+              >
+                Connect an AI client →
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>
-        <div style={{ position: "relative", flex: 1 }}>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--text-muted)"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="text"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter by keyword or tag…"
-            style={{ width: "100%", padding: "8px 12px 8px 32px" }}
-          />
+      {/* ── STATS ── */}
+      <div style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
+        <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0 }}>
+          {[
+            { value: 15, suffix: "+", label: "AI platforms supported" },
+            { value: 256, suffix: "-bit", label: "AES-GCM encryption" },
+            { value: 100, suffix: "%", label: "Self-hosted on Cloudflare" },
+          ].map(({ value, suffix, label }, i) => (
+            <div key={label} style={{ textAlign: "center", padding: "16px 24px", borderRight: i < 2 ? "1px solid var(--border)" : "none" }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: "var(--accent)", letterSpacing: "-0.03em", lineHeight: 1 }}>
+                <Counter to={value} suffix={suffix} />
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>{label}</div>
+            </div>
+          ))}
         </div>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          style={{ padding: "8px 12px", minWidth: 140 }}
-        >
-          <option value="">All categories</option>
-          <option value="rules">Rules</option>
-          <option value="projects">Projects</option>
-          <option value="references">References</option>
-        </select>
-        {(filter || categoryFilter) && (
-          <button
-            onClick={() => { setFilter(""); setCategoryFilter(""); }}
-            style={{
-              padding: "8px 12px",
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              color: "var(--text-muted)",
-              fontSize: 12,
-            }}
-          >
-            Clear
-          </button>
-        )}
       </div>
 
-      {isLoading && (
-        <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--text-muted)" }}>
-          Loading memories…
+      {/* ── MEMORY VAULT MOCKUP ── */}
+      <Section>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
+          <div>
+            <FadeIn>
+              <SectionLabel>Memory Vault</SectionLabel>
+              <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
+                All your context, one encrypted vault
+              </h2>
+              <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
+                Store rules, projects, and references as discrete memory entries. Every fact is encrypted with AES-256-GCM before hitting the database — your data stays yours.
+              </p>
+              <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+                {["Rules, projects, and reference categories", "Tags for precise filtering", "Bulk import from any chatbot export", "Edit, delete, and bulk manage entries"].map((item) => (
+                  <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </FadeIn>
+          </div>
+          <FadeIn delay={150}>
+            <div style={{ animation: "float 6s ease-in-out infinite" }}>
+              <MemoryVaultMockup />
+            </div>
+          </FadeIn>
         </div>
-      )}
-      {isError && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "24px",
-            color: "var(--error)",
-            background: "rgba(239,68,68,0.08)",
-            border: "1px solid rgba(239,68,68,0.25)",
-            borderRadius: "var(--radius)",
-          }}
-        >
-          Failed to load memories.
-        </div>
-      )}
-      {!isLoading && !isError && memories.length === 0 && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "56px 24px",
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-          }}
-        >
-          <svg
-            width="56"
-            height="56"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--border)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ marginBottom: 16, display: "block", margin: "0 auto 16px" }}
-          >
-            <rect x="3" y="3" width="18" height="18" rx="3" />
-            <path d="M3 9h18M9 21V9" />
-            <line x1="12" y1="13" x2="12" y2="17" />
-            <line x1="10" y1="15" x2="14" y2="15" />
-          </svg>
-          <p style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
-            No memories yet
-          </p>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 320, margin: "0 auto" }}>
-            Paste some memories using the Bulk Ingest panel above to get started. They'll appear here and become searchable via the MCP endpoint.
-          </p>
-        </div>
-      )}
-      {!isLoading && !isError && memories.length > 0 && (
-        <MemoryTable memories={memories} filter={filter} categoryFilter={categoryFilter} />
-      )}
+      </Section>
 
-      {showNewMemory && (
-        <NewMemoryModal
-          onClose={() => setShowNewMemory(false)}
-          onSaved={invalidate}
-        />
-      )}
+      {/* ── MCP ENDPOINT ── */}
+      <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
+        <Section>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
+            <FadeIn delay={150}>
+              <McpCallMockup />
+            </FadeIn>
+            <div>
+              <FadeIn>
+                <SectionLabel>MCP Endpoint</SectionLabel>
+                <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
+                  Universal context, any AI client
+                </h2>
+                <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
+                  A single <code style={{ color: "var(--accent)", fontSize: 13, background: "var(--surface2)", padding: "1px 5px", borderRadius: 4 }}>/api/mcp</code> endpoint speaks the Model Context Protocol. Wire it into Claude Desktop, Cursor, Cline, VS Code Copilot — any MCP-compatible client.
+                </p>
+                <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+                  {["recall_context — semantic vector search", "commit_memory — write new facts mid-session", "Runs on Cloudflare edge, sub-50ms globally", "Standard JSON-RPC 2.0 transport"].map((item) => (
+                    <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </FadeIn>
+            </div>
+          </div>
+        </Section>
+      </div>
+
+      {/* ── ENCRYPTION ── */}
+      <Section>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
+          <div>
+            <FadeIn>
+              <SectionLabel>Zero-Plaintext Storage</SectionLabel>
+              <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
+                Encrypted at rest, every single fact
+              </h2>
+              <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
+                Every memory is encrypted with AES-256-GCM using a per-deployment key before storage. The database never sees plaintext — only your running worker can decrypt.
+              </p>
+              <div style={{ display: "flex", gap: 16 }}>
+                {[["AES-256-GCM", "Industry standard"], ["12-byte IV", "Per-record randomness"], ["Edge-only keys", "Never in the DB"]].map(([title, sub]) => (
+                  <div key={title} style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", marginBottom: 4 }}>{title}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{sub}</div>
+                  </div>
+                ))}
+              </div>
+            </FadeIn>
+          </div>
+          <FadeIn delay={150}>
+            <EncryptionMockup />
+          </FadeIn>
+        </div>
+      </Section>
+
+      {/* ── API TOKENS ── */}
+      <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
+        <Section>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
+            <FadeIn delay={150}>
+              <TokenMockup />
+            </FadeIn>
+            <div>
+              <FadeIn>
+                <SectionLabel>API Tokens</SectionLabel>
+                <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
+                  Fine-grained access control
+                </h2>
+                <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
+                  Generate Bearer tokens with per-tool permission bitmasks. Give your coding assistant read-only access, while letting your personal Claude write new memories mid-session.
+                </p>
+                <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+                  {["Tokens stored as SHA-256 hashes only", "Shown once at creation, never again", "Toggle recall_context and commit_memory independently", "Revoke any token instantly"].map((item) => (
+                    <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </FadeIn>
+            </div>
+          </div>
+        </Section>
+      </div>
+
+      {/* ── HOW IT WORKS ── */}
+      <Section>
+        <div style={{ textAlign: "center", marginBottom: 56 }}>
+          <FadeIn>
+            <SectionLabel>How It Works</SectionLabel>
+            <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2 }}>
+              From export to AI context in minutes
+            </h2>
+          </FadeIn>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+            <Step num="1" title="Export memories from any chatbot" desc="Use the built-in prompts on the Import page to pull your existing memories out of ChatGPT, Claude, Gemini, Grok, or Perplexity." delay={0} />
+            <Step num="2" title="Paste & AI-extract" desc="Paste the raw chatbot output. Locker's AI parser extracts discrete facts, categorises them, and tags them automatically." delay={100} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+            <Step num="3" title="Connect your AI client" desc="Follow the Connect guide to add Locker as an MCP server in any compatible client using your Bearer token." delay={200} />
+            <Step num="4" title="Your context follows you everywhere" desc="Every AI session starts with your full personal and technical context — encrypted, always up to date, under your control." delay={300} />
+          </div>
+        </div>
+      </Section>
+
+      {/* ── FEATURE CARDS ── */}
+      <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
+        <Section>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
+            <FadeIn>
+              <SectionLabel>Everything Included</SectionLabel>
+              <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2 }}>
+                Built for the serious AI user
+              </h2>
+            </FadeIn>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+            {[
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "End-to-end encryption", desc: "AES-256-GCM on every fact. Database rows are ciphertext only.", delay: 0 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "Semantic vector search", desc: "Cloudflare Vectorize powers fuzzy recall — find facts by meaning, not just keywords.", delay: 60 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: "15+ platform configs", desc: "One-click config snippets for every major AI client, always up to date.", delay: 120 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>, title: "AI-powered import", desc: "Paste any raw text — Claude extracts, categorises, and deduplicates the facts.", delay: 180 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Per-token permissions", desc: "Bearer tokens with bitmask permissions — read-only or full write access, per client.", delay: 240 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>, title: "Cloudflare edge", desc: "Workers + D1 + Vectorize — globally distributed, no server to manage.", delay: 300 },
+            ].map((f) => (
+              <FeatureCard key={f.title} icon={f.icon} title={f.title} desc={f.desc} delay={f.delay} />
+            ))}
+          </div>
+        </Section>
+      </div>
+
+      {/* ── PLATFORMS ── */}
+      <Section style={{ textAlign: "center" }}>
+        <FadeIn>
+          <SectionLabel>Supported Platforms</SectionLabel>
+          <h2 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 8 }}>
+            Works with your whole stack
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 36 }}>
+            One endpoint, every client. Check the Connect page for ready-to-paste config snippets.
+          </p>
+        </FadeIn>
+        <PlatformGrid />
+        <FadeIn delay={600}>
+          <div style={{ marginTop: 36 }}>
+            <Link to="/connect" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 22px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, fontWeight: 500, borderRadius: 8, textDecoration: "none", transition: "border-color 0.15s, color 0.15s" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+            >
+              View all config guides →
+            </Link>
+          </div>
+        </FadeIn>
+      </Section>
+
+      {/* ── CTA ── */}
+      <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)" }}>
+        <div style={{ maxWidth: 600, margin: "0 auto", padding: "80px 24px", textAlign: "center" }}>
+          <FadeIn>
+            <div style={{ width: 56, height: 56, borderRadius: 16, background: "var(--accent-dim)", border: "1px solid rgba(99,102,241,0.35)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", marginBottom: 14 }}>
+              Your vault is ready
+            </h2>
+            <p style={{ fontSize: 15, color: "var(--text-muted)", lineHeight: 1.7, marginBottom: 32 }}>
+              Start building your encrypted memory store. Import from your existing AI tools, connect a client, and let Locker carry your context everywhere.
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+              <Link to="/memories" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px", background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 14, borderRadius: 10, textDecoration: "none", transition: "background 0.15s" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent-hover)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent)"; }}
+              >
+                Open Vault
+              </Link>
+              <Link to="/import" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "transparent", color: "var(--text-muted)", fontWeight: 600, fontSize: 14, borderRadius: 10, border: "1px solid var(--border)", textDecoration: "none", transition: "border-color 0.15s, color 0.15s" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+              >
+                Import memories →
+              </Link>
+            </div>
+          </FadeIn>
+        </div>
+      </div>
     </div>
   );
 }
