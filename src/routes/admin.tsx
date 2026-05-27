@@ -90,7 +90,6 @@ export const getVectorizeDebug = createServerFn({ method: "GET" }).handler(
     // Vectorize has no enumerate API, so we can only flag IDs in D1 with no vector counterpart
     // by attempting a getByIds call — fall back to reporting 0 orphans if unsupported
     try {
-      // @ts-expect-error getByIds may not be in types yet
       const existing = await env.VECTOR_INDEX.getByIds(dbIds.slice(0, 100));
       const existingIds = new Set((existing ?? []).map((v: { id: string }) => v.id));
       const missing = dbIds.filter((id) => !existingIds.has(id)).slice(0, 20);
@@ -217,7 +216,7 @@ function AdminPage() {
                 <p style={{ fontSize: "12px", marginBottom: "8px" }}>This will delete all vectors from Vectorize but keep D1 data.</p>
                 <div style={{ display: "flex", gap: "5px" }}>
                   <button
-                    onClick={() => clearVectorizeMutation.mutate()}
+                    onClick={() => clearVectorizeMutation.mutate({})}
                     style={{ flex: 1, padding: "6px", background: "var(--error)", color: "white" }}
                   >
                     Confirm
@@ -254,7 +253,7 @@ function AdminPage() {
                 <p style={{ fontSize: "12px", marginBottom: "8px" }}>This will delete all memories from D1 and Vectorize.</p>
                 <div style={{ display: "flex", gap: "5px" }}>
                   <button
-                    onClick={() => clearDbMutation.mutate()}
+                    onClick={() => clearDbMutation.mutate({})}
                     style={{ flex: 1, padding: "6px", background: "var(--error)", color: "white" }}
                   >
                     Confirm
@@ -292,7 +291,7 @@ function AdminPage() {
                 <p style={{ fontSize: "13px", marginBottom: "8px", fontWeight: "bold" }}>This will delete ALL memories from both D1 and Vectorize. This cannot be undone!</p>
                 <div style={{ display: "flex", gap: "5px" }}>
                   <button
-                    onClick={() => clearAllMutation.mutate()}
+                    onClick={() => clearAllMutation.mutate({})}
                     style={{ flex: 1, padding: "8px", background: "var(--error)", color: "white", fontWeight: "bold" }}
                   >
                     NUKE IT
