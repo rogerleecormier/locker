@@ -89,7 +89,7 @@ export const oauthAccessTokens = sqliteTable("oauthAccessToken", {
   accessTokenExpiresAt: integer("accessTokenExpiresAt", { mode: "timestamp_ms" }).notNull(),
   refreshTokenExpiresAt: integer("refreshTokenExpiresAt", { mode: "timestamp_ms" }).notNull(),
   scopes: text("scopes").notNull(),
-  clientId: text("clientId").notNull().references(() => oauthApplications.clientId, { onDelete: "cascade" }),
+  clientId: text("clientId").notNull(),
   userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
   createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
@@ -97,7 +97,7 @@ export const oauthAccessTokens = sqliteTable("oauthAccessToken", {
 
 export const oauthConsents = sqliteTable("oauthConsent", {
   id: text("id").primaryKey(),
-  clientId: text("clientId").notNull().references(() => oauthApplications.clientId, { onDelete: "cascade" }),
+  clientId: text("clientId").notNull(),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   scopes: text("scopes").notNull(),
   consentGiven: integer("consentGiven", { mode: "boolean" }).notNull(),

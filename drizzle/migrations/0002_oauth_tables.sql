@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS `oauthAccessToken` (
 	`accessTokenExpiresAt` integer NOT NULL,
 	`refreshTokenExpiresAt` integer NOT NULL,
 	`scopes` text NOT NULL,
-	`clientId` text NOT NULL REFERENCES `oauthApplication`(`clientId`) ON DELETE CASCADE,
+	`clientId` text NOT NULL,
 	`userId` text REFERENCES `user`(`id`) ON DELETE CASCADE,
 	`createdAt` integer NOT NULL,
 	`updatedAt` integer NOT NULL
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS `oauthAccessToken` (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `oauthConsent` (
 	`id` text PRIMARY KEY NOT NULL,
-	`clientId` text NOT NULL REFERENCES `oauthApplication`(`clientId`) ON DELETE CASCADE,
+	`clientId` text NOT NULL,
 	`userId` text NOT NULL REFERENCES `user`(`id`) ON DELETE CASCADE,
 	`scopes` text NOT NULL,
 	`consentGiven` integer NOT NULL,

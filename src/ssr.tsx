@@ -21,27 +21,40 @@ export default {
       return auth.handler(request);
     }
 
+    // OAuth 2.0 protected resource metadata (RFC 9728) — Claude fetches this first.
+    if (url.pathname === "/.well-known/oauth-protected-resource" ||
+        url.pathname.startsWith("/.well-known/oauth-protected-resource/")) {
+      return Response.json({
+        resource: url.origin,
+        authorization_servers: [url.origin],
+      });
+    }
+
+    // OAuth 2.0 authorization server metadata (RFC 8414) — fallback discovery.
+    if (url.pathname === "/.well-known/oauth-authorization-server") {
+      const rewritten = new Request(
+        `${url.origin}/api/auth/.well-known/openid-configuration`,
+        { method: "GET", headers: request.headers },
+      );
+      const auth = createAuth(env);
+      return auth.handler(rewritten);
+    }
+
     // Claude constructs OAuth paths from the issuer URL instead of using discovery.
     // Rewrite the URL in-process to the better-auth OAuth2 endpoints.
     if (url.pathname === "/authorize" || url.pathname === "/token") {
       const segment = url.pathname === "/authorize" ? "authorize" : "token";
-      // Temporarily log token requests to debug invalid_request errors
-      if (segment === "token") {
-        const cloned = request.clone();
-        const body = await cloned.text();
-        console.log("[oauth/token] body:", body);
-      }
+      const body = request.body ? await request.arrayBuffer() : null;
       const rewritten = new Request(
         `${url.origin}/api/auth/oauth2/${segment}${url.search}`,
-        request,
+        {
+          method: request.method,
+          headers: request.headers,
+          body: body,
+        },
       );
       const auth = createAuth(env);
-      const response = await auth.handler(rewritten);
-      if (!response.ok) {
-        const errBody = await response.clone().text();
-        console.log("[oauth/token] error response:", response.status, errBody);
-      }
-      return response;
+      return auth.handler(rewritten);
     }
 
     return handler(request, {
