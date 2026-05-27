@@ -1,21 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
-import { desc, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { memories, type Memory, type NewMemory } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
-type EmbeddingResponse = {
-  shape: number[];
-  data: number[][];
-};
-
 async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
-  const result = (await ai.run("@cf/baai/bge-m3", {
-    text: [text],
-  })) as EmbeddingResponse;
-  return result.data[0];
+  const result = await ai.run("@cf/baai/bge-m3", { text: [text] });
+  const r = result as { data?: number[][]; shape?: number[] };
+  return r.data?.[0] ?? [];
 }
 
 function getDb(env: CloudflareEnv) {
@@ -27,7 +21,22 @@ function normalizeCategory(raw: string | undefined): "rules" | "projects" | "ref
   return "references";
 }
 
-type AiTextResponse = { response?: string };
+function extractText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (result && typeof result === "object") {
+    const r = result as Record<string, unknown>;
+    if (typeof r.response === "string") return r.response;
+    if (typeof r.text === "string") return r.text;
+    if (typeof r.result === "string") return r.result;
+    if (Array.isArray(r.choices) && r.choices[0]) {
+      const c = r.choices[0] as Record<string, unknown>;
+      if (typeof c.text === "string") return c.text;
+      if (c.message && typeof (c.message as Record<string, unknown>).content === "string")
+        return (c.message as Record<string, unknown>).content as string;
+    }
+  }
+  return "";
+}
 
 async function classifyMemories(
   ai: Ai,
@@ -35,33 +44,48 @@ async function classifyMemories(
 ): Promise<Array<"rules" | "projects" | "references">> {
   if (facts.length === 0) return [];
 
-  const numbered = facts.map((f, i) => `${i + 1}. ${f}`).join("\n");
-  const prompt = `Classify each memory into exactly one category: rules, projects, or references.
+  // process in batches of 20 to avoid token limits
+  const CLASSIFY_BATCH = 20;
+  const results: Array<"rules" | "projects" | "references"> = [];
 
-- rules: preferences, behaviors, constraints, coding standards, how I like things done
-- projects: active work, features, bugs, tasks, deadlines, initiatives
-- references: links, tools, services, credentials, external resources, facts to look up
+  for (let i = 0; i < facts.length; i += CLASSIFY_BATCH) {
+    const batch = facts.slice(i, i + CLASSIFY_BATCH);
+    const numbered = batch.map((f, j) => `${j + 1}. ${f}`).join("\n");
 
-Respond with ONLY a JSON array of strings in order, one per item. Example: ["rules","projects","references"]
+    const prompt = `Classify each memory into exactly one category: rules, projects, or references.
+
+- rules: explicit instructions, preferences, behavioral guidelines, "always do X", "never do Y", how I like things done, coding standards, tone/format preferences
+- projects: active or recent work, features being built, bugs, tasks, deadlines, initiatives, apps or products I am building
+- references: personal facts, identity, demographics, career history, education, relationships, location, certifications, tools I use, skills, financial info, anything that is background context about who I am
+
+Respond with ONLY a JSON array of strings, one per numbered item, in order. No explanation.
+Example for 3 items: ["rules","projects","references"]
 
 Memories:
 ${numbered}`;
 
-  const result = (await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
-    prompt,
-    max_tokens: 256,
-  })) as AiTextResponse;
+    const result = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+      prompt,
+      max_tokens: Math.max(64, batch.length * 16),
+    });
 
-  const text = result.response?.trim() ?? "";
-  const match = text.match(/\[[\s\S]*?\]/);
-  if (!match) return facts.map(() => "references" as const);
+    const text = extractText(result).trim();
+    const match = text.match(/\[[\s\S]*?\]/);
 
-  try {
-    const parsed: unknown[] = JSON.parse(match[0]);
-    return facts.map((_, i) => normalizeCategory(parsed[i] as string | undefined));
-  } catch {
-    return facts.map(() => "references" as const);
+    if (!match) {
+      results.push(...batch.map(() => "references" as const));
+      continue;
+    }
+
+    try {
+      const parsed: unknown[] = JSON.parse(match[0]);
+      results.push(...batch.map((_, j) => normalizeCategory(parsed[j] as string | undefined)));
+    } catch {
+      results.push(...batch.map(() => "references" as const));
+    }
   }
+
+  return results;
 }
 
 export const getMemories = createServerFn({ method: "GET" }).handler(
@@ -133,7 +157,17 @@ export const batchImportMemories = createServerFn({ method: "POST" })
     const { env } = (context as unknown as CFContext).cloudflare;
     const db = getDb(env);
 
-    const valid = data.filter((item) => item.fact.length > 0);
+    const valid = data.filter((item) => {
+      const f = item.fact;
+      if (f.length === 0) return false;
+      // drop section headers, evidence lines, and bullets that are just labels
+      if (/^#+\s/.test(f)) return false;                          // markdown headers
+      if (/^\*{1,2}[^*]+\*{1,2}:?\s*$/.test(f)) return false;   // **Category:** alone
+      if (/^evidence:/i.test(f)) return false;                    // Evidence: lines
+      if (/^\d+\.\s+\*{0,2}[A-Z]/.test(f) && f.length < 60) return false; // "1. **Category**"
+      if (/^imported from:/i.test(f)) return false;               // Gemini footer
+      return true;
+    });
     if (valid.length === 0) return { imported: 0 };
 
     // classify items that have no explicit category
@@ -150,27 +184,47 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       f === null ? null : classified[classifiedIdx++]
     );
 
-    const [embeddings] = await Promise.all([
-      Promise.all(valid.map((item) => generateEmbedding(env.AI, item.fact))),
-    ]);
+    // generate embeddings for all candidates
+    const embeddings = await Promise.all(
+      valid.map((item) => generateEmbedding(env.AI, item.fact))
+    );
+
+    // deduplicate against existing vectors — skip anything with cosine similarity >= 0.92
+    const DUPE_THRESHOLD = 0.92;
+    const dupeFlags = await Promise.all(
+      embeddings.map(async (vec) => {
+        const result = await env.VECTOR_INDEX.query(vec, { topK: 1, returnMetadata: "none" });
+        const top = result.matches?.[0];
+        return top !== undefined && top.score >= DUPE_THRESHOLD;
+      })
+    );
 
     const timestamp = Date.now();
-    const rows: NewMemory[] = valid.map((item, i) => ({
+    const allRows: (NewMemory & { embedding: number[]; isDupe: boolean })[] = valid.map((item, i) => ({
       id: crypto.randomUUID(),
       fact: item.fact,
       category: resolvedCategories[i] ?? normalizeCategory(item.category),
       tags: item.tags?.trim() ?? "",
       timestamp,
+      embedding: embeddings[i],
+      isDupe: dupeFlags[i],
     }));
 
-    const CHUNK_SIZE = 25;
-    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-      await db.insert(memories).values(rows.slice(i, i + CHUNK_SIZE));
+    const newRows = allRows.filter((r) => !r.isDupe);
+    if (newRows.length === 0) return { imported: 0, skipped: allRows.length };
+
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
+      await db.insert(memories).values(
+        newRows.slice(i, i + CHUNK_SIZE).map(({ id, fact, category, tags, timestamp: ts }) => ({
+          id, fact, category, tags, timestamp: ts,
+        }))
+      );
     }
 
-    const vectorBatch: VectorizeVector[] = rows.map((row, idx) => ({
+    const vectorBatch: VectorizeVector[] = newRows.map((row) => ({
       id: row.id,
-      values: embeddings[idx],
+      values: row.embedding,
       metadata: {
         category: row.category,
         tags: row.tags ?? "",
@@ -182,7 +236,45 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       await env.VECTOR_INDEX.insert(vectorBatch.slice(i, i + VECTOR_CHUNK));
     }
 
-    return { imported: rows.length };
+    return { imported: newRows.length, skipped: allRows.length - newRows.length };
+  });
+
+export const deleteMemory = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { id: string } => {
+    const d = data as { id: string };
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    return { id: d.id };
+  })
+  .handler(async ({ data, context }): Promise<{ deleted: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = getDb(env);
+    await db.delete(memories).where(eq(memories.id, data.id));
+    await env.VECTOR_INDEX.deleteByIds([data.id]);
+    return { deleted: true };
+  });
+
+export const bulkDeleteMemories = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { ids: string[] } => {
+    const d = data as { ids: string[] };
+    if (!Array.isArray(d.ids) || d.ids.length === 0) throw new Error("ids must be a non-empty array");
+    return { ids: d.ids.filter((id) => typeof id === "string") };
+  })
+  .handler(async ({ data, context }): Promise<{ deleted: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = getDb(env);
+
+    const CHUNK = 10;
+    for (let i = 0; i < data.ids.length; i += CHUNK) {
+      const chunk = data.ids.slice(i, i + CHUNK);
+      await db.delete(memories).where(sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`);
+    }
+
+    const VECTOR_CHUNK = 100;
+    for (let i = 0; i < data.ids.length; i += VECTOR_CHUNK) {
+      await env.VECTOR_INDEX.deleteByIds(data.ids.slice(i, i + VECTOR_CHUNK));
+    }
+
+    return { deleted: data.ids.length };
   });
 
 export const recallContext = createServerFn({ method: "POST" })

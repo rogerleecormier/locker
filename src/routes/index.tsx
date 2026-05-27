@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useCallback } from "react";
-import { getMemories, batchImportMemories } from "~/server/memoryFunctions";
+import { getMemories, batchImportMemories, deleteMemory, bulkDeleteMemories } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 
 export const Route = createFileRoute("/")({
@@ -99,24 +99,54 @@ function TagChip({ tag }: { tag: string }) {
   );
 }
 
-function MemoryRow({ memory }: { memory: Memory }) {
+function MemoryRow({
+  memory,
+  selected,
+  onToggleSelect,
+}: {
+  memory: Memory;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteMemory({ data: { id: memory.id } }),
+    onMutate: () => {
+      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
+        old ? old.filter((m) => m.id !== memory.id) : []
+      );
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+    },
+  });
+
   const tags = memory.tags
     ? memory.tags
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean)
     : [];
+
   return (
     <div
       style={{
         padding: "14px 18px",
         borderBottom: "1px solid var(--border)",
         display: "grid",
-        gridTemplateColumns: "1fr auto",
+        gridTemplateColumns: "auto 1fr auto",
         gap: "8px 16px",
         alignItems: "start",
+        background: selected ? "rgba(99,102,241,0.05)" : undefined,
       }}
     >
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={() => onToggleSelect(memory.id)}
+        style={{ marginTop: 3, cursor: "pointer", accentColor: "var(--accent)" }}
+      />
       <div style={{ minWidth: 0 }}>
         <p style={{ marginBottom: tags.length ? 6 : 0, lineHeight: 1.5, wordBreak: "break-word" }}>
           {memory.fact}
@@ -138,6 +168,66 @@ function MemoryRow({ memory }: { memory: Memory }) {
             year: "numeric",
           })}
         </span>
+        {confirming ? (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Delete?</span>
+            <button
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+              style={{
+                padding: "3px 10px",
+                background: "rgba(239,68,68,0.15)",
+                border: "1px solid rgba(239,68,68,0.4)",
+                color: "var(--error)",
+                fontSize: 11,
+                fontWeight: 600,
+                borderRadius: "var(--radius)",
+              }}
+            >
+              {deleteMutation.isPending ? "…" : "Yes"}
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={deleteMutation.isPending}
+              style={{
+                padding: "3px 8px",
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                fontSize: 11,
+                borderRadius: "var(--radius)",
+              }}
+            >
+              No
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirming(true)}
+            style={{
+              padding: "3px 8px",
+              background: "transparent",
+              border: "1px solid transparent",
+              color: "var(--text-muted)",
+              fontSize: 11,
+              borderRadius: "var(--radius)",
+              opacity: 0.5,
+              transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.opacity = "1";
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(239,68,68,0.4)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--error)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.opacity = "0.5";
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "transparent";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
+            }}
+          >
+            Delete
+          </button>
+        )}
       </div>
     </div>
   );
@@ -148,13 +238,16 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
   const [parseError, setParseError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
 
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
+
   const batchMutation = useMutation({
     mutationFn: (items: Array<{ fact: string; category?: string; tags?: string }>) =>
       batchImportMemories({ data: items }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       setPasteText("");
       setPreview(null);
       setParseError(null);
+      setImportResult(result);
       onSuccess();
     },
   });
@@ -278,7 +371,7 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
 
-        {batchMutation.isSuccess && (
+        {batchMutation.isSuccess && importResult && (
           <div
             style={{
               marginTop: 8,
@@ -290,7 +383,12 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
               fontSize: 12,
             }}
           >
-            Import complete.
+            Imported {importResult.imported} memor{importResult.imported !== 1 ? "ies" : "y"}.
+            {importResult.skipped > 0 && (
+              <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+                {importResult.skipped} duplicate{importResult.skipped !== 1 ? "s" : ""} skipped.
+              </span>
+            )}
           </div>
         )}
 
@@ -338,6 +436,10 @@ function MemoryTable({
   filter: string;
   categoryFilter: string;
 }) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+
   const filtered = useMemo(() => {
     const q = filter.toLowerCase();
     return memories.filter((m) => {
@@ -349,6 +451,50 @@ function MemoryTable({
       return matchesCat && matchesText;
     });
   }, [memories, filter, categoryFilter]);
+
+  const filteredIds = useMemo(() => new Set(filtered.map((m) => m.id)), [filtered]);
+  const allSelected = filtered.length > 0 && filtered.every((m) => selected.has(m.id));
+  const someSelected = filtered.some((m) => selected.has(m.id));
+  const selectedInView = filtered.filter((m) => selected.has(m.id));
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => bulkDeleteMemories({ data: { ids } }),
+    onMutate: (ids) => {
+      const idSet = new Set(ids);
+      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
+        old ? old.filter((m) => !idSet.has(m.id)) : []
+      );
+      setSelected(new Set());
+      setBulkConfirming(false);
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+    },
+  });
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filteredIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filteredIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   if (filtered.length === 0) {
     return (
@@ -376,8 +522,96 @@ function MemoryTable({
         overflow: "hidden",
       }}
     >
+      {/* Table header with select-all and bulk actions */}
+      <div
+        style={{
+          padding: "10px 18px",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          background: "var(--surface2)",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={allSelected}
+          ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+          onChange={toggleSelectAll}
+          style={{ cursor: "pointer", accentColor: "var(--accent)" }}
+        />
+        {someSelected ? (
+          <>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {selectedInView.length} selected
+            </span>
+            {bulkConfirming ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+                <span style={{ fontSize: 12, color: "var(--error)" }}>
+                  Delete {selectedInView.length} memor{selectedInView.length !== 1 ? "ies" : "y"}?
+                </span>
+                <button
+                  onClick={() => bulkDeleteMutation.mutate(selectedInView.map((m) => m.id))}
+                  disabled={bulkDeleteMutation.isPending}
+                  style={{
+                    padding: "4px 12px",
+                    background: "rgba(239,68,68,0.15)",
+                    border: "1px solid rgba(239,68,68,0.4)",
+                    color: "var(--error)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                  }}
+                >
+                  {bulkDeleteMutation.isPending ? "Deleting…" : "Yes, delete"}
+                </button>
+                <button
+                  onClick={() => setBulkConfirming(false)}
+                  disabled={bulkDeleteMutation.isPending}
+                  style={{
+                    padding: "4px 10px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-muted)",
+                    fontSize: 12,
+                    borderRadius: "var(--radius)",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setBulkConfirming(true)}
+                style={{
+                  marginLeft: "auto",
+                  padding: "4px 12px",
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1px solid rgba(239,68,68,0.3)",
+                  color: "var(--error)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  borderRadius: "var(--radius)",
+                }}
+              >
+                Delete selected
+              </button>
+            )}
+          </>
+        ) : (
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {filtered.length} memor{filtered.length !== 1 ? "ies" : "y"}
+          </span>
+        )}
+      </div>
+
       {filtered.map((m) => (
-        <MemoryRow key={m.id} memory={m} />
+        <MemoryRow
+          key={m.id}
+          memory={m}
+          selected={selected.has(m.id)}
+          onToggleSelect={toggleOne}
+        />
       ))}
     </div>
   );
@@ -398,16 +632,50 @@ const CHATBOTS: Chatbot[] = [
     label: "ChatGPT",
     color: "#10a37f",
     url: "https://chatgpt.com/",
-    prompt:
-      `Please dump all of the memories you have stored about me. I want everything — preferences, facts, projects, rules, behaviors, anything you've saved or inferred about me over time. Format each one as a plain sentence on its own line. Do not summarize or group them, just list every individual memory you have.`,
+    prompt: `Export everything stored in your Memory about me. I want two sections:
+
+**Section 1 — Saved Memories (explicit entries)**
+List every discrete entry from your saved memory store — the entries visible in Settings > Personalization > Manage Memories. Output each one verbatim, exactly as stored, one per line. Do not paraphrase, merge, or omit any entry.
+
+**Section 2 — Chat History Inferences (implicit layer)**
+List any additional facts, preferences, or context you have inferred about me from past conversations that are NOT in your saved memory entries — things you know about me but haven't saved as a discrete memory. One fact per line.
+
+Format each line as:
+[YYYY-MM-DD] - Entry content here.
+Use [unknown] if no date is available.
+
+Output ONLY the two sections. No intro, no sign-off, no commentary. After both sections, state how many saved memory entries were listed and whether the list is complete.`,
   },
   {
     id: "claude",
     label: "Claude",
     color: "#d4956a",
     url: "https://claude.ai/new",
-    prompt:
-      `Please list all of the memories or persistent facts you have stored about me from previous conversations. Include everything — preferences, projects, rules, habits, context about my work. One memory per line, plain sentences. Don't summarize or omit anything.`,
+    prompt: `Export all of my stored memories and any context you've learned about me from past conversations. Preserve my words verbatim where possible, especially for instructions and preferences.
+
+## Categories (output in this order):
+
+1. **Instructions**: Rules I've explicitly asked you to follow going forward — tone, format, style, "always do X", "never do Y", and corrections to your behavior. Only include rules from stored memories, not from conversations.
+
+2. **Identity**: Name, age, location, education, family, relationships, languages, and personal interests.
+
+3. **Career**: Current and past roles, companies, and general skill areas.
+
+4. **Projects**: Projects I meaningfully built or committed to. Ideally ONE entry per project. Include what it does, current status, and any key decisions. Use the project name or a short descriptor as the first words of the entry.
+
+5. **Preferences**: Opinions, tastes, and working-style preferences that apply broadly.
+
+## Format:
+
+Use section headers for each category. Within each category, list one entry per line, sorted by oldest date first. Format each line as:
+
+[YYYY-MM-DD] - Entry content here.
+
+If no date is known, use [unknown] instead.
+
+## Output:
+- Wrap the entire export in a single code block for easy copying.
+- After the code block, state whether this is the complete set or if more remain.`,
   },
   {
     id: "perplexity",
@@ -415,24 +683,56 @@ const CHATBOTS: Chatbot[] = [
     color: "#20b2aa",
     url: "https://www.perplexity.ai/",
     deeplinkUrl: (p: string) => `https://www.perplexity.ai/search?q=${encodeURIComponent(p)}`,
-    prompt:
-      `What do you remember about me from our past conversations? Please output every stored memory or preference you have — one per line, as plain sentences. Include everything without filtering or summarizing.`,
+    prompt: `Tell me everything you know about me: preferences, personal details, interests, recurring context, etc.
+
+List every discrete memory entry. One entry per line. Do not paraphrase, summarize, group, or omit anything.
+
+Format each line as:
+[YYYY-MM-DD] - Entry content here.
+Use [unknown] if no date is available.
+
+End with a count of how many entries were listed and confirm whether the list is complete.`,
   },
   {
     id: "gemini",
     label: "Gemini",
     color: "#4285f4",
     url: "https://gemini.google.com/app",
-    prompt:
-      `List all the memories and personal information you have stored about me. Include every preference, fact, project, or behavior you've learned. Output one item per line as plain sentences. Do not summarize — I want the full raw list.`,
+    prompt: `You are helping me import context from one AI assistant to another. Your job is to go through our past conversations and sum up what you know about me.
+
+In the output, please avoid using any first-person pronouns (I, my, me, mine) and any second-person pronouns (you, your, yours). Instead, refer to the individual you have learned about as "the user" or use neutral phrasing.
+
+Preserve the user's words verbatim where possible, especially for instructions and preferences.
+
+Categories (output in this order):
+1. Demographics Information: Preferred names, profession, education, and general residence.
+2. Interests & Preferences: Sustained, active engagements (not just owning an object or a one-time purchase).
+3. Relationships: Confirmed, sustained relationships.
+4. Dated Events, Projects & Plans: A log of significant, recent activities.
+5. Instructions: Rules I've explicitly asked you to follow going forward, "always do X", "never do Y", and corrections to your behavior. Only include rules from stored memories, not from conversations.
+
+Format:
+Divide the content into the labeled section using the categories above. Try to include verbatim quotes from my prompts that justify each entry. Structure each entry using this format:
+* The user's name is <name>.
+    * Evidence: User said "call me <name>". Date: [YYYY-MM-DD].
+
+Output:
+- Output ONLY the requested information. Do not include any conversational filler, intro text, or sign-offs.
+
+Finally, complete the sentence "Imported from: <name>", where name is ChatGPT, Claude, Grok, etc. This must be the absolute final text in your response.`,
   },
   {
     id: "grok",
     label: "Grok",
     color: "#e7e7e7",
     url: "https://x.com/i/grok",
-    prompt:
-      `What do you know about me from memory? Please output every stored fact, preference, project, or rule you have about me — one per line as a plain sentence. Give me the complete unfiltered list, nothing omitted.`,
+    prompt: `Export everything stored in your persistent memory about me. List every discrete memory entry exactly as stored — the entries visible in Settings > Data Controls. One entry per line, verbatim. Do not paraphrase, summarize, merge, or omit any entry.
+
+Format each line as:
+[YYYY-MM-DD] - Entry content here.
+Use [unknown] if no date is available.
+
+Output ONLY the memory entries. No intro, no sign-off, no commentary. End with a count of entries listed and confirm whether this is the complete set.`,
   },
 ];
 
