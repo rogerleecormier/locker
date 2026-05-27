@@ -137,7 +137,7 @@ export async function handleMcpRequest(
     const embedding = await generateEmbedding(env.AI, query.trim());
     const vectorResults = await env.VECTOR_INDEX.query(embedding, {
       topK,
-      returnMetadata: "none",
+      returnMetadata: false,
     });
 
     if (!vectorResults.matches?.length) {

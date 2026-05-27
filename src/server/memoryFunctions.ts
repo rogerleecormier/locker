@@ -88,6 +88,105 @@ ${numbered}`;
   return results;
 }
 
+function parseFactsFromText(raw: string): Array<{ fact: string }> {
+  const noisePatterns = [
+    /^=+$/,                                           // === dividers
+    /^-{3,}$/,                                        // --- dividers
+    /^#{1,3}\s/,                                      // markdown headers
+    /^evidence:/i,                                    // evidence lines
+    /^imported from:/i,                               // gemini footer
+    /^generated:/i,                                   // export headers
+    /^memory export$/i,
+    /^end of export$/i,
+    /^\d+\.\s+[A-Z\s]+$/,                            // "1. INSTRUCTIONS"
+    /^[-=*]{4,}/,                                     // long dividers
+    /^[A-Z\s]+ — MEMORY EXPORT/,                     // title line
+  ];
+
+  return raw
+    .split("\n")
+    .map((line) => {
+      let f = line
+        .trim()
+        .replace(/^\s*[-*•]\s+/, "")                         // bullet chars
+        .replace(/^\[\d{4}-\d{2}-\d{2}\]\s*-?\s*/,"")       // [YYYY-MM-DD] -
+        .replace(/^\[unknown\]\s*-?\s*/i, "")                // [unknown] -
+        .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")            // **bold**
+        .replace(/^Name:\s*/i, "")                           // "Name: Roger"
+        .replace(/^Location:\s*/i, "")
+        .trim();
+      return f;
+    })
+    .filter((f) => {
+      if (f.length < 8) return false;
+      if (noisePatterns.some((p) => p.test(f))) return false;
+      return true;
+    })
+    .map((f) => ({ fact: f }));
+}
+
+export const parseMemoriesWithAI = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { text: string } => {
+    const d = data as { text: string };
+    if (!d.text || typeof d.text !== "string") throw new Error("text is required");
+    return { text: d.text.trim() };
+  })
+  .handler(async ({ data, context }): Promise<Array<{ fact: string; category?: string; tags?: string }>> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+
+    const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+      messages: [
+        {
+          role: "system",
+          content: `You extract discrete memory facts from raw text. Output ONLY a JSON array of strings — one string per fact. No explanation, no markdown, no code fences. Just the raw JSON array.
+
+Example: ["The user lives in Florida","The user is a PMP-certified project manager","The user prefers concise answers"]
+
+Rules:
+- Strip all formatting: headers, bullets, dashes, date prefixes like [2025-01-01], bold markdown (**text**), evidence lines, "Imported from:" lines
+- Each entry must be one clean self-contained sentence
+- Skip section headers, category labels, horizontal rules, and meta-commentary`,
+        },
+        {
+          role: "user",
+          content: data.text,
+        },
+      ],
+      max_tokens: 4096,
+    });
+
+    console.log("[parseMemoriesWithAI] result type:", typeof result, "keys:", result && typeof result === "object" ? Object.keys(result as object).join(",") : "n/a", "json:", JSON.stringify(result).slice(0, 300));
+    const raw = extractText(result).trim();
+    console.log("[parseMemoriesWithAI] raw response length:", raw.length, "preview:", raw.slice(0, 200));
+
+    // try JSON first
+    const stripped = raw.replace(/```[\w]*\n?/g, "").trim();
+    const arrayMatch = stripped.match(/\[[\s\S]*\]/);
+    if (arrayMatch) {
+      try {
+        const parsed = JSON.parse(arrayMatch[0]);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const facts = parsed
+            .map((item: unknown) => {
+              if (typeof item === "string") return item.trim();
+              if (item && typeof item === "object") {
+                const o = item as Record<string, unknown>;
+                return (typeof o.fact === "string" ? o.fact : typeof o.text === "string" ? o.text : "").trim();
+              }
+              return "";
+            })
+            .filter((f) => f.length > 0);
+          if (facts.length > 0) return facts.map((f) => ({ fact: f }));
+        }
+      } catch { /* fall through to line parser */ }
+    }
+
+    // fallback: line-by-line clean
+    console.log("[parseMemoriesWithAI] JSON parse failed, falling back to line parser");
+    const facts = parseFactsFromText(raw);
+    return facts.map((item) => ({ fact: item.fact }));
+  });
+
 export const getMemories = createServerFn({ method: "GET" }).handler(
   async ({ context }): Promise<Memory[]> => {
     const { env } = (context as unknown as CFContext).cloudflare;
@@ -193,7 +292,7 @@ export const batchImportMemories = createServerFn({ method: "POST" })
     const DUPE_THRESHOLD = 0.92;
     const dupeFlags = await Promise.all(
       embeddings.map(async (vec) => {
-        const result = await env.VECTOR_INDEX.query(vec, { topK: 1, returnMetadata: "none" });
+        const result = await env.VECTOR_INDEX.query(vec, { topK: 1, returnMetadata: false });
         const top = result.matches?.[0];
         return top !== undefined && top.score >= DUPE_THRESHOLD;
       })
@@ -253,6 +352,41 @@ export const deleteMemory = createServerFn({ method: "POST" })
     return { deleted: true };
   });
 
+type UpdateMemoryInput = {
+  id: string;
+  fact: string;
+  category: "rules" | "projects" | "references";
+  tags: string;
+};
+
+export const updateMemory = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): UpdateMemoryInput => {
+    const d = data as UpdateMemoryInput;
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    if (!d.fact || typeof d.fact !== "string") throw new Error("fact is required");
+    if (!["rules", "projects", "references"].includes(d.category)) throw new Error("invalid category");
+    return { id: d.id, fact: d.fact.trim(), category: d.category, tags: typeof d.tags === "string" ? d.tags.trim() : "" };
+  })
+  .handler(async ({ data, context }): Promise<Memory> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = getDb(env);
+
+    await db.update(memories)
+      .set({ fact: data.fact, category: data.category, tags: data.tags })
+      .where(eq(memories.id, data.id));
+
+    // re-embed with updated fact text
+    const embedding = await generateEmbedding(env.AI, data.fact);
+    await env.VECTOR_INDEX.upsert([{
+      id: data.id,
+      values: embedding,
+      metadata: { category: data.category, tags: data.tags } as Record<string, VectorizeVectorMetadata>,
+    }]);
+
+    const rows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
+    return rows[0];
+  });
+
 export const bulkDeleteMemories = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): { ids: string[] } => {
     const d = data as { ids: string[] };
@@ -290,7 +424,7 @@ export const recallContext = createServerFn({ method: "POST" })
     const embedding = await generateEmbedding(env.AI, data.query);
     const results = await env.VECTOR_INDEX.query(embedding, {
       topK: data.topK ?? 5,
-      returnMetadata: "none",
+      returnMetadata: false,
     });
 
     if (!results.matches || results.matches.length === 0) return [];

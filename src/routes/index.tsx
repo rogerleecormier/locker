@@ -1,49 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useCallback } from "react";
-import { getMemories, batchImportMemories, deleteMemory, bulkDeleteMemories } from "~/server/memoryFunctions";
+import { getMemories, addMemory, batchImportMemories, parseMemoriesWithAI, deleteMemory, bulkDeleteMemories, updateMemory } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-type RawImportItem = {
-  fact?: string;
-  category?: string;
-  tags?: string;
-  [key: string]: unknown;
-};
-
-function parsePaste(raw: string): Array<{ fact: string; category?: string; tags?: string }> {
-  const trimmed = raw.trim();
-  if (!trimmed) throw new Error("Input is empty.");
-
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    if (!Array.isArray(parsed)) throw new Error("JSON must be an array.");
-    return (parsed as RawImportItem[]).map((item, i) => {
-      if (!item.fact || typeof item.fact !== "string") {
-        throw new Error(`Item at index ${i} is missing a "fact" string field.`);
-      }
-      return {
-        fact: item.fact.trim(),
-        category: typeof item.category === "string" ? item.category : undefined,
-        tags: typeof item.tags === "string" ? item.tags : undefined,
-      };
-    });
-  } catch (jsonErr) {
-    if ((jsonErr as Error).message.includes("missing a") || (jsonErr as Error).message.includes("must be an array")) {
-      throw jsonErr;
-    }
-    const lines = trimmed
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-    if (lines.length === 0) throw new Error("No non-empty lines found.");
-    return lines.map((line) => ({ fact: line }));
-  }
-}
 
 const CATEGORY_LABELS: Record<string, string> = {
   rules: "Rules",
@@ -110,6 +74,11 @@ function MemoryRow({
 }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editFact, setEditFact] = useState(memory.fact);
+  const [editCategory, setEditCategory] = useState(memory.category);
+  const [editTags, setEditTags] = useState(memory.tags);
+
   const deleteMutation = useMutation({
     mutationFn: () => deleteMemory({ data: { id: memory.id } }),
     onMutate: () => {
@@ -122,12 +91,109 @@ function MemoryRow({
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: () => updateMemory({ data: { id: memory.id, fact: editFact, category: editCategory, tags: editTags } }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
+        old ? old.map((m) => m.id === updated.id ? updated : m) : []
+      );
+      setEditing(false);
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+    },
+  });
+
+  function cancelEdit() {
+    setEditFact(memory.fact);
+    setEditCategory(memory.category);
+    setEditTags(memory.tags);
+    setEditing(false);
+  }
+
   const tags = memory.tags
-    ? memory.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean)
+    ? memory.tags.split(",").map((t) => t.trim()).filter(Boolean)
     : [];
+
+  if (editing) {
+    return (
+      <div
+        style={{
+          padding: "14px 18px",
+          borderBottom: "1px solid var(--border)",
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          gap: "8px 16px",
+          background: "rgba(99,102,241,0.04)",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(memory.id)}
+          style={{ marginTop: 3, cursor: "pointer", accentColor: "var(--accent)" }}
+        />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <textarea
+            value={editFact}
+            onChange={(e) => setEditFact(e.target.value)}
+            rows={3}
+            autoFocus
+            style={{ width: "100%", padding: "8px 10px", fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
+          />
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              value={editCategory}
+              onChange={(e) => setEditCategory(e.target.value as "rules" | "projects" | "references")}
+              style={{ padding: "5px 8px", fontSize: 12 }}
+            >
+              <option value="rules">Rules</option>
+              <option value="projects">Projects</option>
+              <option value="references">References</option>
+            </select>
+            <input
+              type="text"
+              value={editTags}
+              onChange={(e) => setEditTags(e.target.value)}
+              placeholder="tags (comma-separated)"
+              style={{ flex: 1, padding: "5px 8px", fontSize: 12, minWidth: 120 }}
+            />
+            <button
+              onClick={() => updateMutation.mutate()}
+              disabled={updateMutation.isPending || !editFact.trim()}
+              style={{
+                padding: "5px 14px",
+                background: "var(--accent)",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: 12,
+                borderRadius: "var(--radius)",
+              }}
+            >
+              {updateMutation.isPending ? "Saving…" : "Save"}
+            </button>
+            <button
+              onClick={cancelEdit}
+              disabled={updateMutation.isPending}
+              style={{
+                padding: "5px 10px",
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                fontSize: 12,
+                borderRadius: "var(--radius)",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+          {updateMutation.isError && (
+            <span style={{ fontSize: 11, color: "var(--error)" }}>Save failed. Try again.</span>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -168,42 +234,9 @@ function MemoryRow({
             year: "numeric",
           })}
         </span>
-        {confirming ? (
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Delete?</span>
-            <button
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
-              style={{
-                padding: "3px 10px",
-                background: "rgba(239,68,68,0.15)",
-                border: "1px solid rgba(239,68,68,0.4)",
-                color: "var(--error)",
-                fontSize: 11,
-                fontWeight: 600,
-                borderRadius: "var(--radius)",
-              }}
-            >
-              {deleteMutation.isPending ? "…" : "Yes"}
-            </button>
-            <button
-              onClick={() => setConfirming(false)}
-              disabled={deleteMutation.isPending}
-              style={{
-                padding: "3px 8px",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                color: "var(--text-muted)",
-                fontSize: 11,
-                borderRadius: "var(--radius)",
-              }}
-            >
-              No
-            </button>
-          </div>
-        ) : (
+        <div style={{ display: "flex", gap: 4 }}>
           <button
-            onClick={() => setConfirming(true)}
+            onClick={() => setEditing(true)}
             style={{
               padding: "3px 8px",
               background: "transparent",
@@ -215,19 +248,179 @@ function MemoryRow({
               transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.opacity = "1";
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(239,68,68,0.4)";
-              (e.currentTarget as HTMLButtonElement).style.color = "var(--error)";
+              const b = e.currentTarget as HTMLButtonElement;
+              b.style.opacity = "1";
+              b.style.borderColor = "rgba(99,102,241,0.4)";
+              b.style.color = "var(--accent)";
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.opacity = "0.5";
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "transparent";
-              (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
+              const b = e.currentTarget as HTMLButtonElement;
+              b.style.opacity = "0.5";
+              b.style.borderColor = "transparent";
+              b.style.color = "var(--text-muted)";
             }}
           >
-            Delete
+            Edit
           </button>
-        )}
+          {confirming ? (
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Delete?</span>
+              <button
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                style={{
+                  padding: "3px 10px",
+                  background: "rgba(239,68,68,0.15)",
+                  border: "1px solid rgba(239,68,68,0.4)",
+                  color: "var(--error)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  borderRadius: "var(--radius)",
+                }}
+              >
+                {deleteMutation.isPending ? "…" : "Yes"}
+              </button>
+              <button
+                onClick={() => setConfirming(false)}
+                disabled={deleteMutation.isPending}
+                style={{
+                  padding: "3px 8px",
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-muted)",
+                  fontSize: 11,
+                  borderRadius: "var(--radius)",
+                }}
+              >
+                No
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirming(true)}
+              style={{
+                padding: "3px 8px",
+                background: "transparent",
+                border: "1px solid transparent",
+                color: "var(--text-muted)",
+                fontSize: 11,
+                borderRadius: "var(--radius)",
+                opacity: 0.5,
+                transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                const b = e.currentTarget as HTMLButtonElement;
+                b.style.opacity = "1";
+                b.style.borderColor = "rgba(239,68,68,0.4)";
+                b.style.color = "var(--error)";
+              }}
+              onMouseLeave={(e) => {
+                const b = e.currentTarget as HTMLButtonElement;
+                b.style.opacity = "0.5";
+                b.style.borderColor = "transparent";
+                b.style.color = "var(--text-muted)";
+              }}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewMemoryModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const queryClient = useQueryClient();
+  const [fact, setFact] = useState("");
+  const [category, setCategory] = useState<"rules" | "projects" | "references">("references");
+  const [tags, setTags] = useState("");
+
+  const mutation = useMutation({
+    mutationFn: () => addMemory({ data: { fact, category, tags } }),
+    onSuccess: (newMemory) => {
+      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
+        old ? [newMemory, ...old] : [newMemory]
+      );
+      onSaved();
+      onClose();
+    },
+  });
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 50,
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)", border: "1px solid var(--border)",
+          borderRadius: "var(--radius)", width: "100%", maxWidth: 520,
+          boxShadow: "0 24px 48px rgba(0,0,0,0.4)",
+        }}
+      >
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontWeight: 600 }}>New Memory</span>
+          <button onClick={onClose} style={{ background: "none", color: "var(--text-muted)", fontSize: 18, padding: "0 4px" }}>✕</button>
+        </div>
+        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Fact</label>
+            <textarea
+              autoFocus
+              value={fact}
+              onChange={(e) => setFact(e.target.value)}
+              rows={4}
+              placeholder="Enter the memory fact…"
+              style={{ width: "100%", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as "rules" | "projects" | "references")}
+                style={{ width: "100%", padding: "8px 10px", fontSize: 13 }}
+              >
+                <option value="references">References</option>
+                <option value="rules">Rules</option>
+                <option value="projects">Projects</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Tags</label>
+              <input
+                type="text"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="comma-separated"
+                style={{ width: "100%", padding: "8px 10px", fontSize: 13 }}
+              />
+            </div>
+          </div>
+          {mutation.isError && (
+            <div style={{ padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
+              {(mutation.error as Error).message}
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+            <button onClick={onClose} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13 }}>
+              Cancel
+            </button>
+            <button
+              onClick={() => mutation.mutate()}
+              disabled={!fact.trim() || mutation.isPending}
+              style={{ padding: "8px 20px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13 }}
+            >
+              {mutation.isPending ? "Saving…" : "Save Memory"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -235,9 +428,9 @@ function MemoryRow({
 
 function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
   const [pasteText, setPasteText] = useState("");
+  const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
-
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
 
   const batchMutation = useMutation({
@@ -252,14 +445,23 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
     },
   });
 
-  function handleProcess() {
+  async function handleProcess() {
     setParseError(null);
     setPreview(null);
+    setImportResult(null);
+    if (!pasteText.trim()) return;
+    setParsing(true);
     try {
-      const items = parsePaste(pasteText);
-      setPreview(items);
+      const items = await parseMemoriesWithAI({ data: { text: pasteText } });
+      if (items.length === 0) {
+        setParseError("No memories could be extracted. Try adding more content.");
+      } else {
+        setPreview(items);
+      }
     } catch (e) {
       setParseError((e as Error).message);
+    } finally {
+      setParsing(false);
     }
   }
 
@@ -269,82 +471,35 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius)",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          padding: "14px 18px",
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}
-      >
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
+      <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 5v14M5 12l7 7 7-7" />
         </svg>
         <span style={{ fontWeight: 600 }}>Bulk Ingest</span>
         <span style={{ color: "var(--text-muted)", fontSize: 12, marginLeft: "auto" }}>
-          Paste JSON array or plain lines
+          Paste raw chatbot output — AI will extract the memories
         </span>
       </div>
 
       <div style={{ padding: 18 }}>
         <textarea
           value={pasteText}
-          onChange={(e) => {
-            setPasteText(e.target.value);
-            setParseError(null);
-            setPreview(null);
-          }}
-          placeholder={`Paste JSON:\n[{"fact": "...", "category": "rules", "tags": "ci,testing"}]\n\nOr plain text lines:\nEach line becomes one memory entry\nAnother fact here`}
+          onChange={(e) => { setPasteText(e.target.value); setParseError(null); setPreview(null); setImportResult(null); }}
+          placeholder={"Paste anything — chatbot memory exports, free-form text, structured or unstructured output. AI will extract the discrete facts."}
           rows={8}
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            resize: "vertical",
-            fontFamily: "monospace",
-            fontSize: 12,
-            lineHeight: 1.6,
-          }}
+          style={{ width: "100%", padding: "10px 12px", resize: "vertical", fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}
         />
 
         {parseError && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: "8px 12px",
-              background: "rgba(239,68,68,0.1)",
-              border: "1px solid rgba(239,68,68,0.3)",
-              borderRadius: "var(--radius)",
-              color: "var(--error)",
-              fontSize: 12,
-            }}
-          >
+          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
             {parseError}
           </div>
         )}
 
-        {preview && !parseError && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: "10px 12px",
-              background: "rgba(99,102,241,0.08)",
-              border: "1px solid rgba(99,102,241,0.25)",
-              borderRadius: "var(--radius)",
-              fontSize: 12,
-              color: "var(--text-muted)",
-            }}
-          >
-            <strong style={{ color: "var(--accent)" }}>Preview:</strong> {preview.length} item
-            {preview.length !== 1 ? "s" : ""} parsed.{" "}
+        {preview && (
+          <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "var(--radius)", fontSize: 12, color: "var(--text-muted)" }}>
+            <strong style={{ color: "var(--accent)" }}>Preview:</strong> {preview.length} memor{preview.length !== 1 ? "ies" : "y"} extracted.{" "}
             {preview.slice(0, 2).map((p, i) => (
               <span key={i} style={{ color: "var(--text)" }}>
                 &ldquo;{p.fact.slice(0, 60)}{p.fact.length > 60 ? "…" : ""}&rdquo;
@@ -356,33 +511,13 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
         )}
 
         {batchMutation.isError && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: "8px 12px",
-              background: "rgba(239,68,68,0.1)",
-              border: "1px solid rgba(239,68,68,0.3)",
-              borderRadius: "var(--radius)",
-              color: "var(--error)",
-              fontSize: 12,
-            }}
-          >
+          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
             Import failed: {(batchMutation.error as Error).message}
           </div>
         )}
 
         {batchMutation.isSuccess && importResult && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: "8px 12px",
-              background: "rgba(34,197,94,0.1)",
-              border: "1px solid rgba(34,197,94,0.3)",
-              borderRadius: "var(--radius)",
-              color: "var(--success)",
-              fontSize: 12,
-            }}
-          >
+          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: "var(--radius)", color: "var(--success)", fontSize: 12 }}>
             Imported {importResult.imported} memor{importResult.imported !== 1 ? "ies" : "y"}.
             {importResult.skipped > 0 && (
               <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
@@ -395,30 +530,18 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <button
             onClick={handleProcess}
-            disabled={!pasteText.trim() || batchMutation.isPending}
-            style={{
-              padding: "8px 16px",
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              color: "var(--text)",
-            }}
+            disabled={!pasteText.trim() || parsing || batchMutation.isPending}
+            style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text)" }}
           >
-            Process Paste
+            {parsing ? "Extracting…" : "Extract Memories"}
           </button>
           {preview && (
             <button
               onClick={handleImport}
               disabled={batchMutation.isPending}
-              style={{
-                padding: "8px 16px",
-                background: "var(--accent)",
-                color: "#fff",
-                fontWeight: 600,
-              }}
+              style={{ padding: "8px 16px", background: "var(--accent)", color: "#fff", fontWeight: 600 }}
             >
-              {batchMutation.isPending
-                ? `Importing ${preview.length}…`
-                : `Import ${preview.length} Item${preview.length !== 1 ? "s" : ""}`}
+              {batchMutation.isPending ? `Importing…` : `Import ${preview.length} Memor${preview.length !== 1 ? "ies" : "y"}`}
             </button>
           )}
         </div>
@@ -906,6 +1029,7 @@ function Dashboard() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [showNewMemory, setShowNewMemory] = useState(false);
 
   const { data: memories = [], isLoading, isError } = useQuery({
     queryKey: ["memories"],
@@ -944,6 +1068,26 @@ function Dashboard() {
           >
             Memory Manager
           </span>
+          <button
+            onClick={() => setShowNewMemory(true)}
+            style={{
+              marginLeft: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "7px 16px",
+              background: "var(--accent)",
+              color: "#fff",
+              fontWeight: 600,
+              fontSize: 13,
+              borderRadius: "var(--radius)",
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New Memory
+          </button>
         </div>
         <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
           Long-term technical context. Semantic retrieval via{" "}
@@ -1088,6 +1232,13 @@ function Dashboard() {
       )}
       {!isLoading && !isError && memories.length > 0 && (
         <MemoryTable memories={memories} filter={filter} categoryFilter={categoryFilter} />
+      )}
+
+      {showNewMemory && (
+        <NewMemoryModal
+          onClose={() => setShowNewMemory(false)}
+          onSaved={invalidate}
+        />
       )}
     </div>
   );
