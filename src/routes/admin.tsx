@@ -4,7 +4,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { memories, type Memory } from "~/db/schema";
-import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, type DuplicateGroup } from "~/server/memoryFunctions";
+import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, encryptAllMemories, type DuplicateGroup } from "~/server/memoryFunctions";
+import { requireAdmin } from "~/server/session";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -13,6 +14,7 @@ type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 export const getDbStats = createServerFn({ method: "GET" }).handler(
   async ({ context }): Promise<{ memoryCount: number; vectorCount: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
     const db = drizzle(env.DB, { schema: { memories } });
 
     const rows = await db.select().from(memories).all();
@@ -24,6 +26,7 @@ export const getDbStats = createServerFn({ method: "GET" }).handler(
 export const clearVectorizeIndex = createServerFn({ method: "POST" }).handler(
   async ({ context }): Promise<{ cleared: boolean; deletedCount: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
     const db = drizzle(env.DB, { schema: { memories } });
 
     const rows = await db.select({ id: memories.id }).from(memories).all();
@@ -45,6 +48,7 @@ export const clearVectorizeIndex = createServerFn({ method: "POST" }).handler(
 export const clearDatabase = createServerFn({ method: "POST" }).handler(
   async ({ context }): Promise<{ cleared: boolean; deletedCount: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
     const db = drizzle(env.DB, { schema: { memories } });
 
     // Delete from D1
@@ -80,6 +84,7 @@ export const clearDatabase = createServerFn({ method: "POST" }).handler(
 export const getVectorizeDebug = createServerFn({ method: "GET" }).handler(
   async ({ context }): Promise<{ vectors: Array<{ id: string }> }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
     const db = drizzle(env.DB, { schema: { memories } });
 
     // Get all IDs from D1
@@ -109,6 +114,7 @@ function AdminPage() {
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [scanResults, setScanResults] = useState<DuplicateGroup[] | null>(null);
   const [retainSelections, setRetainSelections] = useState<Record<number, string>>({});
+  const [encryptResult, setEncryptResult] = useState<{ encrypted: number; alreadyEncrypted: number; failed: number } | null>(null);
 
   const scanMutation = useMutation({
     mutationFn: scanDatabaseDuplicates,
@@ -156,6 +162,11 @@ function AdminPage() {
       [groupIdx]: id,
     }));
   }
+
+  const encryptMutation = useMutation({
+    mutationFn: () => encryptAllMemories({}),
+    onSuccess: (data) => setEncryptResult(data),
+  });
 
   const statsQuery = useQuery({
     queryKey: ["admin-stats"],
@@ -408,6 +419,28 @@ function AdminPage() {
       </section>
 
       <section style={{ marginTop: "30px" }}>
+        <h2>Encryption</h2>
+        <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "15px" }}>
+          Encrypt any plaintext memory facts that were stored before encryption was enabled. Safe to run multiple times — already-encrypted facts are skipped.
+        </p>
+        {encryptResult && (
+          <div style={{ marginBottom: "14px", padding: "10px 14px", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "var(--radius)", fontSize: "13px", color: "var(--success)" }}>
+            Done — encrypted {encryptResult.encrypted}, skipped {encryptResult.alreadyEncrypted} already encrypted{encryptResult.failed > 0 ? `, ${encryptResult.failed} failed` : ""}.
+          </div>
+        )}
+        <button
+          onClick={() => { setEncryptResult(null); encryptMutation.mutate(); }}
+          disabled={encryptMutation.isPending}
+          style={{ padding: "9px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer" }}
+        >
+          {encryptMutation.isPending ? "Encrypting…" : "Encrypt All Plaintext Memories"}
+        </button>
+        {encryptMutation.isError && (
+          <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Encryption failed. Check logs.</p>
+        )}
+      </section>
+
+      <section style={{ marginTop: "30px" }}>
         <h2>Destructive Operations</h2>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginTop: "10px" }}>
           <div>
@@ -533,6 +566,24 @@ function AdminPage() {
   );
 }
 
+import { useSession } from "~/lib/authClient";
+
+function AdminGuard() {
+  const { data: session, isPending } = useSession();
+  const adminId = "r6T9s9AcwyaASSlextIlB07IgR5wwzKU";
+
+  if (isPending) return <p style={{ padding: 32, color: "var(--text-muted)" }}>Loading…</p>;
+  if (!session || session.user.id !== adminId) {
+    return (
+      <div style={{ padding: 32, textAlign: "center" }}>
+        <p style={{ color: "var(--error)", fontSize: 16, fontWeight: 600 }}>403 — Not authorized</p>
+        <p style={{ color: "var(--text-muted)", marginTop: 8, fontSize: 13 }}>This page is restricted to the admin account.</p>
+      </div>
+    );
+  }
+  return <AdminPage />;
+}
+
 export const Route = createFileRoute("/admin")({
-  component: AdminPage,
+  component: AdminGuard,
 });

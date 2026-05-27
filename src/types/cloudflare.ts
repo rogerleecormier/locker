@@ -3,6 +3,10 @@ export type CloudflareEnv = {
   VECTOR_INDEX: VectorizeIndex;
   AI: Ai;
   ASSETS: Fetcher;
+  ENCRYPTION_KEY: string;
+  BETTER_AUTH_SECRET: string;
+  BETTER_AUTH_URL: string;
+  ADMIN_USER_ID: string;
 };
 
 declare module "@tanstack/router-core" {

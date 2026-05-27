@@ -432,7 +432,7 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
   const [parseError, setParseError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
-  const [source, setSource] = useState<string>("chatgpt");
+  const [source, setSource] = useState<string>("manual");
 
   const batchMutation = useMutation({
     mutationFn: ({ items, source }: { items: Array<{ fact: string; category?: string; tags?: string }>; source: string }) =>
@@ -490,8 +490,14 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
           onChange={(e) => { setPasteText(e.target.value); setParseError(null); setPreview(null); setImportResult(null); }}
           placeholder={"Paste anything — chatbot memory exports, free-form text, structured or unstructured output. AI will extract the discrete facts."}
           rows={8}
+          maxLength={16000}
           style={{ width: "100%", padding: "10px 12px", resize: "vertical", fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}
         />
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, color: pasteText.length >= 16000 ? "var(--error)" : "var(--text-muted)" }}>
+            {pasteText.length.toLocaleString()} / 16,000 characters
+          </span>
+        </div>
 
         {parseError && (
           <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
@@ -1068,6 +1074,508 @@ function PromptPanel() {
   );
 }
 
+type SetupService = {
+  id: string;
+  label: string;
+  color: string;
+  description: string;
+  instructions: React.ReactNode;
+  copyText?: string;
+};
+
+function IntegrationSetupPanel() {
+  const [selectedService, setSelectedService] = useState<string>("claudedesktop");
+  const [copied, setCopied] = useState(false);
+
+  const SERVICES: SetupService[] = [
+    {
+      id: "claudedesktop",
+      label: "Claude Desktop",
+      color: "#d4956a",
+      description: "Connect the Claude Desktop app directly to your hosted MCP endpoint.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.workers.dev/api/mcp"
+      ]
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Open the configuration file `claude_desktop_config.json` (located under `~/.config/Claude/` on Linux/Mac, or `%APPDATA%/Claude/` on Windows).</li>
+            <li>Add the `locker` configuration block (copy snippet below) into the `mcpServers` object.</li>
+            <li>Restart Claude Desktop. The tools will become available in your chats!</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "claudecode",
+      label: "Claude Code",
+      color: "#c97b53",
+      description: "Integrate Locker memories directly into the Claude Code command line tool.",
+      copyText: "claude mcp add locker npx -y mcp-remote https://locker.rcormier.workers.dev/api/mcp",
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Open your terminal where you run Claude Code.</li>
+            <li>Execute the command shown below. This will register the Locker server.</li>
+            <li>Claude Code will automatically query the server for memory context during terminal operations.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "cursor",
+      label: "Cursor",
+      color: "#00e5ff",
+      description: "Access Locker memory in Cursor's Composer or Chat panels.",
+      copyText: "npx -y mcp-remote https://locker.rcormier.workers.dev/api/mcp",
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Open Cursor Settings, navigate to <strong>Features &gt; MCP</strong>.</li>
+            <li>Click <strong>+ Add New MCP Server</strong>.</li>
+            <li>Set Name to `locker`, Type to `command`, and paste the Command (copy snippet below).</li>
+            <li>Click **Save** and verify the indicator turns green.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "cline",
+      label: "Cline",
+      color: "#ff6b6b",
+      description: "Enable your Cline assistant to recall technical rules and context inside VS Code.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.workers.dev/api/mcp"
+      ]
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Open the Cline MCP settings file `cline_mcp_settings.json` (located at `~/.code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` on macOS/Linux).</li>
+            <li>Add the `locker` configuration block (copy snippet below) into the `mcpServers` object.</li>
+            <li>Cline will automatically reload and gain access to the memory tools.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "roocode",
+      label: "Roo Code",
+      color: "#ff8787",
+      description: "Add Locker memory context directly to Roo Code inside VS Code.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.workers.dev/api/mcp"
+      ]
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Open the Roo Code MCP settings file `roo_code_mcp_settings.json` (typically under globalStorage settings for the extension).</li>
+            <li>Add the `locker` configuration block (copy snippet below) into the `mcpServers` object.</li>
+            <li>Save the file. Roo Code will detect the server immediately.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "continue",
+      label: "Continue",
+      color: "#2f80ed",
+      description: "Integrate personal memory context inside the Continue code assistant in VS Code or JetBrains.",
+      copyText: `"mcp": {
+  "locker": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "mcp-remote",
+      "https://locker.rcormier.workers.dev/api/mcp"
+    ]
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Open the Continue configuration file `config.json` (located under `~/.continue/config.json`).</li>
+            <li>Paste the `locker` config snippet (shown below) directly inside the main `mcp` object in the JSON hierarchy.</li>
+            <li>Save and Continue will automatically activate the tools.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "copilot",
+      label: "GitHub Copilot",
+      color: "#6f42c1",
+      description: "Connect GitHub Copilot Chat in VS Code to Locker.",
+      copyText: "npx -y mcp-remote https://locker.rcormier.workers.dev/api/mcp",
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Open VS Code Settings and search for `Copilot Chat: MCP`.</li>
+            <li>Register the server by supplying the command (copy snippet below).</li>
+            <li>Copilot will start utilizing the connection to fetch personal developer profile context.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "vscode",
+      label: "VS Code",
+      color: "#007acc",
+      description: "Configure general VS Code MCP bridges or coding extensions.",
+      copyText: "npx -y mcp-remote https://locker.rcormier.workers.dev/api/mcp",
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Use the bridge command (copy snippet below) inside any standard VS Code extension supporting stdio-based MCP servers.</li>
+            <li>This will route all queries from VS Code directly to the remote Locker instance.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "codex",
+      label: "Codex",
+      color: "#0f9d58",
+      description: "Connect your OpenAI Codex-based code completion extensions.",
+      copyText: "npx -y mcp-remote https://locker.rcormier.workers.dev/api/mcp",
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Open the settings menu of your Codex-powered coding extension.</li>
+            <li>Add the executable command (copy snippet below) to configure stdio interface access to Locker.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "antigravity",
+      label: "Antigravity 2.0",
+      color: "#818cf8",
+      description: "Register the Locker memory server inside the Antigravity 2.0 CLI/agent configuration.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.workers.dev/api/mcp"
+      ]
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Open the Antigravity global MCP configuration file `~/.gemini/config/mcp_config.json`.</li>
+            <li>Add the `locker` configuration block (copy snippet below) into the `mcpServers` object.</li>
+            <li>The Antigravity agent will automatically load and recall memories during task planning and execution.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "antigravity_ide",
+      label: "Antigravity 2.0 IDE",
+      color: "#4f46e5",
+      description: "Register the Locker memory server inside the Antigravity 2.0 IDE developer configuration.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.workers.dev/api/mcp"
+      ]
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Open the Antigravity IDE configuration file `~/.gemini/antigravity-ide/mcp_config.json`.</li>
+            <li>If that file is empty or missing, you can create it or edit the global config file `~/.gemini/config/mcp_config.json` instead.</li>
+            <li>Add the `locker` configuration block (copy snippet below) into the `mcpServers` object.</li>
+            <li>Restart or reload the IDE. The tools will instantly become available to the IDE's agentic assistant!</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "chatgpt",
+      label: "ChatGPT",
+      color: "#10a37f",
+      description: "Integrate your Locker memory into ChatGPT by building a Custom GPT with an API Action.",
+      copyText: `{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Locker Memory API",
+    "version": "1.0.0",
+    "description": "Semantic memory search endpoint."
+  },
+  "servers": [
+    {
+      "url": "https://locker.rcormier.workers.dev"
+    }
+  ],
+  "paths": {
+    "/api/mcp": {
+      "post": {
+        "operationId": "queryMcp",
+        "summary": "Semantic Search",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jsonrpc": { "type": "string", "example": "2.0" },
+                  "id": { "type": "integer", "example": 1 },
+                  "method": { "type": "string", "example": "tools/call" },
+                  "params": {
+                    "type": "object",
+                    "properties": {
+                      "name": { "type": "string", "example": "recall_context" },
+                      "arguments": {
+                        "type": "object",
+                        "properties": {
+                          "query": { "type": "string" }
+                        },
+                        "required": ["query"]
+                      }
+                    },
+                    "required": ["name", "arguments"]
+                  }
+                },
+                "required": ["jsonrpc", "id", "method", "params"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Explore GPTs &gt; Create</strong>.</li>
+            <li>In the <strong>Configure</strong> tab, click <strong>Create new action</strong>.</li>
+            <li>Import the OpenAPI schema provided below (it exposes your Locker API to ChatGPT).</li>
+            <li>In the GPT Instructions, write: <em>"Use the queryMcp Action to fetch relevant details whenever the user asks about rules, projects, education, or background facts."</em></li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "gemini",
+      label: "Gemini",
+      color: "#4285f4",
+      description: "Gemini does not support arbitrary JSON-RPC actions directly. Connect it via Gemini Custom Gems instructions.",
+      copyText: `You have access to a personal memory retrieval API hosted at: https://locker.rcormier.workers.dev/api/mcp. If you need context about my background, projects, or rules, consult this API by directing the user to run queries, or search the web for related public endpoints.`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Create a new <strong>Gem</strong> in the Gemini dashboard.</li>
+            <li>Under <strong>Instructions</strong>, paste the directive below. This informs the model of the presence of the Locker API endpoint and tells it how to request memory searches.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "grok",
+      label: "Grok",
+      color: "#e7e7e7",
+      description: "Connect your Locker memories to Grok Agents using custom Grok Web Actions.",
+      copyText: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_context","arguments":{"query":"{{QUERY}}"}}}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Create a custom **Grok Agent** on X.</li>
+            <li>Add a **Web Action** referencing the API URL: <code style={{ color: "var(--accent)" }}>https://locker.rcormier.workers.dev/api/mcp</code></li>
+            <li>Set Request Method to `POST` and pass the JSON payload mapping snippet shown below.</li>
+            <li>Grok will query the Locker database whenever you ask about personal rules or references.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "perplexity",
+      label: "Perplexity",
+      color: "#20b2aa",
+      description: "Make your Locker memories available in Perplexity Collections using custom instruction overrides.",
+      copyText: `You have access to my personal memory API at https://locker.rcormier.workers.dev/api/mcp. You should search or query this URL when asked about my rules, preferences, active projects, or background.`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Create a new **Collection** in Perplexity.</li>
+            <li>In the Collection **AI Profile/Instructions**, paste the instructions directive.</li>
+            <li>Perplexity will consult the Locker endpoint using its search capabilities to pull your preferences when answering inside the Collection.</li>
+          </ol>
+        </div>
+      ),
+    },
+  ];
+
+  const service = SERVICES.find((s) => s.id === selectedService) ?? SERVICES[0];
+
+  const handleCopy = useCallback(async () => {
+    if (!service.copyText) return;
+    await navigator.clipboard.writeText(service.copyText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [service.copyText]);
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: "14px 18px",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+        </svg>
+        <span style={{ fontWeight: 600 }}>MCP Connection Guide</span>
+        <span style={{ color: "var(--text-muted)", fontSize: 12, marginLeft: "auto" }}>
+          Connect your AI clients to Locker's MCP endpoint
+        </span>
+      </div>
+
+      <div style={{ padding: 18 }}>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+            AI Client / Service
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {SERVICES.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => { setSelectedService(s.id); setCopied(false); }}
+                style={{
+                  padding: "6px 14px",
+                  background: selectedService === s.id ? `${s.color}22` : "var(--surface2)",
+                  border: `1px solid ${selectedService === s.id ? s.color : "var(--border)"}`,
+                  color: selectedService === s.id ? s.color : "var(--text-muted)",
+                  fontWeight: selectedService === s.id ? 600 : 400,
+                  fontSize: 12,
+                  borderRadius: 20,
+                  transition: "all 0.15s",
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 14, color: "var(--text)", fontSize: 13, background: "rgba(255,255,255,0.02)", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
+          <p style={{ marginBottom: 10, color: "var(--text-muted)", fontSize: 12 }}>{service.description}</p>
+          {service.instructions}
+        </div>
+
+        {service.copyText && (
+          <>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+              Configuration Snippet
+            </div>
+            <pre
+              style={{
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                padding: "12px 14px",
+                fontFamily: "monospace",
+                fontSize: 12,
+                maxHeight: 220,
+                overflowY: "auto",
+                lineHeight: 1.6,
+                color: "var(--text)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+                marginBottom: 12,
+              }}
+            >
+              {service.copyText}
+            </pre>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={handleCopy}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "8px 16px",
+                  background: copied ? "rgba(34,197,94,0.15)" : "var(--surface2)",
+                  border: copied ? "1px solid rgba(34,197,94,0.4)" : "1px solid var(--border)",
+                  color: copied ? "var(--success)" : "var(--text-muted)",
+                  fontWeight: 500,
+                  fontSize: 13,
+                  transition: "all 0.2s",
+                }}
+              >
+                {copied ? <CheckIcon /> : <CopyIcon />}
+                {copied ? "Copied!" : "Copy Configuration"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Dashboard() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState("");
@@ -1215,6 +1723,10 @@ function Dashboard() {
 
       <div style={{ marginBottom: 20 }}>
         <PromptPanel />
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <IntegrationSetupPanel />
       </div>
 
       <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>

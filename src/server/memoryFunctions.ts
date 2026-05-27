@@ -1,8 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { desc, eq, sql } from "drizzle-orm";
-import { memories, type Memory, type NewMemory } from "~/db/schema";
+import { memories, apiTokens, type Memory, type NewMemory } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
+import { encrypt, decrypt, isEncrypted, hashToken } from "./crypto";
+import { requireSession, requireAdmin } from "./session";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
@@ -13,7 +15,7 @@ async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
 }
 
 function getDb(env: CloudflareEnv) {
-  return drizzle(env.DB, { schema: { memories } });
+  return drizzle(env.DB, { schema: { memories, apiTokens } });
 }
 
 function normalizeCategory(raw: string | undefined): "rules" | "projects" | "references" {
@@ -38,13 +40,30 @@ function extractText(result: unknown): string {
   return "";
 }
 
+// Encrypt a fact for storage. Embedding is always generated from plaintext.
+async function encryptFact(fact: string, encKey: string): Promise<string> {
+  return encrypt(fact, encKey);
+}
+
+// Decrypt a stored fact. If it's not encrypted (legacy plaintext), return as-is.
+async function decryptFact(stored: string, encKey: string): Promise<string> {
+  if (!isEncrypted(stored)) return stored;
+  return decrypt(stored, encKey);
+}
+
+// Decrypt all facts in a row array.
+async function decryptMemories(rows: Memory[], encKey: string): Promise<Memory[]> {
+  return Promise.all(
+    rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, encKey) }))
+  );
+}
+
 async function classifyMemories(
   ai: Ai,
   facts: string[]
 ): Promise<Array<"rules" | "projects" | "references">> {
   if (facts.length === 0) return [];
 
-  // process in batches of 20 to avoid token limits
   const CLASSIFY_BATCH = 20;
   const results: Array<"rules" | "projects" | "references"> = [];
 
@@ -95,17 +114,17 @@ ${numbered}`;
 
 function parseFactsFromText(raw: string): Array<{ fact: string }> {
   const noisePatterns = [
-    /^=+$/,                                           // === dividers
-    /^-{3,}$/,                                        // --- dividers
-    /^#{1,3}\s/,                                      // markdown headers
-    /^evidence:/i,                                    // evidence lines
-    /^imported from:/i,                               // gemini footer
-    /^generated:/i,                                   // export headers
+    /^=+$/,
+    /^-{3,}$/,
+    /^#{1,3}\s/,
+    /^evidence:/i,
+    /^imported from:/i,
+    /^generated:/i,
     /^memory export$/i,
     /^end of export$/i,
-    /^\d+\.\s+[A-Z\s]+$/,                            // "1. INSTRUCTIONS"
-    /^[-=*]{4,}/,                                     // long dividers
-    /^[A-Z\s]+ — MEMORY EXPORT/,                     // title line
+    /^\d+\.\s+[A-Z\s]+$/,
+    /^[-=*]{4,}/,
+    /^[A-Z\s]+ — MEMORY EXPORT/,
   ];
 
   return raw
@@ -113,11 +132,11 @@ function parseFactsFromText(raw: string): Array<{ fact: string }> {
     .map((line) => {
       let f = line
         .trim()
-        .replace(/^\s*[-*•]\s+/, "")                         // bullet chars
-        .replace(/^\[\d{4}-\d{2}-\d{2}\]\s*-?\s*/,"")       // [YYYY-MM-DD] -
-        .replace(/^\[unknown\]\s*-?\s*/i, "")                // [unknown] -
-        .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")            // **bold**
-        .replace(/^Name:\s*/i, "")                           // "Name: Roger"
+        .replace(/^\s*[-*•]\s+/, "")
+        .replace(/^\[\d{4}-\d{2}-\d{2}\]\s*-?\s*/, "")
+        .replace(/^\[unknown\]\s*-?\s*/i, "")
+        .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+        .replace(/^Name:\s*/i, "")
         .replace(/^Location:\s*/i, "")
         .trim();
       return f;
@@ -130,14 +149,15 @@ function parseFactsFromText(raw: string): Array<{ fact: string }> {
     .map((f) => ({ fact: f }));
 }
 
-async function getUserName(db: ReturnType<typeof getDb>): Promise<string> {
+async function getUserName(db: ReturnType<typeof getDb>, userId: string, encKey: string): Promise<string> {
   try {
-    const rows = await db.select().from(memories).all();
+    const rows = await db.select().from(memories).where(eq(memories.userId, userId)).all();
     const nameRow = rows.find((r) =>
       r.tags.split(",").map((t) => t.trim()).includes("profile-name")
     );
     if (nameRow) {
-      return nameRow.fact.replace(/^Name is\s+/i, "").trim();
+      const fact = await decryptFact(nameRow.fact, encKey);
+      return fact.replace(/^Name is\s+/i, "").trim();
     }
   } catch (err) {
     console.error("[getUserName] failed to fetch name:", err);
@@ -149,12 +169,14 @@ export const parseMemoriesWithAI = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): { text: string } => {
     const d = data as { text: string };
     if (!d.text || typeof d.text !== "string") throw new Error("text is required");
+    if (d.text.trim().length > 16000) throw new Error("Text exceeds the maximum length of 16,000 characters");
     return { text: d.text.trim() };
   })
   .handler(async ({ data, context }): Promise<Array<{ fact: string; category?: string; tags?: string }>> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
-    const name = await getUserName(db);
+    const name = await getUserName(db, user.id, env.ENCRYPTION_KEY);
 
     const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
       messages: [
@@ -179,16 +201,13 @@ Rules:
     });
 
     const r = result as Record<string, unknown>;
-    console.log("[parse v2] isArray:", Array.isArray(r.response), "keys:", Object.keys(r).join(","), "responseType:", typeof r.response, "sample:", JSON.stringify(r.response)?.slice(0, 100));
     if (Array.isArray(r.response)) {
       const facts = (r.response as unknown[])
         .map((item) => (typeof item === "string" ? item.trim() : ""))
         .filter((f) => f.length > 0);
-      console.log("[parse v2] extracted facts count:", facts.length);
       if (facts.length > 0) return facts.map((f) => ({ fact: f }));
     }
 
-    // fall back to text extraction + JSON parse
     const raw = extractText(result).trim();
     const stripped = raw.replace(/```[\w]*\n?/g, "").trim();
     const arrayMatch = stripped.match(/\[[\s\S]*\]/);
@@ -218,8 +237,15 @@ Rules:
 export const getMemories = createServerFn({ method: "GET" }).handler(
   async ({ context }): Promise<Memory[]> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
-    return db.select().from(memories).orderBy(desc(memories.timestamp)).all();
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(eq(memories.userId, user.id))
+      .orderBy(desc(memories.timestamp))
+      .all();
+    return decryptMemories(rows, env.ENCRYPTION_KEY);
   }
 );
 
@@ -243,13 +269,15 @@ export const addMemory = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }): Promise<Memory> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
 
     const id = crypto.randomUUID();
     const timestamp = Date.now();
+    // Embed plaintext, store encrypted
     const embedding = await generateEmbedding(env.AI, data.fact);
+    const encryptedFact = await encryptFact(data.fact, env.ENCRYPTION_KEY);
 
-    // Append manual tag if not present
     const tagsList = data.tags.split(",").map(t => t.trim()).filter(Boolean);
     if (!tagsList.includes("manual")) {
       tagsList.push("manual");
@@ -258,7 +286,8 @@ export const addMemory = createServerFn({ method: "POST" })
 
     const newRow: NewMemory = {
       id,
-      fact: data.fact,
+      userId: user.id,
+      fact: encryptedFact,
       category: data.category,
       tags: finalTags,
       timestamp,
@@ -266,19 +295,18 @@ export const addMemory = createServerFn({ method: "POST" })
 
     await db.insert(memories).values(newRow);
     try {
-      const insertResult = await env.VECTOR_INDEX.insert([
+      await env.VECTOR_INDEX.insert([
         {
           id,
           values: embedding,
           metadata: { category: data.category, tags: finalTags } as Record<string, VectorizeVectorMetadata>,
         },
       ]);
-      console.log(`[addMemory] vector insert result:`, insertResult);
     } catch (err) {
       console.error(`[addMemory] vector insert failed:`, err);
     }
 
-    return { ...newRow, tags: newRow.tags ?? "" };
+    return { ...newRow, fact: data.fact, tags: newRow.tags ?? "" };
   });
 
 type BatchImportItem = { fact: string; category?: string; tags?: string };
@@ -317,23 +345,22 @@ export const batchImportMemories = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }): Promise<{ imported: number; skipped: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
     const { items, source } = data;
 
     const valid = items.filter((item) => {
       const f = item.fact;
       if (f.length === 0) return false;
-      // drop section headers, evidence lines, and bullets that are just labels
-      if (/^#+\s/.test(f)) return false;                          // markdown headers
-      if (/^\*{1,2}[^*]+\*{1,2}:?\s*$/.test(f)) return false;   // **Category:** alone
-      if (/^evidence:/i.test(f)) return false;                    // Evidence: lines
-      if (/^\d+\.\s+\*{0,2}[A-Z]/.test(f) && f.length < 60) return false; // "1. **Category**"
-      if (/^imported from:/i.test(f)) return false;               // Gemini footer
+      if (/^#+\s/.test(f)) return false;
+      if (/^\*{1,2}[^*]+\*{1,2}:?\s*$/.test(f)) return false;
+      if (/^evidence:/i.test(f)) return false;
+      if (/^\d+\.\s+\*{0,2}[A-Z]/.test(f) && f.length < 60) return false;
+      if (/^imported from:/i.test(f)) return false;
       return true;
     });
     if (valid.length === 0) return { imported: 0, skipped: 0 };
 
-    // classify items that have no explicit category
     const needsClassification = valid.map((item) =>
       item.category === "rules" || item.category === "projects" || item.category === "references"
         ? null
@@ -347,21 +374,16 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       f === null ? null : classified[classifiedIdx++]
     );
 
-    // generate embeddings for all candidates
     const embeddings = await Promise.all(
       valid.map((item) => generateEmbedding(env.AI, item.fact))
     );
 
-    // deduplicate against existing vectors — skip anything with cosine similarity >= 0.98
-    // (0.92 was too permissive and skipped too many legitimate facts)
     const DUPE_THRESHOLD = 0.98;
     const CANDIDATE_THRESHOLD = 0.80;
 
-    // First query Vectorize in parallel for all inputs to find possible matches
     const vectorizeMatches = await Promise.all(
       embeddings.map(async (vec, idx) => {
         try {
-          // Retrieve top 3 matches to give the LLM good candidate choices
           const result = await env.VECTOR_INDEX.query(vec, { topK: 3, returnMetadata: false });
           return result.matches ?? [];
         } catch (err) {
@@ -371,7 +393,6 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       })
     );
 
-    // Identify unique matched vector IDs above the candidate threshold
     const candidateIds = Array.from(
       new Set(
         vectorizeMatches
@@ -381,7 +402,6 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       )
     );
 
-    // Query D1 database to verify which of these matched IDs exist in D1
     const existingDbMemories = new Map<string, Memory>();
     if (candidateIds.length > 0) {
       const DB_CHUNK = 50;
@@ -390,15 +410,15 @@ export const batchImportMemories = createServerFn({ method: "POST" })
         const rows = await db
           .select()
           .from(memories)
-          .where(sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`)
+          .where(sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${user.id}`)
           .all();
+        // Decrypt facts for LLM comparison
         for (const r of rows) {
-          existingDbMemories.set(r.id, r);
+          existingDbMemories.set(r.id, { ...r, fact: await decryptFact(r.fact, env.ENCRYPTION_KEY) });
         }
       }
     }
 
-    // Prepare lists for the LLM prompt
     const dbCandidatesList = Array.from(existingDbMemories.values());
     const newMemoriesList = valid.map((item, idx) => ({
       tempId: `new-${idx}`,
@@ -408,7 +428,6 @@ export const batchImportMemories = createServerFn({ method: "POST" })
 
     let dupeMapping: Record<string, string | null> = {};
 
-    // Call LLM for semantic deduplication check
     try {
       const prompt = `You are a memory deduplication assistant. Your job is to check a list of new memories against a list of existing memories and identify duplicates.
 
@@ -448,13 +467,11 @@ Example output:
       const match = rawText.match(/\{[\s\S]*\}/);
       if (match) {
         dupeMapping = JSON.parse(match[0]);
-        console.log("[batchImportMemories] AI deduplication mapping:", dupeMapping);
       }
     } catch (err) {
-      console.error("[batchImportMemories] AI deduplication failed, falling back to vector cosine similarity:", err);
+      console.error("[batchImportMemories] AI deduplication failed:", err);
     }
 
-    // Now check for duplicates, using the LLM mapping if available, otherwise falling back to cosine similarity
     const dupeFlags: boolean[] = [];
     const keptEmbeddings: { embedding: number[]; index: number }[] = [];
     const hasValidMapping = Object.keys(dupeMapping).length > 0;
@@ -468,43 +485,31 @@ Example output:
         const mappedVal = dupeMapping[tempId];
         if (mappedVal !== null && mappedVal !== undefined) {
           isDupe = true;
-          console.log(`[batchImportMemories] AI flagged item ${i} ("${valid[i].fact}") as duplicate of: ${mappedVal}`);
           if (!mappedVal.startsWith("new-")) {
             matchedDbId = mappedVal;
           }
         }
       } else {
-        // Fallback: Cosine Similarity check
         const vec = embeddings[i];
-
-        // 1. Check against previous kept items in batch (intra-batch)
         for (const kept of keptEmbeddings) {
           const sim = cosineSimilarity(vec, kept.embedding);
           if (sim >= DUPE_THRESHOLD) {
             isDupe = true;
-            console.log(`[batchImportMemories] Fallback: item ${i} is a duplicate of item ${kept.index} within the same ingest batch (similarity=${sim.toFixed(4)})`);
             break;
           }
         }
 
-        // 2. Check against verified existing database memories
         if (!isDupe) {
           const matches = vectorizeMatches[i];
-          const top = matches?.[0]; // Get closest match
+          const top = matches?.[0];
           const hasMatch = top !== null && top !== undefined && top.score >= DUPE_THRESHOLD;
-          if (hasMatch) {
-            if (existingDbMemories.has(top.id)) {
-              isDupe = true;
-              matchedDbId = top.id;
-              console.log(`[batchImportMemories] Fallback: item ${i} matched verified DB memory ${top.id} (score=${top.score})`);
-            } else {
-              console.log(`[batchImportMemories] Fallback: item ${i} matched orphaned vector ${top.id} in Vectorize but not in D1. Skipping duplicate flag (score=${top.score})`);
-            }
+          if (hasMatch && existingDbMemories.has(top.id)) {
+            isDupe = true;
+            matchedDbId = top.id;
           }
         }
       }
 
-      // If it is a duplicate of an existing DB entry, update the existing entry's tags to include the new source
       if (isDupe && matchedDbId) {
         const existing = existingDbMemories.get(matchedDbId);
         if (existing) {
@@ -512,9 +517,7 @@ Example output:
           if (!tagsList.includes(source)) {
             tagsList.push(source);
             const newTags = tagsList.join(", ");
-            // Update SQLite
             await db.update(memories).set({ tags: newTags }).where(eq(memories.id, matchedDbId));
-            // Update Vectorize
             try {
               await env.VECTOR_INDEX.upsert([
                 {
@@ -523,9 +526,8 @@ Example output:
                   metadata: { category: existing.category, tags: newTags } as Record<string, VectorizeVectorMetadata>,
                 },
               ]);
-              console.log(`[batchImportMemories] Appended source "${source}" to duplicate memory ${matchedDbId} -> tags: ${newTags}`);
             } catch (err) {
-              console.error(`[batchImportMemories] Vectorize upsert failed for updated duplicate tags:`, err);
+              console.error(`[batchImportMemories] Vectorize upsert failed:`, err);
             }
           }
         }
@@ -538,23 +540,24 @@ Example output:
     }
 
     const timestamp = Date.now();
-    const allRows: (NewMemory & { embedding: number[]; isDupe: boolean })[] = valid.map((item, i) => {
+    const allRows = await Promise.all(valid.map(async (item, i) => {
       const tagsList = (item.tags ?? "").split(",").map(t => t.trim()).filter(Boolean);
-      if (!tagsList.includes(source)) {
-        tagsList.push(source);
-      }
+      if (!tagsList.includes(source)) tagsList.push(source);
       const finalTags = tagsList.join(", ");
+      const encryptedFact = await encryptFact(item.fact, env.ENCRYPTION_KEY);
 
       return {
         id: crypto.randomUUID(),
-        fact: item.fact,
+        userId: user.id,
+        fact: encryptedFact,
+        plaintextFact: item.fact,
         category: resolvedCategories[i] ?? normalizeCategory(item.category),
         tags: finalTags,
         timestamp,
         embedding: embeddings[i],
         isDupe: dupeFlags[i],
       };
-    });
+    }));
 
     const newRows = allRows.filter((r) => !r.isDupe);
     if (newRows.length === 0) return { imported: 0, skipped: allRows.length };
@@ -562,8 +565,8 @@ Example output:
     const CHUNK_SIZE = 10;
     for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
       await db.insert(memories).values(
-        newRows.slice(i, i + CHUNK_SIZE).map(({ id, fact, category, tags, timestamp: ts }) => ({
-          id, fact, category, tags, timestamp: ts,
+        newRows.slice(i, i + CHUNK_SIZE).map(({ id, userId, fact, category, tags, timestamp: ts }) => ({
+          id, userId, fact, category, tags, timestamp: ts,
         }))
       );
     }
@@ -581,14 +584,12 @@ Example output:
     for (let i = 0; i < vectorBatch.length; i += VECTOR_CHUNK) {
       const chunk = vectorBatch.slice(i, i + VECTOR_CHUNK);
       try {
-        const insertResult = await env.VECTOR_INDEX.insert(chunk);
-        console.log(`[batchImportMemories] inserted ${chunk.length} vectors, result:`, insertResult);
+        await env.VECTOR_INDEX.insert(chunk);
       } catch (err) {
         console.error(`[batchImportMemories] vector insert failed:`, err);
       }
     }
 
-    console.log(`[batchImportMemories] total: imported ${newRows.length}, skipped ${allRows.length - newRows.length}`);
     return { imported: newRows.length, skipped: allRows.length - newRows.length };
   });
 
@@ -600,8 +601,10 @@ export const deleteMemory = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }): Promise<{ deleted: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
-    await db.delete(memories).where(eq(memories.id, data.id));
+    // Only delete if belongs to this user
+    await db.delete(memories).where(sql`${memories.id} = ${data.id} AND ${memories.userId} = ${user.id}`);
     await env.VECTOR_INDEX.deleteByIds([data.id]);
     return { deleted: true };
   });
@@ -623,13 +626,14 @@ export const updateMemory = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }): Promise<Memory> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
 
+    const encryptedFact = await encryptFact(data.fact, env.ENCRYPTION_KEY);
     await db.update(memories)
-      .set({ fact: data.fact, category: data.category, tags: data.tags })
-      .where(eq(memories.id, data.id));
+      .set({ fact: encryptedFact, category: data.category, tags: data.tags })
+      .where(sql`${memories.id} = ${data.id} AND ${memories.userId} = ${user.id}`);
 
-    // re-embed with updated fact text
     const embedding = await generateEmbedding(env.AI, data.fact);
     await env.VECTOR_INDEX.upsert([{
       id: data.id,
@@ -638,7 +642,7 @@ export const updateMemory = createServerFn({ method: "POST" })
     }]);
 
     const rows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
-    return rows[0];
+    return { ...rows[0], fact: data.fact };
   });
 
 export const bulkDeleteMemories = createServerFn({ method: "POST" })
@@ -649,21 +653,21 @@ export const bulkDeleteMemories = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }): Promise<{ deleted: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
 
     const CHUNK = 10;
     for (let i = 0; i < data.ids.length; i += CHUNK) {
       const chunk = data.ids.slice(i, i + CHUNK);
-      await db.delete(memories).where(sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`);
+      await db.delete(memories).where(
+        sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${user.id}`
+      );
     }
 
     const VECTOR_CHUNK = 100;
     for (let i = 0; i < data.ids.length; i += VECTOR_CHUNK) {
-      const chunk = data.ids.slice(i, i + VECTOR_CHUNK);
-      console.log("[bulkDeleteMemories] deleting", chunk.length, "vectors:", chunk.slice(0, 3).join(","));
-      await env.VECTOR_INDEX.deleteByIds(chunk);
+      await env.VECTOR_INDEX.deleteByIds(data.ids.slice(i, i + VECTOR_CHUNK));
     }
-    console.log("[bulkDeleteMemories] deleted", data.ids.length, "memories from D1 and Vectorize");
 
     return { deleted: data.ids.length };
   });
@@ -676,6 +680,7 @@ export const recallContext = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }): Promise<Memory[]> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
 
     const embedding = await generateEmbedding(env.AI, data.query);
@@ -690,22 +695,21 @@ export const recallContext = createServerFn({ method: "POST" })
     const rows = await db
       .select()
       .from(memories)
-      .where(sql`${memories.id} IN (${sql.join(ids.map((id: string) => sql`${id}`), sql`, `)})`)
+      .where(sql`${memories.id} IN (${sql.join(ids.map((id: string) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${user.id}`)
       .all();
 
     const idOrder = new Map(ids.map((id: string, i: number) => [id, i]));
-    return rows.sort(
-      (a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999)
-    );
+    const sorted = rows.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
+    return decryptMemories(sorted, env.ENCRYPTION_KEY);
   });
 
 export const nukeEverything = createServerFn({ method: "POST" }).handler(
   async ({ context }): Promise<{ success: boolean; dbDeleted: number; vectorsDeleted: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
 
-    // Delete all from D1
-    const dbRows = await db.select({ id: memories.id }).from(memories).all();
+    const dbRows = await db.select({ id: memories.id }).from(memories).where(eq(memories.userId, user.id)).all();
     const dbIds = dbRows.map((r) => r.id);
     let dbDeleted = 0;
 
@@ -718,21 +722,15 @@ export const nukeEverything = createServerFn({ method: "POST" }).handler(
         );
       }
       dbDeleted = dbIds.length;
-      console.log(`[nukeEverything] deleted ${dbDeleted} memories from D1`);
     }
 
-    // Delete vectors by the IDs we already fetched from D1 (the primary source of truth)
     let vectorsDeleted = 0;
-
     if (dbIds.length > 0) {
       const VECTOR_CHUNK = 100;
       for (let i = 0; i < dbIds.length; i += VECTOR_CHUNK) {
-        const chunk = dbIds.slice(i, i + VECTOR_CHUNK);
-        console.log(`[nukeEverything] deleting chunk of ${chunk.length} vectors`);
-        await env.VECTOR_INDEX.deleteByIds(chunk);
+        await env.VECTOR_INDEX.deleteByIds(dbIds.slice(i, i + VECTOR_CHUNK));
       }
       vectorsDeleted = dbIds.length;
-      console.log(`[nukeEverything] deleted ${vectorsDeleted} vectors from Vectorize`);
     }
 
     return { success: true, dbDeleted, vectorsDeleted };
@@ -747,15 +745,13 @@ export type DuplicateGroup = {
 export const scanDatabaseDuplicates = createServerFn({ method: "POST" })
   .handler(async ({ context }): Promise<{ groups: DuplicateGroup[] }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
 
-    // 1. Fetch all memories from database
-    const allMemories = await db.select().from(memories).all();
-    if (allMemories.length <= 1) {
-      return { groups: [] };
-    }
+    const encryptedRows = await db.select().from(memories).where(eq(memories.userId, user.id)).all();
+    const allMemories = await decryptMemories(encryptedRows, env.ENCRYPTION_KEY);
+    if (allMemories.length <= 1) return { groups: [] };
 
-    // 2. Generate embeddings for all memories (in chunks of 10 to avoid rate limits)
     const embeddingsMap = new Map<string, number[]>();
     const CHUNK_SIZE = 10;
     for (let i = 0; i < allMemories.length; i += CHUNK_SIZE) {
@@ -766,17 +762,14 @@ export const scanDatabaseDuplicates = createServerFn({ method: "POST" })
             const vec = await generateEmbedding(env.AI, m.fact);
             embeddingsMap.set(m.id, vec);
           } catch (err) {
-            console.error(`[scanDatabaseDuplicates] failed to generate embedding for ${m.id}:`, err);
+            console.error(`[scanDatabaseDuplicates] embedding failed for ${m.id}:`, err);
           }
         })
       );
     }
 
-    // 3. Query Vectorize for each memory to find potential duplicates
-    // We use a lower threshold (0.82) to get all candidates, which we'll later filter using the LLM.
     const CANDIDATE_THRESHOLD = 0.82;
-    const rawMatches = new Map<string, string[]>(); // map of memory ID -> list of duplicate memory IDs
-
+    const rawMatches = new Map<string, string[]>();
     const memoriesMap = new Map<string, Memory>(allMemories.map((m) => [m.id, m]));
 
     for (let i = 0; i < allMemories.length; i += CHUNK_SIZE) {
@@ -786,16 +779,12 @@ export const scanDatabaseDuplicates = createServerFn({ method: "POST" })
           const vec = embeddingsMap.get(m.id);
           if (!vec) return;
           try {
-            // Find top 3 nearest vectors (excluding itself)
             const result = await env.VECTOR_INDEX.query(vec, { topK: 4, returnMetadata: false });
             const similarIds = (result.matches ?? [])
               .filter((match) => match && match.id !== m.id && match.score >= CANDIDATE_THRESHOLD)
               .map((match) => match.id)
-              // Ensure the match actually exists in our database
               .filter((id) => memoriesMap.has(id));
-            if (similarIds.length > 0) {
-              rawMatches.set(m.id, similarIds);
-            }
+            if (similarIds.length > 0) rawMatches.set(m.id, similarIds);
           } catch (err) {
             console.error(`[scanDatabaseDuplicates] query failed for ${m.id}:`, err);
           }
@@ -803,8 +792,6 @@ export const scanDatabaseDuplicates = createServerFn({ method: "POST" })
       );
     }
 
-    // 4. Cluster them into groups to avoid duplicate comparisons
-    // If A matches B and B matches A, we only want one cluster [A, B]
     const groupedIds = new Set<string>();
     const initialGroups: { primaryId: string; duplicateIds: string[] }[] = [];
 
@@ -815,19 +802,12 @@ export const scanDatabaseDuplicates = createServerFn({ method: "POST" })
       if (unassignedSimIds.length > 0) {
         groupedIds.add(m.id);
         unassignedSimIds.forEach((id) => groupedIds.add(id));
-        initialGroups.push({
-          primaryId: m.id,
-          duplicateIds: unassignedSimIds,
-        });
+        initialGroups.push({ primaryId: m.id, duplicateIds: unassignedSimIds });
       }
     }
 
-    if (initialGroups.length === 0) {
-      return { groups: [] };
-    }
+    if (initialGroups.length === 0) return { groups: [] };
 
-    // 5. Use the LLM to verify duplicates within each group
-    // We send groups to Llama in batches (say, 5 groups per batch) to keep prompts readable.
     const verifiedGroups: DuplicateGroup[] = [];
     const LLM_BATCH_SIZE = 5;
 
@@ -871,14 +851,11 @@ Only include duplicate IDs that are actual semantic duplicates of the primary me
             const dupes = (item.verifiedDuplicateIds ?? [])
               .map((id) => memoriesMap.get(id))
               .filter((c): c is Memory => c !== undefined);
-            if (dupes.length > 0) {
-              verifiedGroups.push({ primary: p, duplicates: dupes });
-            }
+            if (dupes.length > 0) verifiedGroups.push({ primary: p, duplicates: dupes });
           }
         }
       } catch (err) {
         console.error(`[scanDatabaseDuplicates] LLM verification failed for batch ${i}:`, err);
-        // Fallback: assume all candidate IDs >= 0.98 cosine similarity are duplicates
         for (const g of batch) {
           const p = memoriesMap.get(g.primaryId);
           if (!p) continue;
@@ -888,13 +865,9 @@ Only include duplicate IDs that are actual semantic duplicates of the primary me
             if (!c) continue;
             const pVec = embeddingsMap.get(p.id);
             const cVec = embeddingsMap.get(c.id);
-            if (pVec && cVec && cosineSimilarity(pVec, cVec) >= 0.98) {
-              dupes.push(c);
-            }
+            if (pVec && cVec && cosineSimilarity(pVec, cVec) >= 0.98) dupes.push(c);
           }
-          if (dupes.length > 0) {
-            verifiedGroups.push({ primary: p, duplicates: dupes });
-          }
+          if (dupes.length > 0) verifiedGroups.push({ primary: p, duplicates: dupes });
         }
       }
     }
@@ -905,9 +878,10 @@ Only include duplicate IDs that are actual semantic duplicates of the primary me
 export const getProfile = createServerFn({ method: "GET" }).handler(
   async ({ context }): Promise<{ name: string; location: string }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
 
-    const rows = await db.select().from(memories).all();
+    const rows = await db.select().from(memories).where(eq(memories.userId, user.id)).all();
     const nameRow = rows.find((r) =>
       r.tags.split(",").map((t) => t.trim()).includes("profile-name")
     );
@@ -917,12 +891,14 @@ export const getProfile = createServerFn({ method: "GET" }).handler(
 
     let name = "";
     if (nameRow) {
-      name = nameRow.fact.replace(/^Name is\s+/i, "").trim();
+      const fact = await decryptFact(nameRow.fact, env.ENCRYPTION_KEY);
+      name = fact.replace(/^Name is\s+/i, "").trim();
     }
 
     let location = "";
     if (locRow) {
-      location = locRow.fact.replace(/^Location is\s+/i, "").trim();
+      const fact = await decryptFact(locRow.fact, env.ENCRYPTION_KEY);
+      location = fact.replace(/^Location is\s+/i, "").trim();
     }
 
     return { name, location };
@@ -936,9 +912,10 @@ export const saveProfile = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
     const db = getDb(env);
 
-    const rows = await db.select().from(memories).all();
+    const rows = await db.select().from(memories).where(eq(memories.userId, user.id)).all();
     const nameRow = rows.find((r) =>
       r.tags.split(",").map((t) => t.trim()).includes("profile-name")
     );
@@ -946,72 +923,42 @@ export const saveProfile = createServerFn({ method: "POST" })
       r.tags.split(",").map((t) => t.trim()).includes("profile-location")
     );
 
-    // Save Name memory
     if (data.name) {
       const fact = `Name is ${data.name}`;
+      const encFact = await encryptFact(fact, env.ENCRYPTION_KEY);
+      const embedding = await generateEmbedding(env.AI, fact);
       if (nameRow) {
-        await db.update(memories).set({ fact }).where(eq(memories.id, nameRow.id));
-        const embedding = await generateEmbedding(env.AI, fact);
-        await env.VECTOR_INDEX.upsert([
-          {
-            id: nameRow.id,
-            values: embedding,
-            metadata: { category: "references", tags: "profile-name" } as Record<string, VectorizeVectorMetadata>,
-          },
-        ]);
+        await db.update(memories).set({ fact: encFact }).where(eq(memories.id, nameRow.id));
+        await env.VECTOR_INDEX.upsert([{
+          id: nameRow.id,
+          values: embedding,
+          metadata: { category: "references", tags: "profile-name" } as Record<string, VectorizeVectorMetadata>,
+        }]);
       } else {
         const id = crypto.randomUUID();
-        await db.insert(memories).values({
-          id,
-          fact,
-          category: "references",
-          tags: "profile-name",
-          timestamp: Date.now(),
-        });
-        const embedding = await generateEmbedding(env.AI, fact);
-        await env.VECTOR_INDEX.insert([
-          {
-            id,
-            values: embedding,
-            metadata: { category: "references", tags: "profile-name" } as Record<string, VectorizeVectorMetadata>,
-          },
-        ]);
+        await db.insert(memories).values({ id, userId: user.id, fact: encFact, category: "references", tags: "profile-name", timestamp: Date.now() });
+        await env.VECTOR_INDEX.insert([{ id, values: embedding, metadata: { category: "references", tags: "profile-name" } as Record<string, VectorizeVectorMetadata> }]);
       }
     } else if (nameRow) {
       await db.delete(memories).where(eq(memories.id, nameRow.id));
       await env.VECTOR_INDEX.deleteByIds([nameRow.id]);
     }
 
-    // Save Location memory
     if (data.location) {
       const fact = `Location is ${data.location}`;
+      const encFact = await encryptFact(fact, env.ENCRYPTION_KEY);
+      const embedding = await generateEmbedding(env.AI, fact);
       if (locRow) {
-        await db.update(memories).set({ fact }).where(eq(memories.id, locRow.id));
-        const embedding = await generateEmbedding(env.AI, fact);
-        await env.VECTOR_INDEX.upsert([
-          {
-            id: locRow.id,
-            values: embedding,
-            metadata: { category: "references", tags: "profile-location" } as Record<string, VectorizeVectorMetadata>,
-          },
-        ]);
+        await db.update(memories).set({ fact: encFact }).where(eq(memories.id, locRow.id));
+        await env.VECTOR_INDEX.upsert([{
+          id: locRow.id,
+          values: embedding,
+          metadata: { category: "references", tags: "profile-location" } as Record<string, VectorizeVectorMetadata>,
+        }]);
       } else {
         const id = crypto.randomUUID();
-        await db.insert(memories).values({
-          id,
-          fact,
-          category: "references",
-          tags: "profile-location",
-          timestamp: Date.now(),
-        });
-        const embedding = await generateEmbedding(env.AI, fact);
-        await env.VECTOR_INDEX.insert([
-          {
-            id,
-            values: embedding,
-            metadata: { category: "references", tags: "profile-location" } as Record<string, VectorizeVectorMetadata>,
-          },
-        ]);
+        await db.insert(memories).values({ id, userId: user.id, fact: encFact, category: "references", tags: "profile-location", timestamp: Date.now() });
+        await env.VECTOR_INDEX.insert([{ id, values: embedding, metadata: { category: "references", tags: "profile-location" } as Record<string, VectorizeVectorMetadata> }]);
       }
     } else if (locRow) {
       await db.delete(memories).where(eq(memories.id, locRow.id));
@@ -1020,3 +967,122 @@ export const saveProfile = createServerFn({ method: "POST" })
 
     return { success: true };
   });
+
+// ── API Token management ──────────────────────────────────────────────────────
+
+export type ApiTokenPublic = {
+  id: string;
+  name: string;
+  permissions: number;
+  createdAt: number;
+  lastUsedAt: number | null;
+};
+
+export const listApiTokens = createServerFn({ method: "GET" }).handler(
+  async ({ context }): Promise<ApiTokenPublic[]> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+    const rows = await db
+      .select({ id: apiTokens.id, name: apiTokens.name, permissions: apiTokens.permissions, createdAt: apiTokens.createdAt, lastUsedAt: apiTokens.lastUsedAt })
+      .from(apiTokens)
+      .where(eq(apiTokens.userId, user.id))
+      .all();
+    return rows;
+  }
+);
+
+export const createApiToken = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { name: string; permissions: number } => {
+    const d = data as { name: string; permissions: number };
+    if (!d.name || typeof d.name !== "string") throw new Error("name is required");
+    const perms = typeof d.permissions === "number" ? d.permissions : 3;
+    return { name: d.name.trim().slice(0, 64), permissions: perms & 3 }; // mask to valid bits
+  })
+  .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const rawToken = `lkr_${crypto.randomUUID().replace(/-/g, "")}`;
+    const tokenHash = await hashToken(rawToken);
+    const id = crypto.randomUUID();
+
+    await db.insert(apiTokens).values({
+      id,
+      userId: user.id,
+      name: data.name,
+      tokenHash,
+      permissions: data.permissions,
+      createdAt: Date.now(),
+    });
+
+    return { token: rawToken, id, name: data.name, permissions: data.permissions };
+  });
+
+export const revokeApiToken = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { id: string } => {
+    const d = data as { id: string };
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    return { id: d.id };
+  })
+  .handler(async ({ data, context }): Promise<{ revoked: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+    await db.delete(apiTokens).where(
+      sql`${apiTokens.id} = ${data.id} AND ${apiTokens.userId} = ${user.id}`
+    );
+    return { revoked: true };
+  });
+
+export const updateApiTokenPermissions = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { id: string; permissions: number } => {
+    const d = data as { id: string; permissions: number };
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    return { id: d.id, permissions: (d.permissions & 3) };
+  })
+  .handler(async ({ data, context }): Promise<{ updated: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+    await db.update(apiTokens)
+      .set({ permissions: data.permissions })
+      .where(sql`${apiTokens.id} = ${data.id} AND ${apiTokens.userId} = ${user.id}`);
+    return { updated: true };
+  });
+
+export const encryptAllMemories = createServerFn({ method: "POST" }).handler(
+  async ({ context }): Promise<{ encrypted: number; alreadyEncrypted: number; failed: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = getDb(env);
+
+    const rows = await db.select({ id: memories.id, fact: memories.fact }).from(memories).all();
+
+    let encrypted = 0;
+    let alreadyEncrypted = 0;
+    let failed = 0;
+
+    const CHUNK = 20;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const chunk = rows.slice(i, i + CHUNK);
+      await Promise.all(chunk.map(async (row) => {
+        try {
+          if (isEncrypted(row.fact)) {
+            alreadyEncrypted++;
+            return;
+          }
+          const encFact = await encrypt(row.fact, env.ENCRYPTION_KEY);
+          await db.update(memories).set({ fact: encFact }).where(eq(memories.id, row.id));
+          encrypted++;
+        } catch (err) {
+          console.error(`[encryptAllMemories] failed for ${row.id}:`, err);
+          failed++;
+        }
+      }));
+    }
+
+    return { encrypted, alreadyEncrypted, failed };
+  }
+);

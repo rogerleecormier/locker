@@ -4,22 +4,27 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useRouter,
+  Link,
 } from "@tanstack/react-router";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { TanStackRouterDevtools } from "@tanstack/router-devtools";
 import type { ReactNode } from "react";
+import { useSession, signOut } from "~/lib/authClient";
 
 interface RouterContext {
   queryClient: QueryClient;
 }
+
+const PUBLIC_PATHS = ["/login", "/signup"];
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Locker — Memory Manager" },
+      { title: "Locker — Memory Vault" },
     ],
   }),
   component: RootLayout,
@@ -31,11 +36,167 @@ function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <RootDocument>
-        <Outlet />
+        <AuthGate>
+          <Outlet />
+        </AuthGate>
       </RootDocument>
     </QueryClientProvider>
   );
 }
+
+function AuthGate({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = router.state.location.pathname;
+  const { data: session, isPending } = useSession();
+
+  const isPublic = PUBLIC_PATHS.includes(pathname);
+
+  if (isPending) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <span style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</span>
+      </div>
+    );
+  }
+
+  if (!session && !isPublic) {
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    return null;
+  }
+
+  if (session && isPublic) {
+    if (typeof window !== "undefined") {
+      window.location.href = "/";
+    }
+    return null;
+  }
+
+  if (!session) return <>{children}</>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      <Nav user={session.user} />
+      <main style={{ flex: 1 }}>
+        {children}
+      </main>
+    </div>
+  );
+}
+
+const ADMIN_USER_ID = "r6T9s9AcwyaASSlextIlB07IgR5wwzKU";
+
+function Nav({ user }: { user: { id: string; name: string; email: string } }) {
+  async function handleSignOut() {
+    await signOut();
+    window.location.href = "/login";
+  }
+
+  return (
+    <nav style={navStyles.nav}>
+      <div style={navStyles.brand}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span style={navStyles.brandName}>Locker</span>
+      </div>
+
+      <div style={navStyles.links}>
+        <Link to="/" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+          Memories
+        </Link>
+        <Link to="/profile" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+          Profile
+        </Link>
+        <Link to="/settings" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+          Settings
+        </Link>
+        {user.id === ADMIN_USER_ID && (
+          <Link to="/admin" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+            Admin
+          </Link>
+        )}
+      </div>
+
+      <div style={navStyles.right}>
+        <span style={navStyles.userName}>{user.name || user.email}</span>
+        <button onClick={handleSignOut} style={navStyles.signOut}>
+          Sign out
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+const navStyles: Record<string, React.CSSProperties> = {
+  nav: {
+    display: "flex",
+    alignItems: "center",
+    gap: 0,
+    padding: "0 24px",
+    height: 52,
+    background: "var(--surface)",
+    borderBottom: "1px solid var(--border)",
+    position: "sticky",
+    top: 0,
+    zIndex: 100,
+  },
+  brand: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginRight: 28,
+  },
+  brandName: {
+    fontWeight: 700,
+    fontSize: 15,
+    color: "var(--text)",
+    letterSpacing: "-0.01em",
+  },
+  links: {
+    display: "flex",
+    alignItems: "center",
+    gap: 2,
+    flex: 1,
+  },
+  link: {
+    padding: "6px 12px",
+    borderRadius: 6,
+    fontSize: 13,
+    color: "var(--text-muted)",
+    fontWeight: 500,
+    transition: "color 0.15s, background 0.15s",
+    textDecoration: "none",
+  },
+  linkActive: {
+    color: "var(--text)",
+    background: "var(--surface2)",
+  },
+  right: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+  },
+  userName: {
+    fontSize: 12,
+    color: "var(--text-muted)",
+    maxWidth: 160,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  signOut: {
+    padding: "5px 12px",
+    background: "transparent",
+    border: "1px solid var(--border)",
+    color: "var(--text-muted)",
+    borderRadius: 6,
+    fontSize: 12,
+    cursor: "pointer",
+  },
+};
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (

@@ -1,7 +1,10 @@
 import { drizzle } from "drizzle-orm/d1";
-import { sql } from "drizzle-orm";
-import { memories } from "~/db/schema";
+import { eq, sql } from "drizzle-orm";
+import { memories, apiTokens, MCP_PERM_RECALL, MCP_PERM_COMMIT } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
+import { hashToken } from "~/server/crypto";
+import { decrypt, isEncrypted } from "~/server/crypto";
+import { encrypt } from "~/server/crypto";
 
 type EmbeddingResponse = {
   shape: number[][];
@@ -13,6 +16,11 @@ async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
     text: [text],
   })) as EmbeddingResponse;
   return result.data[0];
+}
+
+async function decryptFact(stored: string, encKey: string): Promise<string> {
+  if (!isEncrypted(stored)) return stored;
+  return decrypt(stored, encKey);
 }
 
 function normalizeCategory(raw: string | undefined): "rules" | "projects" | "references" {
@@ -29,37 +37,35 @@ const MCP_MANIFEST = {
   },
 };
 
-const TOOLS_LIST = {
-  tools: [
-    {
-      name: "recall_context",
-      description:
-        "Semantic search over stored long-term memory. Returns facts ranked by cosine similarity.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "Natural-language search query." },
-          topK: { type: "number", description: "Max results (default: 5)." },
-        },
-        required: ["query"],
+const ALL_TOOLS = [
+  {
+    name: "recall_context",
+    description:
+      "Semantic search over stored long-term memory. Returns facts ranked by cosine similarity.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Natural-language search query." },
+        topK: { type: "number", description: "Max results (default: 5)." },
       },
+      required: ["query"],
     },
-    {
-      name: "commit_memory",
-      description: "Persist a new fact into long-term memory.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          fact: { type: "string", description: "The factual statement to store." },
-          category: { type: "string", enum: ["rules", "projects", "references"] },
-          tags: { type: "string", description: "Comma-separated keywords." },
-          source: { type: "string", description: "The source chatbot or origin (e.g. chatgpt, claude). Defaults to mcp." },
-        },
-        required: ["fact"],
+  },
+  {
+    name: "commit_memory",
+    description: "Persist a new fact into long-term memory.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        fact: { type: "string", description: "The factual statement to store." },
+        category: { type: "string", enum: ["rules", "projects", "references"] },
+        tags: { type: "string", description: "Comma-separated keywords." },
+        source: { type: "string", description: "The source chatbot or origin (e.g. chatgpt, claude). Defaults to mcp." },
       },
+      required: ["fact"],
     },
-  ],
-};
+  },
+];
 
 function mcpError(id: unknown, code: number, message: string): Response {
   return Response.json({ jsonrpc: "2.0", id, error: { code, message } });
@@ -73,7 +79,49 @@ function corsHeaders(origin: string) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+}
+
+type TokenClaims = {
+  userId: string;
+  tokenId: string;
+  permissions: number;
+};
+
+async function validateBearerToken(
+  request: Request,
+  env: CloudflareEnv
+): Promise<TokenClaims | null> {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+
+  const rawToken = authHeader.slice(7).trim();
+  if (!rawToken.startsWith("lkr_")) return null;
+
+  const tokenHash = await hashToken(rawToken);
+  const db = drizzle(env.DB, { schema: { apiTokens } });
+
+  const rows = await db
+    .select()
+    .from(apiTokens)
+    .where(eq(apiTokens.tokenHash, tokenHash))
+    .all();
+
+  if (!rows.length) return null;
+  const token = rows[0];
+
+  // Update last used timestamp (fire-and-forget)
+  db.update(apiTokens)
+    .set({ lastUsedAt: Date.now() })
+    .where(eq(apiTokens.id, token.id))
+    .run()
+    .catch(() => {});
+
+  return {
+    userId: token.userId,
+    tokenId: token.id,
+    permissions: token.permissions,
   };
 }
 
@@ -88,10 +136,25 @@ export async function handleMcpRequest(
     return new Response(null, { status: 204, headers });
   }
 
+  // Validate API token
+  const claims = await validateBearerToken(request, env);
+  if (!claims) {
+    return Response.json(
+      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized: valid Bearer token required" } },
+      { status: 401, headers }
+    );
+  }
+
   if (request.method === "GET") {
-    return new Response(JSON.stringify(MCP_MANIFEST), {
-      headers: { "Content-Type": "application/json", ...headers },
+    const allowedTools = ALL_TOOLS.filter((t) => {
+      if (t.name === "recall_context") return !!(claims.permissions & MCP_PERM_RECALL);
+      if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
+      return false;
     });
+    return new Response(
+      JSON.stringify({ ...MCP_MANIFEST, result: { ...MCP_MANIFEST.result, tools: allowedTools } }),
+      { headers: { "Content-Type": "application/json", ...headers } }
+    );
   }
 
   if (request.method !== "POST") {
@@ -119,7 +182,12 @@ export async function handleMcpRequest(
   }
 
   if (method === "tools/list") {
-    return mcpResult(id, TOOLS_LIST);
+    const allowedTools = ALL_TOOLS.filter((t) => {
+      if (t.name === "recall_context") return !!(claims.permissions & MCP_PERM_RECALL);
+      if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
+      return false;
+    });
+    return mcpResult(id, { tools: allowedTools });
   }
 
   if (method !== "tools/call") {
@@ -130,6 +198,10 @@ export async function handleMcpRequest(
   const args = params?.arguments ?? {};
 
   if (toolName === "recall_context") {
+    if (!(claims.permissions & MCP_PERM_RECALL)) {
+      return mcpError(id, -32001, "Token does not have recall_context permission");
+    }
+
     const query = args.query as string | undefined;
     if (!query || typeof query !== "string") {
       return mcpError(id, -32602, "Invalid params: query is required");
@@ -149,16 +221,27 @@ export async function handleMcpRequest(
     const rows = await db
       .select()
       .from(memories)
-      .where(sql`${memories.id} IN (${sql.join(ids.map((dbId) => sql`${dbId}`), sql`, `)})`)
+      .where(
+        sql`${memories.id} IN (${sql.join(ids.map((dbId) => sql`${dbId}`), sql`, `)}) AND ${memories.userId} = ${claims.userId}`
+      )
       .all();
 
+    // Decrypt facts before returning
+    const decrypted = await Promise.all(
+      rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, env.ENCRYPTION_KEY) }))
+    );
+
     const idOrder = new Map(ids.map((dbId, i) => [dbId, i]));
-    const ranked = rows.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
+    const ranked = decrypted.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
 
     return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(ranked) }] });
   }
 
   if (toolName === "commit_memory") {
+    if (!(claims.permissions & MCP_PERM_COMMIT)) {
+      return mcpError(id, -32001, "Token does not have commit_memory permission");
+    }
+
     const fact = args.fact as string | undefined;
     if (!fact || typeof fact !== "string") {
       return mcpError(id, -32602, "Invalid params: fact is required");
@@ -168,16 +251,22 @@ export async function handleMcpRequest(
     const rawTags = typeof args.tags === "string" ? args.tags.trim() : "";
 
     const tagsList = rawTags.split(",").map(t => t.trim()).filter(Boolean);
-    if (!tagsList.includes(source)) {
-      tagsList.push(source);
-    }
+    if (!tagsList.includes(source)) tagsList.push(source);
     const finalTags = tagsList.join(", ");
 
     const memId = crypto.randomUUID();
     const timestamp = Date.now();
     const embedding = await generateEmbedding(env.AI, fact.trim());
+    const encryptedFact = await encrypt(fact.trim(), env.ENCRYPTION_KEY);
 
-    await db.insert(memories).values({ id: memId, fact: fact.trim(), category, tags: finalTags, timestamp });
+    await db.insert(memories).values({
+      id: memId,
+      userId: claims.userId,
+      fact: encryptedFact,
+      category,
+      tags: finalTags,
+      timestamp,
+    });
     await env.VECTOR_INDEX.insert([
       { id: memId, values: embedding, metadata: { category, tags: finalTags } },
     ]);
@@ -187,27 +276,6 @@ export async function handleMcpRequest(
         { type: "text", text: JSON.stringify({ success: true, id: memId, fact: fact.trim(), category, tags: finalTags }) },
       ],
     });
-  }
-
-  if (toolName === "debug_vectorize") {
-    try {
-      console.log("[debug] VECTOR_INDEX type:", typeof env.VECTOR_INDEX);
-      const testVec = new Array(1024).fill(0.1);
-      const insertRes = await env.VECTOR_INDEX.insert([
-        { id: "debug-test-" + Date.now(), values: testVec, metadata: { test: "true" } },
-      ]);
-      console.log("[debug] insert result:", insertRes);
-
-      const queryRes = await env.VECTOR_INDEX.query(testVec, { topK: 5, returnMetadata: false });
-      console.log("[debug] query result:", queryRes);
-
-      return mcpResult(id, {
-        content: [{ type: "text", text: JSON.stringify({ insertRes, queryRes }) }],
-      });
-    } catch (err) {
-      console.error("[debug] error:", err);
-      return mcpError(id, -32603, `Vectorize test failed: ${String(err)}`);
-    }
   }
 
   return mcpError(id, -32602, `Unknown tool: ${toolName}`);

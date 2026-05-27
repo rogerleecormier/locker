@@ -25,6 +25,10 @@
   "ai": {
     "binding": "AI"
   },
+  "vars": {
+    "BETTER_AUTH_URL": "https://locker.rcormier.dev",
+    "ADMIN_USER_ID": "r6T9s9AcwyaASSlextIlB07IgR5wwzKU"
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,

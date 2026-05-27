@@ -5,3 +5,4 @@ dist/
 .env.local
 *.local
 src/routeTree.gen.ts
+.dev.vars

@@ -3,6 +3,7 @@ import {
   defaultStreamHandler,
 } from "@tanstack/react-start/server";
 import { handleMcpRequest } from "./routes/-api.mcp";
+import { createAuth } from "./server/auth";
 import type { CloudflareEnv } from "./types/cloudflare";
 
 const handler = createStartHandler(defaultStreamHandler);
@@ -13,6 +14,11 @@ export default {
 
     if (url.pathname === "/api/mcp") {
       return handleMcpRequest(request, env);
+    }
+
+    if (url.pathname.startsWith("/api/auth/")) {
+      const auth = createAuth(env);
+      return auth.handler(request);
     }
 
     return handler(request, {
