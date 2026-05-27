@@ -442,6 +442,7 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
       setParseError(null);
       setImportResult(result);
       onSuccess();
+      setTimeout(() => setImportResult(null), 8000);
     },
   });
 
@@ -516,14 +517,17 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
 
-        {batchMutation.isSuccess && importResult && (
-          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: "var(--radius)", color: "var(--success)", fontSize: 12 }}>
-            Imported {importResult.imported} memor{importResult.imported !== 1 ? "ies" : "y"}.
-            {importResult.skipped > 0 && (
-              <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
-                {importResult.skipped} duplicate{importResult.skipped !== 1 ? "s" : ""} skipped.
-              </span>
-            )}
+        {importResult && (
+          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: "var(--radius)", color: "var(--success)", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span>
+              Imported {importResult.imported} memor{importResult.imported !== 1 ? "ies" : "y"}.
+              {importResult.skipped > 0 && (
+                <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+                  {importResult.skipped} duplicate{importResult.skipped !== 1 ? "s" : ""} skipped.
+                </span>
+              )}
+            </span>
+            <button onClick={() => setImportResult(null)} style={{ background: "none", color: "var(--success)", padding: "0 2px", lineHeight: 1, fontSize: 14, opacity: 0.7 }}>×</button>
           </div>
         )}
 

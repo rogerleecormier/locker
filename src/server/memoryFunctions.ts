@@ -54,9 +54,14 @@ async function classifyMemories(
 
     const prompt = `Classify each memory into exactly one category: rules, projects, or references.
 
-- rules: explicit instructions, preferences, behavioral guidelines, "always do X", "never do Y", how I like things done, coding standards, tone/format preferences
-- projects: active or recent work, features being built, bugs, tasks, deadlines, initiatives, apps or products I am building
-- references: personal facts, identity, demographics, career history, education, relationships, location, certifications, tools I use, skills, financial info, anything that is background context about who I am
+RULES = behavioral directives, communication preferences, instructions for how AI should respond, things I always/never want done, tone/format requirements, academic standards I follow, constraints on AI behavior.
+Examples: "Tell it like it is; don't sugar-coat responses", "Use a formal professional tone", "Challenge my thinking", "AI must not invent skills I don't possess", "APA 7th edition compliance required"
+
+PROJECTS = active or recent work, specific tasks in progress, features being built, bugs being fixed, purchases being researched, ongoing personal initiatives with concrete next steps.
+Examples: "Building a weekly status update automation in Claude", "Troubleshooting STATUS_ACCESS_VIOLATION crashes on Sager laptop", "Purchasing a 2018 Ford Explorer from Carvana", "Creating Student Learning Plans for homeschool scholarship"
+
+REFERENCES = background facts about who I am: identity, location, family, career history, education, certifications, employers, interests, health, financial context, tools used, skills possessed.
+Examples: "Lives in Auburndale Florida", "Works as a Technical Program Manager at Vertex Education", "Has five dependent children", "Holds CompTIA Network+ certification", "Weighs 355 lbs"
 
 Respond with ONLY a JSON array of strings, one per numbered item, in order. No explanation.
 Example for 3 items: ["rules","projects","references"]
