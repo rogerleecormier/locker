@@ -113,9 +113,6 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
         <Link to="/connect" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Connect
         </Link>
-        <Link to="/profile" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
-          Profile
-        </Link>
         <Link to="/settings" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Settings
         </Link>

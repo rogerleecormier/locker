@@ -683,29 +683,6 @@ function Dashboard() {
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
             <Link
-              to="/profile"
-              style={{
-                padding: "6px 12px",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                color: "var(--text-muted)",
-                fontSize: 12,
-                borderRadius: "var(--radius)",
-                textDecoration: "none",
-                transition: "all 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                (e.target as HTMLElement).style.borderColor = "var(--text-muted)";
-                (e.target as HTMLElement).style.color = "var(--text)";
-              }}
-              onMouseLeave={(e) => {
-                (e.target as HTMLElement).style.borderColor = "var(--border)";
-                (e.target as HTMLElement).style.color = "var(--text-muted)";
-              }}
-            >
-              Profile
-            </Link>
-            <Link
               to="/admin"
               style={{
                 padding: "6px 12px",

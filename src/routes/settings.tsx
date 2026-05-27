@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   listApiTokens,
   createApiToken,
   revokeApiToken,
   updateApiTokenPermissions,
+  getProfile,
+  saveProfile,
   type ApiTokenPublic,
 } from "~/server/memoryFunctions";
 import { MCP_PERM_RECALL, MCP_PERM_COMMIT } from "~/db/schema";
@@ -27,11 +29,7 @@ function permLabel(perms: number): string {
 
 function formatDate(ts: number | null): string {
   if (!ts) return "Never";
-  return new Date(ts).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function TokenRow({
@@ -66,10 +64,7 @@ function TokenRow({
           )}
         </div>
         <div style={styles.tokenActions}>
-          <button
-            style={styles.btnGhost}
-            onClick={() => setExpanded((x) => !x)}
-          >
+          <button style={styles.btnGhost} onClick={() => setExpanded((x) => !x)}>
             {expanded ? "Collapse" : "Permissions"}
           </button>
           <button
@@ -148,9 +143,8 @@ function NewTokenModal({
           <>
             <h2 style={styles.modalTitle}>New API Token</h2>
             <p style={styles.modalSubtitle}>
-              Tokens are used to authenticate MCP requests. You can restrict which tools each token can use.
+              Tokens authenticate MCP requests. Restrict which tools each token can call.
             </p>
-
             <div style={styles.field}>
               <label style={styles.label}>Token Name</label>
               <input
@@ -162,7 +156,6 @@ function NewTokenModal({
                 autoFocus
               />
             </div>
-
             <div style={styles.field}>
               <label style={styles.label}>Permissions</label>
               <div style={styles.permGrid}>
@@ -182,14 +175,9 @@ function NewTokenModal({
                 ))}
               </div>
             </div>
-
             <div style={styles.modalFooter}>
               <button style={styles.btnGhost} onClick={onClose}>Cancel</button>
-              <button
-                style={styles.btnPrimary}
-                onClick={handleCreate}
-                disabled={loading || !name.trim()}
-              >
+              <button style={styles.btnPrimary} onClick={handleCreate} disabled={loading || !name.trim()}>
                 {loading ? "Generating…" : "Generate token"}
               </button>
             </div>
@@ -197,24 +185,19 @@ function NewTokenModal({
         ) : (
           <>
             <h2 style={styles.modalTitle}>Token created</h2>
-            <p style={styles.modalSubtitle}>
-              Copy your token now — it won't be shown again.
-            </p>
-
+            <p style={styles.modalSubtitle}>Copy your token now — it won't be shown again.</p>
             <div style={styles.tokenReveal}>
               <code style={styles.tokenCode}>{token}</code>
               <button style={styles.copyBtn} onClick={copyToken}>
                 {copied ? "Copied!" : "Copy"}
               </button>
             </div>
-
             <div style={styles.tokenNote}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
-              Add this token to your MCP client's configuration as a Bearer token in the Authorization header.
+              Add this token to your MCP client as a Bearer token in the Authorization header.
             </div>
-
             <div style={styles.modalFooter}>
               <button style={styles.btnPrimary} onClick={onClose}>Done</button>
             </div>
@@ -225,10 +208,103 @@ function NewTokenModal({
   );
 }
 
+function ProfileSection() {
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [location, setLocation] = useState("");
+  const [savedMessage, setSavedMessage] = useState(false);
+
+  const profileQuery = useQuery({
+    queryKey: ["profile"],
+    queryFn: () => getProfile(),
+  });
+
+  useEffect(() => {
+    if (profileQuery.data) {
+      setName(profileQuery.data.name);
+      setLocation(profileQuery.data.location);
+    }
+  }, [profileQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: saveProfile,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["profile"] });
+      setSavedMessage(true);
+      setTimeout(() => setSavedMessage(false), 5000);
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    saveMutation.mutate({ data: { name, location } });
+  }
+
+  return (
+    <section style={styles.section}>
+      <h2 style={styles.sectionTitle}>Profile</h2>
+      <p style={styles.sectionDesc}>
+        Used to personalise how memories are phrased during import (e.g. "You live in Florida" → "{name || "Roger"} lives in Florida").
+      </p>
+
+      {profileQuery.isPending ? (
+        <p style={styles.empty}>Loading…</p>
+      ) : profileQuery.isError ? (
+        <p style={{ color: "var(--error)", fontSize: 13 }}>Failed to load profile.</p>
+      ) : (
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div style={styles.field}>
+              <label style={styles.label}>Preferred Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Roger"
+                style={styles.input}
+              />
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Location</label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="e.g. Florida"
+                style={styles.input}
+              />
+            </div>
+          </div>
+
+          {savedMessage && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: "var(--radius)", color: "var(--success)", fontSize: 13 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Profile saved.
+            </div>
+          )}
+
+          {saveMutation.isError && (
+            <p style={{ color: "var(--error)", fontSize: 13 }}>
+              Failed to save: {(saveMutation.error as Error).message}
+            </p>
+          )}
+
+          <div>
+            <button type="submit" disabled={saveMutation.isPending} style={styles.btnPrimary}>
+              {saveMutation.isPending ? "Saving…" : "Save Profile"}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
+
 function SettingsPage() {
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
-  const [newTokenValue, setNewTokenValue] = useState<string | null>(null);
 
   const { data: tokens = [], isLoading } = useQuery({
     queryKey: ["api-tokens"],
@@ -263,12 +339,14 @@ function SettingsPage() {
         <div style={styles.headerRow}>
           <div>
             <h1 style={styles.title}>Settings</h1>
-            <p style={styles.subtitle}>Manage API tokens for MCP access</p>
+            <p style={styles.subtitle}>Profile, API tokens, and MCP endpoint</p>
           </div>
           <button style={styles.btnPrimary} onClick={() => setShowModal(true)}>
             + New Token
           </button>
         </div>
+
+        <ProfileSection />
 
         <section style={styles.section}>
           <div style={styles.sectionHeader}>
@@ -283,7 +361,7 @@ function SettingsPage() {
             <span>
               Use tokens to authenticate MCP calls from AI clients. Set{" "}
               <code style={styles.code}>Authorization: Bearer &lt;token&gt;</code>{" "}
-              in your MCP client's headers.
+              in your client's headers.
             </span>
           </div>
 
@@ -312,9 +390,7 @@ function SettingsPage() {
 
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>MCP Endpoint</h2>
-          <p style={styles.sectionDesc}>
-            Point your AI client's MCP configuration at:
-          </p>
+          <p style={styles.sectionDesc}>Point your AI client's MCP configuration at:</p>
           <div style={styles.endpointBox}>
             <code style={styles.endpointCode}>{typeof window !== "undefined" ? window.location.origin : ""}/api/mcp</code>
           </div>
@@ -326,7 +402,7 @@ function SettingsPage() {
 
       {showModal && (
         <NewTokenModal
-          onClose={() => { setShowModal(false); setNewTokenValue(null); }}
+          onClose={() => setShowModal(false)}
           onCreate={handleCreate}
         />
       )}
@@ -349,8 +425,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 20,
   },
   sectionHeader: { display: "flex", alignItems: "center", gap: 8, marginBottom: 14 },
-  sectionTitle: { fontSize: 15, fontWeight: 600, color: "var(--text)" },
-  sectionDesc: { fontSize: 13, color: "var(--text-muted)", marginBottom: 10 },
+  sectionTitle: { fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 6 },
+  sectionDesc: { fontSize: 13, color: "var(--text-muted)", marginBottom: 14 },
   badge: {
     fontSize: 11,
     fontWeight: 600,
@@ -399,12 +475,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     padding: "12px 14px",
   },
-  tokenHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-  },
+  tokenHeader: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" },
   tokenMeta: { flex: 1, display: "flex", flexDirection: "column", gap: 2 },
   tokenName: { fontSize: 14, fontWeight: 600, color: "var(--text)" },
   tokenPerms: { fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" },
@@ -420,12 +491,7 @@ const styles: Record<string, React.CSSProperties> = {
     paddingTop: 12,
     borderTop: "1px solid var(--border)",
   },
-  permRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 10,
-    cursor: "pointer",
-  },
+  permRow: { display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" },
   permToolName: { fontSize: 12, fontWeight: 600, color: "var(--text)", fontFamily: "monospace" },
   permToolDesc: { fontSize: 11, color: "var(--text-muted)", marginTop: 1 },
 
@@ -461,7 +527,6 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
 
-  // Modal
   overlay: {
     position: "fixed",
     inset: 0,
@@ -489,7 +554,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   field: { display: "flex", flexDirection: "column", gap: 6 },
   label: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" },
-  input: { padding: "8px 11px", borderRadius: 7 },
+  input: { padding: "8px 11px", borderRadius: 7, width: "100%" },
 
   tokenReveal: {
     display: "flex",
@@ -500,13 +565,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     padding: "10px 12px",
   },
-  tokenCode: {
-    flex: 1,
-    fontFamily: "monospace",
-    fontSize: 12,
-    color: "var(--accent)",
-    wordBreak: "break-all",
-  },
+  tokenCode: { flex: 1, fontFamily: "monospace", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" },
   copyBtn: {
     padding: "4px 10px",
     background: "var(--accent)",
