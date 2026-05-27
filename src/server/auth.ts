@@ -38,8 +38,13 @@ export function createAuth(env: CloudflareEnv) {
           {
             clientId: env.CLAUDE_CLIENT_ID,
             clientSecret: env.CLAUDE_CLIENT_SECRET,
+            // Claude uses PKCE (public client flow) during token exchange
+            type: "web" as const,
             name: "Claude (claude.ai)",
-            redirectUrls: ["https://claude.ai/api/mcp/auth_callback"],
+            redirectUrls: [
+              "https://claude.ai/api/mcp/auth_callback",
+              "https://claude.ai/api/organizations/mcp/auth_callback",
+            ],
           },
         ] : [],
       }),

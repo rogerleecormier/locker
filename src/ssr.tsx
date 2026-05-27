@@ -21,12 +21,13 @@ export default {
       return auth.handler(request);
     }
 
-    // Claude constructs /authorize from the issuer URL instead of using discovery.
-    // Redirect to the actual better-auth OAuth2 authorization endpoint.
-    if (url.pathname === "/authorize") {
-      const target = new URL("/api/auth/oauth2/authorize", url.origin);
+    // Claude constructs OAuth paths from the issuer URL instead of using discovery.
+    // Proxy these directly to the better-auth OAuth2 endpoints (no redirect — POST bodies survive).
+    if (url.pathname === "/authorize" || url.pathname === "/token") {
+      const segment = url.pathname === "/authorize" ? "authorize" : "token";
+      const target = new URL(`/api/auth/oauth2/${segment}`, url.origin);
       target.search = url.search;
-      return Response.redirect(target.toString(), 302);
+      return fetch(new Request(target.toString(), request));
     }
 
     return handler(request, {
