@@ -22,12 +22,15 @@ export default {
     }
 
     // Claude constructs OAuth paths from the issuer URL instead of using discovery.
-    // Proxy these directly to the better-auth OAuth2 endpoints (no redirect — POST bodies survive).
+    // Rewrite the URL in-process to the better-auth OAuth2 endpoints.
     if (url.pathname === "/authorize" || url.pathname === "/token") {
       const segment = url.pathname === "/authorize" ? "authorize" : "token";
-      const target = new URL(`/api/auth/oauth2/${segment}`, url.origin);
-      target.search = url.search;
-      return fetch(new Request(target.toString(), request));
+      const rewritten = new Request(
+        `${url.origin}/api/auth/oauth2/${segment}${url.search}`,
+        request,
+      );
+      const auth = createAuth(env);
+      return auth.handler(rewritten);
     }
 
     return handler(request, {
