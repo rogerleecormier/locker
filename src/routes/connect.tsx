@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
+import { PLATFORM_GROUPS } from "../lib/platforms";
 
 export const Route = createFileRoute("/connect")({
   component: ConnectPage,
@@ -769,7 +770,7 @@ enabled = true`,
             Select platform
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {(["Anthropic", "OpenAI", "Google", "VS Code", "Editors", "Other"] as const).map((group) => {
+            {PLATFORM_GROUPS.map((group) => {
               const groupServices = SERVICES.filter((s) => s.group === group);
               if (groupServices.length === 0) return null;
               return (

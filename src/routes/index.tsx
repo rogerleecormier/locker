@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { PLATFORMS, PLATFORM_GROUPS } from "../lib/platforms";
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
@@ -149,29 +150,33 @@ function TokenMockup() {
 }
 
 function PlatformGrid() {
-  const platforms = [
-    { label: "Claude Desktop", color: "#d4956a" },
-    { label: "Claude Code", color: "#c97b53" },
-    { label: "Cursor", color: "#00e5ff" },
-    { label: "Cline", color: "#ff6b6b" },
-    { label: "Roo Code", color: "#ff8787" },
-    { label: "Continue", color: "#2f80ed" },
-    { label: "GitHub Copilot", color: "#6f42c1" },
-    { label: "VS Code", color: "#007acc" },
-    { label: "ChatGPT", color: "#10a37f" },
-    { label: "Gemini", color: "#4285f4" },
-    { label: "Grok", color: "#e7e7e7" },
-    { label: "Perplexity", color: "#20b2aa" },
-  ];
+  let delay = 0;
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
-      {platforms.map((p, i) => (
-        <FadeIn key={p.label} delay={i * 40}>
-          <div style={{ padding: "6px 14px", borderRadius: 20, background: `${p.color}15`, border: `1px solid ${p.color}40`, color: p.color, fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>
-            {p.label}
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {PLATFORM_GROUPS.map((group) => {
+        const groupPlatforms = PLATFORMS.filter((p) => p.group === group);
+        if (groupPlatforms.length === 0) return null;
+        return (
+          <div key={group}>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.5 }}>
+              {group}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
+              {groupPlatforms.map((p) => {
+                const d = delay;
+                delay += 30;
+                return (
+                  <FadeIn key={p.id} delay={d}>
+                    <div style={{ padding: "5px 13px", borderRadius: 20, background: `${p.color}15`, border: `1px solid ${p.color}40`, color: p.color, fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>
+                      {p.label}
+                    </div>
+                  </FadeIn>
+                );
+              })}
+            </div>
           </div>
-        </FadeIn>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -315,7 +320,7 @@ function LandingPage() {
       <div style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
         <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0 }}>
           {[
-            { value: 15, suffix: "+", label: "AI platforms supported" },
+            { value: PLATFORMS.length, suffix: "", label: "AI platforms supported" },
             { value: 256, suffix: "-bit", label: "AES-GCM encryption" },
             { value: 100, suffix: "%", label: "Self-hosted on Cloudflare" },
           ].map(({ value, suffix, label }, i) => (
@@ -484,7 +489,7 @@ function LandingPage() {
             {[
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "End-to-end encryption", desc: "AES-256-GCM on every fact. Database rows are ciphertext only.", delay: 0 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "Semantic vector search", desc: "Cloudflare Vectorize powers fuzzy recall — find facts by meaning, not just keywords.", delay: 60 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: "15+ platform configs", desc: "One-click config snippets for every major AI client, always up to date.", delay: 120 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: `${PLATFORMS.length} platform configs`, desc: "One-click config snippets for every major AI client, always up to date.", delay: 120 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>, title: "AI-powered import", desc: "Paste any raw text — Claude extracts, categorises, and deduplicates the facts.", delay: 180 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Per-token permissions", desc: "Bearer tokens with bitmask permissions — read-only or full write access, per client.", delay: 240 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>, title: "Cloudflare edge", desc: "Workers + D1 + Vectorize — globally distributed, no server to manage.", delay: 300 },

@@ -8,8 +8,6 @@ import {
   Link,
 } from "@tanstack/react-router";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { TanStackRouterDevtools } from "@tanstack/router-devtools";
 import type { ReactNode } from "react";
 import { useSession, signOut } from "~/lib/authClient";
 
@@ -291,8 +289,6 @@ function RootDocument({ children }: { children: ReactNode }) {
       <body>
         {children}
         <ScrollRestoration />
-        <ReactQueryDevtools buttonPosition="bottom-left" />
-        <TanStackRouterDevtools position="bottom-right" />
         <Scripts />
       </body>
     </html>
