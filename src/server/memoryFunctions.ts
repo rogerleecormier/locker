@@ -155,11 +155,18 @@ Rules:
       max_tokens: 4096,
     });
 
-    console.log("[parseMemoriesWithAI] result type:", typeof result, "keys:", result && typeof result === "object" ? Object.keys(result as object).join(",") : "n/a", "json:", JSON.stringify(result).slice(0, 300));
-    const raw = extractText(result).trim();
-    console.log("[parseMemoriesWithAI] raw response length:", raw.length, "preview:", raw.slice(0, 200));
+    const r = result as Record<string, unknown>;
+    console.log("[parse v2] isArray:", Array.isArray(r.response), "keys:", Object.keys(r).join(","), "responseType:", typeof r.response, "sample:", JSON.stringify(r.response)?.slice(0, 100));
+    if (Array.isArray(r.response)) {
+      const facts = (r.response as unknown[])
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter((f) => f.length > 0);
+      console.log("[parse v2] extracted facts count:", facts.length);
+      if (facts.length > 0) return facts.map((f) => ({ fact: f }));
+    }
 
-    // try JSON first
+    // fall back to text extraction + JSON parse
+    const raw = extractText(result).trim();
     const stripped = raw.replace(/```[\w]*\n?/g, "").trim();
     const arrayMatch = stripped.match(/\[[\s\S]*\]/);
     if (arrayMatch) {
@@ -181,8 +188,6 @@ Rules:
       } catch { /* fall through to line parser */ }
     }
 
-    // fallback: line-by-line clean
-    console.log("[parseMemoriesWithAI] JSON parse failed, falling back to line parser");
     const facts = parseFactsFromText(raw);
     return facts.map((item) => ({ fact: item.fact }));
   });
