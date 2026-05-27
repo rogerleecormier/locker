@@ -409,7 +409,7 @@ Example output:
       });
 
       const rawText = extractText(llmResult).trim();
-      const match = rawText.match(/\{[\s\S]*?\}/);
+      const match = rawText.match(/\{[\s\S]*\}/);
       if (match) {
         dupeMapping = JSON.parse(match[0]);
         console.log("[batchImportMemories] AI deduplication mapping:", dupeMapping);
@@ -662,3 +662,166 @@ export const nukeEverything = createServerFn({ method: "POST" }).handler(
     return { success: true, dbDeleted, vectorsDeleted };
   }
 );
+
+export type DuplicateGroup = {
+  primary: Memory;
+  duplicates: Memory[];
+};
+
+export const scanDatabaseDuplicates = createServerFn({ method: "POST" })
+  .handler(async ({ context }): Promise<{ groups: DuplicateGroup[] }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = getDb(env);
+
+    // 1. Fetch all memories from database
+    const allMemories = await db.select().from(memories).all();
+    if (allMemories.length <= 1) {
+      return { groups: [] };
+    }
+
+    // 2. Generate embeddings for all memories (in chunks of 10 to avoid rate limits)
+    const embeddingsMap = new Map<string, number[]>();
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < allMemories.length; i += CHUNK_SIZE) {
+      const chunk = allMemories.slice(i, i + CHUNK_SIZE);
+      await Promise.all(
+        chunk.map(async (m) => {
+          try {
+            const vec = await generateEmbedding(env.AI, m.fact);
+            embeddingsMap.set(m.id, vec);
+          } catch (err) {
+            console.error(`[scanDatabaseDuplicates] failed to generate embedding for ${m.id}:`, err);
+          }
+        })
+      );
+    }
+
+    // 3. Query Vectorize for each memory to find potential duplicates
+    // We use a lower threshold (0.82) to get all candidates, which we'll later filter using the LLM.
+    const CANDIDATE_THRESHOLD = 0.82;
+    const rawMatches = new Map<string, string[]>(); // map of memory ID -> list of duplicate memory IDs
+
+    const memoriesMap = new Map<string, Memory>(allMemories.map((m) => [m.id, m]));
+
+    for (let i = 0; i < allMemories.length; i += CHUNK_SIZE) {
+      const chunk = allMemories.slice(i, i + CHUNK_SIZE);
+      await Promise.all(
+        chunk.map(async (m) => {
+          const vec = embeddingsMap.get(m.id);
+          if (!vec) return;
+          try {
+            // Find top 3 nearest vectors (excluding itself)
+            const result = await env.VECTOR_INDEX.query(vec, { topK: 4, returnMetadata: false });
+            const similarIds = (result.matches ?? [])
+              .filter((match) => match && match.id !== m.id && match.score >= CANDIDATE_THRESHOLD)
+              .map((match) => match.id)
+              // Ensure the match actually exists in our database
+              .filter((id) => memoriesMap.has(id));
+            if (similarIds.length > 0) {
+              rawMatches.set(m.id, similarIds);
+            }
+          } catch (err) {
+            console.error(`[scanDatabaseDuplicates] query failed for ${m.id}:`, err);
+          }
+        })
+      );
+    }
+
+    // 4. Cluster them into groups to avoid duplicate comparisons
+    // If A matches B and B matches A, we only want one cluster [A, B]
+    const groupedIds = new Set<string>();
+    const initialGroups: { primaryId: string; duplicateIds: string[] }[] = [];
+
+    for (const m of allMemories) {
+      if (groupedIds.has(m.id)) continue;
+      const simIds = rawMatches.get(m.id) ?? [];
+      const unassignedSimIds = simIds.filter((id) => !groupedIds.has(id));
+      if (unassignedSimIds.length > 0) {
+        groupedIds.add(m.id);
+        unassignedSimIds.forEach((id) => groupedIds.add(id));
+        initialGroups.push({
+          primaryId: m.id,
+          duplicateIds: unassignedSimIds,
+        });
+      }
+    }
+
+    if (initialGroups.length === 0) {
+      return { groups: [] };
+    }
+
+    // 5. Use the LLM to verify duplicates within each group
+    // We send groups to Llama in batches (say, 5 groups per batch) to keep prompts readable.
+    const verifiedGroups: DuplicateGroup[] = [];
+    const LLM_BATCH_SIZE = 5;
+
+    for (let i = 0; i < initialGroups.length; i += LLM_BATCH_SIZE) {
+      const batch = initialGroups.slice(i, i + LLM_BATCH_SIZE);
+
+      const prompt = `You are a database deduplication assistant. I will give you groups of memories that are vector-similar. For each group, determine which of the candidate memories are actual semantic duplicates of the primary memory.
+
+A candidate memory is a duplicate if:
+1. It expresses the exact same fact or semantic meaning as the primary memory (even if phrased differently, e.g. "lives in FL" vs "lives in Florida").
+2. It expresses a fact that is a subset of or already fully covered by the primary memory.
+
+Groups to analyze:
+${batch.map((g, idx) => {
+  const p = memoriesMap.get(g.primaryId);
+  const candidates = g.duplicateIds.map((id) => memoriesMap.get(id)).filter(Boolean);
+  return `Group ${idx + 1}:
+- Primary: [${g.primaryId}] "${p?.fact}"
+- Candidates:
+${candidates.map((c) => `  * [${c?.id}] "${c?.fact}"`).join("\n")}`;
+}).join("\n\n")}
+
+Respond with ONLY a JSON array of objects, one per group, in this format:
+[
+  { "primaryId": "primary-memory-id", "verifiedDuplicateIds": ["duplicate-id-1"] }
+]
+Only include duplicate IDs that are actual semantic duplicates of the primary memory. If a group has no duplicates, verifiedDuplicateIds should be empty. Do not include markdown code fences or conversational intro/outro.`;
+
+      try {
+        const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+          prompt,
+          max_tokens: Math.max(128, batch.length * 64),
+        });
+        const text = extractText(result).trim();
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]) as { primaryId: string; verifiedDuplicateIds: string[] }[];
+          for (const item of parsed) {
+            const p = memoriesMap.get(item.primaryId);
+            if (!p) continue;
+            const dupes = (item.verifiedDuplicateIds ?? [])
+              .map((id) => memoriesMap.get(id))
+              .filter((c): c is Memory => c !== undefined);
+            if (dupes.length > 0) {
+              verifiedGroups.push({ primary: p, duplicates: dupes });
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[scanDatabaseDuplicates] LLM verification failed for batch ${i}:`, err);
+        // Fallback: assume all candidate IDs >= 0.98 cosine similarity are duplicates
+        for (const g of batch) {
+          const p = memoriesMap.get(g.primaryId);
+          if (!p) continue;
+          const dupes: Memory[] = [];
+          for (const id of g.duplicateIds) {
+            const c = memoriesMap.get(id);
+            if (!c) continue;
+            const pVec = embeddingsMap.get(p.id);
+            const cVec = embeddingsMap.get(c.id);
+            if (pVec && cVec && cosineSimilarity(pVec, cVec) >= 0.98) {
+              dupes.push(c);
+            }
+          }
+          if (dupes.length > 0) {
+            verifiedGroups.push({ primary: p, duplicates: dupes });
+          }
+        }
+      }
+    }
+
+    return { groups: verifiedGroups };
+  });

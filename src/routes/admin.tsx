@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { memories, type Memory } from "~/db/schema";
-import { nukeEverything } from "~/server/memoryFunctions";
+import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, type DuplicateGroup } from "~/server/memoryFunctions";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -107,6 +107,55 @@ function AdminPage() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmClearVectorize, setConfirmClearVectorize] = useState(false);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [scanResults, setScanResults] = useState<DuplicateGroup[] | null>(null);
+  const [retainSelections, setRetainSelections] = useState<Record<number, string>>({});
+
+  const scanMutation = useMutation({
+    mutationFn: scanDatabaseDuplicates,
+    onSuccess: (data) => {
+      setScanResults(data.groups);
+      // Default to retaining the primary memory (the first item) in each group
+      const defaults: Record<number, string> = {};
+      data.groups.forEach((g, idx) => {
+        defaults[idx] = g.primary.id;
+      });
+      setRetainSelections(defaults);
+    },
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: async () => {
+      if (!scanResults) return;
+      const idsToDelete: string[] = [];
+      scanResults.forEach((group, idx) => {
+        const retainedId = retainSelections[idx] || group.primary.id;
+        const allItems = [group.primary, ...group.duplicates];
+        allItems.forEach((item) => {
+          if (item.id !== retainedId) {
+            idsToDelete.push(item.id);
+          }
+        });
+      });
+
+      if (idsToDelete.length > 0) {
+        await bulkDeleteMemories({ data: { ids: idsToDelete } });
+      }
+    },
+    onSuccess: () => {
+      setScanResults(null);
+      setRetainSelections({});
+      statsQuery.refetch();
+      debugQuery.refetch();
+      alert("Successfully resolved duplicates! Non-retained records were deleted.");
+    },
+  });
+
+  function handleSelectRetain(groupIdx: number, id: string) {
+    setRetainSelections((prev) => ({
+      ...prev,
+      [groupIdx]: id,
+    }));
+  }
 
   const statsQuery = useQuery({
     queryKey: ["admin-stats"],
@@ -189,6 +238,172 @@ function AdminPage() {
           </div>
         ) : (
           <p style={{ color: "var(--success)", marginTop: "10px" }}>No orphaned vectors detected</p>
+        )}
+      </section>
+
+      <section style={{ marginTop: "30px" }}>
+        <h2>Database Deduplication Scanner</h2>
+        <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "15px" }}>
+          Scan all stored memories for semantic duplicates. Locker will identify identical facts with different phrasings and let you choose which to retain.
+        </p>
+
+        {!scanResults ? (
+          <button
+            onClick={() => scanMutation.mutate({})}
+            disabled={scanMutation.isPending}
+            style={{
+              padding: "10px 20px",
+              background: "var(--accent)",
+              color: "white",
+              border: "none",
+              borderRadius: "var(--radius)",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            {scanMutation.isPending ? "Scanning & Analyzing Database..." : "Scan for Duplicates"}
+          </button>
+        ) : (
+          <div>
+            <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+              <button
+                onClick={() => scanMutation.mutate({})}
+                disabled={scanMutation.isPending || resolveMutation.isPending}
+                style={{
+                  padding: "8px 16px",
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                  borderRadius: "var(--radius)",
+                  fontSize: "13px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                }}
+              >
+                {scanMutation.isPending ? "Scanning..." : "Rescan"}
+              </button>
+              <button
+                onClick={() => setScanResults(null)}
+                disabled={scanMutation.isPending || resolveMutation.isPending}
+                style={{
+                  padding: "8px 16px",
+                  background: "transparent",
+                  border: "1px solid transparent",
+                  color: "var(--text-muted)",
+                  borderRadius: "var(--radius)",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Clear Results
+              </button>
+            </div>
+
+            {scanResults.length === 0 ? (
+              <div style={{ padding: "20px", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: "var(--radius)", color: "var(--success)", fontSize: "14px" }}>
+                🎉 No duplicate memories found in your database!
+              </div>
+            ) : (
+              <div>
+                <div style={{ marginBottom: "15px", fontSize: "13px", color: "var(--text-muted)" }}>
+                  Found {scanResults.length} duplicate group{scanResults.length !== 1 ? "s" : ""}. Choose which memory in each group you want to **retain** (non-selected items will be deleted):
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                  {scanResults.map((group, groupIdx) => {
+                    const allItemsInGroup = [group.primary, ...group.duplicates];
+                    const selectedId = retainSelections[groupIdx] || group.primary.id;
+
+                    return (
+                      <div
+                        key={groupIdx}
+                        style={{
+                          background: "var(--surface2)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "var(--radius)",
+                          padding: "15px",
+                        }}
+                      >
+                        <div style={{ fontSize: "12px", fontWeight: "bold", color: "var(--accent)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          Group {groupIdx + 1}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                          {allItemsInGroup.map((item) => (
+                            <label
+                              key={item.id}
+                              style={{
+                                display: "flex",
+                                alignItems: "start",
+                                gap: "10px",
+                                padding: "10px",
+                                background: selectedId === item.id ? "rgba(99,102,241,0.06)" : "var(--surface)",
+                                border: `1px solid ${selectedId === item.id ? "var(--accent)" : "var(--border)"}`,
+                                borderRadius: "var(--radius)",
+                                cursor: "pointer",
+                                transition: "all 0.15s ease",
+                              }}
+                            >
+                              <input
+                                type="radio"
+                                name={`group-${groupIdx}`}
+                                checked={selectedId === item.id}
+                                onChange={() => handleSelectRetain(groupIdx, item.id)}
+                                style={{ marginTop: "3px", accentColor: "var(--accent)" }}
+                              />
+                              <div style={{ flex: 1, fontSize: "13px", lineHeight: "1.5" }}>
+                                <p style={{ margin: 0, color: "var(--text)" }}>{item.fact}</p>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "6px" }}>
+                                  <span
+                                    style={{
+                                      fontSize: "10px",
+                                      background: "var(--surface2)",
+                                      color: "var(--text-muted)",
+                                      padding: "2px 6px",
+                                      borderRadius: "4px",
+                                      textTransform: "uppercase",
+                                    }}
+                                  >
+                                    {item.category}
+                                  </span>
+                                  <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                                    Added {new Date(item.timestamp).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ marginTop: "20px" }}>
+                  <button
+                    onClick={() => resolveMutation.mutate()}
+                    disabled={resolveMutation.isPending}
+                    style={{
+                      padding: "10px 24px",
+                      background: "var(--error)",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "var(--radius)",
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      boxShadow: "0 4px 12px rgba(239, 68, 68, 0.2)",
+                    }}
+                  >
+                    {resolveMutation.isPending ? "Resolving Duplicates..." : "Resolve & Delete Duplicates"}
+                  </button>
+                  {resolveMutation.isError && (
+                    <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>
+                      Failed to resolve duplicates. Please try again.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </section>
 
