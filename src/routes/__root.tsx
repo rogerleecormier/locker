@@ -107,6 +107,9 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
         <Link to="/" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Memories
         </Link>
+        <Link to="/import" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+          Import
+        </Link>
         <Link to="/connect" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Connect
         </Link>
