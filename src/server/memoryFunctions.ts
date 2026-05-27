@@ -415,8 +415,11 @@ export const bulkDeleteMemories = createServerFn({ method: "POST" })
 
     const VECTOR_CHUNK = 100;
     for (let i = 0; i < data.ids.length; i += VECTOR_CHUNK) {
-      await env.VECTOR_INDEX.deleteByIds(data.ids.slice(i, i + VECTOR_CHUNK));
+      const chunk = data.ids.slice(i, i + VECTOR_CHUNK);
+      console.log("[bulkDeleteMemories] deleting", chunk.length, "vectors:", chunk.slice(0, 3).join(","));
+      await env.VECTOR_INDEX.deleteByIds(chunk);
     }
+    console.log("[bulkDeleteMemories] deleted", data.ids.length, "memories from D1 and Vectorize");
 
     return { deleted: data.ids.length };
   });

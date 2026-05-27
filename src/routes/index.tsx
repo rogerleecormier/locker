@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useCallback } from "react";
 import { getMemories, addMemory, batchImportMemories, parseMemoriesWithAI, deleteMemory, bulkDeleteMemories, updateMemory } from "~/server/memoryFunctions";
@@ -1094,26 +1094,50 @@ function Dashboard() {
           >
             Memory Manager
           </span>
-          <button
-            onClick={() => setShowNewMemory(true)}
-            style={{
-              marginLeft: "auto",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "7px 16px",
-              background: "var(--accent)",
-              color: "#fff",
-              fontWeight: 600,
-              fontSize: 13,
-              borderRadius: "var(--radius)",
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            New Memory
-          </button>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+            <Link
+              to="/admin"
+              style={{
+                padding: "6px 12px",
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                fontSize: 12,
+                borderRadius: "var(--radius)",
+                textDecoration: "none",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                (e.target as HTMLElement).style.borderColor = "var(--text-muted)";
+                (e.target as HTMLElement).style.color = "var(--text)";
+              }}
+              onMouseLeave={(e) => {
+                (e.target as HTMLElement).style.borderColor = "var(--border)";
+                (e.target as HTMLElement).style.color = "var(--text-muted)";
+              }}
+            >
+              Admin
+            </Link>
+            <button
+              onClick={() => setShowNewMemory(true)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "7px 16px",
+                background: "var(--accent)",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: 13,
+                borderRadius: "var(--radius)",
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              New Memory
+            </button>
+          </div>
         </div>
         <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
           Long-term technical context. Semantic retrieval via{" "}
