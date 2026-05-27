@@ -74,36 +74,18 @@ function ConnectPage() {
     },
     {
       id: "claudecode",
-      label: "Claude Code CLI",
+      label: "Claude Code",
       color: "#c97b53",
       group: "Anthropic",
-      description: "Integrate Locker memories into the Claude Code CLI. Run this once in your terminal — the server persists across all future sessions.",
+      description: "Integrate Locker into Claude Code. MCP servers must be added via the CLI — the VS Code extension can only manage servers already added this way.",
       copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
-            <li>Run the command below in your terminal, replacing <code>lkr_your_token_here</code> with your token. This adds Locker to your user-level config (<code>~/.claude.json</code>) so it works in all projects.</li>
-            <li>To scope it to one project instead, add <code>--scope project</code> — this writes a <code>.mcp.json</code> at the project root.</li>
-            <li>Verify with <code>claude mcp list</code>. Locker tools will be active in your next session.</li>
-          </ol>
-        </div>
-      ),
-    },
-    {
-      id: "claudecode_vscode",
-      label: "Claude Code Extension",
-      color: "#b87040",
-      group: "Anthropic",
-      description: "Claude Code's VS Code extension shares the same MCP config as the CLI — add the server once via terminal, then manage it inside VS Code.",
-      copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
-      instructions: (
-        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
-          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
-            <li>Open the integrated terminal in VS Code (<code>Ctrl+`</code> / <code>Cmd+`</code>) and run the command below, replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>Once added, type <code>/mcp</code> in the Claude Code chat panel to view connected servers, enable/disable them, or reconnect.</li>
-            <li>The extension uses the same <code>~/.claude.json</code> config as the CLI — no separate setup needed if you've already added it there.</li>
+            <li>Run the command below in your terminal, replacing <code>lkr_your_token_here</code> with your token. <strong>The CLI is required to add servers</strong> — this cannot be done from the VS Code extension.</li>
+            <li>To scope it to one project instead of globally, add <code>--scope project</code> — this writes a <code>.mcp.json</code> at the project root.</li>
+            <li>Verify with <code>claude mcp list</code>. Once added, the VS Code extension picks up the server automatically — use <code>/mcp</code> in the chat panel to view status or reconnect.</li>
           </ol>
         </div>
       ),
