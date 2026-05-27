@@ -21,16 +21,20 @@ export default {
       return auth.handler(request);
     }
 
-    // OAuth 2.0 protected resource metadata (RFC 9728) — Claude fetches this first.
+    // OAuth 2.0 protected resource metadata (RFC 9728).
+    // Claude fetches /.well-known/oauth-protected-resource[/<path>] to discover the auth server.
     if (url.pathname === "/.well-known/oauth-protected-resource" ||
         url.pathname.startsWith("/.well-known/oauth-protected-resource/")) {
       return Response.json({
-        resource: url.origin,
+        resource: `${url.origin}/api/mcp`,
         authorization_servers: [url.origin],
+        bearer_methods_supported: ["header"],
+        resource_documentation: `${url.origin}/connect`,
       });
     }
 
-    // OAuth 2.0 authorization server metadata (RFC 8414) — fallback discovery.
+    // OAuth 2.0 authorization server metadata (RFC 8414).
+    // Maps to the OIDC discovery doc that better-auth exposes.
     if (url.pathname === "/.well-known/oauth-authorization-server") {
       const rewritten = new Request(
         `${url.origin}/api/auth/.well-known/openid-configuration`,

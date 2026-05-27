@@ -162,7 +162,13 @@ export async function handleMcpRequest(
   if (!claims) {
     return Response.json(
       { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized: valid Bearer token required" } },
-      { status: 401, headers }
+      {
+        status: 401,
+        headers: {
+          ...headers,
+          "WWW-Authenticate": `Bearer realm="${env.BETTER_AUTH_URL}", resource_metadata="${env.BETTER_AUTH_URL}/.well-known/oauth-protected-resource"`,
+        },
+      }
     );
   }
 
