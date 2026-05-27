@@ -432,10 +432,11 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
   const [parseError, setParseError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [source, setSource] = useState<string>("chatgpt");
 
   const batchMutation = useMutation({
-    mutationFn: (items: Array<{ fact: string; category?: string; tags?: string }>) =>
-      batchImportMemories({ data: items }),
+    mutationFn: ({ items, source }: { items: Array<{ fact: string; category?: string; tags?: string }>; source: string }) =>
+      batchImportMemories({ data: { items, source } }),
     onSuccess: (result) => {
       setPasteText("");
       setPreview(null);
@@ -468,7 +469,7 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
 
   function handleImport() {
     if (!preview) return;
-    batchMutation.mutate(preview);
+    batchMutation.mutate({ items: preview, source });
   }
 
   return (
@@ -531,7 +532,7 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
           <button
             onClick={handleProcess}
             disabled={!pasteText.trim() || parsing || batchMutation.isPending}
@@ -548,6 +549,22 @@ function IngestPanel({ onSuccess }: { onSuccess: () => void }) {
               {batchMutation.isPending ? `Importing…` : `Import ${preview.length} Memor${preview.length !== 1 ? "ies" : "y"}`}
             </button>
           )}
+
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <label style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Source Provider:</label>
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              style={{ padding: "6px 12px", fontSize: 13, background: "var(--surface2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}
+            >
+              <option value="chatgpt">ChatGPT</option>
+              <option value="claude">Claude</option>
+              <option value="perplexity">Perplexity</option>
+              <option value="gemini">Gemini</option>
+              <option value="grok">Grok</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>

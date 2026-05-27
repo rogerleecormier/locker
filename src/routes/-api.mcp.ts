@@ -53,6 +53,7 @@ const TOOLS_LIST = {
           fact: { type: "string", description: "The factual statement to store." },
           category: { type: "string", enum: ["rules", "projects", "references"] },
           tags: { type: "string", description: "Comma-separated keywords." },
+          source: { type: "string", description: "The source chatbot or origin (e.g. chatgpt, claude). Defaults to mcp." },
         },
         required: ["fact"],
       },
@@ -163,19 +164,27 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, "Invalid params: fact is required");
     }
     const category = normalizeCategory(args.category as string | undefined);
-    const tags = typeof args.tags === "string" ? args.tags.trim() : "";
+    const source = typeof args.source === "string" ? args.source.trim().toLowerCase() : "mcp";
+    const rawTags = typeof args.tags === "string" ? args.tags.trim() : "";
+
+    const tagsList = rawTags.split(",").map(t => t.trim()).filter(Boolean);
+    if (!tagsList.includes(source)) {
+      tagsList.push(source);
+    }
+    const finalTags = tagsList.join(", ");
+
     const memId = crypto.randomUUID();
     const timestamp = Date.now();
     const embedding = await generateEmbedding(env.AI, fact.trim());
 
-    await db.insert(memories).values({ id: memId, fact: fact.trim(), category, tags, timestamp });
+    await db.insert(memories).values({ id: memId, fact: fact.trim(), category, tags: finalTags, timestamp });
     await env.VECTOR_INDEX.insert([
-      { id: memId, values: embedding, metadata: { category, tags } },
+      { id: memId, values: embedding, metadata: { category, tags: finalTags } },
     ]);
 
     return mcpResult(id, {
       content: [
-        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: fact.trim(), category, tags }) },
+        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: fact.trim(), category, tags: finalTags }) },
       ],
     });
   }

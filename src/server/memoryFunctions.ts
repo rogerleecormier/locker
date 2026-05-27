@@ -249,11 +249,18 @@ export const addMemory = createServerFn({ method: "POST" })
     const timestamp = Date.now();
     const embedding = await generateEmbedding(env.AI, data.fact);
 
+    // Append manual tag if not present
+    const tagsList = data.tags.split(",").map(t => t.trim()).filter(Boolean);
+    if (!tagsList.includes("manual")) {
+      tagsList.push("manual");
+    }
+    const finalTags = tagsList.join(", ");
+
     const newRow: NewMemory = {
       id,
       fact: data.fact,
       category: data.category,
-      tags: data.tags,
+      tags: finalTags,
       timestamp,
     };
 
@@ -263,7 +270,7 @@ export const addMemory = createServerFn({ method: "POST" })
         {
           id,
           values: embedding,
-          metadata: { category: data.category, tags: data.tags } as Record<string, VectorizeVectorMetadata>,
+          metadata: { category: data.category, tags: finalTags } as Record<string, VectorizeVectorMetadata>,
         },
       ]);
       console.log(`[addMemory] vector insert result:`, insertResult);
@@ -289,20 +296,31 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dotProduct / (Math.sqrt(mA) * Math.sqrt(mB));
 }
 
+type BatchImportInput = {
+  items: BatchImportItem[];
+  source: string;
+};
+
 export const batchImportMemories = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): BatchImportItem[] => {
-    if (!Array.isArray(data)) throw new Error("Input must be an array");
-    return (data as BatchImportItem[]).map((item) => ({
+  .inputValidator((data: unknown): BatchImportInput => {
+    const d = data as BatchImportInput;
+    if (!Array.isArray(d.items)) throw new Error("items must be an array");
+    const validatedItems = d.items.map((item) => ({
       fact: String(item.fact || "").trim(),
       category: item.category,
       tags: item.tags,
     }));
+    return {
+      items: validatedItems,
+      source: typeof d.source === "string" ? d.source.trim().toLowerCase() : "manual",
+    };
   })
   .handler(async ({ data, context }): Promise<{ imported: number; skipped: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const db = getDb(env);
+    const { items, source } = data;
 
-    const valid = data.filter((item) => {
+    const valid = items.filter((item) => {
       const f = item.fact;
       if (f.length === 0) return false;
       // drop section headers, evidence lines, and bullets that are just labels
@@ -444,12 +462,16 @@ Example output:
     for (let i = 0; i < valid.length; i++) {
       const tempId = `new-${i}`;
       let isDupe = false;
+      let matchedDbId: string | null = null;
 
       if (hasValidMapping && dupeMapping[tempId] !== undefined) {
         const mappedVal = dupeMapping[tempId];
         if (mappedVal !== null && mappedVal !== undefined) {
           isDupe = true;
           console.log(`[batchImportMemories] AI flagged item ${i} ("${valid[i].fact}") as duplicate of: ${mappedVal}`);
+          if (!mappedVal.startsWith("new-")) {
+            matchedDbId = mappedVal;
+          }
         }
       } else {
         // Fallback: Cosine Similarity check
@@ -473,9 +495,37 @@ Example output:
           if (hasMatch) {
             if (existingDbMemories.has(top.id)) {
               isDupe = true;
+              matchedDbId = top.id;
               console.log(`[batchImportMemories] Fallback: item ${i} matched verified DB memory ${top.id} (score=${top.score})`);
             } else {
               console.log(`[batchImportMemories] Fallback: item ${i} matched orphaned vector ${top.id} in Vectorize but not in D1. Skipping duplicate flag (score=${top.score})`);
+            }
+          }
+        }
+      }
+
+      // If it is a duplicate of an existing DB entry, update the existing entry's tags to include the new source
+      if (isDupe && matchedDbId) {
+        const existing = existingDbMemories.get(matchedDbId);
+        if (existing) {
+          const tagsList = (existing.tags ?? "").split(",").map(t => t.trim()).filter(Boolean);
+          if (!tagsList.includes(source)) {
+            tagsList.push(source);
+            const newTags = tagsList.join(", ");
+            // Update SQLite
+            await db.update(memories).set({ tags: newTags }).where(eq(memories.id, matchedDbId));
+            // Update Vectorize
+            try {
+              await env.VECTOR_INDEX.upsert([
+                {
+                  id: matchedDbId,
+                  values: embeddings[i],
+                  metadata: { category: existing.category, tags: newTags } as Record<string, VectorizeVectorMetadata>,
+                },
+              ]);
+              console.log(`[batchImportMemories] Appended source "${source}" to duplicate memory ${matchedDbId} -> tags: ${newTags}`);
+            } catch (err) {
+              console.error(`[batchImportMemories] Vectorize upsert failed for updated duplicate tags:`, err);
             }
           }
         }
@@ -488,15 +538,23 @@ Example output:
     }
 
     const timestamp = Date.now();
-    const allRows: (NewMemory & { embedding: number[]; isDupe: boolean })[] = valid.map((item, i) => ({
-      id: crypto.randomUUID(),
-      fact: item.fact,
-      category: resolvedCategories[i] ?? normalizeCategory(item.category),
-      tags: item.tags?.trim() ?? "",
-      timestamp,
-      embedding: embeddings[i],
-      isDupe: dupeFlags[i],
-    }));
+    const allRows: (NewMemory & { embedding: number[]; isDupe: boolean })[] = valid.map((item, i) => {
+      const tagsList = (item.tags ?? "").split(",").map(t => t.trim()).filter(Boolean);
+      if (!tagsList.includes(source)) {
+        tagsList.push(source);
+      }
+      const finalTags = tagsList.join(", ");
+
+      return {
+        id: crypto.randomUUID(),
+        fact: item.fact,
+        category: resolvedCategories[i] ?? normalizeCategory(item.category),
+        tags: finalTags,
+        timestamp,
+        embedding: embeddings[i],
+        isDupe: dupeFlags[i],
+      };
+    });
 
     const newRows = allRows.filter((r) => !r.isDupe);
     if (newRows.length === 0) return { imported: 0, skipped: allRows.length };
