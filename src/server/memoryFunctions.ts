@@ -319,81 +319,153 @@ export const batchImportMemories = createServerFn({ method: "POST" })
     // deduplicate against existing vectors — skip anything with cosine similarity >= 0.98
     // (0.92 was too permissive and skipped too many legitimate facts)
     const DUPE_THRESHOLD = 0.98;
+    const CANDIDATE_THRESHOLD = 0.80;
 
     // First query Vectorize in parallel for all inputs to find possible matches
     const vectorizeMatches = await Promise.all(
       embeddings.map(async (vec, idx) => {
         try {
-          const result = await env.VECTOR_INDEX.query(vec, { topK: 1, returnMetadata: false });
-          return result.matches?.[0] ?? null;
+          // Retrieve top 3 matches to give the LLM good candidate choices
+          const result = await env.VECTOR_INDEX.query(vec, { topK: 3, returnMetadata: false });
+          return result.matches ?? [];
         } catch (err) {
           console.error(`[batchImportMemories] Vectorize query failed for item ${idx}:`, err);
-          return null;
+          return [];
         }
       })
     );
 
-    // Identify unique matched vector IDs
-    const matchedIds = Array.from(
+    // Identify unique matched vector IDs above the candidate threshold
+    const candidateIds = Array.from(
       new Set(
         vectorizeMatches
-          .filter((m): m is VectorizeMatch => m !== null)
+          .flat()
+          .filter((m): m is VectorizeMatch => m !== null && m.score >= CANDIDATE_THRESHOLD)
           .map((m) => m.id)
       )
     );
 
     // Query D1 database to verify which of these matched IDs exist in D1
-    const existingDbIds = new Set<string>();
-    if (matchedIds.length > 0) {
+    const existingDbMemories = new Map<string, Memory>();
+    if (candidateIds.length > 0) {
       const DB_CHUNK = 50;
-      for (let i = 0; i < matchedIds.length; i += DB_CHUNK) {
-        const chunk = matchedIds.slice(i, i + DB_CHUNK);
+      for (let i = 0; i < candidateIds.length; i += DB_CHUNK) {
+        const chunk = candidateIds.slice(i, i + DB_CHUNK);
         const rows = await db
-          .select({ id: memories.id })
+          .select()
           .from(memories)
           .where(sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`)
           .all();
         for (const r of rows) {
-          existingDbIds.add(r.id);
+          existingDbMemories.set(r.id, r);
         }
       }
     }
 
-    // Now check for duplicates, both within the batch and against verified D1 database records
+    // Prepare lists for the LLM prompt
+    const dbCandidatesList = Array.from(existingDbMemories.values());
+    const newMemoriesList = valid.map((item, idx) => ({
+      tempId: `new-${idx}`,
+      fact: item.fact,
+      category: resolvedCategories[idx] ?? normalizeCategory(item.category),
+    }));
+
+    let dupeMapping: Record<string, string | null> = {};
+
+    // Call LLM for semantic deduplication check
+    try {
+      const prompt = `You are a memory deduplication assistant. Your job is to check a list of new memories against a list of existing memories and identify duplicates.
+
+A new memory is a duplicate if:
+1. It expresses the exact same fact or semantic meaning as an existing memory (even if phrased differently, e.g., "graduated with a BS in IT" is a duplicate if "The user has a BS in IT degree" is already stored).
+2. It expresses a fact that is a subset of or already fully covered by an existing memory.
+3. It duplicates a previous new memory in the list (in this case, map it to that previous new memory's ID).
+
+Existing Memories:
+${dbCandidatesList.length > 0
+  ? dbCandidatesList.map((m) => `[${m.id}] (${m.category}) "${m.fact}"`).join("\n")
+  : "(None)"}
+
+New Memories to Check:
+${newMemoriesList.map((m) => `[${m.tempId}] (${m.category}) "${m.fact}"`).join("\n")}
+
+Respond with ONLY a JSON object mapping each new memory's ID (e.g. "new-0") to:
+- The ID of the existing memory it duplicates (from the Existing Memories list), OR
+- The temporary ID of a previous new memory it duplicates (from the New Memories list), OR
+- null if it is not a duplicate.
+
+Do not include any intro, markdown formatting, or code blocks. Just the raw JSON object.
+
+Example output:
+{
+  "new-0": "6091fbef-95a2-4235-b97e-cc1f360f73b2",
+  "new-1": "new-0",
+  "new-2": null
+}`;
+
+      const llmResult = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+        prompt,
+        max_tokens: Math.max(128, valid.length * 48),
+      });
+
+      const rawText = extractText(llmResult).trim();
+      const match = rawText.match(/\{[\s\S]*?\}/);
+      if (match) {
+        dupeMapping = JSON.parse(match[0]);
+        console.log("[batchImportMemories] AI deduplication mapping:", dupeMapping);
+      }
+    } catch (err) {
+      console.error("[batchImportMemories] AI deduplication failed, falling back to vector cosine similarity:", err);
+    }
+
+    // Now check for duplicates, using the LLM mapping if available, otherwise falling back to cosine similarity
     const dupeFlags: boolean[] = [];
     const keptEmbeddings: { embedding: number[]; index: number }[] = [];
+    const hasValidMapping = Object.keys(dupeMapping).length > 0;
 
     for (let i = 0; i < valid.length; i++) {
-      const vec = embeddings[i];
+      const tempId = `new-${i}`;
       let isDupe = false;
 
-      // 1. Check against previous items in the same ingest batch (intra-batch)
-      for (const kept of keptEmbeddings) {
-        const sim = cosineSimilarity(vec, kept.embedding);
-        if (sim >= DUPE_THRESHOLD) {
+      if (hasValidMapping && dupeMapping[tempId] !== undefined) {
+        const mappedVal = dupeMapping[tempId];
+        if (mappedVal !== null && mappedVal !== undefined) {
           isDupe = true;
-          console.log(`[batchImportMemories] item ${i} is a duplicate of item ${kept.index} within the same ingest batch (similarity=${sim.toFixed(4)})`);
-          break;
+          console.log(`[batchImportMemories] AI flagged item ${i} ("${valid[i].fact}") as duplicate of: ${mappedVal}`);
         }
-      }
+      } else {
+        // Fallback: Cosine Similarity check
+        const vec = embeddings[i];
 
-      // 2. Check against verified existing memories in the database
-      if (!isDupe) {
-        const top = vectorizeMatches[i];
-        const hasMatch = top !== null && top !== undefined && top.score >= DUPE_THRESHOLD;
-        if (hasMatch) {
-          if (existingDbIds.has(top.id)) {
+        // 1. Check against previous kept items in batch (intra-batch)
+        for (const kept of keptEmbeddings) {
+          const sim = cosineSimilarity(vec, kept.embedding);
+          if (sim >= DUPE_THRESHOLD) {
             isDupe = true;
-            console.log(`[batchImportMemories] item ${i}: matched existing verified DB memory ${top.id} (score=${top.score})`);
-          } else {
-            console.log(`[batchImportMemories] item ${i}: matched orphaned vector ${top.id} in Vectorize but not in D1. Skipping duplicate flag (score=${top.score})`);
+            console.log(`[batchImportMemories] Fallback: item ${i} is a duplicate of item ${kept.index} within the same ingest batch (similarity=${sim.toFixed(4)})`);
+            break;
+          }
+        }
+
+        // 2. Check against verified existing database memories
+        if (!isDupe) {
+          const matches = vectorizeMatches[i];
+          const top = matches?.[0]; // Get closest match
+          const hasMatch = top !== null && top !== undefined && top.score >= DUPE_THRESHOLD;
+          if (hasMatch) {
+            if (existingDbMemories.has(top.id)) {
+              isDupe = true;
+              console.log(`[batchImportMemories] Fallback: item ${i} matched verified DB memory ${top.id} (score=${top.score})`);
+            } else {
+              console.log(`[batchImportMemories] Fallback: item ${i} matched orphaned vector ${top.id} in Vectorize but not in D1. Skipping duplicate flag (score=${top.score})`);
+            }
           }
         }
       }
 
       dupeFlags.push(isDupe);
       if (!isDupe) {
-        keptEmbeddings.push({ embedding: vec, index: i });
+        keptEmbeddings.push({ embedding: embeddings[i], index: i });
       }
     }
 
