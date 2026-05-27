@@ -26,6 +26,7 @@ type SetupService = {
   id: string;
   label: string;
   color: string;
+  group: string;
   description: string;
   instructions: React.ReactNode;
   copyText?: string;
@@ -40,6 +41,7 @@ function ConnectPage() {
       id: "claudedesktop",
       label: "Claude Desktop",
       color: "#d4956a",
+      group: "Anthropic",
       description: "Connect the Claude Desktop app directly to your hosted MCP endpoint.",
       copyText: `{
   "mcpServers": {
@@ -73,6 +75,7 @@ function ConnectPage() {
       id: "claudecode",
       label: "Claude Code CLI",
       color: "#c97b53",
+      group: "Anthropic",
       description: "Integrate Locker memories into the Claude Code CLI. Run this once in your terminal — the server persists across all future sessions.",
       copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
       instructions: (
@@ -90,6 +93,7 @@ function ConnectPage() {
       id: "claudecode_vscode",
       label: "Claude Code Extension",
       color: "#b87040",
+      group: "Anthropic",
       description: "Claude Code's VS Code extension shares the same MCP config as the CLI — add the server once via terminal, then manage it inside VS Code.",
       copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
       instructions: (
@@ -107,6 +111,7 @@ function ConnectPage() {
       id: "cursor",
       label: "Cursor",
       color: "#00e5ff",
+      group: "VS Code",
       description: "Access Locker memory in Cursor's Composer or Chat panels.",
       copyText: `npx -y mcp-remote https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
       instructions: (
@@ -124,6 +129,7 @@ function ConnectPage() {
       id: "cline",
       label: "Cline",
       color: "#ff6b6b",
+      group: "VS Code",
       description: "Enable your Cline assistant to recall technical rules and context inside VS Code.",
       copyText: `{
   "mcpServers": {
@@ -157,6 +163,7 @@ function ConnectPage() {
       id: "roocode",
       label: "Roo Code",
       color: "#ff8787",
+      group: "VS Code",
       description: "Add Locker memory context directly to Roo Code inside VS Code.",
       copyText: `{
   "mcpServers": {
@@ -190,6 +197,7 @@ function ConnectPage() {
       id: "continue",
       label: "Continue",
       color: "#2f80ed",
+      group: "VS Code",
       description: "Integrate personal memory context inside the Continue code assistant in VS Code or JetBrains.",
       copyText: `"mcp": {
   "locker": {
@@ -221,6 +229,7 @@ function ConnectPage() {
       id: "copilot",
       label: "GitHub Copilot",
       color: "#6f42c1",
+      group: "VS Code",
       description: "Connect GitHub Copilot Chat in VS Code to Locker.",
       copyText: `{
   "servers": {
@@ -254,6 +263,7 @@ function ConnectPage() {
       id: "vscode",
       label: "VS Code",
       color: "#007acc",
+      group: "VS Code",
       description: "Configure VS Code MCP support via .vscode/mcp.json in your workspace.",
       copyText: `{
   "servers": {
@@ -287,6 +297,7 @@ function ConnectPage() {
       id: "codex_cli",
       label: "Codex CLI",
       color: "#0f9d58",
+      group: "OpenAI",
       description: "Connect the OpenAI Codex CLI to Locker via native HTTP MCP transport — no mcp-remote wrapper needed.",
       copyText: `[mcp_servers.locker]
 url = "https://locker.rcormier.dev/api/mcp"
@@ -307,6 +318,7 @@ enabled = true`,
       id: "codex_app",
       label: "Codex App",
       color: "#0c8a4f",
+      group: "OpenAI",
       description: "Connect the Codex desktop app (macOS/Windows) to Locker — it shares the same config file as the CLI.",
       copyText: `[mcp_servers.locker]
 url = "https://locker.rcormier.dev/api/mcp"
@@ -327,6 +339,7 @@ enabled = true`,
       id: "codex_vscode",
       label: "Codex Extension",
       color: "#0a7a46",
+      group: "OpenAI",
       description: "Connect the official OpenAI Codex VS Code extension to Locker — same config.toml as the CLI and app.",
       copyText: `[mcp_servers.locker]
 url = "https://locker.rcormier.dev/api/mcp"
@@ -347,6 +360,7 @@ enabled = true`,
       id: "antigravity",
       label: "Antigravity 2.0",
       color: "#818cf8",
+      group: "Google",
       description: "Register the Locker memory server in the Antigravity 2.0 CLI using its native HTTP MCP transport.",
       copyText: `{
   "mcpServers": {
@@ -373,6 +387,7 @@ enabled = true`,
       id: "antigravity_ide",
       label: "Antigravity 2.0 IDE",
       color: "#4f46e5",
+      group: "Google",
       description: "Register the Locker memory server in the Antigravity 2.0 VS Code or JetBrains extension — it shares the same config file as the CLI.",
       copyText: `{
   "mcpServers": {
@@ -399,6 +414,7 @@ enabled = true`,
       id: "windsurf",
       label: "Windsurf",
       color: "#06b6d4",
+      group: "Editors",
       description: "Connect Windsurf (Codeium's AI IDE) to Locker via native HTTP MCP transport.",
       copyText: `{
   "mcpServers": {
@@ -425,6 +441,7 @@ enabled = true`,
       id: "gemini_code_assist",
       label: "Gemini Code Assist",
       color: "#1a73e8",
+      group: "Google",
       description: "Connect the Gemini Code Assist VS Code or JetBrains extension to Locker (Standard/Enterprise tier required for agent mode).",
       copyText: `{
   "mcpServers": {
@@ -451,6 +468,7 @@ enabled = true`,
       id: "zed",
       label: "Zed",
       color: "#084cdf",
+      group: "Editors",
       description: "Connect the Zed editor to Locker via native HTTP MCP transport. Zed uses context_servers instead of mcpServers.",
       copyText: `{
   "context_servers": {
@@ -477,6 +495,7 @@ enabled = true`,
       id: "amp",
       label: "Amp",
       color: "#ff4500",
+      group: "Editors",
       description: "Connect Sourcegraph's Amp coding agent to Locker via native HTTP MCP transport.",
       copyText: `{
   "amp.mcpServers": {
@@ -503,6 +522,7 @@ enabled = true`,
       id: "kiro",
       label: "Kiro",
       color: "#ff9900",
+      group: "Editors",
       description: "Connect AWS's Kiro IDE to Locker via native HTTP MCP transport. Kiro has a built-in UI for managing MCP servers.",
       copyText: `{
   "mcpServers": {
@@ -529,6 +549,7 @@ enabled = true`,
       id: "chatgpt",
       label: "ChatGPT",
       color: "#10a37f",
+      group: "OpenAI",
       description: "Integrate your Locker memory into ChatGPT by building a Custom GPT with an API Action.",
       copyText: `{
   "openapi": "3.1.0",
@@ -618,6 +639,7 @@ enabled = true`,
       id: "geminicli",
       label: "Gemini CLI",
       color: "#34a853",
+      group: "Google",
       description: "Connect the Gemini CLI (@google/gemini-cli) to Locker via native HTTP MCP transport — no mcp-remote wrapper needed.",
       copyText: `{
   "mcpServers": {
@@ -644,6 +666,7 @@ enabled = true`,
       id: "gemini",
       label: "Gemini (Gems)",
       color: "#4285f4",
+      group: "Google",
       description: "Gemini Gems (gemini.google.com) don't support MCP directly. Use a custom instruction prompt to tell Gemini how to call the Locker API.",
       copyText: `You have access to a personal memory retrieval API at https://locker.rcormier.dev/api/mcp. All requests require the header "Authorization: Bearer lkr_your_token_here". If you need context about my background, projects, or rules, send a POST request to that URL with the JSON-RPC body {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_context","arguments":{"query":"<topic>"}}} and include the Authorization header.`,
       instructions: (
@@ -660,6 +683,7 @@ enabled = true`,
       id: "grok",
       label: "Grok",
       color: "#e7e7e7",
+      group: "Other",
       description: "Connect your Locker memories to Grok Agents using custom Grok Web Actions.",
       copyText: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_context","arguments":{"query":"{{QUERY}}"}}}`,
       instructions: (
@@ -678,6 +702,7 @@ enabled = true`,
       id: "perplexity",
       label: "Perplexity",
       color: "#20b2aa",
+      group: "Other",
       description: "Make your Locker memories available in Perplexity Collections using custom instruction overrides.",
       copyText: `You have access to my personal memory API at https://locker.rcormier.dev/api/mcp. All requests must include the header "Authorization: Bearer lkr_your_token_here". Query this endpoint when asked about my rules, preferences, active projects, or background by sending a POST with body {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_context","arguments":{"query":"<topic>"}}}.`,
       instructions: (
@@ -740,28 +765,42 @@ enabled = true`,
           borderBottom: "1px solid var(--border)",
           background: "rgba(99,102,241,0.04)",
         }}>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
             Select platform
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {SERVICES.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => { setSelectedService(s.id); setCopied(false); }}
-                style={{
-                  padding: "5px 13px",
-                  background: selectedService === s.id ? `${s.color}22` : "var(--surface2)",
-                  border: `1px solid ${selectedService === s.id ? s.color : "var(--border)"}`,
-                  color: selectedService === s.id ? s.color : "var(--text-muted)",
-                  fontWeight: selectedService === s.id ? 600 : 400,
-                  fontSize: 12,
-                  borderRadius: 20,
-                  transition: "all 0.15s",
-                }}
-              >
-                {s.label}
-              </button>
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {(["Anthropic", "OpenAI", "Google", "VS Code", "Editors", "Other"] as const).map((group) => {
+              const groupServices = SERVICES.filter((s) => s.group === group);
+              if (groupServices.length === 0) return null;
+              return (
+                <div key={group}>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5, opacity: 0.6 }}>
+                    {group}
+                  </div>
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    {groupServices.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => { setSelectedService(s.id); setCopied(false); }}
+                        style={{
+                          padding: "4px 12px",
+                          background: selectedService === s.id ? `${s.color}22` : "var(--surface2)",
+                          border: `1px solid ${selectedService === s.id ? s.color : "var(--border)"}`,
+                          color: selectedService === s.id ? s.color : "var(--text-muted)",
+                          fontWeight: selectedService === s.id ? 600 : 400,
+                          fontSize: 12,
+                          borderRadius: 20,
+                          transition: "all 0.15s",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
