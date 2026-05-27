@@ -95,16 +95,19 @@ function ConnectPage() {
       label: "Claude (Web)",
       color: "#b85c38",
       group: "Anthropic",
-      description: "Connect claude.ai to your Locker vault. Claude's web app supports remote MCP servers natively — no local proxy needed.",
-      copyText: `https://locker.rcormier.dev/api/mcp`,
+      description: "Connect claude.ai to your Locker vault via the Connectors feature. Requires OAuth — not yet supported by Locker. Requires a Claude Pro, Team, or Enterprise plan.",
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>
+            Claude's Connectors require an <strong>OAuth 2.0 client ID and secret</strong> — API token authentication is not supported. Locker does not yet implement an OAuth flow for this integration.
+          </p>
+          <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>
+            Once OAuth support is added, setup will be:
+          </p>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
-            <li>Open <strong>claude.ai</strong> → click your profile avatar → <strong>Settings → Integrations</strong>.</li>
-            <li>Click <strong>Add integration</strong>, paste the server URL below, and enter a name (e.g. <code>locker</code>).</li>
-            <li>When prompted for authentication, choose <strong>Authorization Header</strong> and enter <code>Bearer lkr_your_token_here</code> (replace with your token).</li>
-            <li>Click <strong>Save</strong>. The Locker memory tools will be available in your Claude.ai chats.</li>
+            <li>Open <strong>claude.ai</strong> → <strong>Settings → Connectors → Add connector</strong>.</li>
+            <li>Enter the server URL <code>https://locker.rcormier.dev/api/mcp</code> and provide the OAuth client ID and secret.</li>
+            <li>Authorize via the OAuth consent screen — Claude will handle token refresh automatically.</li>
           </ol>
         </div>
       ),
