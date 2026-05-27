@@ -727,7 +727,7 @@ function Dashboard() {
         <IngestPanel onSuccess={invalidate} />
       </div>
 
-      {!isLoading && !isError && memories.length > 0 && (
+      {!isLoading && !isError && (
         <div style={{ marginBottom: 20 }}>
           <PromptPanel memories={memories} />
         </div>
