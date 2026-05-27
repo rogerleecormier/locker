@@ -726,9 +726,31 @@ function MemoryTable({
             )}
           </>
         ) : (
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {filtered.length} memor{filtered.length !== 1 ? "ies" : "y"}
-          </span>
+          <>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {filtered.length} memor{filtered.length !== 1 ? "ies" : "y"}
+            </span>
+            {filtered.length > 0 && (
+              <button
+                onClick={() => {
+                  setSelected(new Set(filtered.map((m) => m.id)));
+                  setBulkConfirming(true);
+                }}
+                style={{
+                  marginLeft: "auto",
+                  padding: "4px 10px",
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  color: "var(--error)",
+                  fontSize: 11,
+                  borderRadius: "var(--radius)",
+                  opacity: 0.6,
+                }}
+              >
+                Delete All
+              </button>
+            )}
+          </>
         )}
       </div>
 
