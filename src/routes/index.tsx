@@ -387,70 +387,54 @@ type Chatbot = {
   id: string;
   label: string;
   color: string;
-  preamble: string;
+  url: string;
+  deeplinkUrl?: (prompt: string) => string;
+  prompt: string;
 };
 
 const CHATBOTS: Chatbot[] = [
   {
-    id: "perplexity",
-    label: "Perplexity",
-    color: "#20b2aa",
-    preamble:
-      "You are an AI assistant. I'm providing my personal memory context below — treat it as established facts about me and my work when answering questions.",
-  },
-  {
     id: "chatgpt",
     label: "ChatGPT",
     color: "#10a37f",
-    preamble:
-      "I'm sharing my personal memory context with you. Please use these facts to personalize your responses throughout our conversation.",
+    url: "https://chatgpt.com/",
+    prompt:
+      `Please dump all of the memories you have stored about me. I want everything — preferences, facts, projects, rules, behaviors, anything you've saved or inferred about me over time. Format each one as a plain sentence on its own line. Do not summarize or group them, just list every individual memory you have.`,
   },
   {
     id: "claude",
     label: "Claude",
     color: "#d4956a",
-    preamble:
-      "The following is my personal memory context — background facts about my work, projects, and preferences. Reference them as needed when answering.",
+    url: "https://claude.ai/new",
+    prompt:
+      `Please list all of the memories or persistent facts you have stored about me from previous conversations. Include everything — preferences, projects, rules, habits, context about my work. One memory per line, plain sentences. Don't summarize or omit anything.`,
+  },
+  {
+    id: "perplexity",
+    label: "Perplexity",
+    color: "#20b2aa",
+    url: "https://www.perplexity.ai/",
+    deeplinkUrl: (p: string) => `https://www.perplexity.ai/search?q=${encodeURIComponent(p)}`,
+    prompt:
+      `What do you remember about me from our past conversations? Please output every stored memory or preference you have — one per line, as plain sentences. Include everything without filtering or summarizing.`,
   },
   {
     id: "gemini",
     label: "Gemini",
     color: "#4285f4",
-    preamble:
-      "Here is my personal memory context. Use these facts as background knowledge about me throughout our conversation.",
+    url: "https://gemini.google.com/app",
+    prompt:
+      `List all the memories and personal information you have stored about me. Include every preference, fact, project, or behavior you've learned. Output one item per line as plain sentences. Do not summarize — I want the full raw list.`,
   },
   {
     id: "grok",
     label: "Grok",
     color: "#e7e7e7",
-    preamble:
-      "Below is my personal memory context. I want you to treat these as established facts about me and use them to inform your responses.",
+    url: "https://x.com/i/grok",
+    prompt:
+      `What do you know about me from memory? Please output every stored fact, preference, project, or rule you have about me — one per line as a plain sentence. Give me the complete unfiltered list, nothing omitted.`,
   },
 ];
-
-function buildPrompt(preamble: string, memories: Memory[], categoryFilter: string): string {
-  const filtered = categoryFilter ? memories.filter((m) => m.category === categoryFilter) : memories;
-  if (filtered.length === 0) return "";
-
-  const grouped: Record<string, Memory[]> = {};
-  for (const m of filtered) {
-    if (!grouped[m.category]) grouped[m.category] = [];
-    grouped[m.category].push(m);
-  }
-
-  const sections = Object.entries(grouped)
-    .map(([cat, items]) => {
-      const header = cat.charAt(0).toUpperCase() + cat.slice(1);
-      const lines = items.map((m) => {
-        const tags = m.tags ? ` [${m.tags}]` : "";
-        return `- ${m.fact}${tags}`;
-      });
-      return `## ${header}\n${lines.join("\n")}`;
-    })
-    .join("\n\n");
-
-  return `${preamble}\n\n---\n\n${sections}\n\n---`;
-}
 
 function CopyIcon({ size = 14 }: { size?: number }) {
   return (
@@ -469,28 +453,28 @@ function CheckIcon({ size = 14 }: { size?: number }) {
   );
 }
 
-function PromptPanel({ memories }: { memories: Memory[] }) {
+function PromptPanel() {
   const [selectedBot, setSelectedBot] = useState<string>("chatgpt");
-  const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
   const bot = CHATBOTS.find((b) => b.id === selectedBot) ?? CHATBOTS[0];
 
-  const prompt = useMemo(
-    () => buildPrompt(bot.preamble, memories, categoryFilter),
-    [bot.preamble, memories, categoryFilter]
-  );
-
   const handleCopy = useCallback(async () => {
-    if (!prompt) return;
-    await navigator.clipboard.writeText(prompt);
+    await navigator.clipboard.writeText(bot.prompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [prompt]);
+  }, [bot.prompt]);
 
-  const memoryCount = categoryFilter
-    ? memories.filter((m) => m.category === categoryFilter).length
-    : memories.length;
+  const handleOpen = useCallback(async () => {
+    if (bot.deeplinkUrl) {
+      window.open(bot.deeplinkUrl(bot.prompt), "_blank", "noopener,noreferrer");
+    } else {
+      await navigator.clipboard.writeText(bot.prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      window.open(bot.url, "_blank", "noopener,noreferrer");
+    }
+  }, [bot]);
 
   return (
     <div
@@ -513,9 +497,9 @@ function PromptPanel({ memories }: { memories: Memory[] }) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
-        <span style={{ fontWeight: 600 }}>Prompt Builder</span>
+        <span style={{ fontWeight: 600 }}>Extract Memories</span>
         <span style={{ color: "var(--text-muted)", fontSize: 12, marginLeft: "auto" }}>
-          Copy your memories as a chatbot prompt
+          Copy a prompt to pull your memories out of each chatbot
         </span>
       </div>
 
@@ -528,7 +512,7 @@ function PromptPanel({ memories }: { memories: Memory[] }) {
             {CHATBOTS.map((b) => (
               <button
                 key={b.id}
-                onClick={() => setSelectedBot(b.id)}
+                onClick={() => { setSelectedBot(b.id); setCopied(false); }}
                 style={{
                   padding: "6px 14px",
                   background: selectedBot === b.id ? `${b.color}22` : "var(--surface2)",
@@ -546,105 +530,73 @@ function PromptPanel({ memories }: { memories: Memory[] }) {
           </div>
         </div>
 
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-            Include
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {[
-              { value: "", label: "All memories" },
-              { value: "rules", label: "Rules only" },
-              { value: "projects", label: "Projects only" },
-              { value: "references", label: "References only" },
-            ].map(({ value, label }) => (
-              <button
-                key={value}
-                onClick={() => setCategoryFilter(value)}
-                style={{
-                  padding: "6px 14px",
-                  background: categoryFilter === value ? "var(--accent-dim)" : "var(--surface2)",
-                  border: `1px solid ${categoryFilter === value ? "rgba(99,102,241,0.4)" : "var(--border)"}`,
-                  color: categoryFilter === value ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: categoryFilter === value ? 600 : 400,
-                  fontSize: 12,
-                  borderRadius: 20,
-                  transition: "all 0.15s",
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div
+          style={{
+            background: "var(--surface2)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+            padding: "12px 14px",
+            fontFamily: "monospace",
+            fontSize: 12,
+            lineHeight: 1.7,
+            color: "var(--text)",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            marginBottom: 12,
+          }}
+        >
+          {bot.prompt}
         </div>
 
-        {prompt ? (
-          <>
-            <div
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 1 }}>
+            {bot.deeplinkUrl
+              ? `Opens ${bot.label} with the prompt pre-filled`
+              : `Copies prompt then opens ${bot.label} — just paste and send`}
+          </span>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <button
+              onClick={handleCopy}
               style={{
-                position: "relative",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius)",
-                overflow: "hidden",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                background: copied ? "rgba(34,197,94,0.15)" : "var(--surface2)",
+                border: copied ? "1px solid rgba(34,197,94,0.4)" : "1px solid var(--border)",
+                color: copied ? "var(--success)" : "var(--text-muted)",
+                fontWeight: 500,
+                fontSize: 13,
+                transition: "all 0.2s",
               }}
             >
-              <pre
-                style={{
-                  margin: 0,
-                  padding: "12px 14px",
-                  fontFamily: "monospace",
-                  fontSize: 11,
-                  lineHeight: 1.7,
-                  color: "var(--text-muted)",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  maxHeight: 180,
-                  overflowY: "auto",
-                }}
-              >
-                {prompt}
-              </pre>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {memoryCount} memor{memoryCount !== 1 ? "ies" : "y"} · {prompt.length.toLocaleString()} chars
-              </span>
-              <button
-                onClick={handleCopy}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "8px 16px",
-                  background: copied ? "rgba(34,197,94,0.15)" : "var(--accent)",
-                  border: copied ? "1px solid rgba(34,197,94,0.4)" : "none",
-                  color: copied ? "var(--success)" : "#fff",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  transition: "all 0.2s",
-                }}
-              >
-                {copied ? <CheckIcon /> : <CopyIcon />}
-                {copied ? "Copied!" : "Copy Prompt"}
-              </button>
-            </div>
-          </>
-        ) : (
-          <div
-            style={{
-              padding: "20px",
-              textAlign: "center",
-              color: "var(--text-muted)",
-              fontSize: 13,
-              background: "var(--surface2)",
-              borderRadius: "var(--radius)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            No memories to include.
+              {copied ? <CheckIcon /> : <CopyIcon />}
+              {copied ? "Copied!" : "Copy"}
+            </button>
+            <button
+              onClick={handleOpen}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 16px",
+                background: `${bot.color}22`,
+                border: `1px solid ${bot.color}66`,
+                color: bot.color,
+                fontWeight: 600,
+                fontSize: 13,
+                transition: "all 0.2s",
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              Open {bot.label}
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -727,11 +679,9 @@ function Dashboard() {
         <IngestPanel onSuccess={invalidate} />
       </div>
 
-      {!isLoading && !isError && (
-        <div style={{ marginBottom: 20 }}>
-          <PromptPanel memories={memories} />
-        </div>
-      )}
+      <div style={{ marginBottom: 20 }}>
+        <PromptPanel />
+      </div>
 
       <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>
         <div style={{ position: "relative", flex: 1 }}>
