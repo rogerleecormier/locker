@@ -21,6 +21,14 @@ export default {
       return auth.handler(request);
     }
 
+    // Claude constructs /authorize from the issuer URL instead of using discovery.
+    // Redirect to the actual better-auth OAuth2 authorization endpoint.
+    if (url.pathname === "/authorize") {
+      const target = new URL("/api/auth/oauth2/authorize", url.origin);
+      target.search = url.search;
+      return Response.redirect(target.toString(), 302);
+    }
+
     return handler(request, {
       context: { cloudflare: { env, ctx } } as Record<string, unknown>,
     });
