@@ -39,7 +39,7 @@ export function createAuth(env: CloudflareEnv) {
             clientId: env.CLAUDE_CLIENT_ID,
             clientSecret: env.CLAUDE_CLIENT_SECRET,
             name: "Claude (claude.ai)",
-            redirectURLs: ["https://claude.ai/api/mcp/auth_callback"],
+            redirectUrls: ["https://claude.ai/api/mcp/auth_callback"],
           },
         ] : [],
       }),
