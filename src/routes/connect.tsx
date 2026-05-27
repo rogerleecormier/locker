@@ -71,16 +71,34 @@ function ConnectPage() {
     },
     {
       id: "claudecode",
-      label: "Claude Code",
+      label: "Claude Code CLI",
       color: "#c97b53",
-      description: "Integrate Locker memories directly into the Claude Code command line tool.",
+      description: "Integrate Locker memories into the Claude Code CLI. Run this once in your terminal — the server persists across all future sessions.",
       copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
-            <li>Run the command below in your terminal, replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>Claude Code will automatically inject memory context during sessions.</li>
+            <li>Run the command below in your terminal, replacing <code>lkr_your_token_here</code> with your token. This adds Locker to your user-level config (<code>~/.claude.json</code>) so it works in all projects.</li>
+            <li>To scope it to one project instead, add <code>--scope project</code> — this writes a <code>.mcp.json</code> at the project root.</li>
+            <li>Verify with <code>claude mcp list</code>. Locker tools will be active in your next session.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "claudecode_vscode",
+      label: "Claude Code Extension",
+      color: "#b87040",
+      description: "Claude Code's VS Code extension shares the same MCP config as the CLI — add the server once via terminal, then manage it inside VS Code.",
+      copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
+            <li>Open the integrated terminal in VS Code (<code>Ctrl+`</code> / <code>Cmd+`</code>) and run the command below, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Once added, type <code>/mcp</code> in the Claude Code chat panel to view connected servers, enable/disable them, or reconnect.</li>
+            <li>The extension uses the same <code>~/.claude.json</code> config as the CLI — no separate setup needed if you've already added it there.</li>
           </ol>
         </div>
       ),
@@ -266,33 +284,61 @@ function ConnectPage() {
       ),
     },
     {
-      id: "codex",
-      label: "Codex",
+      id: "codex_cli",
+      label: "Codex CLI",
       color: "#0f9d58",
-      description: "Connect OpenAI Codex CLI to Locker via its MCP server support.",
-      copyText: `{
-  "mcpServers": {
-    "locker": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "https://locker.rcormier.dev/api/mcp",
-        "--header",
-        "Authorization: Bearer \${LOCKER_TOKEN}"
-      ],
-      "env": {
-        "LOCKER_TOKEN": "lkr_your_token_here"
-      }
-    }
-  }
-}`,
+      description: "Connect the OpenAI Codex CLI to Locker via native HTTP MCP transport — no mcp-remote wrapper needed.",
+      copyText: `[mcp_servers.locker]
+url = "https://locker.rcormier.dev/api/mcp"
+http_headers = { "Authorization" = "Bearer lkr_your_token_here" }
+enabled = true`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
-            <li>Add the snippet below to your Codex MCP config (typically <code>~/.codex/config.json</code>), replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>Restart Codex — the locker tools will be available in your sessions.</li>
+            <li>Open <code>~/.codex/config.toml</code> (create it if it doesn't exist — Codex uses TOML, not JSON).</li>
+            <li>Paste the snippet below, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Locker tools will be available in your next Codex session. Verify with <code>codex mcp list</code>.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "codex_app",
+      label: "Codex App",
+      color: "#0c8a4f",
+      description: "Connect the Codex desktop app (macOS/Windows) to Locker — it shares the same config file as the CLI.",
+      copyText: `[mcp_servers.locker]
+url = "https://locker.rcormier.dev/api/mcp"
+http_headers = { "Authorization" = "Bearer lkr_your_token_here" }
+enabled = true`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>In the Codex app, open the gear menu and select <strong>MCP settings → Open config.toml</strong>.</li>
+            <li>Paste the snippet below, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Save the file — Codex picks up the change without a restart.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "codex_vscode",
+      label: "Codex Extension",
+      color: "#0a7a46",
+      description: "Connect the official OpenAI Codex VS Code extension to Locker — same config.toml as the CLI and app.",
+      copyText: `[mcp_servers.locker]
+url = "https://locker.rcormier.dev/api/mcp"
+http_headers = { "Authorization" = "Bearer lkr_your_token_here" }
+enabled = true`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>In the Codex extension sidebar, open the gear menu and select <strong>MCP settings → Open config.toml</strong>.</li>
+            <li>Paste the snippet below, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Save — the extension reads from the same <code>~/.codex/config.toml</code> as the CLI and app.</li>
           </ol>
         </div>
       ),
@@ -301,20 +347,13 @@ function ConnectPage() {
       id: "antigravity",
       label: "Antigravity 2.0",
       color: "#818cf8",
-      description: "Register the Locker memory server inside the Antigravity 2.0 CLI/agent configuration.",
+      description: "Register the Locker memory server in the Antigravity 2.0 CLI using its native HTTP MCP transport.",
       copyText: `{
   "mcpServers": {
     "locker": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "https://locker.rcormier.dev/api/mcp",
-        "--header",
-        "Authorization: Bearer \${LOCKER_TOKEN}"
-      ],
-      "env": {
-        "LOCKER_TOKEN": "lkr_your_token_here"
+      "serverUrl": "https://locker.rcormier.dev/api/mcp",
+      "headers": {
+        "Authorization": "Bearer lkr_your_token_here"
       }
     }
   }
@@ -323,7 +362,7 @@ function ConnectPage() {
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
-            <li>Open <code>~/.gemini/config/mcp_config.json</code>.</li>
+            <li>Open <code>~/.gemini/config/mcp_config.json</code> (create it if it doesn't exist).</li>
             <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
             <li>The Antigravity agent will recall memories during task planning and execution.</li>
           </ol>
@@ -334,20 +373,13 @@ function ConnectPage() {
       id: "antigravity_ide",
       label: "Antigravity 2.0 IDE",
       color: "#4f46e5",
-      description: "Register the Locker memory server inside the Antigravity 2.0 IDE developer configuration.",
+      description: "Register the Locker memory server in the Antigravity 2.0 VS Code or JetBrains extension — it shares the same config file as the CLI.",
       copyText: `{
   "mcpServers": {
     "locker": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "https://locker.rcormier.dev/api/mcp",
-        "--header",
-        "Authorization: Bearer \${LOCKER_TOKEN}"
-      ],
-      "env": {
-        "LOCKER_TOKEN": "lkr_your_token_here"
+      "serverUrl": "https://locker.rcormier.dev/api/mcp",
+      "headers": {
+        "Authorization": "Bearer lkr_your_token_here"
       }
     }
   }
@@ -356,9 +388,139 @@ function ConnectPage() {
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
-            <li>Open <code>~/.gemini/antigravity-ide/mcp_config.json</code> (or the global <code>~/.gemini/config/mcp_config.json</code> if missing).</li>
+            <li>Open <code>~/.gemini/config/mcp_config.json</code> — both the VS Code and JetBrains extensions read from this same file.</li>
             <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>Restart or reload the IDE — tools become available instantly.</li>
+            <li>In the IDE, open the MCP panel (<strong>Manage MCP Servers</strong>) to verify the server appears and reconnect if needed.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "windsurf",
+      label: "Windsurf",
+      color: "#06b6d4",
+      description: "Connect Windsurf (Codeium's AI IDE) to Locker via native HTTP MCP transport.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "serverUrl": "https://locker.rcormier.dev/api/mcp",
+      "headers": {
+        "Authorization": "Bearer lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open <code>~/.codeium/windsurf/mcp_config.json</code> on macOS/Linux, or <code>%USERPROFILE%\.codeium\windsurf\mcp_config.json</code> on Windows (create if it doesn't exist).</li>
+            <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>In Windsurf, go to <strong>Settings → Cascade → MCP</strong> to enable MCP and verify the server is connected.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "gemini_code_assist",
+      label: "Gemini Code Assist",
+      color: "#1a73e8",
+      description: "Connect the Gemini Code Assist VS Code or JetBrains extension to Locker (Standard/Enterprise tier required for agent mode).",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "httpUrl": "https://locker.rcormier.dev/api/mcp",
+      "headers": {
+        "Authorization": "Bearer lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>In VS Code, open <code>~/.gemini/settings.json</code>. In JetBrains, use <code>mcp.json</code> in your IDE config directory.</li>
+            <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>MCP requires <strong>Standard or Enterprise</strong> tier — agent mode is not available on the individual/free tier.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "zed",
+      label: "Zed",
+      color: "#084cdf",
+      description: "Connect the Zed editor to Locker via native HTTP MCP transport. Zed uses context_servers instead of mcpServers.",
+      copyText: `{
+  "context_servers": {
+    "locker": {
+      "url": "https://locker.rcormier.dev/api/mcp",
+      "headers": {
+        "Authorization": "Bearer lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open Zed settings: <code>~/.config/zed/settings.json</code> on Linux, or via <strong>Zed → Settings</strong> on macOS.</li>
+            <li>Add the <code>locker</code> block (copy snippet below) into <code>context_servers</code> (Zed uses this key instead of <code>mcpServers</code>), replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Or use the UI: open the Agent Panel (<code>Cmd+Shift+A</code>), click the menu → <strong>View Server Extensions → Add Custom Server</strong>.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "amp",
+      label: "Amp",
+      color: "#ff4500",
+      description: "Connect Sourcegraph's Amp coding agent to Locker via native HTTP MCP transport.",
+      copyText: `{
+  "amp.mcpServers": {
+    "locker": {
+      "url": "https://locker.rcormier.dev/api/mcp",
+      "headers": {
+        "Authorization": "Bearer lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open <code>~/.config/amp/settings.json</code> on macOS/Linux, or <code>%APPDATA%\amp\settings.json</code> on Windows. For a single project, use <code>.amp/settings.json</code> at the project root.</li>
+            <li>Add the snippet below, replacing <code>lkr_your_token_here</code> with your token. Note: Amp uses <code>amp.mcpServers</code> as the top-level key.</li>
+            <li>Or add via CLI: <code>amp mcp add locker --header "Authorization=Bearer lkr_your_token_here" https://locker.rcormier.dev/api/mcp</code></li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "kiro",
+      label: "Kiro",
+      color: "#ff9900",
+      description: "Connect AWS's Kiro IDE to Locker via native HTTP MCP transport. Kiro has a built-in UI for managing MCP servers.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "url": "https://locker.rcormier.dev/api/mcp",
+      "headers": {
+        "Authorization": "Bearer lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open the MCP config via Command Palette (<code>Cmd+Shift+P</code> / <code>Ctrl+Shift+P</code>) → search <strong>MCP → Open MCP Config</strong>. This opens <code>~/.kiro/settings/mcp.json</code> (or <code>.kiro/settings/mcp.json</code> for workspace scope).</li>
+            <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Check the MCP tab in the activity bar to verify the server is connected.</li>
           </ol>
         </div>
       ),
@@ -453,10 +615,36 @@ function ConnectPage() {
       ),
     },
     {
+      id: "geminicli",
+      label: "Gemini CLI",
+      color: "#34a853",
+      description: "Connect the Gemini CLI (@google/gemini-cli) to Locker via native HTTP MCP transport — no mcp-remote wrapper needed.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "httpUrl": "https://locker.rcormier.dev/api/mcp",
+      "headers": {
+        "Authorization": "Bearer lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open <code>~/.gemini/settings.json</code> (create it if it doesn't exist). For project-scoped config use <code>.gemini/settings.json</code> at your project root.</li>
+            <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Or add via CLI: <code>gemini mcp add --transport http --header "Authorization: Bearer lkr_your_token_here" locker https://locker.rcormier.dev/api/mcp</code></li>
+          </ol>
+        </div>
+      ),
+    },
+    {
       id: "gemini",
-      label: "Gemini",
+      label: "Gemini (Gems)",
       color: "#4285f4",
-      description: "Gemini does not support arbitrary JSON-RPC actions directly. Connect it via Gemini Custom Gems instructions.",
+      description: "Gemini Gems (gemini.google.com) don't support MCP directly. Use a custom instruction prompt to tell Gemini how to call the Locker API.",
       copyText: `You have access to a personal memory retrieval API at https://locker.rcormier.dev/api/mcp. All requests require the header "Authorization: Bearer lkr_your_token_here". If you need context about my background, projects, or rules, send a POST request to that URL with the JSON-RPC body {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_context","arguments":{"query":"<topic>"}}} and include the Authorization header.`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
