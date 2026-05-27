@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
+import { oidcProvider } from "better-auth/plugins/oidc-provider";
 import * as schema from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
@@ -19,11 +20,30 @@ export function createAuth(env: CloudflareEnv) {
         session: schema.sessions,
         account: schema.accounts,
         verification: schema.verifications,
+        oauthApplication: schema.oauthApplications,
+        oauthAccessToken: schema.oauthAccessTokens,
+        oauthConsent: schema.oauthConsents,
       },
     }),
     emailAndPassword: {
       enabled: true,
     },
+    plugins: [
+      oidcProvider({
+        loginPage: "/login",
+        consentPage: "/oauth/consent",
+        requirePKCE: false,
+        scopes: ["openid", "profile", "email"],
+        trustedClients: env.CLAUDE_CLIENT_ID ? [
+          {
+            clientId: env.CLAUDE_CLIENT_ID,
+            clientSecret: env.CLAUDE_CLIENT_SECRET,
+            name: "Claude (claude.ai)",
+            redirectURLs: ["https://claude.ai/api/mcp/auth_callback"],
+          },
+        ] : [],
+      }),
+    ],
   });
 }
 

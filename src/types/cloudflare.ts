@@ -7,6 +7,8 @@ export type CloudflareEnv = {
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   ADMIN_USER_ID: string;
+  CLAUDE_CLIENT_ID: string;
+  CLAUDE_CLIENT_SECRET: string;
 };
 
 declare module "@tanstack/router-core" {

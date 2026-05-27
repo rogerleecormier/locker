@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql } from "drizzle-orm";
-import { memories, apiTokens, MCP_PERM_RECALL, MCP_PERM_COMMIT } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokens, MCP_PERM_RECALL, MCP_PERM_COMMIT } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
@@ -97,31 +97,52 @@ async function validateBearerToken(
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
 
   const rawToken = authHeader.slice(7).trim();
-  if (!rawToken.startsWith("lkr_")) return null;
 
-  const tokenHash = await hashToken(rawToken);
-  const db = drizzle(env.DB, { schema: { apiTokens } });
+  // API token path (lkr_ prefix)
+  if (rawToken.startsWith("lkr_")) {
+    const tokenHash = await hashToken(rawToken);
+    const db = drizzle(env.DB, { schema: { apiTokens } });
 
+    const rows = await db
+      .select()
+      .from(apiTokens)
+      .where(eq(apiTokens.tokenHash, tokenHash))
+      .all();
+
+    if (!rows.length) return null;
+    const token = rows[0];
+
+    db.update(apiTokens)
+      .set({ lastUsedAt: Date.now() })
+      .where(eq(apiTokens.id, token.id))
+      .run()
+      .catch(() => {});
+
+    return {
+      userId: token.userId,
+      tokenId: token.id,
+      permissions: token.permissions,
+    };
+  }
+
+  // OAuth access token path
+  const db = drizzle(env.DB, { schema: { oauthAccessTokens } });
   const rows = await db
     .select()
-    .from(apiTokens)
-    .where(eq(apiTokens.tokenHash, tokenHash))
+    .from(oauthAccessTokens)
+    .where(eq(oauthAccessTokens.accessToken, rawToken))
     .all();
 
   if (!rows.length) return null;
-  const token = rows[0];
+  const oauthToken = rows[0];
 
-  // Update last used timestamp (fire-and-forget)
-  db.update(apiTokens)
-    .set({ lastUsedAt: Date.now() })
-    .where(eq(apiTokens.id, token.id))
-    .run()
-    .catch(() => {});
+  if (!oauthToken.userId) return null;
+  if (oauthToken.accessTokenExpiresAt.getTime() < Date.now()) return null;
 
   return {
-    userId: token.userId,
-    tokenId: token.id,
-    permissions: token.permissions,
+    userId: oauthToken.userId,
+    tokenId: oauthToken.id,
+    permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT,
   };
 }
 

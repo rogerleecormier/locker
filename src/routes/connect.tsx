@@ -95,19 +95,15 @@ function ConnectPage() {
       label: "Claude (Web)",
       color: "#b85c38",
       group: "Anthropic",
-      description: "Connect claude.ai to your Locker vault via the Connectors feature. Requires OAuth — not yet supported by Locker. Requires a Claude Pro, Team, or Enterprise plan.",
+      description: "Connect claude.ai to your Locker vault via the Connectors feature. Uses OAuth — no API token needed. Requires a Claude Pro, Team, or Enterprise plan.",
+      copyText: `https://locker.rcormier.dev/api/mcp`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
-          <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>
-            Claude's Connectors require an <strong>OAuth 2.0 client ID and secret</strong> — API token authentication is not supported. Locker does not yet implement an OAuth flow for this integration.
-          </p>
-          <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>
-            Once OAuth support is added, setup will be:
-          </p>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-            <li>Open <strong>claude.ai</strong> → <strong>Settings → Connectors → Add connector</strong>.</li>
-            <li>Enter the server URL <code>https://locker.rcormier.dev/api/mcp</code> and provide the OAuth client ID and secret.</li>
-            <li>Authorize via the OAuth consent screen — Claude will handle token refresh automatically.</li>
+            <li>Open <strong>claude.ai</strong> → click your profile avatar → <strong>Settings → Connectors → Add connector</strong>.</li>
+            <li>Enter a name (e.g. <code>Locker</code>) and paste the server URL below.</li>
+            <li>Claude will redirect you to Locker to sign in and approve access — no API token needed.</li>
+            <li>Once authorized, the Locker memory tools will be available in your Claude.ai chats.</li>
           </ol>
         </div>
       ),

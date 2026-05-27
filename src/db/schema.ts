@@ -67,6 +67,44 @@ export const memories = sqliteTable("memories", {
   timestamp: integer("timestamp").notNull(),
 });
 
+export const oauthApplications = sqliteTable("oauthApplication", {
+  id: text("id").primaryKey(),
+  clientId: text("clientId").notNull().unique(),
+  clientSecret: text("clientSecret"),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["web", "native", "user-agent-based", "public"] }).notNull(),
+  icon: text("icon"),
+  metadata: text("metadata"),
+  redirectUrls: text("redirectUrls").notNull(),
+  disabled: integer("disabled", { mode: "boolean" }).notNull().default(false),
+  userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const oauthAccessTokens = sqliteTable("oauthAccessToken", {
+  id: text("id").primaryKey(),
+  accessToken: text("accessToken").notNull().unique(),
+  refreshToken: text("refreshToken").notNull().unique(),
+  accessTokenExpiresAt: integer("accessTokenExpiresAt", { mode: "timestamp_ms" }).notNull(),
+  refreshTokenExpiresAt: integer("refreshTokenExpiresAt", { mode: "timestamp_ms" }).notNull(),
+  scopes: text("scopes").notNull(),
+  clientId: text("clientId").notNull().references(() => oauthApplications.clientId, { onDelete: "cascade" }),
+  userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const oauthConsents = sqliteTable("oauthConsent", {
+  id: text("id").primaryKey(),
+  clientId: text("clientId").notNull().references(() => oauthApplications.clientId, { onDelete: "cascade" }),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  scopes: text("scopes").notNull(),
+  consentGiven: integer("consentGiven", { mode: "boolean" }).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type ApiToken = typeof apiTokens.$inferSelect;
