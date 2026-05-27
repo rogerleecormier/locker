@@ -91,6 +91,25 @@ function ConnectPage() {
       ),
     },
     {
+      id: "claudeweb",
+      label: "Claude (Web)",
+      color: "#b85c38",
+      group: "Anthropic",
+      description: "Connect claude.ai to your Locker vault. Claude's web app supports remote MCP servers natively — no local proxy needed.",
+      copyText: `https://locker.rcormier.dev/api/mcp`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
+            <li>Open <strong>claude.ai</strong> → click your profile avatar → <strong>Settings → Integrations</strong>.</li>
+            <li>Click <strong>Add integration</strong>, paste the server URL below, and enter a name (e.g. <code>locker</code>).</li>
+            <li>When prompted for authentication, choose <strong>Authorization Header</strong> and enter <code>Bearer lkr_your_token_here</code> (replace with your token).</li>
+            <li>Click <strong>Save</strong>. The Locker memory tools will be available in your Claude.ai chats.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
       id: "cursor",
       label: "Cursor",
       color: "#00e5ff",
