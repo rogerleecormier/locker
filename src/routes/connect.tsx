@@ -1,0 +1,640 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useCallback } from "react";
+
+export const Route = createFileRoute("/connect")({
+  component: ConnectPage,
+});
+
+function CopyIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function CheckIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+type SetupService = {
+  id: string;
+  label: string;
+  color: string;
+  description: string;
+  instructions: React.ReactNode;
+  copyText?: string;
+};
+
+function ConnectPage() {
+  const [selectedService, setSelectedService] = useState<string>("claudedesktop");
+  const [copied, setCopied] = useState(false);
+
+  const SERVICES: SetupService[] = [
+    {
+      id: "claudedesktop",
+      label: "Claude Desktop",
+      color: "#d4956a",
+      description: "Connect the Claude Desktop app directly to your hosted MCP endpoint.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.dev/api/mcp",
+        "--header",
+        "Authorization: Bearer \${LOCKER_TOKEN}"
+      ],
+      "env": {
+        "LOCKER_TOKEN": "lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
+            <li>Open <code>claude_desktop_config.json</code> (under <code>~/.config/Claude/</code> on Linux/Mac or <code>%APPDATA%/Claude/</code> on Windows).</li>
+            <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Restart Claude Desktop. The tools will appear in your chats.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "claudecode",
+      label: "Claude Code",
+      color: "#c97b53",
+      description: "Integrate Locker memories directly into the Claude Code command line tool.",
+      copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
+            <li>Run the command below in your terminal, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Claude Code will automatically inject memory context during sessions.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "cursor",
+      label: "Cursor",
+      color: "#00e5ff",
+      description: "Access Locker memory in Cursor's Composer or Chat panels.",
+      copyText: `npx -y mcp-remote https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open Cursor Settings → <strong>Features &gt; MCP</strong> → <strong>+ Add New MCP Server</strong>.</li>
+            <li>Set Name to <code>locker</code>, Type to <code>command</code>, paste the command below replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Click <strong>Save</strong> and verify the indicator turns green.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "cline",
+      label: "Cline",
+      color: "#ff6b6b",
+      description: "Enable your Cline assistant to recall technical rules and context inside VS Code.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.dev/api/mcp",
+        "--header",
+        "Authorization: Bearer \${LOCKER_TOKEN}"
+      ],
+      "env": {
+        "LOCKER_TOKEN": "lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open <code>cline_mcp_settings.json</code> (at <code>~/.vscode/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json</code>).</li>
+            <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Cline will reload and gain access to the memory tools.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "roocode",
+      label: "Roo Code",
+      color: "#ff8787",
+      description: "Add Locker memory context directly to Roo Code inside VS Code.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.dev/api/mcp",
+        "--header",
+        "Authorization: Bearer \${LOCKER_TOKEN}"
+      ],
+      "env": {
+        "LOCKER_TOKEN": "lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open the Roo Code MCP settings file (under globalStorage for the extension).</li>
+            <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Save — Roo Code detects the server immediately.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "continue",
+      label: "Continue",
+      color: "#2f80ed",
+      description: "Integrate personal memory context inside the Continue code assistant in VS Code or JetBrains.",
+      copyText: `"mcp": {
+  "locker": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "mcp-remote",
+      "https://locker.rcormier.dev/api/mcp",
+      "--header",
+      "Authorization: Bearer \${LOCKER_TOKEN}"
+    ],
+    "env": {
+      "LOCKER_TOKEN": "lkr_your_token_here"
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open <code>~/.continue/config.json</code>.</li>
+            <li>Paste the snippet below inside the top-level <code>mcp</code> object, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Save — Continue activates the tools automatically.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "copilot",
+      label: "GitHub Copilot",
+      color: "#6f42c1",
+      description: "Connect GitHub Copilot Chat in VS Code to Locker.",
+      copyText: `{
+  "servers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.dev/api/mcp",
+        "--header",
+        "Authorization: Bearer \${LOCKER_TOKEN}"
+      ],
+      "env": {
+        "LOCKER_TOKEN": "lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open VS Code Settings → search <strong>MCP</strong> → click <strong>Edit in settings.json</strong>.</li>
+            <li>Add the snippet below under <code>github.copilot.chat.mcp</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Copilot Chat will fetch memory context when answering questions.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "vscode",
+      label: "VS Code",
+      color: "#007acc",
+      description: "Configure VS Code MCP support via .vscode/mcp.json in your workspace.",
+      copyText: `{
+  "servers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.dev/api/mcp",
+        "--header",
+        "Authorization: Bearer \${LOCKER_TOKEN}"
+      ],
+      "env": {
+        "LOCKER_TOKEN": "lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Create or edit <code>.vscode/mcp.json</code> in your workspace root.</li>
+            <li>Paste the snippet below, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>VS Code will pick up the server on the next session start.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "codex",
+      label: "Codex",
+      color: "#0f9d58",
+      description: "Connect OpenAI Codex CLI to Locker via its MCP server support.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.dev/api/mcp",
+        "--header",
+        "Authorization: Bearer \${LOCKER_TOKEN}"
+      ],
+      "env": {
+        "LOCKER_TOKEN": "lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Add the snippet below to your Codex MCP config (typically <code>~/.codex/config.json</code>), replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Restart Codex — the locker tools will be available in your sessions.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "antigravity",
+      label: "Antigravity 2.0",
+      color: "#818cf8",
+      description: "Register the Locker memory server inside the Antigravity 2.0 CLI/agent configuration.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.dev/api/mcp",
+        "--header",
+        "Authorization: Bearer \${LOCKER_TOKEN}"
+      ],
+      "env": {
+        "LOCKER_TOKEN": "lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open <code>~/.gemini/config/mcp_config.json</code>.</li>
+            <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>The Antigravity agent will recall memories during task planning and execution.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "antigravity_ide",
+      label: "Antigravity 2.0 IDE",
+      color: "#4f46e5",
+      description: "Register the Locker memory server inside the Antigravity 2.0 IDE developer configuration.",
+      copyText: `{
+  "mcpServers": {
+    "locker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://locker.rcormier.dev/api/mcp",
+        "--header",
+        "Authorization: Bearer \${LOCKER_TOKEN}"
+      ],
+      "env": {
+        "LOCKER_TOKEN": "lkr_your_token_here"
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Open <code>~/.gemini/antigravity-ide/mcp_config.json</code> (or the global <code>~/.gemini/config/mcp_config.json</code> if missing).</li>
+            <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Restart or reload the IDE — tools become available instantly.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "chatgpt",
+      label: "ChatGPT",
+      color: "#10a37f",
+      description: "Integrate your Locker memory into ChatGPT by building a Custom GPT with an API Action.",
+      copyText: `{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Locker Memory API",
+    "version": "1.0.0",
+    "description": "Semantic memory search endpoint."
+  },
+  "servers": [
+    {
+      "url": "https://locker.rcormier.dev"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/api/mcp": {
+      "post": {
+        "operationId": "queryMcp",
+        "summary": "Semantic Search",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jsonrpc": { "type": "string", "example": "2.0" },
+                  "id": { "type": "integer", "example": 1 },
+                  "method": { "type": "string", "example": "tools/call" },
+                  "params": {
+                    "type": "object",
+                    "properties": {
+                      "name": { "type": "string", "example": "recall_context" },
+                      "arguments": {
+                        "type": "object",
+                        "properties": {
+                          "query": { "type": "string" }
+                        },
+                        "required": ["query"]
+                      }
+                    },
+                    "required": ["name", "arguments"]
+                  }
+                },
+                "required": ["jsonrpc", "id", "method", "params"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Go to <strong>Explore GPTs &gt; Create</strong> → <strong>Configure</strong> tab → <strong>Create new action</strong>.</li>
+            <li>Import the OpenAPI schema below. In the <strong>Authentication</strong> section choose <strong>API Key → Bearer</strong> and enter your token.</li>
+            <li>In GPT Instructions write: <em>"Use the queryMcp Action whenever the user asks about rules, projects, education, or background facts."</em></li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "gemini",
+      label: "Gemini",
+      color: "#4285f4",
+      description: "Gemini does not support arbitrary JSON-RPC actions directly. Connect it via Gemini Custom Gems instructions.",
+      copyText: `You have access to a personal memory retrieval API at https://locker.rcormier.dev/api/mcp. All requests require the header "Authorization: Bearer lkr_your_token_here". If you need context about my background, projects, or rules, send a POST request to that URL with the JSON-RPC body {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_context","arguments":{"query":"<topic>"}}} and include the Authorization header.`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Create a new <strong>Gem</strong> in the Gemini dashboard.</li>
+            <li>Under <strong>Instructions</strong>, paste the directive below, replacing <code>lkr_your_token_here</code> with your token.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "grok",
+      label: "Grok",
+      color: "#e7e7e7",
+      description: "Connect your Locker memories to Grok Agents using custom Grok Web Actions.",
+      copyText: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_context","arguments":{"query":"{{QUERY}}"}}}`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Create a custom <strong>Grok Agent</strong> on X.</li>
+            <li>Add a <strong>Web Action</strong>: URL <code style={{ color: "var(--accent)" }}>https://locker.rcormier.dev/api/mcp</code>, method POST.</li>
+            <li>Add a custom request header: <code style={{ color: "var(--accent)" }}>Authorization: Bearer lkr_your_token_here</code> (replace with your token).</li>
+            <li>Set the JSON payload to the snippet below. Grok will query Locker whenever you ask about personal rules or references.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
+      id: "perplexity",
+      label: "Perplexity",
+      color: "#20b2aa",
+      description: "Make your Locker memories available in Perplexity Collections using custom instruction overrides.",
+      copyText: `You have access to my personal memory API at https://locker.rcormier.dev/api/mcp. All requests must include the header "Authorization: Bearer lkr_your_token_here". Query this endpoint when asked about my rules, preferences, active projects, or background by sending a POST with body {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall_context","arguments":{"query":"<topic>"}}}.`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
+            <li>Create a new <strong>Collection</strong> in Perplexity.</li>
+            <li>In <strong>AI Profile / Instructions</strong>, paste the directive below, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Perplexity will include the Authorization header when querying Locker.</li>
+          </ol>
+        </div>
+      ),
+    },
+  ];
+
+  const service = SERVICES.find((s) => s.id === selectedService) ?? SERVICES[0];
+
+  const handleCopy = useCallback(async () => {
+    if (!service.copyText) return;
+    await navigator.clipboard.writeText(service.copyText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [service.copyText]);
+
+  return (
+    <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px" }}>
+      <header style={{ marginBottom: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+          </svg>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>MCP Connect</h1>
+          <span style={{
+            fontSize: 11,
+            background: "var(--accent-dim)",
+            color: "var(--accent)",
+            border: "1px solid rgba(99,102,241,0.3)",
+            borderRadius: 20,
+            padding: "2px 8px",
+            fontWeight: 600,
+          }}>
+            {SERVICES.length} platforms
+          </span>
+        </div>
+        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          Connect any AI client to your Locker vault via the{" "}
+          <code style={{ color: "var(--accent)", fontSize: 12 }}>/api/mcp</code> endpoint.
+          Generate an API token in <strong>Settings</strong> first.
+        </p>
+      </header>
+
+      <div style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        overflow: "hidden",
+      }}>
+        <div style={{
+          padding: "12px 18px",
+          borderBottom: "1px solid var(--border)",
+          background: "rgba(99,102,241,0.04)",
+        }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+            Select platform
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {SERVICES.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => { setSelectedService(s.id); setCopied(false); }}
+                style={{
+                  padding: "5px 13px",
+                  background: selectedService === s.id ? `${s.color}22` : "var(--surface2)",
+                  border: `1px solid ${selectedService === s.id ? s.color : "var(--border)"}`,
+                  color: selectedService === s.id ? s.color : "var(--text-muted)",
+                  fontWeight: selectedService === s.id ? 600 : 400,
+                  fontSize: 12,
+                  borderRadius: 20,
+                  transition: "all 0.15s",
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: 20 }}>
+          <div style={{
+            marginBottom: 16,
+            padding: "12px 14px",
+            background: "rgba(255,255,255,0.02)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+          }}>
+            <p style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 10 }}>{service.description}</p>
+            {service.instructions}
+          </div>
+
+          {service.copyText && (
+            <>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                Configuration snippet
+              </div>
+              <pre style={{
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                padding: "12px 14px",
+                fontFamily: "monospace",
+                fontSize: 12,
+                maxHeight: 260,
+                overflowY: "auto",
+                lineHeight: 1.6,
+                color: "var(--text)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+                marginBottom: 12,
+              }}>
+                {service.copyText}
+              </pre>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  onClick={handleCopy}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 16px",
+                    background: copied ? "rgba(34,197,94,0.15)" : "var(--surface2)",
+                    border: copied ? "1px solid rgba(34,197,94,0.4)" : "1px solid var(--border)",
+                    color: copied ? "var(--success)" : "var(--text-muted)",
+                    fontWeight: 500,
+                    fontSize: 13,
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {copied ? <CheckIcon /> : <CopyIcon />}
+                  {copied ? "Copied!" : "Copy configuration"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
