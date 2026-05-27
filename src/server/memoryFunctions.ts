@@ -130,6 +130,21 @@ function parseFactsFromText(raw: string): Array<{ fact: string }> {
     .map((f) => ({ fact: f }));
 }
 
+async function getUserName(db: ReturnType<typeof getDb>): Promise<string> {
+  try {
+    const rows = await db.select().from(memories).all();
+    const nameRow = rows.find((r) =>
+      r.tags.split(",").map((t) => t.trim()).includes("profile-name")
+    );
+    if (nameRow) {
+      return nameRow.fact.replace(/^Name is\s+/i, "").trim();
+    }
+  } catch (err) {
+    console.error("[getUserName] failed to fetch name:", err);
+  }
+  return "The user";
+}
+
 export const parseMemoriesWithAI = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): { text: string } => {
     const d = data as { text: string };
@@ -138,6 +153,8 @@ export const parseMemoriesWithAI = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }): Promise<Array<{ fact: string; category?: string; tags?: string }>> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    const db = getDb(env);
+    const name = await getUserName(db);
 
     const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
       messages: [
@@ -145,11 +162,12 @@ export const parseMemoriesWithAI = createServerFn({ method: "POST" })
           role: "system",
           content: `You extract discrete memory facts from raw text. Output ONLY a JSON array of strings — one string per fact. No explanation, no markdown, no code fences. Just the raw JSON array.
 
-Example: ["The user lives in Florida","The user is a PMP-certified project manager","The user prefers concise answers"]
+Example: ["${name} lives in Florida","${name} is a PMP-certified project manager","${name} prefers concise answers"]
 
 Rules:
 - Strip all formatting: headers, bullets, dashes, date prefixes like [2025-01-01], bold markdown (**text**), evidence lines, "Imported from:" lines
 - Each entry must be one clean self-contained sentence
+- Rephrase all facts to refer to "${name}" in the third person. Do NOT use "you are", "you have", "the user is", "I", "my", or "me". For example, convert "You are a software engineer" to "${name} is a software engineer".
 - Skip section headers, category labels, horizontal rules, and meta-commentary`,
         },
         {
@@ -824,4 +842,123 @@ Only include duplicate IDs that are actual semantic duplicates of the primary me
     }
 
     return { groups: verifiedGroups };
+  });
+
+export const getProfile = createServerFn({ method: "GET" }).handler(
+  async ({ context }): Promise<{ name: string; location: string }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = getDb(env);
+
+    const rows = await db.select().from(memories).all();
+    const nameRow = rows.find((r) =>
+      r.tags.split(",").map((t) => t.trim()).includes("profile-name")
+    );
+    const locRow = rows.find((r) =>
+      r.tags.split(",").map((t) => t.trim()).includes("profile-location")
+    );
+
+    let name = "";
+    if (nameRow) {
+      name = nameRow.fact.replace(/^Name is\s+/i, "").trim();
+    }
+
+    let location = "";
+    if (locRow) {
+      location = locRow.fact.replace(/^Location is\s+/i, "").trim();
+    }
+
+    return { name, location };
+  }
+);
+
+export const saveProfile = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { name: string; location: string } => {
+    const d = data as { name: string; location: string };
+    return { name: String(d.name || "").trim(), location: String(d.location || "").trim() };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = getDb(env);
+
+    const rows = await db.select().from(memories).all();
+    const nameRow = rows.find((r) =>
+      r.tags.split(",").map((t) => t.trim()).includes("profile-name")
+    );
+    const locRow = rows.find((r) =>
+      r.tags.split(",").map((t) => t.trim()).includes("profile-location")
+    );
+
+    // Save Name memory
+    if (data.name) {
+      const fact = `Name is ${data.name}`;
+      if (nameRow) {
+        await db.update(memories).set({ fact }).where(eq(memories.id, nameRow.id));
+        const embedding = await generateEmbedding(env.AI, fact);
+        await env.VECTOR_INDEX.upsert([
+          {
+            id: nameRow.id,
+            values: embedding,
+            metadata: { category: "references", tags: "profile-name" } as Record<string, VectorizeVectorMetadata>,
+          },
+        ]);
+      } else {
+        const id = crypto.randomUUID();
+        await db.insert(memories).values({
+          id,
+          fact,
+          category: "references",
+          tags: "profile-name",
+          timestamp: Date.now(),
+        });
+        const embedding = await generateEmbedding(env.AI, fact);
+        await env.VECTOR_INDEX.insert([
+          {
+            id,
+            values: embedding,
+            metadata: { category: "references", tags: "profile-name" } as Record<string, VectorizeVectorMetadata>,
+          },
+        ]);
+      }
+    } else if (nameRow) {
+      await db.delete(memories).where(eq(memories.id, nameRow.id));
+      await env.VECTOR_INDEX.deleteByIds([nameRow.id]);
+    }
+
+    // Save Location memory
+    if (data.location) {
+      const fact = `Location is ${data.location}`;
+      if (locRow) {
+        await db.update(memories).set({ fact }).where(eq(memories.id, locRow.id));
+        const embedding = await generateEmbedding(env.AI, fact);
+        await env.VECTOR_INDEX.upsert([
+          {
+            id: locRow.id,
+            values: embedding,
+            metadata: { category: "references", tags: "profile-location" } as Record<string, VectorizeVectorMetadata>,
+          },
+        ]);
+      } else {
+        const id = crypto.randomUUID();
+        await db.insert(memories).values({
+          id,
+          fact,
+          category: "references",
+          tags: "profile-location",
+          timestamp: Date.now(),
+        });
+        const embedding = await generateEmbedding(env.AI, fact);
+        await env.VECTOR_INDEX.insert([
+          {
+            id,
+            values: embedding,
+            metadata: { category: "references", tags: "profile-location" } as Record<string, VectorizeVectorMetadata>,
+          },
+        ]);
+      }
+    } else if (locRow) {
+      await db.delete(memories).where(eq(memories.id, locRow.id));
+      await env.VECTOR_INDEX.deleteByIds([locRow.id]);
+    }
+
+    return { success: true };
   });
