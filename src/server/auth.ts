@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
 import { oauthProvider } from "@better-auth/oauth-provider";
+import { jwt } from "better-auth/plugins";
 import * as schema from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
@@ -30,6 +31,7 @@ export function createAuth(env: CloudflareEnv) {
       enabled: true,
     },
     plugins: [
+      jwt(),
       oauthProvider({
         loginPage: "/login",
         consentPage: "/oauth/consent",
