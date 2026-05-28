@@ -19,7 +19,7 @@ export default {
     if (url.pathname.startsWith("/api/auth/")) {
       const auth = createAuth(env);
       const response = await auth.handler(request);
-      if (url.pathname === "/api/auth/oauth2/token" || url.pathname === "/api/auth/oauth2/consent") {
+      if (url.pathname === "/api/auth/oauth2/token" || url.pathname === "/api/auth/oauth2/consent" || url.pathname === "/api/auth/oauth2/userinfo") {
         const text = await response.clone().text();
         console.log(`[${url.pathname}] response:`, response.status, text);
       }
@@ -84,6 +84,11 @@ export default {
       const text = await response.clone().text();
       console.log(`[oauth/${segment}] response:`, response.status, text);
       return response;
+    }
+
+    const ua = request.headers.get("user-agent") ?? "";
+    if (ua.includes("python-httpx") || ua.includes("Claude")) {
+      console.log(`[unhandled] ${request.method} ${url.pathname} ua:${ua.slice(0, 40)}`);
     }
 
     return handler(request, {
