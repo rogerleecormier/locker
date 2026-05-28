@@ -19,9 +19,9 @@ export default {
     if (url.pathname.startsWith("/api/auth/")) {
       const auth = createAuth(env);
       const response = await auth.handler(request);
-      if (url.pathname === "/api/auth/oauth2/token") {
+      if (url.pathname === "/api/auth/oauth2/token" || url.pathname === "/api/auth/oauth2/consent") {
         const text = await response.clone().text();
-        console.log("[api/auth/oauth2/token] response:", response.status, text);
+        console.log(`[${url.pathname}] response:`, response.status, text);
       }
       return response;
     }
@@ -39,16 +39,29 @@ export default {
     }
 
     // OAuth 2.0 authorization server metadata (RFC 8414).
-    // oauthProvider serves this at /api/auth/.well-known/oauth-authorization-server.
-    // Also handle /.well-known/oauth-authorization-server/api/auth (issuer-suffixed form).
+    // Serve this ourselves rather than proxying to avoid routing issues.
+    // Claude uses this to discover the authorization, token, and registration endpoints.
     if (url.pathname === "/.well-known/oauth-authorization-server" ||
-        url.pathname === "/.well-known/oauth-authorization-server/api/auth") {
-      const rewritten = new Request(
-        `${url.origin}/api/auth/.well-known/oauth-authorization-server`,
-        { method: "GET", headers: request.headers },
-      );
-      const auth = createAuth(env);
-      return auth.handler(rewritten);
+        url.pathname === "/.well-known/oauth-authorization-server/api/auth" ||
+        url.pathname === "/.well-known/openid-configuration" ||
+        url.pathname === "/api/auth/.well-known/openid-configuration") {
+      const base = url.origin;
+      return Response.json({
+        issuer: base,
+        authorization_endpoint: `${base}/authorize`,
+        token_endpoint: `${base}/token`,
+        registration_endpoint: `${base}/register`,
+        jwks_uri: `${base}/api/auth/jwks`,
+        response_types_supported: ["code"],
+        response_modes_supported: ["query"],
+        grant_types_supported: ["authorization_code", "refresh_token"],
+        code_challenge_methods_supported: ["S256"],
+        token_endpoint_auth_methods_supported: ["none"],
+        scopes_supported: ["openid", "profile", "email", "offline_access"],
+        subject_types_supported: ["public"],
+        id_token_signing_alg_values_supported: ["EdDSA"],
+        resource_indicators_supported: true,
+      });
     }
 
     // Claude constructs OAuth paths from the issuer URL instead of using discovery.
@@ -56,6 +69,8 @@ export default {
     if (url.pathname === "/authorize" || url.pathname === "/token" || url.pathname === "/register") {
       const segment = url.pathname === "/authorize" ? "authorize" : url.pathname === "/register" ? "register" : "token";
       const body = request.body ? await request.arrayBuffer() : null;
+      const bodyText = body ? new TextDecoder().decode(body) : "(empty)";
+      console.log(`[oauth/${segment}] request body:`, bodyText);
       const rewritten = new Request(
         `${url.origin}/api/auth/oauth2/${segment}${url.search}`,
         {
@@ -66,11 +81,8 @@ export default {
       );
       const auth = createAuth(env);
       const response = await auth.handler(rewritten);
-      // Log token responses to debug Claude rejections
-      if (segment === "token") {
-        const text = await response.clone().text();
-        console.log("[oauth/token] response:", response.status, text);
-      }
+      const text = await response.clone().text();
+      console.log(`[oauth/${segment}] response:`, response.status, text);
       return response;
     }
 

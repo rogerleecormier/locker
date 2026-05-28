@@ -35,8 +35,8 @@ function ConsentPage() {
         credentials: "include",
         body: JSON.stringify({ accept, oauth_query: oauthQuery }),
       });
-      const data = await res.json() as { redirectURI?: string; redirect_uri?: string; error?: string };
-      const redirectTo = data.redirectURI ?? data.redirect_uri;
+      const data = await res.json() as { url?: string; redirectURI?: string; redirect_uri?: string; error?: string };
+      const redirectTo = data.url ?? data.redirectURI ?? data.redirect_uri;
       if (!res.ok || !redirectTo) {
         setError(data.error ?? "Something went wrong.");
         setLoading(null);

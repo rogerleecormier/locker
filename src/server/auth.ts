@@ -32,7 +32,7 @@ export function createAuth(env: CloudflareEnv) {
       enabled: true,
     },
     plugins: [
-      jwt(),
+      jwt({ jwt: { issuer: env.BETTER_AUTH_URL } }),
       oauthProvider({
         loginPage: "/login",
         consentPage: "/oauth/consent",
@@ -42,6 +42,7 @@ export function createAuth(env: CloudflareEnv) {
         validAudiences: [env.BETTER_AUTH_URL, `${env.BETTER_AUTH_URL}/api/mcp`],
         silenceWarnings: {
           oauthAuthServerConfig: true,
+          openidConfig: true,
         },
       }),
     ],
