@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokens, MCP_PERM_RECALL, MCP_PERM_COMMIT } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
@@ -125,21 +125,19 @@ async function validateBearerToken(
     };
   }
 
-  // OAuth access token path
-  const db = drizzle(env.DB, { schema: { oauthAccessTokens } });
+  // OAuth access token path (@better-auth/oauth-provider)
+  const db = drizzle(env.DB, { schema: { oauthAccessTokensV2 } });
   const rows = await db
     .select()
-    .from(oauthAccessTokens)
-    .where(eq(oauthAccessTokens.accessToken, rawToken))
+    .from(oauthAccessTokensV2)
+    .where(eq(oauthAccessTokensV2.token, rawToken))
     .all();
 
-  console.log("[mcp/oauth] token lookup:", rawToken.slice(0, 8), "found:", rows.length);
   if (!rows.length) return null;
   const oauthToken = rows[0];
 
-  console.log("[mcp/oauth] userId:", oauthToken.userId, "expires:", oauthToken.accessTokenExpiresAt, "now:", Date.now());
   if (!oauthToken.userId) return null;
-  if (oauthToken.accessTokenExpiresAt.getTime() < Date.now()) return null;
+  if (oauthToken.expiresAt && oauthToken.expiresAt.getTime() < Date.now()) return null;
 
   return {
     userId: oauthToken.userId,

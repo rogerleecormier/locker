@@ -67,42 +67,76 @@ export const memories = sqliteTable("memories", {
   timestamp: integer("timestamp").notNull(),
 });
 
-export const oauthApplications = sqliteTable("oauthApplication", {
+// ── @better-auth/oauth-provider tables ────────────────────────────────────────
+
+export const oauthClients = sqliteTable("oauthClient", {
   id: text("id").primaryKey(),
   clientId: text("clientId").notNull().unique(),
   clientSecret: text("clientSecret"),
-  name: text("name").notNull(),
-  type: text("type", { enum: ["web", "native", "user-agent-based", "public"] }).notNull(),
-  icon: text("icon"),
+  name: text("name"),
+  disabled: integer("disabled", { mode: "boolean" }).default(false),
+  skipConsent: integer("skipConsent", { mode: "boolean" }),
+  redirectUris: text("redirectUris").notNull(),
+  scopes: text("scopes"),
+  public: integer("public", { mode: "boolean" }),
+  type: text("type"),
+  requirePKCE: integer("requirePKCE", { mode: "boolean" }),
+  userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
+  referenceId: text("referenceId"),
   metadata: text("metadata"),
-  redirectUrls: text("redirectUrls").notNull(),
-  disabled: integer("disabled", { mode: "boolean" }).notNull().default(false),
-  userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
-  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
-  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+  icon: text("icon"),
+  uri: text("uri"),
+  tos: text("tos"),
+  policy: text("policy"),
+  softwareId: text("softwareId"),
+  softwareVersion: text("softwareVersion"),
+  softwareStatement: text("softwareStatement"),
+  tokenEndpointAuthMethod: text("tokenEndpointAuthMethod"),
+  grantTypes: text("grantTypes"),
+  responseTypes: text("responseTypes"),
+  contacts: text("contacts"),
+  postLogoutRedirectUris: text("postLogoutRedirectUris"),
+  enableEndSession: integer("enableEndSession", { mode: "boolean" }),
+  subjectType: text("subjectType"),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }),
 });
 
-export const oauthAccessTokens = sqliteTable("oauthAccessToken", {
+export const oauthAccessTokensV2 = sqliteTable("oauthAccessTokenV2", {
   id: text("id").primaryKey(),
-  accessToken: text("accessToken").notNull().unique(),
-  refreshToken: text("refreshToken").notNull().unique(),
-  accessTokenExpiresAt: integer("accessTokenExpiresAt", { mode: "timestamp_ms" }).notNull(),
-  refreshTokenExpiresAt: integer("refreshTokenExpiresAt", { mode: "timestamp_ms" }).notNull(),
+  token: text("token").notNull().unique(),
+  clientId: text("clientId").notNull(),
+  sessionId: text("sessionId"),
+  userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
+  referenceId: text("referenceId"),
+  refreshId: text("refreshId"),
+  expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }),
   scopes: text("scopes").notNull(),
-  clientId: text("clientId").notNull(),
-  userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
-  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
-  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
 });
 
-export const oauthConsents = sqliteTable("oauthConsent", {
+export const oauthRefreshTokens = sqliteTable("oauthRefreshToken", {
   id: text("id").primaryKey(),
+  token: text("token").notNull().unique(),
   clientId: text("clientId").notNull(),
+  sessionId: text("sessionId"),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  referenceId: text("referenceId"),
+  expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }),
+  revoked: integer("revoked", { mode: "timestamp_ms" }),
+  authTime: integer("authTime", { mode: "timestamp_ms" }),
   scopes: text("scopes").notNull(),
-  consentGiven: integer("consentGiven", { mode: "boolean" }).notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
-  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const oauthConsentsV2 = sqliteTable("oauthConsentV2", {
+  id: text("id").primaryKey(),
+  clientId: text("clientId").notNull(),
+  userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
+  referenceId: text("referenceId"),
+  scopes: text("scopes").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }),
 });
 
 export type User = typeof users.$inferSelect;

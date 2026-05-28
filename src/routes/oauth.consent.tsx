@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useSession } from "~/lib/authClient";
 
@@ -11,12 +11,11 @@ const CLIENT_NAMES: Record<string, string> = {
 };
 
 function ConsentPage() {
-  const navigate = useNavigate();
   const { data: session, isPending } = useSession();
-  const search = new URLSearchParams(
-    typeof window !== "undefined" ? window.location.search : ""
-  );
-  const consentCode = search.get("consent_code") ?? "";
+  // The new oauthProvider passes the full signed query string as params.
+  // We pass them back as oauth_query when posting consent.
+  const oauthQuery = typeof window !== "undefined" ? window.location.search.slice(1) : "";
+  const search = new URLSearchParams(oauthQuery);
   const clientId = search.get("client_id") ?? "";
   const scopeRaw = search.get("scope") ?? "";
   const scopes = scopeRaw.split(" ").filter(Boolean);
@@ -34,15 +33,16 @@ function ConsentPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ accept, consent_code: consentCode }),
+        body: JSON.stringify({ accept, oauth_query: oauthQuery }),
       });
-      const data = await res.json() as { redirectURI?: string; error?: string };
-      if (!res.ok || !data.redirectURI) {
+      const data = await res.json() as { redirectURI?: string; redirect_uri?: string; error?: string };
+      const redirectTo = data.redirectURI ?? data.redirect_uri;
+      if (!res.ok || !redirectTo) {
         setError(data.error ?? "Something went wrong.");
         setLoading(null);
         return;
       }
-      window.location.href = data.redirectURI;
+      window.location.href = redirectTo;
     } catch {
       setError("Network error. Please try again.");
       setLoading(null);
@@ -66,7 +66,7 @@ function ConsentPage() {
     return null;
   }
 
-  if (!consentCode || !clientId) {
+  if (!oauthQuery || !clientId) {
     return (
       <div style={styles.page}>
         <div style={styles.card}>

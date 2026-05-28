@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
-import { oidcProvider } from "better-auth/plugins/oidc-provider";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import * as schema from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
@@ -20,33 +20,24 @@ export function createAuth(env: CloudflareEnv) {
         session: schema.sessions,
         account: schema.accounts,
         verification: schema.verifications,
-        oauthApplication: schema.oauthApplications,
-        oauthAccessToken: schema.oauthAccessTokens,
-        oauthConsent: schema.oauthConsents,
+        oauthClient: schema.oauthClients,
+        oauthAccessToken: schema.oauthAccessTokensV2,
+        oauthRefreshToken: schema.oauthRefreshTokens,
+        oauthConsent: schema.oauthConsentsV2,
       },
     }),
     emailAndPassword: {
       enabled: true,
     },
     plugins: [
-      oidcProvider({
+      oauthProvider({
         loginPage: "/login",
         consentPage: "/oauth/consent",
-        requirePKCE: false,
         scopes: ["openid", "profile", "email", "offline_access"],
+        // Allow Claude to self-register via Dynamic Client Registration
         allowDynamicClientRegistration: true,
-        trustedClients: env.CLAUDE_CLIENT_ID ? [
-          {
-            clientId: env.CLAUDE_CLIENT_ID,
-            clientSecret: env.CLAUDE_CLIENT_SECRET,
-            type: "web" as const,
-            name: "Claude (claude.ai)",
-            redirectUrls: [
-              "https://claude.ai/api/mcp/auth_callback",
-              "https://claude.ai/api/organizations/mcp/auth_callback",
-            ],
-          },
-        ] : [],
+        allowUnauthenticatedClientRegistration: true,
+        validAudiences: [env.BETTER_AUTH_URL, `${env.BETTER_AUTH_URL}/api/mcp`],
       }),
     ],
   });
