@@ -159,6 +159,9 @@ export async function handleMcpRequest(
     return new Response(null, { status: 204, headers });
   }
 
+  const authHeader = request.headers.get("Authorization");
+  console.log("[mcp] method:", request.method, "auth header:", authHeader ? authHeader.slice(0, 20) : "NONE");
+
   // Validate API token
   const claims = await validateBearerToken(request, env);
   if (!claims) {
