@@ -5,6 +5,7 @@ import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
 import { encrypt } from "~/server/crypto";
+import { createAuth } from "~/server/auth";
 
 type EmbeddingResponse = {
   shape: number[][];
@@ -89,9 +90,6 @@ type TokenClaims = {
   permissions: number;
 };
 
-// Module-level cache for the imported Ed25519 public key (stable across requests in the same isolate)
-const jwkKeyCache = new Map<string, CryptoKey>();
-
 async function validateBearerToken(
   request: Request,
   env: CloudflareEnv
@@ -128,60 +126,26 @@ async function validateBearerToken(
     };
   }
 
-  // OAuth JWT access token path — verify signature via JWKS then extract sub
+  // OAuth JWT path — validate via userinfo endpoint internally (JWT plugin uses separate key from JWKS)
   if (rawToken.startsWith("eyJ")) {
-    const parts = rawToken.split(".");
-    if (parts.length !== 3) return null;
-
     try {
-      const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-      console.log("[jwt] payload iss:", payload.iss, "exp:", payload.exp, "aud:", JSON.stringify(payload.aud), "sub:", payload.sub);
-
-      // Check expiry
-      if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-        console.log("[jwt] rejected: expired");
+      const auth = createAuth(env);
+      const userinfoReq = new Request(`${env.BETTER_AUTH_URL}/api/auth/oauth2/userinfo`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${rawToken}` },
+      });
+      const res = await auth.handler(userinfoReq);
+      if (!res.ok) {
+        console.log("[jwt] userinfo rejected:", res.status);
         return null;
       }
-      // Check issuer
-      if (payload.iss !== env.BETTER_AUTH_URL) {
-        console.log("[jwt] rejected: iss mismatch, expected:", env.BETTER_AUTH_URL);
-        return null;
-      }
-      // Check audience includes the MCP resource
-      const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-      if (!aud.includes(`${env.BETTER_AUTH_URL}/api/mcp`)) {
-        console.log("[jwt] rejected: aud missing MCP resource, got:", JSON.stringify(aud));
-        return null;
-      }
-
-      const userId = payload.sub as string | undefined;
+      const info = await res.json() as { sub?: string };
+      const userId = info.sub;
       if (!userId) return null;
-
-      // Verify signature using JWKS (cached per isolate)
-      const kid = JSON.parse(atob(parts[0].replace(/-/g, "+").replace(/_/g, "/"))).kid as string;
-      let key = jwkKeyCache.get(kid);
-      if (!key) {
-        const jwksRes = await fetch(`${env.BETTER_AUTH_URL}/api/auth/jwks`);
-        if (!jwksRes.ok) { console.log("[jwt] rejected: jwks fetch failed", jwksRes.status); return null; }
-        const jwks = await jwksRes.json() as { keys: { kty: string; crv: string; x: string; kid: string }[] };
-        const jwk = jwks.keys.find((k) => k.kid === kid) ?? jwks.keys[0];
-        if (!jwk) { console.log("[jwt] rejected: no matching jwk for kid:", kid); return null; }
-        key = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" }, false, ["verify"]);
-        jwkKeyCache.set(kid, key);
-      }
-      const signingInput = `${parts[0]}.${parts[1]}`;
-      const sig = Uint8Array.from(atob(parts[2].replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
-      const valid = await crypto.subtle.verify("Ed25519", key, sig, new TextEncoder().encode(signingInput));
-      if (!valid) { console.log("[jwt] rejected: invalid signature"); return null; }
-
-      console.log("[jwt] accepted for userId:", userId);
-      return {
-        userId,
-        tokenId: payload.sid ?? userId,
-        permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT,
-      };
+      console.log("[jwt] accepted via userinfo for userId:", userId);
+      return { userId, tokenId: userId, permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT };
     } catch (e) {
-      console.log("[jwt] rejected: exception:", String(e));
+      console.log("[jwt] userinfo exception:", String(e));
       return null;
     }
   }
@@ -266,10 +230,23 @@ export async function handleMcpRequest(
   }
 
   const { id, method, params } = body;
+  console.log("[mcp] rpc method:", method, "id:", id);
   const db = drizzle(env.DB, { schema: { memories } });
 
   if (method === "initialize") {
-    return mcpResult(id, MCP_MANIFEST.result);
+    const sessionId = crypto.randomUUID();
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id, result: MCP_MANIFEST.result }), {
+      headers: {
+        "Content-Type": "application/json",
+        "Mcp-Session-Id": sessionId,
+        ...headers,
+      },
+    });
+  }
+
+  // Notifications (no id, no response needed)
+  if (method === "notifications/initialized" || (method && method.startsWith("notifications/"))) {
+    return new Response(null, { status: 202, headers });
   }
 
   if (method === "tools/list") {

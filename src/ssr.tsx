@@ -11,6 +11,12 @@ const handler = createStartHandler(defaultStreamHandler);
 export default {
   async fetch(request: Request, env: CloudflareEnv, ctx: ExecutionContext) {
     const url = new URL(request.url);
+    const ip = request.headers.get("cf-connecting-ip") ?? "";
+    // Log all requests from Anthropic's IP range (160.79.104.0/21)
+    if (ip.startsWith("160.79.")) {
+      const auth = request.headers.get("Authorization");
+      console.log(`[anthropic] ${request.method} ${url.pathname} auth:${auth ? auth.slice(0,20) : "NONE"}`);
+    }
 
     if (url.pathname === "/api/mcp") {
       return handleMcpRequest(request, env);
@@ -83,6 +89,26 @@ export default {
       const response = await auth.handler(rewritten);
       const text = await response.clone().text();
       console.log(`[oauth/${segment}] response:`, response.status, text);
+
+      // For token responses, normalize to strict RFC 6749 shape
+      if (segment === "token" && response.ok) {
+        try {
+          const data = JSON.parse(text) as Record<string, unknown>;
+          // Strip non-standard fields; lowercase token_type; remove id_token (avoid OIDC validation by Claude)
+          const cleaned = {
+            access_token: data.access_token,
+            token_type: "bearer",
+            expires_in: data.expires_in,
+            ...(data.refresh_token ? { refresh_token: data.refresh_token } : {}),
+            scope: data.scope,
+          };
+          const headers = new Headers(response.headers);
+          headers.set("Content-Type", "application/json");
+          return new Response(JSON.stringify(cleaned), { status: response.status, headers });
+        } catch {
+          // Fall through to original response on parse error
+        }
+      }
       return response;
     }
 

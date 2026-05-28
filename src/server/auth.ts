@@ -14,6 +14,11 @@ export function createAuth(env: CloudflareEnv) {
   return betterAuth({
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
+    advanced: {
+      ipAddress: {
+        ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"],
+      },
+    },
     database: drizzleAdapter(db, {
       provider: "sqlite",
       schema: {
