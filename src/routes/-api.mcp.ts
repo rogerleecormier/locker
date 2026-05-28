@@ -89,6 +89,9 @@ type TokenClaims = {
   permissions: number;
 };
 
+// Module-level cache for the imported Ed25519 public key (stable across requests in the same isolate)
+const jwkKeyCache = new Map<string, CryptoKey>();
+
 async function validateBearerToken(
   request: Request,
   env: CloudflareEnv
@@ -125,7 +128,53 @@ async function validateBearerToken(
     };
   }
 
-  // OAuth access token path (@better-auth/oauth-provider)
+  // OAuth JWT access token path — verify signature via JWKS then extract sub
+  if (rawToken.startsWith("eyJ")) {
+    const parts = rawToken.split(".");
+    if (parts.length !== 3) return null;
+
+    try {
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+
+      // Check expiry
+      if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+      // Check issuer
+      if (payload.iss !== env.BETTER_AUTH_URL) return null;
+      // Check audience includes the MCP resource
+      const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+      if (!aud.includes(`${env.BETTER_AUTH_URL}/api/mcp`)) return null;
+
+      const userId = payload.sub as string | undefined;
+      if (!userId) return null;
+
+      // Verify signature using JWKS (cached per isolate)
+      const kid = JSON.parse(atob(parts[0].replace(/-/g, "+").replace(/_/g, "/"))).kid as string;
+      let key = jwkKeyCache.get(kid);
+      if (!key) {
+        const jwksRes = await fetch(`${env.BETTER_AUTH_URL}/api/auth/jwks`);
+        if (!jwksRes.ok) return null;
+        const jwks = await jwksRes.json() as { keys: { kty: string; crv: string; x: string; kid: string }[] };
+        const jwk = jwks.keys.find((k) => k.kid === kid) ?? jwks.keys[0];
+        if (!jwk) return null;
+        key = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" }, false, ["verify"]);
+        jwkKeyCache.set(kid, key);
+      }
+      const signingInput = `${parts[0]}.${parts[1]}`;
+      const sig = Uint8Array.from(atob(parts[2].replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+      const valid = await crypto.subtle.verify("Ed25519", key, sig, new TextEncoder().encode(signingInput));
+      if (!valid) return null;
+
+      return {
+        userId,
+        tokenId: payload.sid ?? userId,
+        permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // OAuth opaque access token path (@better-auth/oauth-provider)
   const db = drizzle(env.DB, { schema: { oauthAccessTokensV2 } });
   const rows = await db
     .select()
