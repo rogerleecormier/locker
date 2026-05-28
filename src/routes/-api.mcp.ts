@@ -133,9 +133,11 @@ async function validateBearerToken(
     .where(eq(oauthAccessTokens.accessToken, rawToken))
     .all();
 
+  console.log("[mcp/oauth] token lookup:", rawToken.slice(0, 8), "found:", rows.length);
   if (!rows.length) return null;
   const oauthToken = rows[0];
 
+  console.log("[mcp/oauth] userId:", oauthToken.userId, "expires:", oauthToken.accessTokenExpiresAt, "now:", Date.now());
   if (!oauthToken.userId) return null;
   if (oauthToken.accessTokenExpiresAt.getTime() < Date.now()) return null;
 
