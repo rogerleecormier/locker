@@ -135,14 +135,24 @@ async function validateBearerToken(
 
     try {
       const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+      console.log("[jwt] payload iss:", payload.iss, "exp:", payload.exp, "aud:", JSON.stringify(payload.aud), "sub:", payload.sub);
 
       // Check expiry
-      if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+      if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+        console.log("[jwt] rejected: expired");
+        return null;
+      }
       // Check issuer
-      if (payload.iss !== env.BETTER_AUTH_URL) return null;
+      if (payload.iss !== env.BETTER_AUTH_URL) {
+        console.log("[jwt] rejected: iss mismatch, expected:", env.BETTER_AUTH_URL);
+        return null;
+      }
       // Check audience includes the MCP resource
       const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-      if (!aud.includes(`${env.BETTER_AUTH_URL}/api/mcp`)) return null;
+      if (!aud.includes(`${env.BETTER_AUTH_URL}/api/mcp`)) {
+        console.log("[jwt] rejected: aud missing MCP resource, got:", JSON.stringify(aud));
+        return null;
+      }
 
       const userId = payload.sub as string | undefined;
       if (!userId) return null;
@@ -152,24 +162,26 @@ async function validateBearerToken(
       let key = jwkKeyCache.get(kid);
       if (!key) {
         const jwksRes = await fetch(`${env.BETTER_AUTH_URL}/api/auth/jwks`);
-        if (!jwksRes.ok) return null;
+        if (!jwksRes.ok) { console.log("[jwt] rejected: jwks fetch failed", jwksRes.status); return null; }
         const jwks = await jwksRes.json() as { keys: { kty: string; crv: string; x: string; kid: string }[] };
         const jwk = jwks.keys.find((k) => k.kid === kid) ?? jwks.keys[0];
-        if (!jwk) return null;
+        if (!jwk) { console.log("[jwt] rejected: no matching jwk for kid:", kid); return null; }
         key = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" }, false, ["verify"]);
         jwkKeyCache.set(kid, key);
       }
       const signingInput = `${parts[0]}.${parts[1]}`;
       const sig = Uint8Array.from(atob(parts[2].replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
       const valid = await crypto.subtle.verify("Ed25519", key, sig, new TextEncoder().encode(signingInput));
-      if (!valid) return null;
+      if (!valid) { console.log("[jwt] rejected: invalid signature"); return null; }
 
+      console.log("[jwt] accepted for userId:", userId);
       return {
         userId,
         tokenId: payload.sid ?? userId,
         permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT,
       };
-    } catch {
+    } catch (e) {
+      console.log("[jwt] rejected: exception:", String(e));
       return null;
     }
   }
