@@ -67,6 +67,16 @@ export const memories = sqliteTable("memories", {
   timestamp: integer("timestamp").notNull(),
 });
 
+// ── better-auth jwt plugin ─────────────────────────────────────────────────────
+
+export const jwks = sqliteTable("jwks", {
+  id: text("id").primaryKey(),
+  publicKey: text("publicKey").notNull(),
+  privateKey: text("privateKey").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+  expiresAt: integer("expiresAt", { mode: "timestamp_ms" }),
+});
+
 // ── @better-auth/oauth-provider tables ────────────────────────────────────────
 
 export const oauthClients = sqliteTable("oauthClient", {

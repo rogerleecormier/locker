@@ -21,6 +21,7 @@ export function createAuth(env: CloudflareEnv) {
         session: schema.sessions,
         account: schema.accounts,
         verification: schema.verifications,
+        jwks: schema.jwks,
         oauthClient: schema.oauthClients,
         oauthAccessToken: schema.oauthAccessTokensV2,
         oauthRefreshToken: schema.oauthRefreshTokens,
@@ -36,10 +37,12 @@ export function createAuth(env: CloudflareEnv) {
         loginPage: "/login",
         consentPage: "/oauth/consent",
         scopes: ["openid", "profile", "email", "offline_access"],
-        // Allow Claude to self-register via Dynamic Client Registration
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
         validAudiences: [env.BETTER_AUTH_URL, `${env.BETTER_AUTH_URL}/api/mcp`],
+        silenceWarnings: {
+          oauthAuthServerConfig: true,
+        },
       }),
     ],
   });

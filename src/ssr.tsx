@@ -39,10 +39,12 @@ export default {
     }
 
     // OAuth 2.0 authorization server metadata (RFC 8414).
-    // Maps to the OIDC discovery doc that better-auth exposes.
-    if (url.pathname === "/.well-known/oauth-authorization-server") {
+    // oauthProvider serves this at /api/auth/.well-known/oauth-authorization-server.
+    // Also handle /.well-known/oauth-authorization-server/api/auth (issuer-suffixed form).
+    if (url.pathname === "/.well-known/oauth-authorization-server" ||
+        url.pathname === "/.well-known/oauth-authorization-server/api/auth") {
       const rewritten = new Request(
-        `${url.origin}/api/auth/.well-known/openid-configuration`,
+        `${url.origin}/api/auth/.well-known/oauth-authorization-server`,
         { method: "GET", headers: request.headers },
       );
       const auth = createAuth(env);
