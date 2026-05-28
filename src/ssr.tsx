@@ -18,7 +18,12 @@ export default {
 
     if (url.pathname.startsWith("/api/auth/")) {
       const auth = createAuth(env);
-      return auth.handler(request);
+      const response = await auth.handler(request);
+      if (url.pathname === "/api/auth/oauth2/token") {
+        const text = await response.clone().text();
+        console.log("[api/auth/oauth2/token] response:", response.status, text);
+      }
+      return response;
     }
 
     // OAuth 2.0 protected resource metadata (RFC 9728).
@@ -58,7 +63,13 @@ export default {
         },
       );
       const auth = createAuth(env);
-      return auth.handler(rewritten);
+      const response = await auth.handler(rewritten);
+      // Log token responses to debug Claude rejections
+      if (segment === "token") {
+        const text = await response.clone().text();
+        console.log("[oauth/token] response:", response.status, text);
+      }
+      return response;
     }
 
     return handler(request, {
