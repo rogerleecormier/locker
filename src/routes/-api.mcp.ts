@@ -171,7 +171,7 @@ export async function handleMcpRequest(
         status: 401,
         headers: {
           ...headers,
-          "WWW-Authenticate": `Bearer realm="${env.BETTER_AUTH_URL}", resource_metadata="${env.BETTER_AUTH_URL}/.well-known/oauth-protected-resource"`,
+          "WWW-Authenticate": `Bearer resource_metadata="${env.BETTER_AUTH_URL}/.well-known/oauth-protected-resource", scope="openid profile email offline_access"`,
         },
       }
     );

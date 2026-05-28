@@ -33,12 +33,12 @@ export function createAuth(env: CloudflareEnv) {
         loginPage: "/login",
         consentPage: "/oauth/consent",
         requirePKCE: false,
-        scopes: ["openid", "profile", "email"],
+        scopes: ["openid", "profile", "email", "offline_access"],
+        allowDynamicClientRegistration: true,
         trustedClients: env.CLAUDE_CLIENT_ID ? [
           {
             clientId: env.CLAUDE_CLIENT_ID,
             clientSecret: env.CLAUDE_CLIENT_SECRET,
-            // Claude uses PKCE (public client flow) during token exchange
             type: "web" as const,
             name: "Claude (claude.ai)",
             redirectUrls: [

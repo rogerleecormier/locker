@@ -51,8 +51,8 @@ export default {
 
     // Claude constructs OAuth paths from the issuer URL instead of using discovery.
     // Rewrite the URL in-process to the better-auth OAuth2 endpoints.
-    if (url.pathname === "/authorize" || url.pathname === "/token") {
-      const segment = url.pathname === "/authorize" ? "authorize" : "token";
+    if (url.pathname === "/authorize" || url.pathname === "/token" || url.pathname === "/register") {
+      const segment = url.pathname === "/authorize" ? "authorize" : url.pathname === "/register" ? "register" : "token";
       const body = request.body ? await request.arrayBuffer() : null;
       const rewritten = new Request(
         `${url.origin}/api/auth/oauth2/${segment}${url.search}`,
