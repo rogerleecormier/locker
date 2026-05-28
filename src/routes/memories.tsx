@@ -426,6 +426,50 @@ function NewMemoryModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   );
 }
 
+function downloadFile(content: string, filename: string, contentType: string) {
+  const blob = new Blob([content], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportToJson(memoriesToExport: Memory[]) {
+  const data = memoriesToExport.map(({ id, fact, category, tags, timestamp }) => ({
+    id,
+    fact,
+    category,
+    tags,
+    timestamp,
+  }));
+  return JSON.stringify(data, null, 2);
+}
+
+function exportToMarkdown(memoriesToExport: Memory[]) {
+  const categories = {
+    rules: memoriesToExport.filter((m) => m.category === "rules"),
+    projects: memoriesToExport.filter((m) => m.category === "projects"),
+    references: memoriesToExport.filter((m) => m.category === "references"),
+  };
+
+  let md = `# Locker Memories Export - ${new Date().toLocaleDateString()}\n\n`;
+
+  for (const [cat, items] of Object.entries(categories)) {
+    if (items.length === 0) continue;
+    md += `## ${cat.charAt(0).toUpperCase() + cat.slice(1)}\n\n`;
+    for (const item of items) {
+      const tags = item.tags
+        ? ` [tags: ${item.tags}]`
+        : "";
+      md += `- ${item.fact}${tags}\n`;
+    }
+    md += `\n`;
+  }
+  return md;
+}
+
 function MemoryTable({
   memories,
   filter,
@@ -438,6 +482,16 @@ function MemoryTable({
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkConfirming, setBulkConfirming] = useState(false);
+
+  function handleExport(itemsToExport: Memory[], format: "json" | "md") {
+    if (format === "json") {
+      const jsonContent = exportToJson(itemsToExport);
+      downloadFile(jsonContent, `locker_memories_${new Date().toISOString().split("T")[0]}.json`, "application/json");
+    } else {
+      const mdContent = exportToMarkdown(itemsToExport);
+      downloadFile(mdContent, `locker_memories_${new Date().toISOString().split("T")[0]}.md`, "text/markdown");
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = filter.toLowerCase();
@@ -580,21 +634,74 @@ function MemoryTable({
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => setBulkConfirming(true)}
-                style={{
-                  marginLeft: "auto",
-                  padding: "4px 12px",
-                  background: "rgba(239,68,68,0.1)",
-                  border: "1px solid rgba(239,68,68,0.3)",
-                  color: "var(--error)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                Delete selected
-              </button>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                <button
+                  onClick={() => handleExport(selectedInView, "json")}
+                  style={{
+                    padding: "4.5px 12px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--accent)";
+                    b.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--border)";
+                    b.style.color = "var(--text)";
+                  }}
+                >
+                  Export JSON
+                </button>
+                <button
+                  onClick={() => handleExport(selectedInView, "md")}
+                  style={{
+                    padding: "4.5px 12px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--accent)";
+                    b.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--border)";
+                    b.style.color = "var(--text)";
+                  }}
+                >
+                  Export Markdown
+                </button>
+                <button
+                  onClick={() => setBulkConfirming(true)}
+                  style={{
+                    padding: "4.5px 12px",
+                    background: "rgba(239,68,68,0.1)",
+                    border: "1px solid rgba(239,68,68,0.3)",
+                    color: "var(--error)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                  }}
+                >
+                  Delete selected
+                </button>
+              </div>
             )}
           </>
         ) : (
@@ -603,24 +710,77 @@ function MemoryTable({
               {filtered.length} memor{filtered.length !== 1 ? "ies" : "y"}
             </span>
             {filtered.length > 0 && (
-              <button
-                onClick={() => {
-                  setSelected(new Set(filtered.map((m) => m.id)));
-                  setBulkConfirming(true);
-                }}
-                style={{
-                  marginLeft: "auto",
-                  padding: "4px 10px",
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.25)",
-                  color: "var(--error)",
-                  fontSize: 11,
-                  borderRadius: "var(--radius)",
-                  opacity: 0.6,
-                }}
-              >
-                Delete All
-              </button>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                <button
+                  onClick={() => handleExport(filtered, "json")}
+                  style={{
+                    padding: "4.5px 12px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--accent)";
+                    b.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--border)";
+                    b.style.color = "var(--text)";
+                  }}
+                >
+                  Export JSON
+                </button>
+                <button
+                  onClick={() => handleExport(filtered, "md")}
+                  style={{
+                    padding: "4.5px 12px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--accent)";
+                    b.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--border)";
+                    b.style.color = "var(--text)";
+                  }}
+                >
+                  Export Markdown
+                </button>
+                <button
+                  onClick={() => {
+                    setSelected(new Set(filtered.map((m) => m.id)));
+                    setBulkConfirming(true);
+                  }}
+                  style={{
+                    padding: "4.5px 12.5px",
+                    background: "rgba(239,68,68,0.08)",
+                    border: "1px solid rgba(239,68,68,0.25)",
+                    color: "var(--error)",
+                    fontSize: 11,
+                    borderRadius: "var(--radius)",
+                    opacity: 0.6,
+                  }}
+                >
+                  Delete All
+                </button>
+              </div>
             )}
           </>
         )}

@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, desc } from "drizzle-orm";
 import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken } from "~/server/crypto";
@@ -48,8 +48,34 @@ const ALL_TOOLS = [
       properties: {
         query: { type: "string", description: "Natural-language search query." },
         topK: { type: "number", description: "Max results (default: 5)." },
+        category: { type: "string", enum: ["rules", "projects", "references"], description: "Optional category filter." },
+        tag: { type: "string", description: "Optional tag filter (case-insensitive)." },
+        keyword: { type: "string", description: "Optional exact substring filter (case-insensitive)." },
       },
       required: ["query"],
+    },
+  },
+  {
+    name: "search_memories",
+    description: "List and filter stored long-term memories. Useful for retrieving all rules, scanning projects, or finding memories by exact keyword or tag matching without semantic similarity.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        category: { type: "string", enum: ["rules", "projects", "references"], description: "Filter by category." },
+        tag: { type: "string", description: "Filter by tag (case-insensitive)." },
+        keyword: { type: "string", description: "Case-insensitive substring search within facts." },
+        limit: { type: "number", description: "Max results to return (default: 50, max: 200)." },
+        offset: { type: "number", description: "Pagination offset (default: 0)." },
+      },
+    },
+  },
+  {
+    name: "get_memory_summary",
+    description: "Get counts of memories by category and a list of all unique tags with their frequency counts. Helps the chatbot understand what context is available in the memory store.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
     },
   },
   {
@@ -64,6 +90,31 @@ const ALL_TOOLS = [
         source: { type: "string", description: "The source chatbot or origin (e.g. chatgpt, claude). Defaults to mcp." },
       },
       required: ["fact"],
+    },
+  },
+  {
+    name: "update_memory",
+    description: "Update an existing memory fact, category, or tags by its unique ID.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The unique ID of the memory to update." },
+        fact: { type: "string", description: "The updated factual statement." },
+        category: { type: "string", enum: ["rules", "projects", "references"], description: "Optional updated category." },
+        tags: { type: "string", description: "Optional updated comma-separated keywords/tags." },
+      },
+      required: ["id", "fact"],
+    },
+  },
+  {
+    name: "delete_memory",
+    description: "Delete an existing memory by its unique ID.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The unique ID of the memory to delete." },
+      },
+      required: ["id"],
     },
   },
 ];
@@ -202,8 +253,10 @@ export async function handleMcpRequest(
 
   if (request.method === "GET") {
     const allowedTools = ALL_TOOLS.filter((t) => {
-      if (t.name === "recall_context") return !!(claims.permissions & MCP_PERM_RECALL);
-      if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
+      if (t.name === "recall_context" || t.name === "search_memories" || t.name === "get_memory_summary") return !!(claims.permissions & MCP_PERM_RECALL);
+      if (t.name === "commit_memory" || t.name === "update_memory" || t.name === "delete_memory") {
+        return !!(claims.permissions & MCP_PERM_COMMIT);
+      }
       return false;
     });
     return new Response(
@@ -251,8 +304,10 @@ export async function handleMcpRequest(
 
   if (method === "tools/list") {
     const allowedTools = ALL_TOOLS.filter((t) => {
-      if (t.name === "recall_context") return !!(claims.permissions & MCP_PERM_RECALL);
-      if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
+      if (t.name === "recall_context" || t.name === "search_memories" || t.name === "get_memory_summary") return !!(claims.permissions & MCP_PERM_RECALL);
+      if (t.name === "commit_memory" || t.name === "update_memory" || t.name === "delete_memory") {
+        return !!(claims.permissions & MCP_PERM_COMMIT);
+      }
       return false;
     });
     return mcpResult(id, { tools: allowedTools });
@@ -275,9 +330,14 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, "Invalid params: query is required");
     }
     const topK = typeof args.topK === "number" ? args.topK : 5;
+    const category = args.category as string | undefined;
+    const tag = args.tag as string | undefined;
+    const keyword = args.keyword as string | undefined;
+
     const embedding = await generateEmbedding(env.AI, query.trim());
+    const vectorTopK = (category || tag || keyword) ? Math.max(50, topK * 3) : topK;
     const vectorResults = await env.VECTOR_INDEX.query(embedding, {
-      topK,
+      topK: vectorTopK,
       returnMetadata: false,
     });
 
@@ -299,10 +359,109 @@ export async function handleMcpRequest(
       rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, env.ENCRYPTION_KEY) }))
     );
 
-    const idOrder = new Map(ids.map((dbId, i) => [dbId, i]));
-    const ranked = decrypted.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
+    // Filter decrypted facts
+    let filtered = decrypted;
+    if (category) {
+      filtered = filtered.filter((r) => r.category === category);
+    }
+    if (tag) {
+      const lowerTag = tag.toLowerCase().trim();
+      filtered = filtered.filter((r) => 
+        r.tags.split(",").map((t) => t.trim().toLowerCase()).includes(lowerTag)
+      );
+    }
+    if (keyword) {
+      const lowerKw = keyword.toLowerCase().trim();
+      filtered = filtered.filter((r) => r.fact.toLowerCase().includes(lowerKw));
+    }
 
-    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(ranked) }] });
+    const idOrder = new Map(ids.map((dbId, i) => [dbId, i]));
+    const ranked = filtered.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
+    const finalResults = ranked.slice(0, topK);
+
+    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(finalResults) }] });
+  }
+
+  if (toolName === "search_memories") {
+    if (!(claims.permissions & MCP_PERM_RECALL)) {
+      return mcpError(id, -32001, "Token does not have recall_context permission");
+    }
+
+    const category = args.category as string | undefined;
+    const tag = args.tag as string | undefined;
+    const keyword = args.keyword as string | undefined;
+    const limit = typeof args.limit === "number" ? Math.min(200, Math.max(1, args.limit)) : 50;
+    const offset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
+
+    const conditions = [eq(memories.userId, claims.userId)];
+    if (category) {
+      conditions.push(eq(memories.category, category as "rules" | "projects" | "references"));
+    }
+
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(and(...conditions))
+      .orderBy(desc(memories.timestamp))
+      .all();
+
+    // Decrypt
+    const decrypted = await Promise.all(
+      rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, env.ENCRYPTION_KEY) }))
+    );
+
+    // Filter in memory for tag and keyword
+    let filtered = decrypted;
+    if (tag) {
+      const lowerTag = tag.toLowerCase().trim();
+      filtered = filtered.filter((r) => 
+        r.tags.split(",").map((t) => t.trim().toLowerCase()).includes(lowerTag)
+      );
+    }
+    if (keyword) {
+      const lowerKw = keyword.toLowerCase().trim();
+      filtered = filtered.filter((r) => r.fact.toLowerCase().includes(lowerKw));
+    }
+
+    const paginated = filtered.slice(offset, offset + limit);
+
+    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(paginated) }] });
+  }
+
+  if (toolName === "get_memory_summary") {
+    if (!(claims.permissions & MCP_PERM_RECALL)) {
+      return mcpError(id, -32001, "Token does not have recall_context permission");
+    }
+
+    const rows = await db
+      .select({ category: memories.category, tags: memories.tags })
+      .from(memories)
+      .where(eq(memories.userId, claims.userId))
+      .all();
+
+    const summary = {
+      total: rows.length,
+      categories: {
+        rules: 0,
+        projects: 0,
+        references: 0,
+      },
+      tags: {} as Record<string, number>,
+    };
+
+    for (const row of rows) {
+      if (row.category in summary.categories) {
+        summary.categories[row.category as "rules" | "projects" | "references"]++;
+      }
+      if (row.tags) {
+        const tagsList = row.tags.split(",").map((t) => t.trim()).filter(Boolean);
+        for (const t of tagsList) {
+          summary.tags[t] = (summary.tags[t] ?? 0) + 1;
+        }
+      }
+    }
+
+    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(summary) }] });
   }
 
   if (toolName === "commit_memory") {
@@ -342,6 +501,83 @@ export async function handleMcpRequest(
     return mcpResult(id, {
       content: [
         { type: "text", text: JSON.stringify({ success: true, id: memId, fact: fact.trim(), category, tags: finalTags }) },
+      ],
+    });
+  }
+
+  if (toolName === "update_memory") {
+    if (!(claims.permissions & MCP_PERM_COMMIT)) {
+      return mcpError(id, -32001, "Token does not have commit_memory permission");
+    }
+
+    const memId = args.id as string | undefined;
+    const fact = args.fact as string | undefined;
+    if (!memId || typeof memId !== "string") {
+      return mcpError(id, -32602, "Invalid params: id is required");
+    }
+    if (!fact || typeof fact !== "string") {
+      return mcpError(id, -32602, "Invalid params: fact is required");
+    }
+
+    // Fetch existing memory to get defaults for category/tags if not provided
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`)
+      .all();
+
+    if (!rows.length) {
+      return mcpError(id, -32602, `Memory not found or unauthorized: ${memId}`);
+    }
+    const existing = rows[0];
+
+    const category = args.category !== undefined 
+      ? normalizeCategory(args.category as string | undefined)
+      : existing.category;
+
+    const rawTags = args.tags !== undefined
+      ? (typeof args.tags === "string" ? args.tags.trim() : "")
+      : existing.tags;
+
+    const embedding = await generateEmbedding(env.AI, fact.trim());
+    const encryptedFact = await encrypt(fact.trim(), env.ENCRYPTION_KEY);
+
+    await db.update(memories)
+      .set({
+        fact: encryptedFact,
+        category,
+        tags: rawTags,
+      })
+      .where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`);
+
+    await env.VECTOR_INDEX.upsert([
+      { id: memId, values: embedding, metadata: { category, tags: rawTags } },
+    ]);
+
+    return mcpResult(id, {
+      content: [
+        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: fact.trim(), category, tags: rawTags }) },
+      ],
+    });
+  }
+
+  if (toolName === "delete_memory") {
+    if (!(claims.permissions & MCP_PERM_COMMIT)) {
+      return mcpError(id, -32001, "Token does not have commit_memory permission");
+    }
+
+    const memId = args.id as string | undefined;
+    if (!memId || typeof memId !== "string") {
+      return mcpError(id, -32602, "Invalid params: id is required");
+    }
+
+    // Delete from DB and Vectorize
+    await db.delete(memories).where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`);
+    await env.VECTOR_INDEX.deleteByIds([memId]);
+
+    return mcpResult(id, {
+      content: [
+        { type: "text", text: JSON.stringify({ success: true, id: memId }) },
       ],
     });
   }

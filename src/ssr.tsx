@@ -65,7 +65,7 @@ export default {
         token_endpoint_auth_methods_supported: ["none"],
         scopes_supported: ["openid", "profile", "email", "offline_access"],
         subject_types_supported: ["public"],
-        id_token_signing_alg_values_supported: ["EdDSA"],
+        id_token_signing_alg_values_supported: ["RS256"],
         resource_indicators_supported: true,
       });
     }
@@ -94,12 +94,13 @@ export default {
       if (segment === "token" && response.ok) {
         try {
           const data = JSON.parse(text) as Record<string, unknown>;
-          // Strip non-standard fields; lowercase token_type; remove id_token (avoid OIDC validation by Claude)
+          // Strip non-standard fields; keep Bearer and id_token (now using RS256 for OIDC validation by Claude)
           const cleaned = {
             access_token: data.access_token,
-            token_type: "bearer",
+            token_type: "Bearer",
             expires_in: data.expires_in,
             ...(data.refresh_token ? { refresh_token: data.refresh_token } : {}),
+            ...(data.id_token ? { id_token: data.id_token } : {}),
             scope: data.scope,
           };
           const headers = new Headers(response.headers);

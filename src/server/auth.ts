@@ -37,7 +37,14 @@ export function createAuth(env: CloudflareEnv) {
       enabled: true,
     },
     plugins: [
-      jwt({ jwt: { issuer: env.BETTER_AUTH_URL } }),
+      jwt({
+        jwt: { issuer: env.BETTER_AUTH_URL },
+        jwks: {
+          keyPairConfig: {
+            alg: "RS256",
+          },
+        },
+      }),
       oauthProvider({
         loginPage: "/login",
         consentPage: "/oauth/consent",
