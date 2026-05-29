@@ -151,6 +151,7 @@ function TokenMockup() {
 
 function PlatformGrid() {
   const tested = PLATFORMS.filter((p) => p.status === "tested");
+  const testing = PLATFORMS.filter((p) => p.status === "testing");
   const comingSoon = PLATFORMS.filter((p) => p.status === "coming-soon");
   let delay = 0;
   return (
@@ -173,9 +174,29 @@ function PlatformGrid() {
           })}
         </div>
       </div>
+      {testing.length > 0 && (
+        <div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.6 }}>
+            In Testing
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
+            {testing.map((p) => {
+              const d = delay;
+              delay += 25;
+              return (
+                <FadeIn key={p.id} delay={d}>
+                  <div style={{ padding: "5px 13px", borderRadius: 20, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", color: "var(--accent)", fontSize: 12, fontWeight: 400, whiteSpace: "nowrap" }}>
+                    {p.label}
+                  </div>
+                </FadeIn>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div>
         <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.5 }}>
-          Coming Soon / In Testing
+          Coming Soon
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
           {comingSoon.map((p) => {

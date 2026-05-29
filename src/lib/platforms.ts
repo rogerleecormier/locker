@@ -1,4 +1,4 @@
-export type PlatformStatus = "tested" | "coming-soon";
+export type PlatformStatus = "tested" | "testing" | "coming-soon";
 
 export type PlatformMeta = {
   id: string;
@@ -10,14 +10,14 @@ export type PlatformMeta = {
 
 export const PLATFORMS: PlatformMeta[] = [
   { id: "claudeweb",          label: "Claude (Web)",          color: "#b85c38", group: "Anthropic", status: "tested"      },
-  { id: "claudecode",         label: "Claude Code",           color: "#c97b53", group: "Anthropic", status: "tested"      },
+  { id: "claudecode",         label: "Claude Code Extension", color: "#c97b53", group: "Anthropic", status: "testing"     },
   { id: "claudedesktop",      label: "Claude Desktop",        color: "#d4956a", group: "Anthropic", status: "coming-soon" },
   { id: "codex_cli",          label: "Codex CLI",             color: "#0f9d58", group: "OpenAI",    status: "coming-soon" },
   { id: "codex_app",          label: "Codex App",             color: "#0c8a4f", group: "OpenAI",    status: "coming-soon" },
   { id: "codex_vscode",       label: "Codex Extension",       color: "#0a7a46", group: "OpenAI",    status: "coming-soon" },
   { id: "chatgpt",            label: "ChatGPT",               color: "#10a37f", group: "OpenAI",    status: "coming-soon" },
-  { id: "antigravity",        label: "Antigravity 2.0",       color: "#818cf8", group: "Google",    status: "coming-soon" },
-  { id: "antigravity_ide",    label: "Antigravity 2.0 IDE",   color: "#4f46e5", group: "Google",    status: "coming-soon" },
+  { id: "antigravity",        label: "Antigravity 2.0",       color: "#818cf8", group: "Google",    status: "tested"      },
+  { id: "antigravity_ide",    label: "Antigravity 2.0 IDE",   color: "#4f46e5", group: "Google",    status: "tested"      },
   { id: "gemini_code_assist", label: "Gemini Code Assist",    color: "#1a73e8", group: "Google",    status: "coming-soon" },
   { id: "geminicli",          label: "Gemini CLI",            color: "#34a853", group: "Google",    status: "coming-soon" },
   { id: "gemini",             label: "Gemini (Gems)",         color: "#4285f4", group: "Google",    status: "coming-soon" },

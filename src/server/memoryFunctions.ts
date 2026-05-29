@@ -1464,6 +1464,17 @@ export const getProfile = createServerFn({ method: "GET" }).handler(
   }
 );
 
+export const getUserPlan = createServerFn({ method: "GET" }).handler(
+  async ({ context }): Promise<{ planId: string }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const { planId } = await getUserEffectivePlan(db, user.id);
+    return { planId };
+  }
+);
+
 export const saveProfile = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): { name: string; location: string } => {
     const d = data as { name: string; location: string };

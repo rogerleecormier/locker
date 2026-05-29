@@ -75,10 +75,10 @@ function ConnectPage() {
     },
     {
       id: "claudecode",
-      label: "Claude Code",
+      label: "Claude Code Extension",
       color: "#c97b53",
       group: "Anthropic",
-      tested: true,
+      tested: false,
       description: "Integrate Locker into Claude Code. MCP servers must be added via the CLI — the VS Code extension can only manage servers already added this way.",
       copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
       instructions: (
@@ -365,6 +365,7 @@ enabled = true`,
       label: "Antigravity 2.0",
       color: "#818cf8",
       group: "Google",
+      tested: true,
       description: "Register the Locker memory server in the Antigravity 2.0 CLI using its native HTTP MCP transport.",
       copyText: `{
   "mcpServers": {
@@ -392,6 +393,7 @@ enabled = true`,
       label: "Antigravity 2.0 IDE",
       color: "#4f46e5",
       group: "Google",
+      tested: true,
       description: "Register the Locker memory server in the Antigravity 2.0 VS Code or JetBrains extension — it shares the same config file as the CLI.",
       copyText: `{
   "mcpServers": {
