@@ -6,8 +6,11 @@ import { handleMcpRequest } from "./routes/-api.mcp";
 import { createAuth } from "./server/auth";
 import type { CloudflareEnv, ArchiveMessage } from "./types/cloudflare";
 import { drizzle } from "drizzle-orm/d1";
-import { memories } from "./db/schema";
+import { eq } from "drizzle-orm";
+import { memories, auditLogs, organizationMembers } from "./db/schema";
 import { archiveContradictingMemories } from "./server/memoryFunctions";
+import { isEncrypted, decrypt, deriveUserKey } from "./server/crypto";
+import { logAudit } from "./server/enterprise";
 
 const handler = createStartHandler(defaultStreamHandler);
 
@@ -23,6 +26,10 @@ export default {
 
     if (url.pathname === "/api/mcp") {
       return handleMcpRequest(request, env);
+    }
+
+    if (url.pathname === "/api/export" && request.method === "POST") {
+      return handleExportRequest(request, env);
     }
 
 
@@ -142,3 +149,260 @@ export default {
     }
   }
 } satisfies ExportedHandler<CloudflareEnv>;
+
+async function decryptFact(stored: string, encKey: string, fallbackKey?: string): Promise<string> {
+  if (!isEncrypted(stored)) return stored;
+  try {
+    return await decrypt(stored, encKey);
+  } catch (err) {
+    if (fallbackKey) {
+      try {
+        return await decrypt(stored, fallbackKey);
+      } catch {
+        // Fall back
+      }
+    }
+    throw err;
+  }
+}
+
+async function signPayload(payload: string, secret: string): Promise<string> {
+  const enc = new TextEncoder();
+  const keyData = enc.encode(secret);
+  const messageData = enc.encode(payload);
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    messageData
+  );
+
+  return Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function makeCrcTable() {
+  const crcTable = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    crcTable[n] = c;
+  }
+  return crcTable;
+}
+
+const crcTable = makeCrcTable();
+
+function crc32(data: Uint8Array): number {
+  let crc = 0 ^ -1;
+  for (let i = 0; i < data.length; i++) {
+    crc = (crc >>> 8) ^ crcTable[(crc ^ data[i]) & 0xFF];
+  }
+  return (crc ^ -1) >>> 0;
+}
+
+function createZip(files: { name: string; content: Uint8Array | string }[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const fileDataList: {
+    nameBytes: Uint8Array;
+    contentBytes: Uint8Array;
+    crc: number;
+    offset: number;
+  }[] = [];
+
+  for (const f of files) {
+    const nameBytes = encoder.encode(f.name);
+    const contentBytes = typeof f.content === "string" ? encoder.encode(f.content) : f.content;
+    const crc = crc32(contentBytes);
+    fileDataList.push({
+      nameBytes,
+      contentBytes,
+      crc,
+      offset: 0,
+    });
+  }
+
+  let currentOffset = 0;
+  for (const fd of fileDataList) {
+    fd.offset = currentOffset;
+    currentOffset += 30 + fd.nameBytes.length + fd.contentBytes.length;
+  }
+
+  const localHeadersSize = currentOffset;
+
+  let cdSize = 0;
+  for (const fd of fileDataList) {
+    cdSize += 46 + fd.nameBytes.length;
+  }
+
+  const zipSize = localHeadersSize + cdSize + 22;
+  const zipBytes = new Uint8Array(zipSize);
+  const view = new DataView(zipBytes.buffer);
+
+  let ptr = 0;
+
+  for (const fd of fileDataList) {
+    view.setUint32(ptr, 0x04034b50, true); ptr += 4;
+    view.setUint16(ptr, 10, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+    view.setUint16(ptr, 0x21, true); ptr += 2;
+    view.setUint32(ptr, fd.crc, true); ptr += 4;
+    view.setUint32(ptr, fd.contentBytes.length, true); ptr += 4;
+    view.setUint32(ptr, fd.contentBytes.length, true); ptr += 4;
+    view.setUint16(ptr, fd.nameBytes.length, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+
+    zipBytes.set(fd.nameBytes, ptr); ptr += fd.nameBytes.length;
+    zipBytes.set(fd.contentBytes, ptr); ptr += fd.contentBytes.length;
+  }
+
+  const cdOffset = ptr;
+
+  for (const fd of fileDataList) {
+    view.setUint32(ptr, 0x02014b50, true); ptr += 4;
+    view.setUint16(ptr, 20, true); ptr += 2;
+    view.setUint16(ptr, 10, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+    view.setUint16(ptr, 0x21, true); ptr += 2;
+    view.setUint32(ptr, fd.crc, true); ptr += 4;
+    view.setUint32(ptr, fd.contentBytes.length, true); ptr += 4;
+    view.setUint32(ptr, fd.contentBytes.length, true); ptr += 4;
+    view.setUint16(ptr, fd.nameBytes.length, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+    view.setUint16(ptr, 0, true); ptr += 2;
+    view.setUint32(ptr, 0, true); ptr += 4;
+    view.setUint32(ptr, fd.offset, true); ptr += 4;
+
+    zipBytes.set(fd.nameBytes, ptr); ptr += fd.nameBytes.length;
+  }
+
+  view.setUint32(ptr, 0x06054b50, true); ptr += 4;
+  view.setUint16(ptr, 0, true); ptr += 2;
+  view.setUint16(ptr, 0, true); ptr += 2;
+  view.setUint16(fileDataList.length, true); ptr += 2;
+  view.setUint16(fileDataList.length, true); ptr += 2;
+  view.setUint32(ptr, cdSize, true); ptr += 4;
+  view.setUint32(ptr, cdOffset, true); ptr += 4;
+  view.setUint16(ptr, 0, true); ptr += 2;
+
+  return zipBytes;
+}
+
+async function handleExportRequest(request: Request, env: CloudflareEnv): Promise<Response> {
+  try {
+    const auth = createAuth(env);
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (!session?.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const db = drizzle(env.DB);
+
+    // Fetch and decrypt memories
+    const userMemories = await db
+      .select()
+      .from(memories)
+      .where(eq(memories.userId, session.user.id))
+      .all();
+
+    const decrypted = await Promise.all(
+      userMemories.map(async (r) => {
+        const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : r.userId;
+        const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+        let plainFact = r.fact;
+        try {
+          plainFact = await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY);
+        } catch (err) {
+          console.error(`[export] Decryption failed for memory ${r.id}:`, err);
+        }
+        return {
+          id: r.id,
+          fact: plainFact,
+          category: r.category,
+          tags: r.tags,
+          timestamp: r.timestamp,
+          isActive: r.isActive,
+          projectKey: r.projectKey,
+        };
+      })
+    );
+
+    // Fetch audit logs
+    const userAuditLogs = await db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.userId, session.user.id))
+      .all();
+
+    // Log the export action
+    const orgRows = await db
+      .select({ orgId: organizationMembers.orgId })
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, session.user.id))
+      .limit(1)
+      .all();
+    const orgId = orgRows[0]?.orgId ?? null;
+
+    await logAudit(db, {
+      orgId,
+      userId: session.user.id,
+      tokenId: "session",
+      action: "export_memories",
+      ipAddress: request.headers.get("cf-connecting-ip"),
+      userAgent: request.headers.get("user-agent"),
+    });
+
+    const memoriesJson = JSON.stringify(decrypted, null, 2);
+    const auditLogsJson = JSON.stringify(userAuditLogs, null, 2);
+
+    const payloadToSign = memoriesJson + "\n---\n" + auditLogsJson;
+    const signatureHex = await signPayload(payloadToSign, env.BETTER_AUTH_SECRET);
+
+    const signatureInfo = JSON.stringify({
+      userId: session.user.id,
+      timestamp: Date.now(),
+      signature: signatureHex,
+      algorithm: "HMAC-SHA256",
+    }, null, 2);
+
+    const zipBytes = createZip([
+      { name: "memories.json", content: memoriesJson },
+      { name: "audit_logs.json", content: auditLogsJson },
+      { name: "signature.json", content: signatureInfo },
+    ]);
+
+    return new Response(zipBytes, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="locker_export_${session.user.id}.zip"`,
+      },
+    });
+  } catch (err) {
+    console.error("[export] Request failed:", err);
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
