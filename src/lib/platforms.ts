@@ -10,7 +10,8 @@ export type PlatformMeta = {
 
 export const PLATFORMS: PlatformMeta[] = [
   { id: "claudeweb",          label: "Claude (Web)",          color: "#b85c38", group: "Anthropic", status: "tested"      },
-  { id: "claudecode",         label: "Claude Code Extension", color: "#c97b53", group: "Anthropic", status: "testing"     },
+  { id: "claudecode",         label: "Claude Code Extension", color: "#c97b53", group: "Anthropic", status: "tested"      },
+  { id: "claudecli",          label: "Claude Code CLI",       color: "#9c6f3d", group: "Anthropic", status: "tested"      },
   { id: "claudedesktop",      label: "Claude Desktop",        color: "#d4956a", group: "Anthropic", status: "coming-soon" },
   { id: "codex_cli",          label: "Codex CLI",             color: "#0f9d58", group: "OpenAI",    status: "coming-soon" },
   { id: "codex_app",          label: "Codex App",             color: "#0c8a4f", group: "OpenAI",    status: "coming-soon" },
