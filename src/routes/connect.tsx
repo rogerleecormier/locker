@@ -74,12 +74,31 @@ function ConnectPage() {
       ),
     },
     {
+      id: "claudecli",
+      label: "Claude Code CLI",
+      color: "#9c6f3d",
+      group: "Anthropic",
+      tested: true,
+      description: "Connect Locker to the Claude Code CLI. Fully tested and working.",
+      copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
+      instructions: (
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
+            <li>Run the command below in your terminal, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>To scope it to one project instead of globally, add <code>--scope project</code> — this writes a <code>.mcp.json</code> at the project root.</li>
+            <li>Verify with <code>claude mcp list</code>. Locker tools are now available in your Claude Code CLI sessions.</li>
+          </ol>
+        </div>
+      ),
+    },
+    {
       id: "claudecode",
       label: "Claude Code Extension",
       color: "#c97b53",
       group: "Anthropic",
-      tested: false,
-      description: "Integrate Locker into Claude Code. MCP servers must be added via the CLI — the VS Code extension can only manage servers already added this way.",
+      tested: true,
+      description: "Integrate Locker into the Claude Code VS Code extension. Fully tested and working.",
       copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
