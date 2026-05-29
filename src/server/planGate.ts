@@ -7,6 +7,7 @@ import {
   tokenUsages,
   teams,
   teamMembers,
+  userPlans,
 } from "~/db/schema";
 import {
   PLANS,
@@ -46,6 +47,15 @@ export async function getUserEffectivePlan(
   db: any,
   userId: string
 ): Promise<{ planId: PlanId; orgId: string | null }> {
+  const userPlanRow = await db
+    .select({ plan: userPlans.plan })
+    .from(userPlans)
+    .where(eq(userPlans.userId, userId))
+    .limit(1)
+    .all();
+
+  const userPlan = userPlanRow[0] ? resolvePlan(userPlanRow[0].plan) : "free";
+
   const orgRows = await db
     .select({
       orgId: organizationMembers.orgId,
@@ -56,12 +66,9 @@ export async function getUserEffectivePlan(
     .where(eq(organizationMembers.userId, userId))
     .all();
 
-  if (orgRows.length === 0) {
-    return { planId: "free", orgId: null };
-  }
-
-  let best: PlanId = "free";
+  let best: PlanId = userPlan;
   let bestOrgId: string | null = null;
+
   for (const row of orgRows) {
     const plan = resolvePlan(row.plan);
     if (planAtLeast(plan, best)) {

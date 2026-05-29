@@ -16,6 +16,7 @@ import {
   tokenUsages,
   teams,
   teamMembers,
+  userPlans,
 } from "~/db/schema";
 import { eq, sql, and } from "drizzle-orm";
 
@@ -25,7 +26,7 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
   async ({ context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
-    const db = drizzle(env.DB, { schema: { memories, apiTokens, organizations, organizationMembers, orgQuotas, tokenUsages, teams, teamMembers } });
+    const db = drizzle(env.DB, { schema: { memories, apiTokens, organizations, organizationMembers, orgQuotas, tokenUsages, teams, teamMembers, userPlans } });
 
     const { planId, orgId } = await getUserEffectivePlan(db, user.id);
 

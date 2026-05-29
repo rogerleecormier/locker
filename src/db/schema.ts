@@ -47,7 +47,7 @@ export const verifications = sqliteTable("verification", {
 });
 
 // api_tokens: MCP access tokens with per-tool permission bitmask
-// permissions bitmask: bit 0 = recall_context, bit 1 = commit_memory
+// permissions bitmask: bit 0 = recall_context, bit 1 = commit_memory, bit 2 = update_memory, bit 3 = delete_memory
 export const apiTokens = sqliteTable("api_tokens", {
   id: text("id").primaryKey(),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -159,6 +159,8 @@ export type NewMemory = typeof memories.$inferInsert;
 
 export const MCP_PERM_RECALL = 1 << 0;   // bit 0
 export const MCP_PERM_COMMIT = 1 << 1;   // bit 1
+export const MCP_PERM_UPDATE = 1 << 2;   // bit 2
+export const MCP_PERM_DELETE = 1 << 3;   // bit 3
 
 // ── Multi-tenancy layer (organizations & teams) ──────────────────────────────
 export const organizations = sqliteTable("organizations", {

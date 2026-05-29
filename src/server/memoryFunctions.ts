@@ -12,6 +12,7 @@ import {
   organizationMembers,
   teams,
   teamMembers,
+  userPlans,
   type Memory,
   type NewMemory,
 } from "~/db/schema";
@@ -30,7 +31,7 @@ async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
 }
 
 function getDb(env: CloudflareEnv) {
-  return drizzle(env.DB, { schema: { memories, apiTokens } });
+  return drizzle(env.DB, { schema: { memories, apiTokens, userPlans, organizationMembers, orgQuotas } });
 }
 
 function normalizeCategory(raw: string | undefined): "rules" | "projects" | "references" {
@@ -1570,8 +1571,8 @@ export const createApiToken = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): { name: string; permissions: number } => {
     const d = data as { name: string; permissions: number };
     if (!d.name || typeof d.name !== "string") throw new Error("name is required");
-    const perms = typeof d.permissions === "number" ? d.permissions : 3;
-    return { name: d.name.trim().slice(0, 64), permissions: perms & 3 }; // mask to valid bits
+    const perms = typeof d.permissions === "number" ? d.permissions : 15;
+    return { name: d.name.trim().slice(0, 64), permissions: perms & 15 }; // mask to valid bits
   })
   .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
@@ -1616,7 +1617,7 @@ export const updateApiTokenPermissions = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): { id: string; permissions: number } => {
     const d = data as { id: string; permissions: number };
     if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    return { id: d.id, permissions: (d.permissions & 3) };
+    return { id: d.id, permissions: (d.permissions & 15) };
   })
   .handler(async ({ data, context }): Promise<{ updated: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;

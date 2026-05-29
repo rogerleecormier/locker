@@ -13,6 +13,7 @@ import {
   teamMembers,
   apiTokens,
   tokenUsages,
+  userPlans,
 } from "~/db/schema";
 import { requireSession } from "~/server/session";
 import { getAdminStatus } from "~/routes/admin";
@@ -170,7 +171,7 @@ export const getUserPlan = createServerFn({ method: "GET" }).handler(
   async ({ context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
-    const db = drizzle(env.DB, { schema: { organizationMembers, orgQuotas } });
+    const db = drizzle(env.DB, { schema: { organizationMembers, orgQuotas, userPlans } });
     return getUserEffectivePlan(db, user.id);
   }
 );
@@ -647,12 +648,12 @@ function OrganizationPage() {
           setInviteRole={setInviteRole}
           newTeamName={newTeamName}
           setNewTeamName={setNewTeamName}
-          onAddMember={(email, role) => addOrgMemberMut.mutate({ orgId: activeSelection.data!.id, email, role: role as "admin" | "member" })}
-          onUpdateRole={(userId, role) => updateOrgRoleMut.mutate({ orgId: activeSelection.data!.id, userId, role: role as any })}
-          onRemoveMember={(userId) => removeOrgMemberMut.mutate({ orgId: activeSelection.data!.id, userId })}
-          onCreateTeam={(name) => createTeamMut.mutate({ orgId: activeSelection.data!.id, name })}
-          onSelectTeam={(teamId) => setSelectedKey(`team:${teamId}`)}
-          onDeleteTeam={(teamId) => { if (confirm("Delete this team?")) deleteTeamMut.mutate({ teamId }); }}
+          onAddMember={(email: string, role: string) => addOrgMemberMut.mutate({ orgId: activeSelection.data!.id, email, role: role as "admin" | "member" })}
+          onUpdateRole={(userId: string, role: string) => updateOrgRoleMut.mutate({ orgId: activeSelection.data!.id, userId, role: role as any })}
+          onRemoveMember={(userId: string) => removeOrgMemberMut.mutate({ orgId: activeSelection.data!.id, userId })}
+          onCreateTeam={(name: string) => createTeamMut.mutate({ orgId: activeSelection.data!.id, name })}
+          onSelectTeam={(teamId: string) => setSelectedKey(`team:${teamId}`)}
+          onDeleteTeam={(teamId: string) => { if (confirm("Delete this team?")) deleteTeamMut.mutate({ teamId }); }}
           isAddingMember={addOrgMemberMut.isPending}
           isUpdatingRole={updateOrgRoleMut.isPending}
           isRemovingMember={removeOrgMemberMut.isPending}
@@ -668,9 +669,9 @@ function OrganizationPage() {
           setInviteEmail={setInviteEmail}
           inviteRole={inviteRole}
           setInviteRole={setInviteRole}
-          onAddMember={(email, role) => addTeamMemberMut.mutate({ teamId: activeSelection.data!.id, email, role })}
-          onUpdateRole={(userId, role) => updateTeamRoleMut.mutate({ teamId: activeSelection.data!.id, userId, role })}
-          onRemoveMember={(userId) => removeTeamMemberMut.mutate({ teamId: activeSelection.data!.id, userId })}
+          onAddMember={(email: string, role: string) => addTeamMemberMut.mutate({ teamId: activeSelection.data!.id, email, role })}
+          onUpdateRole={(userId: string, role: string) => updateTeamRoleMut.mutate({ teamId: activeSelection.data!.id, userId, role })}
+          onRemoveMember={(userId: string) => removeTeamMemberMut.mutate({ teamId: activeSelection.data!.id, userId })}
           onDeleteTeam={() => { if (confirm("Delete this team?")) deleteTeamMut.mutate({ teamId: activeSelection.data!.id }); }}
           isAddingMember={addTeamMemberMut.isPending}
           isUpdatingRole={updateTeamRoleMut.isPending}

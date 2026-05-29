@@ -10,7 +10,7 @@ import {
   saveProfile,
   type ApiTokenPublic,
 } from "~/server/memoryFunctions";
-import { MCP_PERM_RECALL, MCP_PERM_COMMIT } from "~/db/schema";
+import { MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE } from "~/db/schema";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -19,6 +19,8 @@ export const Route = createFileRoute("/settings")({
 const TOOL_DEFS = [
   { bit: MCP_PERM_RECALL, label: "recall_context", desc: "Semantic search — lets AI read your memories" },
   { bit: MCP_PERM_COMMIT, label: "commit_memory", desc: "Write access — lets AI store new memories" },
+  { bit: MCP_PERM_UPDATE, label: "update_memory", desc: "Edit access — lets AI update existing memories" },
+  { bit: MCP_PERM_DELETE, label: "delete_memory", desc: "Delete access — lets AI delete memories" },
 ];
 
 function permLabel(perms: number): string {
@@ -109,8 +111,9 @@ function NewTokenModal({
   onCreate: (name: string, permissions: number) => Promise<string>;
 }) {
   const [name, setName] = useState("");
-  const [perms, setPerms] = useState(MCP_PERM_RECALL | MCP_PERM_COMMIT);
+  const [perms, setPerms] = useState(MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -121,9 +124,12 @@ function NewTokenModal({
   async function handleCreate() {
     if (!name.trim()) return;
     setLoading(true);
+    setError(null);
     try {
       const raw = await onCreate(name.trim(), perms);
       setToken(raw);
+    } catch (err: any) {
+      setError(err.message || "Failed to generate token.");
     } finally {
       setLoading(false);
     }
@@ -175,6 +181,11 @@ function NewTokenModal({
                 ))}
               </div>
             </div>
+            {error && (
+              <div style={{ color: "var(--error)", fontSize: 12, marginTop: 4, background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", padding: "8px 10px", borderRadius: 6 }}>
+                {error}
+              </div>
+            )}
             <div style={styles.modalFooter}>
               <button style={styles.btnGhost} onClick={onClose}>Cancel</button>
               <button style={styles.btnPrimary} onClick={handleCreate} disabled={loading || !name.trim()}>

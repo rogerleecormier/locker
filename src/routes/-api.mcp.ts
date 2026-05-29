@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
@@ -228,7 +228,7 @@ async function validateBearerToken(
       const userId = info.sub;
       if (!userId) return null;
       console.log("[jwt] accepted via userinfo for userId:", userId);
-      return { userId, tokenId: userId, permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT };
+      return { userId, tokenId: userId, permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE };
     } catch (e) {
       console.log("[jwt] userinfo exception:", String(e));
       return null;
@@ -252,7 +252,7 @@ async function validateBearerToken(
   return {
     userId: oauthToken.userId,
     tokenId: oauthToken.id,
-    permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT,
+    permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE,
   };
 }
 
@@ -321,9 +321,9 @@ export async function handleMcpRequest(
   if (request.method === "GET") {
     const allowedTools = ALL_TOOLS.filter((t) => {
       if (t.name === "recall_context" || t.name === "search_memories" || t.name === "get_memory_summary") return !!(claims.permissions & MCP_PERM_RECALL);
-      if (t.name === "commit_memory" || t.name === "update_memory" || t.name === "delete_memory") {
-        return !!(claims.permissions & MCP_PERM_COMMIT);
-      }
+      if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
+      if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
+      if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
       return false;
     });
     return new Response(
@@ -372,9 +372,9 @@ export async function handleMcpRequest(
   if (method === "tools/list") {
     const allowedTools = ALL_TOOLS.filter((t) => {
       if (t.name === "recall_context" || t.name === "search_memories" || t.name === "get_memory_summary") return !!(claims.permissions & MCP_PERM_RECALL);
-      if (t.name === "commit_memory" || t.name === "update_memory" || t.name === "delete_memory") {
-        return !!(claims.permissions & MCP_PERM_COMMIT);
-      }
+      if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
+      if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
+      if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
       return false;
     });
     return mcpResult(id, { tools: allowedTools });
@@ -737,8 +737,8 @@ export async function handleMcpRequest(
   }
 
   if (toolName === "update_memory") {
-    if (!(claims.permissions & MCP_PERM_COMMIT)) {
-      return mcpError(id, -32001, "Token does not have commit_memory permission");
+    if (!(claims.permissions & MCP_PERM_UPDATE)) {
+      return mcpError(id, -32001, "Token does not have update_memory permission");
     }
 
     const memId = args.id as string | undefined;
@@ -837,8 +837,8 @@ export async function handleMcpRequest(
   }
 
   if (toolName === "delete_memory") {
-    if (!(claims.permissions & MCP_PERM_COMMIT)) {
-      return mcpError(id, -32001, "Token does not have commit_memory permission");
+    if (!(claims.permissions & MCP_PERM_DELETE)) {
+      return mcpError(id, -32001, "Token does not have delete_memory permission");
     }
 
     const memId = args.id as string | undefined;

@@ -11,6 +11,7 @@ import { QueryClientProvider, type QueryClient, useQuery } from "@tanstack/react
 import { getAdminStatus } from "~/routes/admin";
 import { getUserWorkspaces, getUserPlan } from "~/server/memoryFunctions";
 import { PlanBadge } from "~/components/PaywallGate";
+import type { PlanId } from "~/lib/plans";
 import type { ReactNode } from "react";
 import { useSession, signOut } from "~/lib/authClient";
 
@@ -148,7 +149,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
       (w.type === "team" && w.role === "admin")
   );
 
-  const currentPlan = planData?.planId ?? "free";
+  const currentPlan = (planData?.planId ?? "free") as PlanId;
 
   return (
     <nav style={navStyles.nav}>
