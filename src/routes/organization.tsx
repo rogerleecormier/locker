@@ -12,6 +12,7 @@ import {
   teamMembers
 } from "~/db/schema";
 import { requireSession } from "~/server/session";
+import { getAdminStatus } from "~/routes/admin";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -530,6 +531,11 @@ function OrganizationPage() {
   const queryClient = useQueryClient();
   const [selectedKey, setSelectedKey] = useState<string>("");
 
+  const { data: adminStatus } = useQuery({
+    queryKey: ["admin-status"],
+    queryFn: () => getAdminStatus(),
+  });
+
   const { data: workspaceData, isLoading, isError, refetch } = useQuery({
     queryKey: ["orgs-and-teams-data"],
     queryFn: () => getUserOrgsAndTeams()
@@ -662,15 +668,102 @@ function OrganizationPage() {
   }
 
   if (selectionOptions.length === 0) {
+    const isAdmin = adminStatus?.isAdmin;
+
     return (
-      <div style={{ padding: "40px", maxWidth: "600px", margin: "0 auto", textAlign: "center" }}>
-        <h2 style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "12px" }}>No Admin Workspaces</h2>
-        <p style={{ color: "var(--text-muted)", lineHeight: "1.6" }}>
-          You do not currently own or admin any organizations or teams. Ask your system administrator to provision an organization and add you as an owner or administrator.
-        </p>
-        <div style={{ marginTop: "24px" }}>
-          <Link to="/" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 600 }}>← Back to App</Link>
+      <div style={{ padding: "40px 20px", maxWidth: "680px", margin: "40px auto", textAlign: "center" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "64px", height: "64px", borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)", marginBottom: "20px" }}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
         </div>
+        
+        <h2 style={{ fontSize: "24px", fontWeight: "800", color: "var(--text)", letterSpacing: "-0.03em", marginBottom: "8px" }}>
+          Locker for Teams & Organizations
+        </h2>
+        <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "32px", lineHeight: "1.6" }}>
+          Collaborate, share knowledge, and manage shared memory vaults with team-wide role-based access.
+        </p>
+
+        {isAdmin ? (
+          <div style={{ padding: "24px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", textAlign: "left", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "var(--accent)" }}></span>
+              <strong style={{ fontSize: "13px", color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Site Admin Status detected</strong>
+            </div>
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: "1.6", margin: 0 }}>
+              You are signed in as the Site Administrator, but you haven't been added as a member or owner of any individual organizations or teams yet.
+            </p>
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: "1.6", margin: 0 }}>
+              Use the Site Admin Console to register a new organization and assign its initial owner email.
+            </p>
+            <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
+              <Link
+                to="/admin"
+                style={{
+                  padding: "10px 20px",
+                  background: "var(--accent)",
+                  color: "#fff",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  borderRadius: "var(--radius)",
+                  textDecoration: "none",
+                  display: "inline-block",
+                  boxShadow: "0 4px 12px rgba(99, 102, 241, 0.2)"
+                }}
+              >
+                Go to Site Admin Panel
+              </Link>
+              <Link
+                to="/"
+                style={{
+                  padding: "10px 20px",
+                  background: "var(--surface2)",
+                  color: "var(--text-muted)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius)",
+                  textDecoration: "none",
+                  fontSize: 13,
+                  display: "inline-block"
+                }}
+              >
+                Back to Dashboard
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", textAlign: "left" }}>
+              <div style={{ padding: "16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
+                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>Shared Vault Lockers</h4>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.5" }}>
+                  Set up a shared workspace locker where your entire team's developer session shares context automatically.
+                </p>
+              </div>
+              <div style={{ padding: "16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
+                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>Role-Based Access</h4>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.5" }}>
+                  Define custom member permissions, manage admins, and control who can read or commit memories.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ padding: "20px", background: "rgba(99, 102, 241, 0.05)", border: "1px solid rgba(99, 102, 241, 0.15)", borderRadius: "12px", textAlign: "center" }}>
+              <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: "1.6", margin: 0 }}>
+                Locker Organizations and Teams are available on the <strong>Business</strong> and <strong>Enterprise</strong> tiers.
+              </p>
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "8px", marginBottom: "0" }}>
+                Ask your system administrator or organization owner to add your account email to their team workspace.
+              </p>
+              <div style={{ marginTop: "16px" }}>
+                <Link to="/" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: "600", fontSize: "13px" }}>← Back to Personal Dashboard</Link>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

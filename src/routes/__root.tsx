@@ -164,11 +164,9 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
         <Link to="/settings" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Settings
         </Link>
-        {isOrgAdmin && (
-          <Link to="/organization" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
-            Organization
-          </Link>
-        )}
+        <Link to="/organization" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+          Organization
+        </Link>
         {adminStatus?.isAdmin && (
           <Link to="/admin" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
             Site Admin
