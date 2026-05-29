@@ -522,11 +522,13 @@ function MemoryTable({
   filter,
   categoryFilter,
   onShowHistory,
+  onExportZip,
 }: {
   memories: Memory[];
   filter: string;
   categoryFilter: string;
   onShowHistory: (id: string) => void;
+  onExportZip: () => void;
 }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -737,6 +739,32 @@ function MemoryTable({
                   Export Markdown
                 </button>
                 <button
+                  onClick={onExportZip}
+                  style={{
+                    padding: "4.5px 12px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--accent)";
+                    b.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--border)";
+                    b.style.color = "var(--text)";
+                  }}
+                >
+                  Export Zip
+                </button>
+                <button
                   onClick={() => setBulkConfirming(true)}
                   style={{
                     padding: "4.5px 12px",
@@ -811,6 +839,32 @@ function MemoryTable({
                   }}
                 >
                   Export Markdown
+                </button>
+                <button
+                  onClick={onExportZip}
+                  style={{
+                    padding: "4.5px 12px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--accent)";
+                    b.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--border)";
+                    b.style.color = "var(--text)";
+                  }}
+                >
+                  Export Zip
                 </button>
                 <button
                   onClick={() => {
@@ -926,29 +980,6 @@ function Dashboard() {
             Memory Manager
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              onClick={triggerExport}
-              style={{
-                padding: "6px 12px",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                color: "var(--text-muted)",
-                fontSize: 12,
-                borderRadius: "var(--radius)",
-                cursor: "pointer",
-                transition: "all 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                (e.target as HTMLElement).style.borderColor = "var(--text-muted)";
-                (e.target as HTMLElement).style.color = "var(--text)";
-              }}
-              onMouseLeave={(e) => {
-                (e.target as HTMLElement).style.borderColor = "var(--border)";
-                (e.target as HTMLElement).style.color = "var(--text-muted)";
-              }}
-            >
-              Export Zip
-            </button>
             <select
               value={projectKey}
               onChange={(e) => setProjectKey(e.target.value)}
@@ -1176,7 +1207,7 @@ function Dashboard() {
         </div>
       )}
       {!isLoading && !isError && memories.length > 0 && (
-        <MemoryTable memories={memories} filter={filter} categoryFilter={categoryFilter} onShowHistory={setActiveTimelineId} />
+        <MemoryTable memories={memories} filter={filter} categoryFilter={categoryFilter} onShowHistory={setActiveTimelineId} onExportZip={triggerExport} />
       )}
 
       {showNewMemory && (
