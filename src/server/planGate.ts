@@ -45,8 +45,13 @@ export class PlanLimitError extends Error {
 
 export async function getUserEffectivePlan(
   db: any,
-  userId: string
+  userId: string,
+  adminUserId?: string
 ): Promise<{ planId: PlanId; orgId: string | null }> {
+  if (adminUserId && userId === adminUserId) {
+    return { planId: "enterprise", orgId: null };
+  }
+
   const userPlanRow = await db
     .select({ plan: userPlans.plan })
     .from(userPlans)
@@ -83,9 +88,10 @@ export async function getUserEffectivePlan(
 export async function requireFeature(
   db: any,
   userId: string,
-  feature: keyof PlanFeatures
+  feature: keyof PlanFeatures,
+  adminUserId?: string
 ): Promise<{ planId: PlanId; orgId: string | null }> {
-  const { planId, orgId } = await getUserEffectivePlan(db, userId);
+  const { planId, orgId } = await getUserEffectivePlan(db, userId, adminUserId);
 
   if (!planHasFeature(planId, feature)) {
     const requiredPlan: PlanId =
@@ -100,9 +106,10 @@ export async function requireFeature(
 
 export async function checkMemoryLimit(
   db: any,
-  userId: string
+  userId: string,
+  adminUserId?: string
 ): Promise<void> {
-  const { planId } = await getUserEffectivePlan(db, userId);
+  const { planId } = await getUserEffectivePlan(db, userId, adminUserId);
   const limits = PLANS[planId].limits;
   if (limits.maxMemories === Infinity) return;
 
@@ -126,9 +133,10 @@ export async function checkMemoryLimit(
 
 export async function checkApiTokenLimit(
   db: any,
-  userId: string
+  userId: string,
+  adminUserId?: string
 ): Promise<void> {
-  const { planId } = await getUserEffectivePlan(db, userId);
+  const { planId } = await getUserEffectivePlan(db, userId, adminUserId);
   const limits = PLANS[planId].limits;
   if (limits.maxApiTokens === Infinity) return;
 
@@ -146,8 +154,12 @@ export async function checkApiTokenLimit(
 
 export async function checkOrgMemberLimit(
   db: any,
-  orgId: string
+  orgId: string,
+  performingUserId?: string,
+  adminUserId?: string
 ): Promise<void> {
+  if (adminUserId && performingUserId === adminUserId) return;
+
   const quotaRows = await db
     .select({ plan: orgQuotas.plan })
     .from(orgQuotas)
@@ -173,8 +185,12 @@ export async function checkOrgMemberLimit(
 
 export async function checkTeamLimit(
   db: any,
-  orgId: string
+  orgId: string,
+  performingUserId?: string,
+  adminUserId?: string
 ): Promise<void> {
+  if (adminUserId && performingUserId === adminUserId) return;
+
   const quotaRows = await db
     .select({ plan: orgQuotas.plan })
     .from(orgQuotas)
@@ -200,8 +216,12 @@ export async function checkTeamLimit(
 
 export async function checkTeamMemberLimit(
   db: any,
-  teamId: string
+  teamId: string,
+  performingUserId?: string,
+  adminUserId?: string
 ): Promise<void> {
+  if (adminUserId && performingUserId === adminUserId) return;
+
   const teamRows = await db
     .select({ orgId: teams.orgId })
     .from(teams)

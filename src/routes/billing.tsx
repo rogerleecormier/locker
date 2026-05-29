@@ -28,7 +28,7 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { memories, apiTokens, organizations, organizationMembers, orgQuotas, tokenUsages, teams, teamMembers, userPlans } });
 
-    const { planId, orgId } = await getUserEffectivePlan(db, user.id);
+    const { planId, orgId } = await getUserEffectivePlan(db, user.id, env.ADMIN_USER_ID);
 
     const memoriesCount = await db
       .select({ count: sql<number>`COUNT(*)` })

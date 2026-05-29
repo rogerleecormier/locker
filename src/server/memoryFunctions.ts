@@ -310,7 +310,7 @@ export const getUserWorkspaces = createServerFn({ method: "GET" }).handler(
     const user = await requireSession(env);
     const db = getDb(env);
 
-    const { planId } = await getUserEffectivePlan(db, user.id);
+    const { planId } = await getUserEffectivePlan(db, user.id, env.ADMIN_USER_ID);
     const canAccessSharedWorkspaces = planId !== "free";
 
     const workspaces: WorkspaceItem[] = [
@@ -529,7 +529,7 @@ export const addMemory = createServerFn({ method: "POST" })
       throw new Error(`Forbidden: no access to vault scope '${data.projectKey}'`);
     }
 
-    await checkMemoryLimit(db, user.id);
+    await checkMemoryLimit(db, user.id, env.ADMIN_USER_ID);
 
     const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
     if (!quotaCheck.allowed) {
@@ -1471,7 +1471,7 @@ export const getUserPlan = createServerFn({ method: "GET" }).handler(
     const user = await requireSession(env);
     const db = getDb(env);
 
-    const { planId } = await getUserEffectivePlan(db, user.id);
+    const { planId } = await getUserEffectivePlan(db, user.id, env.ADMIN_USER_ID);
     return { planId };
   }
 );
@@ -1579,7 +1579,7 @@ export const createApiToken = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = getDb(env);
 
-    await checkApiTokenLimit(db, user.id);
+    await checkApiTokenLimit(db, user.id, env.ADMIN_USER_ID);
 
     const rawToken = `lkr_${crypto.randomUUID().replace(/-/g, "")}`;
     const tokenHash = await hashToken(rawToken);
