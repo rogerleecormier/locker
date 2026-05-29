@@ -132,7 +132,7 @@ export async function checkQuota(
     })
     .from(tokenUsages)
     .where(and(
-      sql`${tokenUsages.tokenId} IN (${sql.join(tokenIds.map((tid) => sql`${tid}`), sql`, `)})`,
+      sql`${tokenUsages.tokenId} IN (${sql.join(tokenIds.map((tid: string) => sql`${tid}`), sql`, `)})`,
       sql`${tokenUsages.date} LIKE ${datePrefix + "%"}`
     ))
     .all();

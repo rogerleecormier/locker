@@ -1,7 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { getMemories, addMemory, deleteMemory, bulkDeleteMemories, updateMemory } from "~/server/memoryFunctions";
+import {
+  getMemories,
+  addMemory,
+  deleteMemory,
+  bulkDeleteMemories,
+  updateMemory,
+  getMemoryTimeline,
+  revertMemoryVersion,
+} from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 
 export const Route = createFileRoute("/memories")({
@@ -67,10 +75,12 @@ function MemoryRow({
   memory,
   selected,
   onToggleSelect,
+  onShowHistory,
 }: {
   memory: Memory;
   selected: boolean;
   onToggleSelect: (id: string) => void;
+  onShowHistory: (id: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
@@ -261,6 +271,33 @@ function MemoryRow({
             }}
           >
             Edit
+          </button>
+          <button
+            onClick={() => onShowHistory(memory.id)}
+            style={{
+              padding: "3px 8px",
+              background: "transparent",
+              border: "1px solid transparent",
+              color: "var(--text-muted)",
+              fontSize: 11,
+              borderRadius: "var(--radius)",
+              opacity: 0.5,
+              transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              const b = e.currentTarget as HTMLButtonElement;
+              b.style.opacity = "1";
+              b.style.borderColor = "rgba(99,102,241,0.4)";
+              b.style.color = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              const b = e.currentTarget as HTMLButtonElement;
+              b.style.opacity = "0.5";
+              b.style.borderColor = "transparent";
+              b.style.color = "var(--text-muted)";
+            }}
+          >
+            History
           </button>
           {confirming ? (
             <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
@@ -474,10 +511,12 @@ function MemoryTable({
   memories,
   filter,
   categoryFilter,
+  onShowHistory,
 }: {
   memories: Memory[];
   filter: string;
   categoryFilter: string;
+  onShowHistory: (id: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -792,6 +831,7 @@ function MemoryTable({
           memory={m}
           selected={selected.has(m.id)}
           onToggleSelect={toggleOne}
+          onShowHistory={onShowHistory}
         />
       ))}
     </div>
@@ -803,11 +843,33 @@ function Dashboard() {
   const [filter, setFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [showNewMemory, setShowNewMemory] = useState(false);
+  const [activeTimelineId, setActiveTimelineId] = useState<string | null>(null);
 
   const { data: memories = [], isLoading, isError } = useQuery({
     queryKey: ["memories"],
     queryFn: () => getMemories(),
   });
+
+  async function triggerExport() {
+    try {
+      const res = await fetch("/api/export", { method: "POST" });
+      if (!res.ok) {
+        alert("Export failed: " + res.statusText);
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `locker_export.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Error triggering export: " + String(err));
+    }
+  }
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ["memories"] });
@@ -842,6 +904,29 @@ function Dashboard() {
             Memory Manager
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              onClick={triggerExport}
+              style={{
+                padding: "6px 12px",
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                fontSize: 12,
+                borderRadius: "var(--radius)",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                (e.target as HTMLElement).style.borderColor = "var(--text-muted)";
+                (e.target as HTMLElement).style.color = "var(--text)";
+              }}
+              onMouseLeave={(e) => {
+                (e.target as HTMLElement).style.borderColor = "var(--border)";
+                (e.target as HTMLElement).style.color = "var(--text-muted)";
+              }}
+            >
+              Export Zip
+            </button>
             <Link
               to="/admin"
               style={{
@@ -1020,7 +1105,7 @@ function Dashboard() {
         </div>
       )}
       {!isLoading && !isError && memories.length > 0 && (
-        <MemoryTable memories={memories} filter={filter} categoryFilter={categoryFilter} />
+        <MemoryTable memories={memories} filter={filter} categoryFilter={categoryFilter} onShowHistory={setActiveTimelineId} />
       )}
 
       {showNewMemory && (
@@ -1029,6 +1114,205 @@ function Dashboard() {
           onSaved={invalidate}
         />
       )}
+
+      {activeTimelineId && (
+        <HistoryModal
+          memoryId={activeTimelineId}
+          onClose={() => setActiveTimelineId(null)}
+          onReverted={() => {
+            setActiveTimelineId(null);
+            invalidate();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function HistoryModal({
+  memoryId,
+  onClose,
+  onReverted,
+}: {
+  memoryId: string;
+  onClose: () => void;
+  onReverted: () => void;
+}) {
+  const { data: versions = [], isLoading, isError } = useQuery({
+    queryKey: ["memory-timeline", memoryId],
+    queryFn: () => getMemoryTimeline({ data: { memoryId } }),
+  });
+
+  const queryClient = useQueryClient();
+
+  const revertMutation = useMutation({
+    mutationFn: (versionId: string) => revertMemoryVersion({ data: { versionId } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      onReverted();
+    },
+    onError: (err) => {
+      alert("Revert failed: " + String(err));
+    },
+  });
+
+  return (
+    <div style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: "rgba(0, 0, 0, 0.4)",
+      backdropFilter: "blur(4px)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+    }}>
+      <div style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        width: "90%",
+        maxWidth: 600,
+        maxHeight: "80vh",
+        display: "flex",
+        flexDirection: "column",
+        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+      }}>
+        <div style={{
+          padding: "16px 20px",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Version History</h3>
+          <button
+            onClick={onClose}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: 16,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{
+          padding: 20,
+          overflowY: "auto",
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}>
+          {isLoading && <div style={{ color: "var(--text-muted)", textAlign: "center" }}>Loading history…</div>}
+          {isError && <div style={{ color: "var(--error)", textAlign: "center" }}>Failed to load timeline.</div>}
+          {!isLoading && !isError && versions.length === 0 && (
+            <div style={{ color: "var(--text-muted)", textAlign: "center" }}>No history found for this memory.</div>
+          )}
+
+          {!isLoading && !isError && versions.map((v: any, index: number) => {
+            const isLatest = index === 0;
+            return (
+              <div
+                key={v.id}
+                style={{
+                  borderLeft: "2px solid var(--accent)",
+                  paddingLeft: 16,
+                  position: "relative",
+                  marginBottom: index === versions.length - 1 ? 0 : 8,
+                }}
+              >
+                <div style={{
+                  position: "absolute",
+                  left: -5,
+                  top: 4,
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: "var(--accent)",
+                }} />
+                
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 6,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      color: "var(--accent)",
+                      background: "var(--tag-bg)",
+                      border: "1px solid var(--tag-border)",
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                    }}>
+                      {v.changeReason || "changed"}
+                    </span>
+                    {isLatest && (
+                      <span style={{
+                        fontSize: 11,
+                        color: "var(--text-muted)",
+                        fontStyle: "italic",
+                      }}>
+                        (Current)
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {new Date(v.timestamp).toLocaleString()}
+                  </span>
+                </div>
+
+                <p style={{ margin: "0 0 8px 0", fontSize: 13, lineHeight: 1.5, wordBreak: "break-word" }}>
+                  {v.fact}
+                </p>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", background: "var(--surface2)", padding: "2px 6px", borderRadius: 4 }}>
+                      {v.category}
+                    </span>
+                    {(v.tags || "").split(",").map((t: string) => t.trim()).filter(Boolean).map((tag: string) => (
+                      <span key={tag} style={{ fontSize: 10, color: "var(--text-muted)", background: "var(--tag-bg)", border: "1px solid var(--tag-border)", padding: "1px 5px", borderRadius: 4 }}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+
+                  {!isLatest && (
+                    <button
+                      onClick={() => revertMutation.mutate(v.id)}
+                      disabled={revertMutation.isPending}
+                      style={{
+                        padding: "3.5px 8px",
+                        background: "var(--accent)",
+                        color: "#fff",
+                        border: "none",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        borderRadius: 4,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {revertMutation.isPending ? "Reverting…" : "Revert"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

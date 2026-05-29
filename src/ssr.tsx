@@ -136,11 +136,11 @@ export default {
       context: { cloudflare: { env, ctx } } as Record<string, unknown>,
     });
   },
-  async queue(batch: MessageBatch<ArchiveMessage>, env: CloudflareEnv, ctx: ExecutionContext) {
+  async queue(batch: MessageBatch<unknown>, env: CloudflareEnv, ctx: ExecutionContext) {
     const db = drizzle(env.DB, { schema: { memories } });
     for (const message of batch.messages) {
       try {
-        const { userId, newFact, embedding, projectKey } = message.body;
+        const { userId, newFact, embedding, projectKey } = message.body as ArchiveMessage;
         console.log(`[queue] Processing contradiction check for user ${userId}: "${newFact.slice(0, 50)}..."`);
         await archiveContradictingMemories(db, env, userId, newFact, embedding, projectKey ?? undefined);
       } catch (err) {
@@ -296,8 +296,8 @@ function createZip(files: { name: string; content: Uint8Array | string }[]): Uin
   view.setUint32(ptr, 0x06054b50, true); ptr += 4;
   view.setUint16(ptr, 0, true); ptr += 2;
   view.setUint16(ptr, 0, true); ptr += 2;
-  view.setUint16(fileDataList.length, true); ptr += 2;
-  view.setUint16(fileDataList.length, true); ptr += 2;
+  view.setUint16(ptr, fileDataList.length, true); ptr += 2;
+  view.setUint16(ptr, fileDataList.length, true); ptr += 2;
   view.setUint32(ptr, cdSize, true); ptr += 4;
   view.setUint32(ptr, cdOffset, true); ptr += 4;
   view.setUint16(ptr, 0, true); ptr += 2;
@@ -391,7 +391,7 @@ async function handleExportRequest(request: Request, env: CloudflareEnv): Promis
       { name: "signature.json", content: signatureInfo },
     ]);
 
-    return new Response(zipBytes, {
+    return new Response(zipBytes.buffer as ArrayBuffer, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",

@@ -6,7 +6,7 @@ import { hashToken, deriveUserKey } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
 import { encrypt } from "~/server/crypto";
 import { createAuth } from "~/server/auth";
-import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit } from "~/server/enterprise";
+import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit } from "~/server/enterprise";
 
 type EmbeddingResponse = {
   shape: number[][];
