@@ -19,6 +19,7 @@ import type { CloudflareEnv } from "~/types/cloudflare";
 import { encrypt, decrypt, isEncrypted, hashToken, deriveUserKey } from "./crypto";
 import { requireSession, requireAdmin } from "./session";
 import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit } from "./enterprise";
+import { checkMemoryLimit, checkApiTokenLimit, getUserEffectivePlan } from "./planGate";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
@@ -308,9 +309,14 @@ export const getUserWorkspaces = createServerFn({ method: "GET" }).handler(
     const user = await requireSession(env);
     const db = getDb(env);
 
+    const { planId } = await getUserEffectivePlan(db, user.id);
+    const canAccessSharedWorkspaces = planId !== "free";
+
     const workspaces: WorkspaceItem[] = [
       { key: "personal", label: "Personal Locker", type: "personal" }
     ];
+
+    if (!canAccessSharedWorkspaces) return workspaces;
 
     // Fetch Orgs
     const orgRows = await db
@@ -521,6 +527,8 @@ export const addMemory = createServerFn({ method: "POST" })
     if (!vaultAllowed) {
       throw new Error(`Forbidden: no access to vault scope '${data.projectKey}'`);
     }
+
+    await checkMemoryLimit(db, user.id);
 
     const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
     if (!quotaCheck.allowed) {
@@ -1558,6 +1566,8 @@ export const createApiToken = createServerFn({ method: "POST" })
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
+
+    await checkApiTokenLimit(db, user.id);
 
     const rawToken = `lkr_${crypto.randomUUID().replace(/-/g, "")}`;
     const tokenHash = await hashToken(rawToken);

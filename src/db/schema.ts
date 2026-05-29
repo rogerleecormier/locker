@@ -242,3 +242,36 @@ export type TokenUsage = typeof tokenUsages.$inferSelect;
 export type OrgQuota = typeof orgQuotas.$inferSelect;
 export type MemoryVersion = typeof memoryVersions.$inferSelect;
 
+// ── User Plans & Billing ──────────────────────────────────────────────────────
+export const userPlans = sqliteTable("user_plans", {
+  userId: text("userId").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  plan: text("plan").notNull().default("free"),
+  billingCustomerId: text("billingCustomerId"),
+  billingSubscriptionId: text("billingSubscriptionId"),
+  planActivatedAt: integer("planActivatedAt"),
+  planExpiresAt: integer("planExpiresAt"),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const planEvents = sqliteTable("plan_events", {
+  id: text("id").primaryKey(),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  fromPlan: text("fromPlan").notNull().default("free"),
+  toPlan: text("toPlan").notNull(),
+  reason: text("reason"),
+  metadata: text("metadata"),
+  timestamp: integer("timestamp").notNull(),
+});
+
+export const waitlist = sqliteTable("waitlist", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  plan: text("plan").notNull().default("business"),
+  notes: text("notes"),
+  createdAt: integer("createdAt").notNull(),
+});
+
+export type UserPlan = typeof userPlans.$inferSelect;
+export type PlanEvent = typeof planEvents.$inferSelect;
+

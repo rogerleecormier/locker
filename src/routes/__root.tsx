@@ -9,7 +9,8 @@ import {
 } from "@tanstack/react-router";
 import { QueryClientProvider, type QueryClient, useQuery } from "@tanstack/react-query";
 import { getAdminStatus } from "~/routes/admin";
-import { getUserWorkspaces } from "~/server/memoryFunctions";
+import { getUserWorkspaces, getUserPlan } from "~/server/memoryFunctions";
+import { PlanBadge } from "~/components/PaywallGate";
 import type { ReactNode } from "react";
 import { useSession, signOut } from "~/lib/authClient";
 
@@ -135,11 +136,19 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
     staleTime: 60000,
   });
 
+  const { data: planData } = useQuery({
+    queryKey: ["user-plan"],
+    queryFn: () => getUserPlan(),
+    staleTime: 60000,
+  });
+
   const isOrgAdmin = workspaces.some(
     (w) =>
       (w.type === "org" && (w.role === "owner" || w.role === "admin")) ||
       (w.type === "team" && w.role === "admin")
   );
+
+  const currentPlan = planData?.planId ?? "free";
 
   return (
     <nav style={navStyles.nav}>
@@ -175,6 +184,10 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
       </div>
 
       <div style={navStyles.right}>
+        {planData && <PlanBadge plan={currentPlan} />}
+        <Link to="/billing" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+          Billing
+        </Link>
         <span style={navStyles.userName}>{user.name || user.email}</span>
         <button onClick={handleSignOut} style={navStyles.signOut}>
           Sign out
