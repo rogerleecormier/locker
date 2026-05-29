@@ -8,6 +8,7 @@ import {
   users,
   organizations,
   organizationMembers,
+  orgQuotas,
   teams,
   teamMembers
 } from "~/db/schema";
@@ -198,6 +199,46 @@ export const getUserOrgsAndTeams = createServerFn({ method: "GET" }).handler(
     };
   }
 );
+
+export const createOrganizationSelfServe = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { name: string } => {
+    const d = data as { name: string };
+    if (!d.name || typeof d.name !== "string") throw new Error("name is required");
+    return { name: d.name.trim() };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean; orgId: string }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB, { schema: { organizations, organizationMembers, orgQuotas } });
+
+    const orgId = `org_${crypto.randomUUID().replace(/-/g, "")}`;
+
+    await db.insert(organizations).values({
+      id: orgId,
+      name: data.name,
+      plan: "free",
+      createdAt: Date.now()
+    });
+
+    // Automatically add creator as owner
+    await db.insert(organizationMembers).values({
+      orgId,
+      userId: user.id,
+      role: "owner",
+      joinedAt: Date.now()
+    });
+
+    // Default free quotas
+    await db.insert(orgQuotas).values({
+      orgId,
+      plan: "free",
+      monthlyMemories: 100,
+      monthlyRecalls: 1000,
+      monthlyCommits: 500
+    });
+
+    return { success: true, orgId };
+  });
 
 export const addOrgMemberByEmail = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): { orgId: string; email: string; role: "admin" | "member" } => {
@@ -546,6 +587,10 @@ function OrganizationPage() {
   const [inviteRole, setInviteRole] = useState("member");
   const [newTeamName, setNewTeamName] = useState("");
 
+  // UI state for creating orgs
+  const [showCreateOrg, setShowCreateOrg] = useState(false);
+  const [newOrgNameInput, setNewOrgNameInput] = useState("");
+
   const orgs = workspaceData?.organizations ?? [];
   const teamsList = workspaceData?.teams ?? [];
 
@@ -582,6 +627,18 @@ function OrganizationPage() {
   }, [currentKey, orgs, teamsList]);
 
   // Mutations
+  const createOrgSelfServeMut = useMutation({
+    mutationFn: (data: { name: string }) => createOrganizationSelfServe({ data }),
+    onSuccess: (res) => {
+      setShowCreateOrg(false);
+      setNewOrgNameInput("");
+      refetch();
+      setSelectedKey(`org:${res.orgId}`);
+      alert("Organization created successfully! You are now the Owner.");
+    },
+    onError: (err) => alert("Failed to create organization: " + String(err))
+  });
+
   const addOrgMemberMut = useMutation({
     mutationFn: (data: { orgId: string; email: string; role: "admin" | "member" }) => addOrgMemberByEmail({ data }),
     onSuccess: () => {
@@ -668,8 +725,6 @@ function OrganizationPage() {
   }
 
   if (selectionOptions.length === 0) {
-    const isAdmin = adminStatus?.isAdmin;
-
     return (
       <div style={{ padding: "40px 20px", maxWidth: "680px", margin: "40px auto", textAlign: "center" }}>
         <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "64px", height: "64px", borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)", marginBottom: "20px" }}>
@@ -688,78 +743,108 @@ function OrganizationPage() {
           Collaborate, share knowledge, and manage shared memory vaults with team-wide role-based access.
         </p>
 
-        {isAdmin ? (
-          <div style={{ padding: "24px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", textAlign: "left", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "var(--accent)" }}></span>
-              <strong style={{ fontSize: "13px", color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Site Admin Status detected</strong>
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", textAlign: "left" }}>
+            <div style={{ padding: "16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
+              <h4 style={{ fontSize: "13px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>Shared Vault Lockers</h4>
+              <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.5" }}>
+                Set up a shared workspace locker where your entire team's developer session shares context automatically.
+              </p>
             </div>
-            <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: "1.6", margin: 0 }}>
-              You are signed in as the Site Administrator, but you haven't been added as a member or owner of any individual organizations or teams yet.
-            </p>
-            <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: "1.6", margin: 0 }}>
-              Use the Site Admin Console to register a new organization and assign its initial owner email.
-            </p>
-            <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
-              <Link
-                to="/admin"
-                style={{
-                  padding: "10px 20px",
-                  background: "var(--accent)",
-                  color: "#fff",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  borderRadius: "var(--radius)",
-                  textDecoration: "none",
-                  display: "inline-block",
-                  boxShadow: "0 4px 12px rgba(99, 102, 241, 0.2)"
-                }}
-              >
-                Go to Site Admin Panel
-              </Link>
-              <Link
-                to="/"
-                style={{
-                  padding: "10px 20px",
-                  background: "var(--surface2)",
-                  color: "var(--text-muted)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius)",
-                  textDecoration: "none",
-                  fontSize: 13,
-                  display: "inline-block"
-                }}
-              >
-                Back to Dashboard
-              </Link>
+            <div style={{ padding: "16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
+              <h4 style={{ fontSize: "13px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>Role-Based Access</h4>
+              <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.5" }}>
+                Define custom member permissions, manage admins, and control who can read or commit memories.
+              </p>
             </div>
           </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", textAlign: "left" }}>
-              <div style={{ padding: "16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
-                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>Shared Vault Lockers</h4>
-                <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.5" }}>
-                  Set up a shared workspace locker where your entire team's developer session shares context automatically.
-                </p>
-              </div>
-              <div style={{ padding: "16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
-                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>Role-Based Access</h4>
-                <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.5" }}>
-                  Define custom member permissions, manage admins, and control who can read or commit memories.
-                </p>
-              </div>
-            </div>
 
-            <div style={{ padding: "20px", background: "rgba(99, 102, 241, 0.05)", border: "1px solid rgba(99, 102, 241, 0.15)", borderRadius: "12px", textAlign: "center" }}>
-              <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: "1.6", margin: 0 }}>
-                Locker Organizations and Teams are available on the <strong>Business</strong> and <strong>Enterprise</strong> tiers.
+          <div style={{ padding: "24px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
+            <p style={{ fontSize: "14px", color: "var(--text)", lineHeight: "1.6", margin: 0, fontWeight: "600" }}>
+              Get started by creating a new organization or team locker
+            </p>
+            <button
+              onClick={() => setShowCreateOrg(true)}
+              style={{
+                padding: "10px 24px",
+                background: "var(--accent)",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: 13,
+                borderRadius: "var(--radius)",
+                border: "none",
+                cursor: "pointer",
+                boxShadow: "0 4px 12px rgba(99, 102, 241, 0.25)"
+              }}
+            >
+              + Create New Organization
+            </button>
+            <div style={{ borderTop: "1px solid var(--border)", width: "100%", paddingTop: "14px", marginTop: "4px" }}>
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>
+                Joining an existing workspace? Ask your team administrator to invite your email address.
               </p>
-              <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "8px", marginBottom: "0" }}>
-                Ask your system administrator or organization owner to add your account email to their team workspace.
+            </div>
+          </div>
+        </div>
+
+        {showCreateOrg && (
+          <div
+            onClick={() => setShowCreateOrg(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.6)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: "20px",
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "12px",
+                padding: "24px",
+                width: "100%",
+                maxWidth: "420px",
+                boxShadow: "0 24px 48px rgba(0,0,0,0.4)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "16px",
+                textAlign: "left",
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "bold", color: "var(--text)" }}>Create New Organization</h3>
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0, marginTop: "-8px" }}>
+                Set up a new shared vault workspace. You will be automatically added as the Owner of this workspace.
               </p>
-              <div style={{ marginTop: "16px" }}>
-                <Link to="/" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: "600", fontSize: "13px" }}>← Back to Personal Dashboard</Link>
+              <div>
+                <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Organization Name</label>
+                <input
+                  type="text"
+                  value={newOrgNameInput}
+                  onChange={(e) => setNewOrgNameInput(e.target.value)}
+                  placeholder="e.g. Acme Corporation"
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius)" }}
+                />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
+                <button
+                  onClick={() => setShowCreateOrg(false)}
+                  style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer", fontSize: "13px" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => createOrgSelfServeMut.mutate({ name: newOrgNameInput })}
+                  disabled={createOrgSelfServeMut.isPending || !newOrgNameInput.trim()}
+                  style={{ padding: "8px 20px", background: "var(--accent)", color: "white", border: "none", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}
+                >
+                  {createOrgSelfServeMut.isPending ? "Creating..." : "Create"}
+                </button>
               </div>
             </div>
           </div>
@@ -791,6 +876,23 @@ function OrganizationPage() {
             <option key={opt.key} value={opt.key}>{opt.label}</option>
           ))}
         </select>
+        <button
+          onClick={() => setShowCreateOrg(true)}
+          style={{
+            padding: "8px 16px",
+            background: "var(--accent)",
+            color: "#fff",
+            fontWeight: 600,
+            fontSize: 12,
+            borderRadius: "var(--radius)",
+            border: "none",
+            cursor: "pointer",
+            boxShadow: "0 4px 12px rgba(99, 102, 241, 0.20)",
+            whiteSpace: "nowrap"
+          }}
+        >
+          + Create Org
+        </button>
       </div>
 
       {activeSelection && activeSelection.type === "org" && activeSelection.data && (
@@ -1045,6 +1147,69 @@ function OrganizationPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCreateOrg && (
+        <div
+          onClick={() => setShowCreateOrg(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "12px",
+              padding: "24px",
+              width: "100%",
+              maxWidth: "420px",
+              boxShadow: "0 24px 48px rgba(0,0,0,0.4)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+              textAlign: "left",
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "bold", color: "var(--text)" }}>Create New Organization</h3>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0, marginTop: "-8px" }}>
+              Set up a new shared vault workspace. You will be automatically added as the Owner of this workspace.
+            </p>
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Organization Name</label>
+              <input
+                type="text"
+                value={newOrgNameInput}
+                onChange={(e) => setNewOrgNameInput(e.target.value)}
+                placeholder="e.g. Acme Corporation"
+                style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius)" }}
+              />
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
+              <button
+                onClick={() => setShowCreateOrg(false)}
+                style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer", fontSize: "13px" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => createOrgSelfServeMut.mutate({ name: newOrgNameInput })}
+                disabled={createOrgSelfServeMut.isPending || !newOrgNameInput.trim()}
+                style={{ padding: "8px 20px", background: "var(--accent)", color: "white", border: "none", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}
+              >
+                {createOrgSelfServeMut.isPending ? "Creating..." : "Create"}
+              </button>
             </div>
           </div>
         </div>
