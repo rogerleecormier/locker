@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
-import { memories, organizations, orgQuotas, organizationMembers, type Memory } from "~/db/schema";
+import { memories, organizations, orgQuotas, organizationMembers, users, type Memory } from "~/db/schema";
 import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, encryptAllMemories, rebuildVectorizeIndex, type DuplicateGroup } from "~/server/memoryFunctions";
 import { requireAdmin } from "~/server/session";
 import type { CloudflareEnv } from "~/types/cloudflare";
@@ -181,23 +181,44 @@ export const listAllOrgsAndQuotas = createServerFn({ method: "GET" }).handler(
 );
 
 export const createOrganization = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string; name: string; plan: string } => {
-    const d = data as { id: string; name: string; plan: string };
+  .inputValidator((data: unknown): { id: string; name: string; plan: string; ownerEmail: string } => {
+    const d = data as { id: string; name: string; plan: string; ownerEmail: string };
     if (!d.id || typeof d.id !== "string") throw new Error("id is required");
     if (!d.name || typeof d.name !== "string") throw new Error("name is required");
     if (!d.plan || typeof d.plan !== "string") throw new Error("plan is required");
-    return { id: d.id.trim(), name: d.name.trim(), plan: d.plan.trim() };
+    if (!d.ownerEmail || typeof d.ownerEmail !== "string") throw new Error("ownerEmail is required");
+    return { id: d.id.trim(), name: d.name.trim(), plan: d.plan.trim(), ownerEmail: d.ownerEmail.trim() };
   })
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
-    const db = drizzle(env.DB, { schema: { organizations, orgQuotas } });
+    const db = drizzle(env.DB, { schema: { organizations, orgQuotas, organizationMembers, users } });
+
+    // Look up the initial owner by email
+    const userRow = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, data.ownerEmail))
+      .limit(1)
+      .all();
+    if (userRow.length === 0) {
+      throw new Error(`Owner user with email '${data.ownerEmail}' not found. They must register for a Locker account first.`);
+    }
+    const ownerUser = userRow[0];
 
     await db.insert(organizations).values({
       id: data.id,
       name: data.name,
       plan: data.plan,
       createdAt: Date.now(),
+    });
+
+    // Add owner membership
+    await db.insert(organizationMembers).values({
+      orgId: data.id,
+      userId: ownerUser.id,
+      role: "owner",
+      joinedAt: Date.now(),
     });
 
     // Default quotas based on plan
@@ -284,6 +305,7 @@ function AdminPage() {
   const [newOrgId, setNewOrgId] = useState("");
   const [newOrgName, setNewOrgName] = useState("");
   const [newOrgPlan, setNewOrgPlan] = useState("free");
+  const [newOrgOwnerEmail, setNewOrgOwnerEmail] = useState("");
 
   const [editingOrgQuotaId, setEditingOrgQuotaId] = useState<string | null>(null);
   const [editMemories, setEditMemories] = useState(100);
@@ -297,12 +319,13 @@ function AdminPage() {
   });
 
   const createOrgMut = useMutation({
-    mutationFn: (data: { id: string; name: string; plan: string }) => createOrganization({ data }),
+    mutationFn: (data: { id: string; name: string; plan: string; ownerEmail: string }) => createOrganization({ data }),
     onSuccess: () => {
       setShowCreateOrg(false);
       setNewOrgId("");
       setNewOrgName("");
       setNewOrgPlan("free");
+      setNewOrgOwnerEmail("");
       orgsQuery.refetch();
     },
     onError: (err) => alert("Failed to create org: " + String(err)),
@@ -925,12 +948,22 @@ function AdminPage() {
                   <select
                     value={newOrgPlan}
                     onChange={(e) => setNewOrgPlan(e.target.value)}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius)" }}
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius)", marginBottom: "12px" }}
                   >
                     <option value="free">Free Plan</option>
                     <option value="pro">Pro Plan</option>
                     <option value="enterprise">Enterprise Plan</option>
                   </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Initial Owner Email</label>
+                  <input
+                    type="email"
+                    value={newOrgOwnerEmail}
+                    onChange={(e) => setNewOrgOwnerEmail(e.target.value)}
+                    placeholder="e.g. owner@acme.com"
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius)" }}
+                  />
                 </div>
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
                   <button
@@ -940,8 +973,8 @@ function AdminPage() {
                     Cancel
                   </button>
                   <button
-                    onClick={() => createOrgMut.mutate({ id: newOrgId, name: newOrgName, plan: newOrgPlan })}
-                    disabled={createOrgMut.isPending || !newOrgId.trim() || !newOrgName.trim()}
+                    onClick={() => createOrgMut.mutate({ id: newOrgId, name: newOrgName, plan: newOrgPlan, ownerEmail: newOrgOwnerEmail })}
+                    disabled={createOrgMut.isPending || !newOrgId.trim() || !newOrgName.trim() || !newOrgOwnerEmail.trim()}
                     style={{ padding: "8px 20px", background: "var(--accent)", color: "white", border: "none", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}
                   >
                     {createOrgMut.isPending ? "Creating..." : "Create Organization"}
