@@ -17,6 +17,7 @@ export const PLATFORMS: PlatformMeta[] = [
   { id: "codex_app",          label: "Codex App",             color: "#0c8a4f", group: "OpenAI",    status: "coming-soon" },
   { id: "codex_vscode",       label: "Codex Extension",       color: "#0a7a46", group: "OpenAI",    status: "coming-soon" },
   { id: "chatgpt",            label: "ChatGPT",               color: "#10a37f", group: "OpenAI",    status: "coming-soon" },
+  { id: "chatgpt",            label: "ChatGPT",               color: "#10a37f", group: "OpenAI",    status: "tested"      },
   { id: "antigravity",        label: "Antigravity 2.0",       color: "#818cf8", group: "Google",    status: "tested"      },
   { id: "antigravity_ide",    label: "Antigravity 2.0 IDE",   color: "#4f46e5", group: "Google",    status: "tested"      },
   { id: "gemini_code_assist", label: "Gemini Code Assist",    color: "#1a73e8", group: "Google",    status: "coming-soon" },

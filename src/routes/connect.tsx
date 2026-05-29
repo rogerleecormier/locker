@@ -556,13 +556,14 @@ enabled = true`,
       label: "ChatGPT",
       color: "#10a37f",
       group: "OpenAI",
-      description: "Integrate your Locker memory into ChatGPT by building a Custom GPT with an API Action.",
+      tested: true,
+      description: "Integrate your Locker memory into ChatGPT by building a Custom GPT with an API Action. Fully tested and working.",
       copyText: `{
   "openapi": "3.1.0",
   "info": {
     "title": "Locker Memory API",
     "version": "1.0.0",
-    "description": "Semantic memory search endpoint."
+    "description": "Semantic memory search and management endpoint with MCP support."
   },
   "servers": [
     {
@@ -570,10 +571,25 @@ enabled = true`,
     }
   ],
   "components": {
+    "schemas": {
+      "Memory": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "fact": { "type": "string" },
+          "category": { "type": "string", "enum": ["rules", "projects", "references"] },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "source": { "type": "string" },
+          "projectKey": { "type": "string" },
+          "isActive": { "type": "boolean" }
+        }
+      }
+    },
     "securitySchemes": {
       "bearerAuth": {
         "type": "http",
-        "scheme": "bearer"
+        "scheme": "bearer",
+        "description": "Bearer token (lkr_* format)"
       }
     }
   },
@@ -581,9 +597,9 @@ enabled = true`,
   "paths": {
     "/api/mcp": {
       "post": {
-        "operationId": "queryMcp",
-        "summary": "Semantic Search",
-        "security": [{ "bearerAuth": [] }],
+        "operationId": "mcpCall",
+        "summary": "MCP Tool Invocation",
+        "description": "Call any Locker MCP tool via JSON-RPC 2.0",
         "requestBody": {
           "required": true,
           "content": {
@@ -591,19 +607,20 @@ enabled = true`,
               "schema": {
                 "type": "object",
                 "properties": {
-                  "jsonrpc": { "type": "string", "example": "2.0" },
-                  "id": { "type": "integer", "example": 1 },
-                  "method": { "type": "string", "example": "tools/call" },
+                  "jsonrpc": { "type": "string", "enum": ["2.0"] },
+                  "id": { "type": "integer", "description": "Request ID" },
+                  "method": { "type": "string", "enum": ["tools/call"] },
                   "params": {
                     "type": "object",
                     "properties": {
-                      "name": { "type": "string", "example": "recall_context" },
+                      "name": {
+                        "type": "string",
+                        "enum": ["recall_context", "search_memories", "get_memory_summary", "commit_memory", "update_memory", "delete_memory"],
+                        "description": "Tool name"
+                      },
                       "arguments": {
                         "type": "object",
-                        "properties": {
-                          "query": { "type": "string" }
-                        },
-                        "required": ["query"]
+                        "description": "Tool-specific arguments"
                       }
                     },
                     "required": ["name", "arguments"]
@@ -620,10 +637,18 @@ enabled = true`,
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "jsonrpc": { "type": "string" },
+                    "id": { "type": "integer" },
+                    "result": { "type": "object" }
+                  }
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         }
       }
@@ -633,11 +658,28 @@ enabled = true`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token.</li>
-            <li>Go to <strong>Explore GPTs &gt; Create</strong> → <strong>Configure</strong> tab → <strong>Create new action</strong>.</li>
-            <li>Import the OpenAPI schema below. In the <strong>Authentication</strong> section choose <strong>API Key → Bearer</strong> and enter your token.</li>
-            <li>In GPT Instructions write: <em>"Use the queryMcp Action whenever the user asks about rules, projects, education, or background facts."</em></li>
+            <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — shown only once.</li>
+            <li>Open <strong>ChatGPT → Explore GPTs → Create</strong> → <strong>Configure</strong> tab.</li>
+            <li>Scroll down to <strong>Actions</strong> → click <strong>Create new action</strong>.</li>
+            <li>Paste the OpenAPI schema below into the <strong>Schema</strong> field.</li>
+            <li>Under <strong>Authentication</strong>, choose <strong>API Key</strong>, select <strong>Bearer</strong>, and paste your token.</li>
+            <li>Click <strong>Save</strong>. Verify the server connection shows a green checkmark.</li>
+            <li>In the <strong>Instructions</strong> field, paste the system prompt below (the detailed tool instructions).</li>
+            <li>Save your GPT. Test by asking "give me a list of my current projects" or "what are my coding rules?"</li>
           </ol>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginTop: 12 }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8, fontWeight: 600 }}>System Prompt for GPT Instructions:</div>
+            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, padding: 10, fontSize: 11, fontFamily: "monospace", lineHeight: 1.5, color: "var(--text)", maxHeight: 240, overflowY: "auto" }}>
+              You have access to a personal long-term memory vault called <strong>Locker</strong>. When the user asks about their projects, rules, preferences, or background, <strong>immediately call the mcpCall action</strong> with the appropriate tool. Do not defer or ask the user to retrieve it themselves.{'\n\n'}
+              <strong>Tool Selection Guide:</strong>{'\n'}
+              • <strong>Projects, active work:</strong> Call search_memories with {`{ "category": "projects", "limit": 100 }`}{'\n'}
+              • <strong>Rules, guidelines, preferences:</strong> Call recall_context with {`{ "query": "<user's question>", "category": "rules", "topK": 10 }`}{'\n'}
+              • <strong>Open-ended questions:</strong> Call recall_context with {`{ "query": "<user's question>", "topK": 10 }`}{'\n'}
+              • <strong>Overview of memories:</strong> Call get_memory_summary with {`{}`}{'\n'}
+              • <strong>Remember something new:</strong> Call commit_memory with {`{ "fact": "<statement>", "category": "rules" or "projects" or "references", "tags": "<tags>" }`}{'\n\n'}
+              <strong>Critical:</strong> Always call tools immediately when user asks about projects, memories, or context. Never expose JSON-RPC format to the user. Integrate results naturally into responses.
+            </div>
+          </div>
         </div>
       ),
     },

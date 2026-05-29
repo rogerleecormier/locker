@@ -1,0 +1,303 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Locker Memory API",
+    "version": "1.0.0",
+    "description": "Semantic memory search and management endpoint with MCP support."
+  },
+  "servers": [
+    {
+      "url": "https://locker.rcormier.dev"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "MemorySummary": {
+        "type": "object",
+        "properties": {
+          "categories": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "Memory": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "fact": { "type": "string" },
+          "category": { "type": "string", "enum": ["rules", "projects", "references"] },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "source": { "type": "string" },
+          "projectKey": { "type": "string" },
+          "isActive": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Bearer token (lkr_* format) with MCP tool permissions"
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/api/mcp": {
+      "post": {
+        "operationId": "mcpCall",
+        "summary": "MCP Tool Invocation",
+        "description": "Call any available MCP tool via JSON-RPC 2.0",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jsonrpc": { "type": "string", "enum": ["2.0"] },
+                  "id": { "type": "integer", "description": "Request ID" },
+                  "method": { "type": "string", "enum": ["tools/call"] },
+                  "params": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "enum": [
+                          "recall_context",
+                          "search_memories",
+                          "get_memory_summary",
+                          "commit_memory",
+                          "update_memory",
+                          "delete_memory"
+                        ],
+                        "description": "Tool name to invoke"
+                      },
+                      "arguments": {
+                        "type": "object",
+                        "description": "Tool-specific arguments"
+                      }
+                    },
+                    "required": ["name", "arguments"]
+                  }
+                },
+                "required": ["jsonrpc", "id", "method", "params"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful tool execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jsonrpc": { "type": "string" },
+                    "id": { "type": "integer" },
+                    "result": { "type": "object" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or unknown tool",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jsonrpc": { "type": "string" },
+                    "id": { "type": "integer" },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": { "type": "integer" },
+                        "message": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - invalid or missing token"
+          }
+        }
+      }
+    }
+  },
+  "x-tools": [
+    {
+      "name": "recall_context",
+      "description": "Semantic search over stored long-term memory. Returns facts ranked by cosine similarity to your query.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Natural-language search query"
+          },
+          "topK": {
+            "type": "number",
+            "description": "Max results to return (default: 5)"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["rules", "projects", "references"],
+            "description": "Optional category filter"
+          },
+          "tag": {
+            "type": "string",
+            "description": "Optional tag filter (case-insensitive)"
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Optional exact substring filter (case-insensitive)"
+          },
+          "projectKey": {
+            "type": "string",
+            "description": "Optional project workspace key (e.g. repository hash)"
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Filter by active status (defaults to true)"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "search_memories",
+      "description": "List and filter stored memories by exact matching (no semantic search). Useful for retrieving all rules, scanning projects, or finding by keyword/tag.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["rules", "projects", "references"],
+            "description": "Filter by category"
+          },
+          "tag": {
+            "type": "string",
+            "description": "Filter by tag (case-insensitive)"
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Case-insensitive substring search within facts"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default: 50, max: 200)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset (default: 0)"
+          },
+          "projectKey": {
+            "type": "string",
+            "description": "Optional project workspace key"
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Filter by active status (defaults to true)"
+          }
+        }
+      }
+    },
+    {
+      "name": "get_memory_summary",
+      "description": "Get counts of memories by category and a list of all unique tags with frequency counts. Use this to understand what context is available.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "commit_memory",
+      "description": "Persist a new fact into long-term memory. Requires commit_memory permission.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "fact": {
+            "type": "string",
+            "description": "The factual statement to store"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["rules", "projects", "references"],
+            "description": "Memory category"
+          },
+          "tags": {
+            "type": "string",
+            "description": "Comma-separated keywords"
+          },
+          "source": {
+            "type": "string",
+            "description": "Source chatbot or origin (e.g. 'chatgpt', 'claude'). Defaults to 'mcp'"
+          },
+          "projectKey": {
+            "type": "string",
+            "description": "Optional project workspace key"
+          }
+        },
+        "required": ["fact"]
+      }
+    },
+    {
+      "name": "update_memory",
+      "description": "Update an existing memory's fact, category, or tags by ID. Requires update_memory permission.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique ID of the memory to update"
+          },
+          "fact": {
+            "type": "string",
+            "description": "Updated factual statement"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["rules", "projects", "references"],
+            "description": "Optional updated category"
+          },
+          "tags": {
+            "type": "string",
+            "description": "Optional updated comma-separated keywords"
+          }
+        },
+        "required": ["id", "fact"]
+      }
+    },
+    {
+      "name": "delete_memory",
+      "description": "Delete an existing memory by ID. Requires delete_memory permission.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique ID of the memory to delete"
+          }
+        },
+        "required": ["id"]
+      }
+    }
+  ]
+}

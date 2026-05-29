@@ -34,7 +34,7 @@ Locker is built using a modern, high-performance Cloudflare-native stack:
     *   **Orphan Prevention**: Cross-references Vectorize matches against the SQLite D1 database. If a vector exists in Vectorize but the corresponding D1 record is missing (e.g., after database clears), it is treated as an orphan rather than a duplicate, preventing false-positive skips during import.
 3.  **Model Context Protocol (MCP) Server**:
     *   Exposes a native JSON-RPC MCP endpoint at `/api/mcp` for agent integration.
-    *   **Tested & Supported Clients**: Claude (Web), Claude Code (Extension & CLI), Antigravity 2.0 (both Editor and CLI).
+    *   **Tested & Supported Clients**: Claude (Web, Extension, CLI), ChatGPT, and Antigravity 2.0 (Editor & CLI).
     *   Supported tools:
         *   `recall_context`: Semantic search over stored long-term memory ranking facts by cosine similarity.
         *   `commit_memory`: Persists a new fact into D1 and Vectorize in real-time.

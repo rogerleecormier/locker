@@ -543,7 +543,7 @@ function LandingPage() {
             Works with your whole stack
           </h2>
           <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 36 }}>
-            One endpoint, every client. Claude (Web, Extension, CLI) and Antigravity 2.0 (Editor & CLI) are fully tested and working. Configs for other platforms are provided as a best-effort guide — they may need adjustment as those clients evolve.
+            One endpoint, every client. Claude (Web, Extension, CLI), ChatGPT, and Antigravity 2.0 (Editor & CLI) are fully tested and working. Configs for other platforms are provided as a best-effort guide — they may need adjustment as those clients evolve.
           </p>
         </FadeIn>
         <PlatformGrid />
