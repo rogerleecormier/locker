@@ -244,7 +244,7 @@ function AdminPage() {
 
       <section style={{ marginTop: "30px" }}>
         <h2>Debug Info</h2>
-        {debugQuery.data?.vectors.length ? (
+        {debugQuery.data?.vectors?.length ? (
           <div style={{ marginTop: "10px" }}>
             <p style={{ color: "var(--error)", marginBottom: "10px" }}>
               Found {debugQuery.data.vectors.length} D1 records with no matching vector (first 100 checked):

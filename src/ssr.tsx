@@ -16,6 +16,13 @@ const handler = createStartHandler(defaultStreamHandler);
 
 export default {
   async fetch(request: Request, env: CloudflareEnv, ctx: ExecutionContext) {
+    if (env) {
+      for (const key of Object.keys(env)) {
+        if (typeof (env as any)[key] === "string") {
+          (env as any)[key] = (env as any)[key].replace(/^['"]|['"]$/g, "");
+        }
+      }
+    }
     const url = new URL(request.url);
     const ip = request.headers.get("cf-connecting-ip") ?? "";
     // Log all requests from Anthropic's IP range (160.79.104.0/21)
@@ -137,6 +144,13 @@ export default {
     });
   },
   async queue(batch: MessageBatch<unknown>, env: CloudflareEnv, ctx: ExecutionContext) {
+    if (env) {
+      for (const key of Object.keys(env)) {
+        if (typeof (env as any)[key] === "string") {
+          (env as any)[key] = (env as any)[key].replace(/^['"]|['"]$/g, "");
+        }
+      }
+    }
     const db = drizzle(env.DB, { schema: { memories } });
     for (const message of batch.messages) {
       try {
