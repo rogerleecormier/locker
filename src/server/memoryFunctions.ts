@@ -532,11 +532,12 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       new Set(
         vectorizeMatches
           .flat()
-          .filter((m): m is VectorizeMatch => m !== null && m.score >= CANDIDATE_THRESHOLD)
+          .filter((m): m is VectorizeMatch => m !== null && m.score >= 0.92)
           .map((m) => m.id)
       )
     );
 
+    const userKey = await deriveUserKey(env.ENCRYPTION_KEY, user.id);
     const existingDbMemories = new Map<string, Memory>();
     if (candidateIds.length > 0) {
       const DB_CHUNK = 50;
@@ -547,68 +548,128 @@ export const batchImportMemories = createServerFn({ method: "POST" })
           .from(memories)
           .where(sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${user.id}`)
           .all();
-        // Decrypt facts for LLM comparison
+        // Decrypt facts using derived user key
         for (const r of rows) {
-          existingDbMemories.set(r.id, { ...r, fact: await decryptFact(r.fact, env.ENCRYPTION_KEY) });
+          existingDbMemories.set(r.id, { ...r, fact: await decryptFact(r.fact, userKey, env.ENCRYPTION_KEY) });
         }
       }
     }
 
-    const dbCandidatesList = Array.from(existingDbMemories.values());
-    const newMemoriesList = valid.map((item, idx) => ({
-      tempId: `new-${idx}`,
-      fact: item.fact,
-      category: resolvedCategories[idx] ?? normalizeCategory(item.category),
-    }));
+    const dupeMapping: Record<string, string | null> = {};
+    const candidatesToCheck: {
+      tempId: string;
+      fact: string;
+      category: string;
+      matchingCandidates: { id: string; fact: string; category: string }[];
+    }[] = [];
 
-    let dupeMapping: Record<string, string | null> = {};
+    // Pre-filter duplicates using cosine similarity
+    for (let i = 0; i < valid.length; i++) {
+      const tempId = `new-${i}`;
+      const fact = valid[i].fact;
+      const category = resolvedCategories[i] ?? normalizeCategory(valid[i].category);
+      const embedding = embeddings[i];
 
-    try {
-      const prompt = `You are a memory deduplication assistant. Your job is to check a list of new memories against a list of existing memories and identify duplicates.
+      let isDefiniteDupe = false;
+      const matchingCandidates: { id: string; fact: string; category: string }[] = [];
 
-A new memory is a duplicate if:
-1. It expresses the exact same fact or semantic meaning as an existing memory (even if phrased differently, e.g., "graduated with a BS in IT" is a duplicate if "The user has a BS in IT degree" is already stored).
-2. It expresses a fact that is a subset of or already fully covered by an existing memory.
-3. It duplicates a previous new memory in the list (in this case, map it to that previous new memory's ID).
+      // 1. Check against prior new memories in this batch
+      for (let j = 0; j < i; j++) {
+        const priorTempId = `new-${j}`;
+        if (dupeMapping[priorTempId]) continue; // Skip if prior was a duplicate
 
-Existing Memories:
-${dbCandidatesList.length > 0
-  ? dbCandidatesList.map((m) => `[${m.id}] (${m.category}) "${m.fact}"`).join("\n")
-  : "(None)"}
-
-New Memories to Check:
-${newMemoriesList.map((m) => `[${m.tempId}] (${m.category}) "${m.fact}"`).join("\n")}
-
-Respond with ONLY a JSON object mapping each new memory's ID (e.g. "new-0") to:
-- The ID of the existing memory it duplicates (from the Existing Memories list), OR
-- The temporary ID of a previous new memory it duplicates (from the New Memories list), OR
-- null if it is not a duplicate.
-
-Do not include any intro, markdown formatting, or code blocks. Just the raw JSON object.
-
-Example output:
-{
-  "new-0": "6091fbef-95a2-4235-b97e-cc1f360f73b2",
-  "new-1": "new-0",
-  "new-2": null
-}`;
-
-      const llmResult = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
-        prompt,
-        max_tokens: Math.max(128, valid.length * 48),
-      });
-
-      const rawText = extractText(llmResult).trim();
-      const match = rawText.match(/\{[\s\S]*\}/);
-      if (match) {
-        dupeMapping = JSON.parse(match[0]);
+        const sim = cosineSimilarity(embedding, embeddings[j]);
+        if (sim > 0.99) {
+          isDefiniteDupe = true;
+          dupeMapping[tempId] = dupeMapping[priorTempId] || priorTempId;
+          break;
+        } else if (sim > 0.92) {
+          matchingCandidates.push({
+            id: priorTempId,
+            fact: valid[j].fact,
+            category: resolvedCategories[j] ?? normalizeCategory(valid[j].category),
+          });
+        }
       }
-    } catch (err) {
-      console.error("[batchImportMemories] AI deduplication failed:", err);
+
+      if (isDefiniteDupe) continue;
+
+      // 2. Check against Vectorize query matches from the database
+      const matches = vectorizeMatches[i] ?? [];
+      for (const m of matches) {
+        if (!existingDbMemories.has(m.id)) continue;
+        const dbMem = existingDbMemories.get(m.id)!;
+
+        if (m.score > 0.99) {
+          isDefiniteDupe = true;
+          dupeMapping[tempId] = m.id;
+          break;
+        } else if (m.score > 0.92) {
+          matchingCandidates.push({
+            id: m.id,
+            fact: dbMem.fact,
+            category: dbMem.category,
+          });
+        }
+      }
+
+      if (isDefiniteDupe) continue;
+
+      // 3. Collect for LLM evaluation if similarity is between 0.92 and 0.99
+      if (matchingCandidates.length > 0) {
+        candidatesToCheck.push({
+          tempId,
+          fact,
+          category,
+          matchingCandidates,
+        });
+      } else {
+        dupeMapping[tempId] = null;
+      }
+    }
+
+    // Run LLM deduplication on potential duplicate pairs
+    if (candidatesToCheck.length > 0) {
+      try {
+        const prompt = `You are a memory deduplication assistant. Your job is to check a list of new memories against potential duplicate candidates and identify if they are actual duplicates.
+
+A new memory is a duplicate of a candidate if it expresses the exact same fact or semantic meaning (even if phrased differently, or if it is a subset of the candidate).
+
+Please check the following potential duplicate pairs:
+
+${candidatesToCheck
+  .map(
+    (c) => `New Memory: [${c.tempId}] (${c.category}) "${c.fact}"
+Candidates to check against:
+${c.matchingCandidates.map((m) => `  - [${m.id}] (${m.category}) "${m.fact}"`).join("\n")}`
+  )
+  .join("\n\n")}
+
+Respond with ONLY a JSON object mapping each checked new memory's ID (e.g. "new-0") to:
+- The ID of the candidate it duplicates (from the Candidates list), OR
+- null if it is not a duplicate of any candidate.
+
+Do not include any intro, markdown formatting, or code blocks. Just the raw JSON object.`;
+
+        const llmResult = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+          prompt,
+          max_tokens: Math.max(128, candidatesToCheck.length * 48),
+        });
+
+        const rawText = extractText(llmResult).trim();
+        const match = rawText.match(/\{[\s\S]*\}/);
+        if (match) {
+          const llmMappings = JSON.parse(match[0]) as Record<string, string | null>;
+          for (const [key, val] of Object.entries(llmMappings)) {
+            dupeMapping[key] = val;
+          }
+        }
+      } catch (err) {
+        console.error("[batchImportMemories] AI deduplication failed:", err);
+      }
     }
 
     const dupeFlags: boolean[] = [];
-    const keptEmbeddings: { embedding: number[]; index: number }[] = [];
     const hasValidMapping = Object.keys(dupeMapping).length > 0;
 
     for (let i = 0; i < valid.length; i++) {
@@ -622,25 +683,6 @@ Example output:
           isDupe = true;
           if (!mappedVal.startsWith("new-")) {
             matchedDbId = mappedVal;
-          }
-        }
-      } else {
-        const vec = embeddings[i];
-        for (const kept of keptEmbeddings) {
-          const sim = cosineSimilarity(vec, kept.embedding);
-          if (sim >= DUPE_THRESHOLD) {
-            isDupe = true;
-            break;
-          }
-        }
-
-        if (!isDupe) {
-          const matches = vectorizeMatches[i];
-          const top = matches?.[0];
-          const hasMatch = top !== null && top !== undefined && top.score >= DUPE_THRESHOLD;
-          if (hasMatch && existingDbMemories.has(top.id)) {
-            isDupe = true;
-            matchedDbId = top.id;
           }
         }
       }
@@ -669,9 +711,6 @@ Example output:
       }
 
       dupeFlags.push(isDupe);
-      if (!isDupe) {
-        keptEmbeddings.push({ embedding: embeddings[i], index: i });
-      }
     }
 
     const timestamp = Date.now();
@@ -679,7 +718,7 @@ Example output:
       const tagsList = (item.tags ?? "").split(",").map(t => t.trim()).filter(Boolean);
       if (!tagsList.includes(source)) tagsList.push(source);
       const finalTags = tagsList.join(", ");
-      const encryptedFact = await encryptFact(item.fact, env.ENCRYPTION_KEY);
+      const encryptedFact = await encryptFact(item.fact, userKey);
 
       return {
         id: crypto.randomUUID(),
