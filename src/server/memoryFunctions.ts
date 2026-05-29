@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, sql, and } from "drizzle-orm";
 import { memories, apiTokens, type Memory, type NewMemory } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { encrypt, decrypt, isEncrypted, hashToken } from "./crypto";
@@ -249,10 +249,100 @@ export const getMemories = createServerFn({ method: "GET" }).handler(
   }
 );
 
+async function archiveContradictingMemories(
+  db: any,
+  env: CloudflareEnv,
+  userId: string,
+  newFact: string,
+  embedding: number[],
+  projectKey: string | undefined
+): Promise<void> {
+  if (!userId) throw new Error("Unauthorized: userId is required for vector query");
+
+  const filter: Record<string, any> = { userId };
+  if (projectKey) {
+    filter.projectKey = { $in: [projectKey, ""] };
+  } else {
+    filter.projectKey = "";
+  }
+
+  const results = await env.VECTOR_INDEX.query(embedding, {
+    topK: 10,
+    filter,
+    returnMetadata: "none",
+  });
+
+  if (!results.matches || results.matches.length === 0) return;
+
+  const candidates = results.matches.filter((m) => m.score > 0.85);
+  if (candidates.length === 0) return;
+
+  const candidateIds = candidates.map((c) => c.id);
+
+  const rows = await db
+    .select()
+    .from(memories)
+    .where(
+      sql`${memories.id} IN (${sql.join(candidateIds.map((id) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${userId} AND ${memories.isActive} = 1`
+    )
+    .all();
+
+  if (rows.length === 0) return;
+
+  const decryptedCandidates = await Promise.all(
+    rows.map(async (r: any) => ({
+      id: r.id,
+      fact: await decryptFact(r.fact, env.ENCRYPTION_KEY),
+    }))
+  );
+
+  const prompt = `You are an AI assistant that detects contradictions or conflicts between a new memory and a list of existing memories.
+A contradiction/conflict occurs when the new memory makes the existing memory outdated, invalid, or directly contradicts it (e.g., a change in project stack, changed technical requirement, or updated preference).
+
+New Memory: "${newFact}"
+
+Existing Memories:
+${decryptedCandidates.map((c) => `[${c.id}] "${c.fact}"`).join("\n")}
+
+Identify which existing memories are contradicted or superseded by the new memory.
+Respond with ONLY a JSON array of the IDs of the contradicted memories. If none are contradicted, return an empty array [].
+Do not include markdown code fences or conversational text. Just the raw JSON array of strings.`;
+
+  try {
+    const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+      prompt,
+      max_tokens: 256,
+    });
+    const text = extractText(result).trim();
+    const match = text.match(/\[[\s\S]*\]/);
+    if (match) {
+      const contradictedIds = JSON.parse(match[0]) as string[];
+      if (contradictedIds.length > 0) {
+        const validIdsToArchive = contradictedIds.filter((id) =>
+          decryptedCandidates.some((c) => c.id === id)
+        );
+        if (validIdsToArchive.length > 0) {
+          console.log("[contradiction] Archiving contradicted memories:", validIdsToArchive);
+          await db
+            .update(memories)
+            .set({ isActive: false })
+            .where(
+              sql`${memories.id} IN (${sql.join(validIdsToArchive.map((id) => sql`${id}`), sql`, `)})`
+            )
+            .run();
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[archiveContradictingMemories] failed:", err);
+  }
+}
+
 type AddMemoryInput = {
   fact: string;
   category: "rules" | "projects" | "references";
   tags: string;
+  projectKey?: string;
 };
 
 export const addMemory = createServerFn({ method: "POST" })
@@ -265,12 +355,17 @@ export const addMemory = createServerFn({ method: "POST" })
       fact: d.fact.trim(),
       category: d.category,
       tags: typeof d.tags === "string" ? d.tags.trim() : "",
+      projectKey: typeof d.projectKey === "string" ? d.projectKey.trim() : undefined,
     };
   })
   .handler(async ({ data, context }): Promise<Memory> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
+
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required for vector insert");
+    }
 
     const id = crypto.randomUUID();
     const timestamp = Date.now();
@@ -284,6 +379,9 @@ export const addMemory = createServerFn({ method: "POST" })
     }
     const finalTags = tagsList.join(", ");
 
+    // Run semantic lookup and archive contradicted memories first
+    await archiveContradictingMemories(db, env, user.id, data.fact, embedding, data.projectKey);
+
     const newRow: NewMemory = {
       id,
       userId: user.id,
@@ -291,6 +389,8 @@ export const addMemory = createServerFn({ method: "POST" })
       category: data.category,
       tags: finalTags,
       timestamp,
+      isActive: true,
+      projectKey: data.projectKey || null,
     };
 
     await db.insert(memories).values(newRow);
@@ -299,17 +399,22 @@ export const addMemory = createServerFn({ method: "POST" })
         {
           id,
           values: embedding,
-          metadata: { category: data.category, tags: finalTags } as Record<string, VectorizeVectorMetadata>,
+          metadata: {
+            userId: user.id,
+            category: data.category,
+            tags: finalTags,
+            projectKey: data.projectKey ?? "",
+          } as Record<string, VectorizeVectorMetadata>,
         },
       ]);
     } catch (err) {
       console.error(`[addMemory] vector insert failed:`, err);
     }
 
-    return { ...newRow, fact: data.fact, tags: newRow.tags ?? "" };
+    return { ...newRow, fact: data.fact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null };
   });
 
-type BatchImportItem = { fact: string; category?: string; tags?: string };
+type BatchImportItem = { fact: string; category?: string; tags?: string; projectKey?: string };
 
 function cosineSimilarity(a: number[], b: number[]): number {
   let dotProduct = 0;
@@ -327,6 +432,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
 type BatchImportInput = {
   items: BatchImportItem[];
   source: string;
+  projectKey?: string;
 };
 
 export const batchImportMemories = createServerFn({ method: "POST" })
@@ -337,17 +443,23 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       fact: String(item.fact || "").trim(),
       category: item.category,
       tags: item.tags,
+      projectKey: item.projectKey,
     }));
     return {
       items: validatedItems,
       source: typeof d.source === "string" ? d.source.trim().toLowerCase() : "manual",
+      projectKey: d.projectKey,
     };
   })
   .handler(async ({ data, context }): Promise<{ imported: number; skipped: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
-    const { items, source } = data;
+    const { items, source, projectKey } = data;
+
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required for vector operations");
+    }
 
     const valid = items.filter((item) => {
       const f = item.fact;
@@ -384,7 +496,11 @@ export const batchImportMemories = createServerFn({ method: "POST" })
     const vectorizeMatches = await Promise.all(
       embeddings.map(async (vec, idx) => {
         try {
-          const result = await env.VECTOR_INDEX.query(vec, { topK: 3, returnMetadata: false });
+          const result = await env.VECTOR_INDEX.query(vec, {
+            topK: 3,
+            filter: { userId: user.id },
+            returnMetadata: "none",
+          });
           return result.matches ?? [];
         } catch (err) {
           console.error(`[batchImportMemories] Vectorize query failed for item ${idx}:`, err);
@@ -523,7 +639,7 @@ Example output:
                 {
                   id: matchedDbId,
                   values: embeddings[i],
-                  metadata: { category: existing.category, tags: newTags } as Record<string, VectorizeVectorMetadata>,
+                  metadata: { userId: user.id, category: existing.category, tags: newTags, projectKey: existing.projectKey ?? "" } as Record<string, VectorizeVectorMetadata>,
                 },
               ]);
             } catch (err) {
@@ -556,6 +672,7 @@ Example output:
         timestamp,
         embedding: embeddings[i],
         isDupe: dupeFlags[i],
+        projectKey: item.projectKey || projectKey || null,
       };
     }));
 
@@ -565,8 +682,8 @@ Example output:
     const CHUNK_SIZE = 10;
     for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
       await db.insert(memories).values(
-        newRows.slice(i, i + CHUNK_SIZE).map(({ id, userId, fact, category, tags, timestamp: ts }) => ({
-          id, userId, fact, category, tags, timestamp: ts,
+        newRows.slice(i, i + CHUNK_SIZE).map(({ id, userId, fact, category, tags, timestamp: ts, projectKey: pk }) => ({
+          id, userId, fact, category, tags, timestamp: ts, isActive: true, projectKey: pk,
         }))
       );
     }
@@ -575,8 +692,10 @@ Example output:
       id: row.id,
       values: row.embedding,
       metadata: {
+        userId: user.id,
         category: row.category,
         tags: row.tags ?? "",
+        projectKey: row.projectKey ?? "",
       } as Record<string, VectorizeVectorMetadata>,
     }));
 
@@ -629,6 +748,16 @@ export const updateMemory = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = getDb(env);
 
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required for vector upsert");
+    }
+
+    const existingRows = await db.select().from(memories).where(sql`${memories.id} = ${data.id} AND ${memories.userId} = ${user.id}`).all();
+    if (existingRows.length === 0) {
+      throw new Error("Memory not found or unauthorized");
+    }
+    const existing = existingRows[0];
+
     const encryptedFact = await encryptFact(data.fact, env.ENCRYPTION_KEY);
     await db.update(memories)
       .set({ fact: encryptedFact, category: data.category, tags: data.tags })
@@ -638,7 +767,7 @@ export const updateMemory = createServerFn({ method: "POST" })
     await env.VECTOR_INDEX.upsert([{
       id: data.id,
       values: embedding,
-      metadata: { category: data.category, tags: data.tags } as Record<string, VectorizeVectorMetadata>,
+      metadata: { userId: user.id, category: data.category, tags: data.tags, projectKey: existing.projectKey ?? "" } as Record<string, VectorizeVectorMetadata>,
     }]);
 
     const rows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
@@ -673,29 +802,67 @@ export const bulkDeleteMemories = createServerFn({ method: "POST" })
   });
 
 export const recallContext = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { query: string; topK?: number } => {
-    const d = data as { query: string; topK?: number };
+  .inputValidator((data: unknown): { query: string; topK?: number; projectKey?: string; isActive?: boolean } => {
+    const d = data as { query: string; topK?: number; projectKey?: string; isActive?: boolean };
     if (!d.query || typeof d.query !== "string") throw new Error("query is required");
-    return { query: d.query.trim(), topK: d.topK ?? 5 };
+    return {
+      query: d.query.trim(),
+      topK: d.topK ?? 5,
+      projectKey: typeof d.projectKey === "string" ? d.projectKey.trim() : undefined,
+      isActive: typeof d.isActive === "boolean" ? d.isActive : true,
+    };
   })
   .handler(async ({ data, context }): Promise<Memory[]> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
 
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required for vector query");
+    }
+
     const embedding = await generateEmbedding(env.AI, data.query);
+    const topK = Math.min(20, data.topK ?? 5);
+
+    const filter: Record<string, any> = { userId: user.id };
+    if (data.projectKey) {
+      filter.projectKey = { $in: [data.projectKey, ""] };
+    } else {
+      filter.projectKey = "";
+    }
+
     const results = await env.VECTOR_INDEX.query(embedding, {
-      topK: data.topK ?? 5,
-      returnMetadata: false,
+      topK,
+      filter,
+      returnMetadata: "none",
     });
 
     if (!results.matches || results.matches.length === 0) return [];
 
     const ids = results.matches.map((m: VectorizeMatch) => m.id);
+    const conditions = [
+      sql`${memories.id} IN (${sql.join(ids.map((id: string) => sql`${id}`), sql`, `)})`,
+      eq(memories.userId, user.id)
+    ];
+
+    if (data.isActive !== undefined) {
+      conditions.push(eq(memories.isActive, data.isActive));
+    }
+
+    if (data.projectKey) {
+      conditions.push(
+        sql`(${memories.projectKey} = ${data.projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+      );
+    } else {
+      conditions.push(
+        sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+      );
+    }
+
     const rows = await db
       .select()
       .from(memories)
-      .where(sql`${memories.id} IN (${sql.join(ids.map((id: string) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${user.id}`)
+      .where(and(...conditions))
       .all();
 
     const idOrder = new Map(ids.map((id: string, i: number) => [id, i]));
@@ -748,7 +915,11 @@ export const scanDatabaseDuplicates = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = getDb(env);
 
-    const encryptedRows = await db.select().from(memories).where(eq(memories.userId, user.id)).all();
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required for vector query");
+    }
+
+    const encryptedRows = await db.select().from(memories).where(and(eq(memories.userId, user.id), eq(memories.isActive, true))).all();
     const allMemories = await decryptMemories(encryptedRows, env.ENCRYPTION_KEY);
     if (allMemories.length <= 1) return { groups: [] };
 
@@ -779,7 +950,11 @@ export const scanDatabaseDuplicates = createServerFn({ method: "POST" })
           const vec = embeddingsMap.get(m.id);
           if (!vec) return;
           try {
-            const result = await env.VECTOR_INDEX.query(vec, { topK: 4, returnMetadata: false });
+            const result = await env.VECTOR_INDEX.query(vec, {
+              topK: 4,
+              filter: { userId: user.id },
+              returnMetadata: "none",
+            });
             const similarIds = (result.matches ?? [])
               .filter((match) => match && match.id !== m.id && match.score >= CANDIDATE_THRESHOLD)
               .map((match) => match.id)
@@ -915,6 +1090,10 @@ export const saveProfile = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = getDb(env);
 
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required for vector operations");
+    }
+
     const rows = await db.select().from(memories).where(eq(memories.userId, user.id)).all();
     const nameRow = rows.find((r) =>
       r.tags.split(",").map((t) => t.trim()).includes("profile-name")
@@ -932,12 +1111,12 @@ export const saveProfile = createServerFn({ method: "POST" })
         await env.VECTOR_INDEX.upsert([{
           id: nameRow.id,
           values: embedding,
-          metadata: { category: "references", tags: "profile-name" } as Record<string, VectorizeVectorMetadata>,
+          metadata: { userId: user.id, category: "references", tags: "profile-name", projectKey: "" } as Record<string, VectorizeVectorMetadata>,
         }]);
       } else {
         const id = crypto.randomUUID();
-        await db.insert(memories).values({ id, userId: user.id, fact: encFact, category: "references", tags: "profile-name", timestamp: Date.now() });
-        await env.VECTOR_INDEX.insert([{ id, values: embedding, metadata: { category: "references", tags: "profile-name" } as Record<string, VectorizeVectorMetadata> }]);
+        await db.insert(memories).values({ id, userId: user.id, fact: encFact, category: "references", tags: "profile-name", timestamp: Date.now(), isActive: true, projectKey: null });
+        await env.VECTOR_INDEX.insert([{ id, values: embedding, metadata: { userId: user.id, category: "references", tags: "profile-name", projectKey: "" } as Record<string, VectorizeVectorMetadata> }]);
       }
     } else if (nameRow) {
       await db.delete(memories).where(eq(memories.id, nameRow.id));
@@ -953,12 +1132,12 @@ export const saveProfile = createServerFn({ method: "POST" })
         await env.VECTOR_INDEX.upsert([{
           id: locRow.id,
           values: embedding,
-          metadata: { category: "references", tags: "profile-location" } as Record<string, VectorizeVectorMetadata>,
+          metadata: { userId: user.id, category: "references", tags: "profile-location", projectKey: "" } as Record<string, VectorizeVectorMetadata>,
         }]);
       } else {
         const id = crypto.randomUUID();
-        await db.insert(memories).values({ id, userId: user.id, fact: encFact, category: "references", tags: "profile-location", timestamp: Date.now() });
-        await env.VECTOR_INDEX.insert([{ id, values: embedding, metadata: { category: "references", tags: "profile-location" } as Record<string, VectorizeVectorMetadata> }]);
+        await db.insert(memories).values({ id, userId: user.id, fact: encFact, category: "references", tags: "profile-location", timestamp: Date.now(), isActive: true, projectKey: null });
+        await env.VECTOR_INDEX.insert([{ id, values: embedding, metadata: { userId: user.id, category: "references", tags: "profile-location", projectKey: "" } as Record<string, VectorizeVectorMetadata> }]);
       }
     } else if (locRow) {
       await db.delete(memories).where(eq(memories.id, locRow.id));
@@ -1084,5 +1263,61 @@ export const encryptAllMemories = createServerFn({ method: "POST" }).handler(
     }
 
     return { encrypted, alreadyEncrypted, failed };
+  }
+);
+
+export const rebuildVectorizeIndex = createServerFn({ method: "POST" }).handler(
+  async ({ context }): Promise<{ processed: number; failed: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = getDb(env);
+
+    // Fetch all memories from DB
+    const allMemories = await db.select().from(memories).all();
+
+    let processed = 0;
+    let failed = 0;
+
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < allMemories.length; i += CHUNK_SIZE) {
+      const chunk = allMemories.slice(i, i + CHUNK_SIZE);
+      try {
+        // Decrypt facts in chunk
+        const decryptedFacts = await Promise.all(
+          chunk.map(async (row) => decryptFact(row.fact, env.ENCRYPTION_KEY))
+        );
+
+        // Generate embeddings for decrypted facts
+        const embeddings = await Promise.all(
+          decryptedFacts.map(async (fact) => generateEmbedding(env.AI, fact))
+        );
+
+        // Prepare vectors for Vectorize V2 index
+        const vectors: VectorizeVector[] = chunk.map((row, idx) => {
+          if (!row.userId) {
+            throw new Error(`Memory row ${row.id} does not have a userId`);
+          }
+          return {
+            id: row.id,
+            values: embeddings[idx],
+            metadata: {
+              userId: row.userId,
+              category: row.category,
+              tags: row.tags ?? "",
+              projectKey: row.projectKey ?? "",
+            } as Record<string, VectorizeVectorMetadata>,
+          };
+        });
+
+        // Insert/Upsert vectors into Vectorize
+        await env.VECTOR_INDEX.upsert(vectors);
+        processed += chunk.length;
+      } catch (err) {
+        console.error(`[rebuildVectorizeIndex] failed chunk starting at index ${i}:`, err);
+        failed += chunk.length;
+      }
+    }
+
+    return { processed, failed };
   }
 );

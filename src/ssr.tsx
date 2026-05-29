@@ -22,6 +22,10 @@ export default {
       return handleMcpRequest(request, env);
     }
 
+
+
+
+
     if (url.pathname.startsWith("/api/auth/")) {
       const auth = createAuth(env);
       const response = await auth.handler(request);

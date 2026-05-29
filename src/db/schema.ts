@@ -65,6 +65,8 @@ export const memories = sqliteTable("memories", {
   category: text("category", { enum: ["rules", "projects", "references"] }).notNull(),
   tags: text("tags").notNull().default(""),
   timestamp: integer("timestamp").notNull(),
+  isActive: integer("isActive", { mode: "boolean" }).notNull().default(true),
+  projectKey: text("projectKey"),
 });
 
 // ── better-auth jwt plugin ─────────────────────────────────────────────────────

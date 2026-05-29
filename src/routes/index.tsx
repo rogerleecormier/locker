@@ -150,33 +150,47 @@ function TokenMockup() {
 }
 
 function PlatformGrid() {
+  const tested = PLATFORMS.filter((p) => p.status === "tested");
+  const comingSoon = PLATFORMS.filter((p) => p.status === "coming-soon");
   let delay = 0;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {PLATFORM_GROUPS.map((group) => {
-        const groupPlatforms = PLATFORMS.filter((p) => p.group === group);
-        if (groupPlatforms.length === 0) return null;
-        return (
-          <div key={group}>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.5 }}>
-              {group}
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
-              {groupPlatforms.map((p) => {
-                const d = delay;
-                delay += 30;
-                return (
-                  <FadeIn key={p.id} delay={d}>
-                    <div style={{ padding: "5px 13px", borderRadius: 20, background: `${p.color}15`, border: `1px solid ${p.color}40`, color: p.color, fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>
-                      {p.label}
-                    </div>
-                  </FadeIn>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <div>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.7 }}>
+          Tested & Supported
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
+          {tested.map((p) => {
+            const d = delay;
+            delay += 30;
+            return (
+              <FadeIn key={p.id} delay={d}>
+                <div style={{ padding: "5px 13px", borderRadius: 20, background: `${p.color}15`, border: `1px solid ${p.color}40`, color: p.color, fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>
+                  {p.label}
+                </div>
+              </FadeIn>
+            );
+          })}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.5 }}>
+          Coming Soon / In Testing
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
+          {comingSoon.map((p) => {
+            const d = delay;
+            delay += 20;
+            return (
+              <FadeIn key={p.id} delay={d}>
+                <div style={{ padding: "5px 13px", borderRadius: 20, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12, fontWeight: 400, whiteSpace: "nowrap", opacity: 0.7 }}>
+                  {p.label}
+                </div>
+              </FadeIn>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -320,7 +334,7 @@ function LandingPage() {
       <div style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
         <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0 }}>
           {[
-            { value: PLATFORMS.length, suffix: "", label: "AI platforms supported" },
+            { value: PLATFORMS.filter((p) => p.status === "tested").length, suffix: "", label: "Tested AI platforms" },
             { value: 256, suffix: "-bit", label: "AES-GCM encryption" },
             { value: 100, suffix: "%", label: "Self-hosted on Cloudflare" },
           ].map(({ value, suffix, label }, i) => (
@@ -489,7 +503,7 @@ function LandingPage() {
             {[
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "End-to-end encryption", desc: "AES-256-GCM on every fact. Database rows are ciphertext only.", delay: 0 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "Semantic vector search", desc: "Cloudflare Vectorize powers fuzzy recall — find facts by meaning, not just keywords.", delay: 60 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: `${PLATFORMS.length} platform configs`, desc: "One-click config snippets for every major AI client, always up to date.", delay: 120 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: `${PLATFORMS.length}+ platform configs`, desc: "Config snippets for every major AI client. Claude (Web) and Claude Code are fully tested — more platforms coming.", delay: 120 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>, title: "AI-powered import", desc: "Paste any raw text — Claude extracts, categorises, and deduplicates the facts.", delay: 180 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Per-token permissions", desc: "Bearer tokens with bitmask permissions — read-only or full write access, per client.", delay: 240 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>, title: "Cloudflare edge", desc: "Workers + D1 + Vectorize — globally distributed, no server to manage.", delay: 300 },
@@ -508,7 +522,7 @@ function LandingPage() {
             Works with your whole stack
           </h2>
           <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 36 }}>
-            One endpoint, every client. Check the Connect page for ready-to-paste config snippets.
+            One endpoint, every client. Claude (Web) and Claude Code are fully tested. Configs for other platforms are provided as a best-effort guide — they may need adjustment as those clients evolve.
           </p>
         </FadeIn>
         <PlatformGrid />

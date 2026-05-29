@@ -8,6 +8,13 @@
       "when": 1779897026536,
       "tag": "0000_redundant_fenris",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1780019279389,
+      "tag": "0001_minor_thunderbolt",
+      "breakpoints": true
     }
   ]
 }

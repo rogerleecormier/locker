@@ -31,6 +31,7 @@ type SetupService = {
   description: string;
   instructions: React.ReactNode;
   copyText?: string;
+  tested?: boolean;
 };
 
 function ConnectPage() {
@@ -77,6 +78,7 @@ function ConnectPage() {
       label: "Claude Code",
       color: "#c97b53",
       group: "Anthropic",
+      tested: true,
       description: "Integrate Locker into Claude Code. MCP servers must be added via the CLI — the VS Code extension can only manage servers already added this way.",
       copyText: `claude mcp add --transport http locker https://locker.rcormier.dev/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
       instructions: (
@@ -95,6 +97,7 @@ function ConnectPage() {
       label: "Claude (Web)",
       color: "#b85c38",
       group: "Anthropic",
+      tested: true,
       description: "Connect claude.ai to your Locker vault via the Connectors feature. Uses OAuth — no API token needed. Requires a Claude Pro, Team, or Enterprise plan.",
       copyText: `https://locker.rcormier.dev/api/mcp`,
       instructions: (
@@ -751,7 +754,7 @@ enabled = true`,
         <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
           Connect any AI client to your Locker vault via the{" "}
           <code style={{ color: "var(--accent)", fontSize: 12 }}>/api/mcp</code> endpoint.
-          Generate an API token in <strong>Settings</strong> first.
+          <strong> Claude (Web) and Claude Code</strong> are fully tested. Guides for other platforms are provided as a best-effort reference and may need adjustment.
         </p>
       </header>
 
@@ -793,9 +796,15 @@ enabled = true`,
                           borderRadius: 20,
                           transition: "all 0.15s",
                           cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
                         }}
                       >
                         {s.label}
+                        {s.tested && (
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", flexShrink: 0, opacity: 0.8 }} />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -806,6 +815,19 @@ enabled = true`,
         </div>
 
         <div style={{ padding: 20 }}>
+          {service.tested ? (
+            <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 7, padding: "7px 12px", background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 8 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 500 }}>Tested and confirmed working</span>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 12, display: "flex", alignItems: "flex-start", gap: 8, padding: "9px 12px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span style={{ fontSize: 12, color: "#f59e0b", lineHeight: 1.5 }}>
+                <strong>In testing.</strong> This guide has not been fully verified. Config syntax may vary by version — check the platform's official docs if something doesn't work.
+              </span>
+            </div>
+          )}
           <div style={{
             marginBottom: 16,
             padding: "12px 14px",

@@ -29,6 +29,112 @@ function normalizeCategory(raw: string | undefined): "rules" | "projects" | "ref
   return "references";
 }
 
+function extractText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (result && typeof result === "object") {
+    const r = result as Record<string, unknown>;
+    if (typeof r.response === "string") return r.response;
+    if (typeof r.text === "string") return r.text;
+    if (typeof r.result === "string") return r.result;
+    if (Array.isArray(r.choices) && r.choices[0]) {
+      const c = r.choices[0] as Record<string, unknown>;
+      if (typeof c.text === "string") return c.text;
+      if (c.message && typeof (c.message as Record<string, unknown>).content === "string")
+        return (c.message as Record<string, unknown>).content as string;
+    }
+  }
+  return "";
+}
+
+async function archiveContradictingMemories(
+  db: any,
+  env: CloudflareEnv,
+  userId: string,
+  newFact: string,
+  embedding: number[],
+  projectKey: string | undefined
+): Promise<void> {
+  if (!userId) throw new Error("Unauthorized: userId is required for vector query");
+
+  const filter: Record<string, any> = { userId };
+  if (projectKey) {
+    filter.projectKey = { $in: [projectKey, ""] };
+  } else {
+    filter.projectKey = "";
+  }
+
+  const results = await env.VECTOR_INDEX.query(embedding, {
+    topK: 10,
+    filter,
+    returnMetadata: "none",
+  });
+
+  if (!results.matches || results.matches.length === 0) return;
+
+  const candidates = results.matches.filter((m) => m.score > 0.85);
+  if (candidates.length === 0) return;
+
+  const candidateIds = candidates.map((c) => c.id);
+
+  const rows = await db
+    .select()
+    .from(memories)
+    .where(
+      sql`${memories.id} IN (${sql.join(candidateIds.map((id) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${userId} AND ${memories.isActive} = 1`
+    )
+    .all();
+
+  if (rows.length === 0) return;
+
+  const decryptedCandidates = await Promise.all(
+    rows.map(async (r: any) => ({
+      id: r.id,
+      fact: await decryptFact(r.fact, env.ENCRYPTION_KEY),
+    }))
+  );
+
+  const prompt = `You are an AI assistant that detects contradictions or conflicts between a new memory and a list of existing memories.
+A contradiction/conflict occurs when the new memory makes the existing memory outdated, invalid, or directly contradicts it (e.g., a change in project stack, changed technical requirement, or updated preference).
+
+New Memory: "${newFact}"
+
+Existing Memories:
+${decryptedCandidates.map((c) => `[${c.id}] "${c.fact}"`).join("\n")}
+
+Identify which existing memories are contradicted or superseded by the new memory.
+Respond with ONLY a JSON array of the IDs of the contradicted memories. If none are contradicted, return an empty array [].
+Do not include markdown code fences or conversational text. Just the raw JSON array of strings.`;
+
+  try {
+    const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+      prompt,
+      max_tokens: 256,
+    });
+    const text = extractText(result).trim();
+    const match = text.match(/\[[\s\S]*\]/);
+    if (match) {
+      const contradictedIds = JSON.parse(match[0]) as string[];
+      if (contradictedIds.length > 0) {
+        const validIdsToArchive = contradictedIds.filter((id) =>
+          decryptedCandidates.some((c) => c.id === id)
+        );
+        if (validIdsToArchive.length > 0) {
+          console.log("[contradiction] Archiving contradicted memories:", validIdsToArchive);
+          await db
+            .update(memories)
+            .set({ isActive: false })
+            .where(
+              sql`${memories.id} IN (${sql.join(validIdsToArchive.map((id) => sql`${id}`), sql`, `)})`
+            )
+            .run();
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[archiveContradictingMemories] failed:", err);
+  }
+}
+
 const MCP_MANIFEST = {
   jsonrpc: "2.0",
   result: {
@@ -51,6 +157,8 @@ const ALL_TOOLS = [
         category: { type: "string", enum: ["rules", "projects", "references"], description: "Optional category filter." },
         tag: { type: "string", description: "Optional tag filter (case-insensitive)." },
         keyword: { type: "string", description: "Optional exact substring filter (case-insensitive)." },
+        projectKey: { type: "string", description: "Optional project workspace key (e.g. repository hash or folder slug)." },
+        isActive: { type: "boolean", description: "Filter by active status. Defaults to true." },
       },
       required: ["query"],
     },
@@ -66,6 +174,8 @@ const ALL_TOOLS = [
         keyword: { type: "string", description: "Case-insensitive substring search within facts." },
         limit: { type: "number", description: "Max results to return (default: 50, max: 200)." },
         offset: { type: "number", description: "Pagination offset (default: 0)." },
+        projectKey: { type: "string", description: "Optional project workspace key to scope memories." },
+        isActive: { type: "boolean", description: "Filter by active status. Defaults to true." },
       },
     },
   },
@@ -88,6 +198,7 @@ const ALL_TOOLS = [
         category: { type: "string", enum: ["rules", "projects", "references"] },
         tags: { type: "string", description: "Comma-separated keywords." },
         source: { type: "string", description: "The source chatbot or origin (e.g. chatgpt, claude). Defaults to mcp." },
+        projectKey: { type: "string", description: "Optional project workspace key to scope this memory." },
       },
       required: ["fact"],
     },
@@ -234,7 +345,24 @@ export async function handleMcpRequest(
   }
 
   const authHeader = request.headers.get("Authorization");
-  console.log("[mcp] method:", request.method, "auth header:", authHeader ? authHeader.slice(0, 20) : "NONE");
+  let authType = "NONE";
+  let tokenLength = 0;
+  if (authHeader) {
+    if (authHeader.startsWith("Bearer ")) {
+      const token = authHeader.slice(7).trim();
+      tokenLength = token.length;
+      if (token.startsWith("lkr_")) {
+        authType = "lkr_ API Key";
+      } else if (token.startsWith("eyJ")) {
+        authType = "OAuth JWT (eyJ)";
+      } else {
+        authType = "Opaque OAuth";
+      }
+    } else {
+      authType = "Invalid Scheme";
+    }
+  }
+  console.log(`[mcp] method: ${request.method} auth type: ${authType} length: ${tokenLength}`);
 
   // Validate API token
   const claims = await validateBearerToken(request, env);
@@ -333,12 +461,29 @@ export async function handleMcpRequest(
     const category = args.category as string | undefined;
     const tag = args.tag as string | undefined;
     const keyword = args.keyword as string | undefined;
+    const projectKey = args.projectKey as string | undefined;
+    const isActive = typeof args.isActive === "boolean" ? args.isActive : true;
+
+    if (!claims.userId) {
+      throw new Error("Unauthorized: userId is required for vector query");
+    }
 
     const embedding = await generateEmbedding(env.AI, query.trim());
-    const vectorTopK = (category || tag || keyword) ? Math.max(50, topK * 3) : topK;
+    const vectorTopK = (category || tag || keyword)
+      ? Math.min(20, topK * 3)
+      : Math.min(20, topK);
+
+    const filter: Record<string, any> = { userId: claims.userId };
+    if (projectKey) {
+      filter.projectKey = { $in: [projectKey, ""] };
+    } else {
+      filter.projectKey = "";
+    }
+
     const vectorResults = await env.VECTOR_INDEX.query(embedding, {
       topK: vectorTopK,
-      returnMetadata: false,
+      filter,
+      returnMetadata: "none",
     });
 
     if (!vectorResults.matches?.length) {
@@ -346,12 +491,27 @@ export async function handleMcpRequest(
     }
 
     const ids = vectorResults.matches.map((m) => m.id);
+    const conditions = [
+      sql`${memories.id} IN (${sql.join(ids.map((dbId) => sql`${dbId}`), sql`, `)})`,
+      eq(memories.userId, claims.userId),
+    ];
+    if (isActive !== undefined) {
+      conditions.push(eq(memories.isActive, isActive));
+    }
+    if (projectKey) {
+      conditions.push(
+        sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+      );
+    } else {
+      conditions.push(
+        sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+      );
+    }
+
     const rows = await db
       .select()
       .from(memories)
-      .where(
-        sql`${memories.id} IN (${sql.join(ids.map((dbId) => sql`${dbId}`), sql`, `)}) AND ${memories.userId} = ${claims.userId}`
-      )
+      .where(and(...conditions))
       .all();
 
     // Decrypt facts before returning
@@ -392,10 +552,24 @@ export async function handleMcpRequest(
     const keyword = args.keyword as string | undefined;
     const limit = typeof args.limit === "number" ? Math.min(200, Math.max(1, args.limit)) : 50;
     const offset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
+    const projectKey = args.projectKey as string | undefined;
+    const isActive = typeof args.isActive === "boolean" ? args.isActive : true;
 
     const conditions = [eq(memories.userId, claims.userId)];
     if (category) {
       conditions.push(eq(memories.category, category as "rules" | "projects" | "references"));
+    }
+    if (isActive !== undefined) {
+      conditions.push(eq(memories.isActive, isActive));
+    }
+    if (projectKey) {
+      conditions.push(
+        sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+      );
+    } else {
+      conditions.push(
+        sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+      );
     }
 
     const rows = await db
@@ -476,6 +650,11 @@ export async function handleMcpRequest(
     const category = normalizeCategory(args.category as string | undefined);
     const source = typeof args.source === "string" ? args.source.trim().toLowerCase() : "mcp";
     const rawTags = typeof args.tags === "string" ? args.tags.trim() : "";
+    const projectKey = args.projectKey as string | undefined;
+
+    if (!claims.userId) {
+      throw new Error("Unauthorized: userId is required for vector insert");
+    }
 
     const tagsList = rawTags.split(",").map(t => t.trim()).filter(Boolean);
     if (!tagsList.includes(source)) tagsList.push(source);
@@ -486,6 +665,9 @@ export async function handleMcpRequest(
     const embedding = await generateEmbedding(env.AI, fact.trim());
     const encryptedFact = await encrypt(fact.trim(), env.ENCRYPTION_KEY);
 
+    // Archive contradicted memories before inserting the new one
+    await archiveContradictingMemories(db, env, claims.userId, fact.trim(), embedding, projectKey);
+
     await db.insert(memories).values({
       id: memId,
       userId: claims.userId,
@@ -493,14 +675,25 @@ export async function handleMcpRequest(
       category,
       tags: finalTags,
       timestamp,
+      isActive: true,
+      projectKey: projectKey || null,
     });
     await env.VECTOR_INDEX.insert([
-      { id: memId, values: embedding, metadata: { category, tags: finalTags } },
+      {
+        id: memId,
+        values: embedding,
+        metadata: {
+          userId: claims.userId,
+          category,
+          tags: finalTags,
+          projectKey: projectKey ?? "",
+        },
+      },
     ]);
 
     return mcpResult(id, {
       content: [
-        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: fact.trim(), category, tags: finalTags }) },
+        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: fact.trim(), category, tags: finalTags, projectKey }) },
       ],
     });
   }
@@ -517,6 +710,10 @@ export async function handleMcpRequest(
     }
     if (!fact || typeof fact !== "string") {
       return mcpError(id, -32602, "Invalid params: fact is required");
+    }
+
+    if (!claims.userId) {
+      throw new Error("Unauthorized: userId is required for vector upsert");
     }
 
     // Fetch existing memory to get defaults for category/tags if not provided
@@ -551,7 +748,16 @@ export async function handleMcpRequest(
       .where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`);
 
     await env.VECTOR_INDEX.upsert([
-      { id: memId, values: embedding, metadata: { category, tags: rawTags } },
+      {
+        id: memId,
+        values: embedding,
+        metadata: {
+          userId: claims.userId,
+          category,
+          tags: rawTags,
+          projectKey: existing.projectKey ?? "",
+        },
+      },
     ]);
 
     return mcpResult(id, {

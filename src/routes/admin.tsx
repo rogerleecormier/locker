@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { memories, type Memory } from "~/db/schema";
-import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, encryptAllMemories, type DuplicateGroup } from "~/server/memoryFunctions";
+import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, encryptAllMemories, rebuildVectorizeIndex, type DuplicateGroup } from "~/server/memoryFunctions";
 import { requireAdmin } from "~/server/session";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
@@ -115,6 +115,16 @@ function AdminPage() {
   const [scanResults, setScanResults] = useState<DuplicateGroup[] | null>(null);
   const [retainSelections, setRetainSelections] = useState<Record<number, string>>({});
   const [encryptResult, setEncryptResult] = useState<{ encrypted: number; alreadyEncrypted: number; failed: number } | null>(null);
+  const [rebuildResult, setRebuildResult] = useState<{ processed: number; failed: number } | null>(null);
+
+  const rebuildMutation = useMutation({
+    mutationFn: () => rebuildVectorizeIndex({}),
+    onSuccess: (data) => {
+      setRebuildResult(data);
+      statsQuery.refetch();
+      debugQuery.refetch();
+    },
+  });
 
   const scanMutation = useMutation({
     mutationFn: scanDatabaseDuplicates,
@@ -415,6 +425,28 @@ function AdminPage() {
               </div>
             )}
           </div>
+        )}
+      </section>
+
+      <section style={{ marginTop: "30px" }}>
+        <h2>Vector Index Management</h2>
+        <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "15px" }}>
+          Rebuild the Vectorize index by generating embeddings for all database memories. Use this if the Vectorize index was migrated or is out of sync with D1.
+        </p>
+        {rebuildResult && (
+          <div style={{ marginBottom: "14px", padding: "10px 14px", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "var(--radius)", fontSize: "13px", color: "var(--success)" }}>
+            Done — processed {rebuildResult.processed} memories{rebuildResult.failed > 0 ? `, ${rebuildResult.failed} failed` : ""}.
+          </div>
+        )}
+        <button
+          onClick={() => { setRebuildResult(null); rebuildMutation.mutate(); }}
+          disabled={rebuildMutation.isPending}
+          style={{ padding: "9px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer" }}
+        >
+          {rebuildMutation.isPending ? "Rebuilding Index…" : "Rebuild Vector Index"}
+        </button>
+        {rebuildMutation.isError && (
+          <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Index rebuild failed. Check logs.</p>
         )}
       </section>
 
