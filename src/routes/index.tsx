@@ -308,7 +308,7 @@ function LandingPage() {
               <span style={{ color: "var(--accent)" }}>encrypted & portable</span>
             </h1>
             <p style={{ fontSize: 18, color: "var(--text-muted)", lineHeight: 1.7, maxWidth: 540, margin: "0 auto 36px", fontWeight: 400 }}>
-              Locker is a personal memory vault that securely stores your context and makes it available to any AI tool — via a universal MCP endpoint.
+              Locker is a shared memory platform that securely stores team context and makes it available to any AI tool — via a universal MCP endpoint. One source of truth for your whole team.
             </p>
 
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
@@ -493,9 +493,9 @@ function LandingPage() {
         <Section>
           <div style={{ textAlign: "center", marginBottom: 48 }}>
             <FadeIn>
-              <SectionLabel>Everything Included</SectionLabel>
+              <SectionLabel>Core Features</SectionLabel>
               <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2 }}>
-                Built for the serious AI user
+                Built for teams of all sizes
               </h2>
             </FadeIn>
           </div>
@@ -538,6 +538,145 @@ function LandingPage() {
         </FadeIn>
       </Section>
 
+      {/* ── TEAM USE CASES ── */}
+      <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
+        <Section>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
+            <FadeIn>
+              <SectionLabel>Use Cases</SectionLabel>
+              <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2 }}>
+                For engineering teams, product teams, and beyond
+              </h2>
+            </FadeIn>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20 }}>
+            {[
+              {
+                title: "Engineering Teams",
+                desc: "Store architecture decisions, API specs, coding standards, and best practices. Give every team member instant access to tribal knowledge, accelerating onboarding and reducing context-switching.",
+                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              },
+              {
+                title: "Product & Design",
+                desc: "Collaborate on user research, design principles, market analysis, and feature specs. AI tools can instantly understand your product vision and generate more coherent specs and docs.",
+                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+              },
+              {
+                title: "Business Analysts",
+                desc: "Maintain a shared repository of business rules, market requirements, stakeholder preferences, and project history. Let AI tools understand your business context and generate more actionable insights.",
+                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              },
+              {
+                title: "Project Managers",
+                desc: "Keep roadmap decisions, release notes, client feedback, and project context in one searchable vault. AI assistants can instantly surface relevant context for sprint planning and status reports.",
+                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              },
+            ].map(({ title, desc, icon }) => (
+              <FadeIn key={title}>
+                <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: "24px 20px" }}>
+                  <div style={{ marginBottom: 12 }}>{icon}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>{title}</div>
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>{desc}</div>
+                </div>
+              </FadeIn>
+            ))}
+          </div>
+        </Section>
+      </div>
+
+      {/* ── PLAN TIERS ── */}
+      <Section style={{ textAlign: "center" }}>
+        <FadeIn>
+          <SectionLabel>Pricing</SectionLabel>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 8 }}>
+            Plans for every team
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 48, maxWidth: 500, margin: "0 auto 48px" }}>
+            Start free with personal context. Upgrade for team collaboration, shared vaults, and usage analytics.
+          </p>
+        </FadeIn>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 40 }}>
+          {[
+            {
+              name: "Free",
+              price: "Always free",
+              desc: "Personal vault with 500 memories",
+              features: ["500 memories", "3 API tokens", "Semantic search", "AES-256 encryption", "All AI platforms"]
+            },
+            {
+              name: "Business",
+              price: "$12/seat/mo",
+              desc: "Shared vaults, teams, and audit logs",
+              features: ["10,000 memories per seat", "50 API tokens per seat", "Unlimited team members", "Shared organizations & teams", "Team collaboration", "Audit logs & usage analytics"],
+              badge: "Coming soon"
+            },
+            {
+              name: "Enterprise",
+              price: "Custom",
+              desc: "Unlimited everything + SAML SSO",
+              features: ["Unlimited memories", "Unlimited API tokens", "Unlimited team members", "SAML SSO & SCIM", "Custom data retention", "Dedicated support", "SLA guarantees"],
+              badge: "Contact us"
+            }
+          ].map(({ name, price, desc, features, badge }) => (
+            <FadeIn key={name}>
+              <div style={{
+                background: "var(--surface)",
+                border: name === "Business" ? "1px solid var(--accent)" : "1px solid var(--border)",
+                borderRadius: 12,
+                padding: "32px 24px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 24,
+                position: "relative",
+                transform: name === "Business" ? "scale(1.05)" : "none",
+                transformOrigin: "center"
+              }}>
+                {badge && (
+                  <div style={{
+                    position: "absolute",
+                    top: -12,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    padding: "4px 12px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 20,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em"
+                  }}>
+                    {badge}
+                  </div>
+                )}
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>{name}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)", marginBottom: 8 }}>{price}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>{desc}</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {features.map((f) => (
+                    <div key={f} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--text-muted)" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{ marginTop: 2, flexShrink: 0 }}><polyline points="20 6 9 17 4 12"/></svg>
+                      {f}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </FadeIn>
+          ))}
+        </div>
+        <FadeIn>
+          <Link to="/pricing" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 22px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, fontWeight: 500, borderRadius: 8, textDecoration: "none", transition: "border-color 0.15s, color 0.15s" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+          >
+            View full pricing & FAQ →
+          </Link>
+        </FadeIn>
+      </Section>
+
       {/* ── CTA ── */}
       <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)" }}>
         <div style={{ maxWidth: 600, margin: "0 auto", padding: "80px 24px", textAlign: "center" }}>
@@ -549,10 +688,10 @@ function LandingPage() {
               </svg>
             </div>
             <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", marginBottom: 14 }}>
-              Your vault is ready
+              Start building shared context
             </h2>
             <p style={{ fontSize: 15, color: "var(--text-muted)", lineHeight: 1.7, marginBottom: 32 }}>
-              Start building your encrypted memory store. Import from your existing AI tools, connect a client, and let Locker carry your context everywhere.
+              Create your personal vault free. Invite your team when you're ready to share organizational knowledge and accelerate AI-driven work.
             </p>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
               <Link to="/memories" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px", background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 14, borderRadius: 10, textDecoration: "none", transition: "background 0.15s" }}
@@ -561,11 +700,11 @@ function LandingPage() {
               >
                 Open Vault
               </Link>
-              <Link to="/import" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "transparent", color: "var(--text-muted)", fontWeight: 600, fontSize: 14, borderRadius: 10, border: "1px solid var(--border)", textDecoration: "none", transition: "border-color 0.15s, color 0.15s" }}
+              <Link to="/pricing" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "transparent", color: "var(--text-muted)", fontWeight: 600, fontSize: 14, borderRadius: 10, border: "1px solid var(--border)", textDecoration: "none", transition: "border-color 0.15s, color 0.15s" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
               >
-                Import memories →
+                View pricing →
               </Link>
             </div>
           </FadeIn>
