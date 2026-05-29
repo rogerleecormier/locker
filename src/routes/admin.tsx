@@ -23,6 +23,28 @@ export const getDbStats = createServerFn({ method: "GET" }).handler(
   }
 );
 
+import { requireSession } from "~/server/session";
+
+export const getAdminStatus = createServerFn({ method: "GET" }).handler(
+  async ({ context }): Promise<{ isAdmin: boolean; userId: string | null; configuredAdminId: string | null }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    try {
+      const user = await requireSession(env);
+      return {
+        isAdmin: user.id === env.ADMIN_USER_ID,
+        userId: user.id,
+        configuredAdminId: env.ADMIN_USER_ID || null,
+      };
+    } catch {
+      return {
+        isAdmin: false,
+        userId: null,
+        configuredAdminId: env.ADMIN_USER_ID || null,
+      };
+    }
+  }
+);
+
 export const clearVectorizeIndex = createServerFn({ method: "POST" }).handler(
   async ({ context }): Promise<{ cleared: boolean; deletedCount: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
@@ -188,6 +210,17 @@ function AdminPage() {
     queryKey: ["admin-debug"],
     queryFn: async () => getVectorizeDebug(),
     refetchInterval: 10000,
+  });
+
+  console.log("[admin page] statsQuery:", {
+    data: statsQuery.data,
+    status: statsQuery.status,
+    error: statsQuery.error,
+  });
+  console.log("[admin page] debugQuery:", {
+    data: debugQuery.data,
+    status: debugQuery.status,
+    error: debugQuery.error,
   });
 
   const clearDbMutation = useMutation({
@@ -601,15 +634,22 @@ function AdminPage() {
 import { useSession } from "~/lib/authClient";
 
 function AdminGuard() {
-  const { data: session, isPending } = useSession();
-  const adminId = "r6T9s9AcwyaASSlextIlB07IgR5wwzKU";
+  const { data: adminStatus, isLoading, error } = useQuery({
+    queryKey: ["admin-status"],
+    queryFn: () => getAdminStatus(),
+  });
 
-  if (isPending) return <p style={{ padding: 32, color: "var(--text-muted)" }}>Loading…</p>;
-  if (!session || session.user.id !== adminId) {
+  if (isLoading) return <p style={{ padding: 32, color: "var(--text-muted)" }}>Loading…</p>;
+
+  if (error || !adminStatus?.isAdmin) {
     return (
       <div style={{ padding: 32, textAlign: "center" }}>
         <p style={{ color: "var(--error)", fontSize: 16, fontWeight: 600 }}>403 — Not authorized</p>
         <p style={{ color: "var(--text-muted)", marginTop: 8, fontSize: 13 }}>This page is restricted to the admin account.</p>
+        <div style={{ marginTop: 24, fontSize: 12, color: "var(--text-muted)", background: "var(--surface2)", padding: 16, borderRadius: "var(--radius)", display: "inline-block", textAlign: "left", border: "1px solid var(--border)" }}>
+          <div style={{ marginBottom: 4 }}><strong>Your User ID:</strong> {adminStatus?.userId ?? "Not logged in"}</div>
+          <div><strong>Configured Admin ID:</strong> {adminStatus?.configuredAdminId ? `${adminStatus.configuredAdminId.slice(0, 4)}...${adminStatus.configuredAdminId.slice(-4)}` : "None"}</div>
+        </div>
       </div>
     );
   }
