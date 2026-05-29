@@ -1,11 +1,12 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { hashToken } from "~/server/crypto";
+import { hashToken, deriveUserKey } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
 import { encrypt } from "~/server/crypto";
 import { createAuth } from "~/server/auth";
+import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit } from "~/server/enterprise";
 
 type EmbeddingResponse = {
   shape: number[][];
@@ -19,9 +20,20 @@ async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
   return result.data[0];
 }
 
-async function decryptFact(stored: string, encKey: string): Promise<string> {
+async function decryptFact(stored: string, encKey: string, fallbackKey?: string): Promise<string> {
   if (!isEncrypted(stored)) return stored;
-  return decrypt(stored, encKey);
+  try {
+    return await decrypt(stored, encKey);
+  } catch (err) {
+    if (fallbackKey) {
+      try {
+        return await decrypt(stored, fallbackKey);
+      } catch {
+        // Fall back to original error
+      }
+    }
+    throw err;
+  }
 }
 
 function normalizeCategory(raw: string | undefined): "rules" | "projects" | "references" {
@@ -275,6 +287,9 @@ export async function handleMcpRequest(
   }
   console.log(`[mcp] method: ${request.method} auth type: ${authType} length: ${tokenLength}`);
 
+  const ipAddress = request.headers.get("cf-connecting-ip") ?? "";
+  const userAgent = request.headers.get("user-agent") ?? "";
+
   // Validate API token
   const claims = await validateBearerToken(request, env);
   if (!claims) {
@@ -288,6 +303,19 @@ export async function handleMcpRequest(
         },
       }
     );
+  }
+
+  // Rate Limiting Check (Cloudflare Worker Level)
+  if (env.RATE_LIMITER) {
+    const limitKey = claims.tokenId || claims.userId;
+    try {
+      const { success } = await env.RATE_LIMITER.limit({ key: limitKey });
+      if (!success) {
+        return new Response("Too Many Requests", { status: 429, headers });
+      }
+    } catch (err) {
+      console.error("[rate-limit] Limiter error:", err);
+    }
   }
 
   if (request.method === "GET") {
@@ -323,7 +351,7 @@ export async function handleMcpRequest(
 
   const { id, method, params } = body;
   console.log("[mcp] rpc method:", method, "id:", id);
-  const db = drizzle(env.DB, { schema: { memories } });
+  const db = drizzle(env.DB);
 
   if (method === "initialize") {
     const sessionId = crypto.randomUUID();
@@ -379,14 +407,30 @@ export async function handleMcpRequest(
       throw new Error("Unauthorized: userId is required for vector query");
     }
 
+    // Vault Scoping & Quota Check
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, projectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${projectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "recall", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
     const embedding = await generateEmbedding(env.AI, query.trim());
     const vectorTopK = (category || tag || keyword)
       ? Math.min(20, topK * 3)
       : Math.min(20, topK);
 
-    const filter: Record<string, any> = { userId: claims.userId };
-    if (projectKey) {
-      filter.projectKey = { $in: [projectKey, ""] };
+    const filter: Record<string, any> = {};
+    if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
+      filter.projectKey = projectKey;
+    } else {
+      filter.userId = claims.userId;
+      if (projectKey) {
+        filter.projectKey = { $in: [projectKey, ""] };
+      }
     }
 
     const vectorResults = await env.VECTOR_INDEX.query(embedding, {
@@ -396,25 +440,31 @@ export async function handleMcpRequest(
     });
 
     if (!vectorResults.matches?.length) {
+      await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: 0 } });
+      await logTokenUsage(db, claims.tokenId, "recall", 0);
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify([]) }] });
     }
 
     const ids = vectorResults.matches.map((m) => m.id);
     const conditions = [
-      sql`${memories.id} IN (${sql.join(ids.map((dbId) => sql`${dbId}`), sql`, `)})`,
-      eq(memories.userId, claims.userId),
+      sql`${memories.id} IN (${sql.join(ids.map((dbId) => sql`${dbId}`), sql`, `)})`
     ];
     if (isActive !== undefined) {
       conditions.push(eq(memories.isActive, isActive));
     }
-    if (projectKey) {
-      conditions.push(
-        sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
-      );
+    if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
+      conditions.push(eq(memories.projectKey, projectKey));
     } else {
-      conditions.push(
-        sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
-      );
+      conditions.push(eq(memories.userId, claims.userId));
+      if (projectKey) {
+        conditions.push(
+          sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+        );
+      } else {
+        conditions.push(
+          sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+        );
+      }
     }
 
     const rows = await db
@@ -423,9 +473,11 @@ export async function handleMcpRequest(
       .where(and(...conditions))
       .all();
 
-    // Decrypt facts before returning
+    // Decrypt facts using derived vault key
+    const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
     const decrypted = await Promise.all(
-      rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, env.ENCRYPTION_KEY) }))
+      rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY) }))
     );
 
     // Filter decrypted facts
@@ -448,6 +500,10 @@ export async function handleMcpRequest(
     const ranked = filtered.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
     const finalResults = ranked.slice(0, topK);
 
+    // Audit log & token usage
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: finalResults.length } });
+    await logTokenUsage(db, claims.tokenId, "recall", 0);
+
     return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(finalResults) }] });
   }
 
@@ -464,21 +520,37 @@ export async function handleMcpRequest(
     const projectKey = args.projectKey as string | undefined;
     const isActive = typeof args.isActive === "boolean" ? args.isActive : true;
 
-    const conditions = [eq(memories.userId, claims.userId)];
+    // Vault Scoping & Quota Check
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, projectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${projectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "recall", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
+    const conditions = [];
+    if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
+      conditions.push(eq(memories.projectKey, projectKey));
+    } else {
+      conditions.push(eq(memories.userId, claims.userId));
+      if (projectKey) {
+        conditions.push(
+          sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+        );
+      } else {
+        conditions.push(
+          sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+        );
+      }
+    }
     if (category) {
       conditions.push(eq(memories.category, category as "rules" | "projects" | "references"));
     }
     if (isActive !== undefined) {
       conditions.push(eq(memories.isActive, isActive));
-    }
-    if (projectKey) {
-      conditions.push(
-        sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
-      );
-    } else {
-      conditions.push(
-        sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
-      );
     }
 
     const rows = await db
@@ -488,9 +560,11 @@ export async function handleMcpRequest(
       .orderBy(desc(memories.timestamp))
       .all();
 
-    // Decrypt
+    // Decrypt using derived vault key
+    const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
     const decrypted = await Promise.all(
-      rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, env.ENCRYPTION_KEY) }))
+      rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY) }))
     );
 
     // Filter in memory for tag and keyword
@@ -508,12 +582,22 @@ export async function handleMcpRequest(
 
     const paginated = filtered.slice(offset, offset + limit);
 
+    // Audit log & token usage
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "search_memories", ipAddress, userAgent, metadata: { category, tag, keyword, projectKey, matchCount: paginated.length } });
+    await logTokenUsage(db, claims.tokenId, "recall", 0);
+
     return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(paginated) }] });
   }
 
   if (toolName === "get_memory_summary") {
     if (!(claims.permissions & MCP_PERM_RECALL)) {
       return mcpError(id, -32001, "Token does not have recall_context permission");
+    }
+
+    const orgId = await getUserOrg(db, claims.userId);
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "recall", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
     }
 
     const rows = await db
@@ -544,6 +628,10 @@ export async function handleMcpRequest(
       }
     }
 
+    // Audit log & token usage
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "get_memory_summary", ipAddress, userAgent });
+    await logTokenUsage(db, claims.tokenId, "recall", 0);
+
     return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(summary) }] });
   }
 
@@ -565,6 +653,17 @@ export async function handleMcpRequest(
       throw new Error("Unauthorized: userId is required for vector insert");
     }
 
+    // Vault Scoping & Quota Check
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, projectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${projectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "commit", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
     const tagsList = rawTags.split(",").map(t => t.trim()).filter(Boolean);
     if (!tagsList.includes(source)) tagsList.push(source);
     const finalTags = tagsList.join(", ");
@@ -572,7 +671,11 @@ export async function handleMcpRequest(
     const memId = crypto.randomUUID();
     const timestamp = Date.now();
     const embedding = await generateEmbedding(env.AI, fact.trim());
-    const encryptedFact = await encrypt(fact.trim(), env.ENCRYPTION_KEY);
+
+    // Derive vault key
+    const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const encryptedFact = await encrypt(fact.trim(), vaultKey);
 
     // Archive contradicted memories asynchronously via Queue
     try {
@@ -596,6 +699,19 @@ export async function handleMcpRequest(
       isActive: true,
       projectKey: projectKey || null,
     });
+
+    // Record Memory Version
+    await db.insert(memoryVersions).values({
+      id: crypto.randomUUID(),
+      memoryId: memId,
+      fact: encryptedFact,
+      category,
+      tags: finalTags,
+      changedBy: claims.userId,
+      changeReason: "created",
+      timestamp,
+    });
+
     await env.VECTOR_INDEX.insert([
       {
         id: memId,
@@ -608,6 +724,10 @@ export async function handleMcpRequest(
         },
       },
     ]);
+
+    // Audit log & token usage
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "commit_memory", memoryId: memId, ipAddress, userAgent, metadata: { category, projectKey } });
+    await logTokenUsage(db, claims.tokenId, "commit", 0);
 
     return mcpResult(id, {
       content: [
@@ -634,7 +754,7 @@ export async function handleMcpRequest(
       throw new Error("Unauthorized: userId is required for vector upsert");
     }
 
-    // Fetch existing memory to get defaults for category/tags if not provided
+    // Fetch existing memory to get defaults
     const rows = await db
       .select()
       .from(memories)
@@ -646,6 +766,17 @@ export async function handleMcpRequest(
     }
     const existing = rows[0];
 
+    // Vault Scoping & Quota Check
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${existing.projectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "commit", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
     const category = args.category !== undefined 
       ? normalizeCategory(args.category as string | undefined)
       : existing.category;
@@ -655,7 +786,11 @@ export async function handleMcpRequest(
       : existing.tags;
 
     const embedding = await generateEmbedding(env.AI, fact.trim());
-    const encryptedFact = await encrypt(fact.trim(), env.ENCRYPTION_KEY);
+
+    // Derive vault key
+    const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : claims.userId;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const encryptedFact = await encrypt(fact.trim(), vaultKey);
 
     await db.update(memories)
       .set({
@@ -664,6 +799,18 @@ export async function handleMcpRequest(
         tags: rawTags,
       })
       .where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`);
+
+    // Record Memory Version
+    await db.insert(memoryVersions).values({
+      id: crypto.randomUUID(),
+      memoryId: memId,
+      fact: encryptedFact,
+      category,
+      tags: rawTags,
+      changedBy: claims.userId,
+      changeReason: "updated",
+      timestamp: Date.now(),
+    });
 
     await env.VECTOR_INDEX.upsert([
       {
@@ -677,6 +824,10 @@ export async function handleMcpRequest(
         },
       },
     ]);
+
+    // Audit log & token usage
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_memory", memoryId: memId, ipAddress, userAgent, metadata: { category } });
+    await logTokenUsage(db, claims.tokenId, "commit", 0);
 
     return mcpResult(id, {
       content: [
@@ -695,9 +846,40 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, "Invalid params: id is required");
     }
 
+    if (!claims.userId) {
+      throw new Error("Unauthorized: userId is required");
+    }
+
+    // Fetch existing memory to check scoping
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`)
+      .all();
+
+    if (!rows.length) {
+      return mcpError(id, -32602, `Memory not found or unauthorized: ${memId}`);
+    }
+    const existing = rows[0];
+
+    // Vault Scoping & Quota Check
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${existing.projectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "commit", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
     // Delete from DB and Vectorize
     await db.delete(memories).where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`);
     await env.VECTOR_INDEX.deleteByIds([memId]);
+
+    // Audit log & token usage
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "delete_memory", memoryId: memId, ipAddress, userAgent });
+    await logTokenUsage(db, claims.tokenId, "commit", 0);
 
     return mcpResult(id, {
       content: [

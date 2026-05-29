@@ -1,10 +1,20 @@
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { desc, eq, sql, and } from "drizzle-orm";
-import { memories, apiTokens, type Memory, type NewMemory } from "~/db/schema";
+import {
+  memories,
+  apiTokens,
+  memoryVersions,
+  auditLogs,
+  tokenUsages,
+  orgQuotas,
+  type Memory,
+  type NewMemory,
+} from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { encrypt, decrypt, isEncrypted, hashToken, deriveUserKey } from "./crypto";
 import { requireSession, requireAdmin } from "./session";
+import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit } from "./enterprise";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
@@ -62,10 +72,14 @@ async function decryptFact(stored: string, encKey: string, fallbackKey?: string)
   }
 }
 
-// Decrypt all facts in a row array.
-async function decryptMemories(rows: Memory[], encKey: string): Promise<Memory[]> {
+// Decrypt all facts in a row array using derived vault keys.
+async function decryptMemories(rows: Memory[], masterKey: string): Promise<Memory[]> {
   return Promise.all(
-    rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, encKey) }))
+    rows.map(async (r) => {
+      const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : r.userId;
+      const vaultKey = await deriveUserKey(masterKey, vaultId);
+      return { ...r, fact: await decryptFact(r.fact, vaultKey, masterKey) };
+    })
   );
 }
 
@@ -270,9 +284,14 @@ export async function archiveContradictingMemories(
 ): Promise<void> {
   if (!userId) throw new Error("Unauthorized: userId is required for vector query");
 
-  const filter: Record<string, any> = { userId };
-  if (projectKey) {
-    filter.projectKey = { $in: [projectKey, ""] };
+  const filter: Record<string, any> = {};
+  if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
+    filter.projectKey = projectKey;
+  } else {
+    filter.userId = userId;
+    if (projectKey) {
+      filter.projectKey = { $in: [projectKey, ""] };
+    }
   }
 
   const results = await env.VECTOR_INDEX.query(embedding, {
@@ -288,21 +307,41 @@ export async function archiveContradictingMemories(
 
   const candidateIds = candidates.map((c) => c.id);
 
+  const conditions = [
+    sql`${memories.id} IN (${sql.join(candidateIds.map((id) => sql`${id}`), sql`, `)})`,
+    eq(memories.isActive, true)
+  ];
+
+  if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
+    conditions.push(eq(memories.projectKey, projectKey));
+  } else {
+    conditions.push(eq(memories.userId, userId));
+    if (projectKey) {
+      conditions.push(
+        sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+      );
+    } else {
+      conditions.push(
+        sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+      );
+    }
+  }
+
   const rows = await db
     .select()
     .from(memories)
-    .where(
-      sql`${memories.id} IN (${sql.join(candidateIds.map((id) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${userId} AND ${memories.isActive} = 1`
-    )
+    .where(and(...conditions))
     .all();
 
   if (rows.length === 0) return;
 
-  const userKey = await deriveUserKey(env.ENCRYPTION_KEY, userId);
+  const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : userId;
+  const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+
   const decryptedCandidates = await Promise.all(
     rows.map(async (r: any) => ({
       id: r.id,
-      fact: await decryptFact(r.fact, userKey, env.ENCRYPTION_KEY),
+      fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY),
     }))
   );
 
@@ -333,6 +372,9 @@ Do not include markdown code fences or conversational text. Just the raw JSON ar
         );
         if (validIdsToArchive.length > 0) {
           console.log("[contradiction] Archiving contradicted memories:", validIdsToArchive);
+          
+          const toArchiveRows = rows.filter((r: any) => validIdsToArchive.includes(r.id));
+          
           await db
             .update(memories)
             .set({ isActive: false })
@@ -340,6 +382,20 @@ Do not include markdown code fences or conversational text. Just the raw JSON ar
               sql`${memories.id} IN (${sql.join(validIdsToArchive.map((id) => sql`${id}`), sql`, `)})`
             )
             .run();
+
+          // Record new versions for archived memories
+          for (const row of toArchiveRows) {
+            await db.insert(memoryVersions).values({
+              id: crypto.randomUUID(),
+              memoryId: row.id,
+              fact: row.fact, // already encrypted
+              category: row.category,
+              tags: row.tags,
+              changedBy: "system",
+              changeReason: "contradiction",
+              timestamp: Date.now(),
+            }).run();
+          }
         }
       }
     }
@@ -377,11 +433,24 @@ export const addMemory = createServerFn({ method: "POST" })
       throw new Error("Unauthorized: userId is required for vector insert");
     }
 
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, data.projectKey);
+    if (!vaultAllowed) {
+      throw new Error(`Forbidden: no access to vault scope '${data.projectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
+    if (!quotaCheck.allowed) {
+      throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
     const id = crypto.randomUUID();
     const timestamp = Date.now();
-    // Embed plaintext, store encrypted
+    
+    const vaultId = (data.projectKey && (data.projectKey.startsWith("team:") || data.projectKey.startsWith("org:"))) ? data.projectKey : user.id;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const encryptedFact = await encryptFact(data.fact, vaultKey);
+
     const embedding = await generateEmbedding(env.AI, data.fact);
-    const encryptedFact = await encryptFact(data.fact, env.ENCRYPTION_KEY);
 
     const tagsList = data.tags.split(",").map(t => t.trim()).filter(Boolean);
     if (!tagsList.includes("manual")) {
@@ -413,6 +482,19 @@ export const addMemory = createServerFn({ method: "POST" })
     };
 
     await db.insert(memories).values(newRow);
+
+    // Record Memory Version
+    await db.insert(memoryVersions).values({
+      id: crypto.randomUUID(),
+      memoryId: id,
+      fact: encryptedFact,
+      category: data.category,
+      tags: finalTags,
+      changedBy: user.id,
+      changeReason: "created",
+      timestamp,
+    });
+
     try {
       await env.VECTOR_INDEX.insert([
         {
@@ -429,6 +511,10 @@ export const addMemory = createServerFn({ method: "POST" })
     } catch (err) {
       console.error(`[addMemory] vector insert failed:`, err);
     }
+
+    // Audit Log & usage tracking
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "commit_memory", memoryId: id, metadata: { category: data.category, projectKey: data.projectKey } });
+    await logTokenUsage(db, "session", "commit", 0);
 
     return { ...newRow, fact: data.fact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null };
   });
@@ -478,6 +564,26 @@ export const batchImportMemories = createServerFn({ method: "POST" })
 
     if (!user.id) {
       throw new Error("Unauthorized: userId is required for vector operations");
+    }
+
+    // Vault Scoping Access Verification
+    const distinctProjectKeys = Array.from(new Set([projectKey, ...items.map(item => item.projectKey)]))
+      .filter((pk): pk is string => typeof pk === "string");
+    if (distinctProjectKeys.length === 0) distinctProjectKeys.push("personal");
+
+    let orgId: string | null = null;
+    for (const pk of distinctProjectKeys) {
+      const { allowed: vaultAllowed, orgId: pOrgId } = await verifyVaultAccess(db, user.id, pk);
+      if (!vaultAllowed) {
+        throw new Error(`Forbidden: no access to vault scope '${pk}'`);
+      }
+      if (pOrgId) orgId = pOrgId;
+    }
+
+    // Quota Verification
+    const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
+    if (!quotaCheck.allowed) {
+      throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
     }
 
     const valid = items.filter((item) => {
@@ -537,7 +643,6 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       )
     );
 
-    const userKey = await deriveUserKey(env.ENCRYPTION_KEY, user.id);
     const existingDbMemories = new Map<string, Memory>();
     if (candidateIds.length > 0) {
       const DB_CHUNK = 50;
@@ -548,9 +653,11 @@ export const batchImportMemories = createServerFn({ method: "POST" })
           .from(memories)
           .where(sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${user.id}`)
           .all();
-        // Decrypt facts using derived user key
+        // Decrypt facts using derived per-vault keys
         for (const r of rows) {
-          existingDbMemories.set(r.id, { ...r, fact: await decryptFact(r.fact, userKey, env.ENCRYPTION_KEY) });
+          const rVaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : r.userId;
+          const rVaultKey = await deriveUserKey(env.ENCRYPTION_KEY, rVaultId);
+          existingDbMemories.set(r.id, { ...r, fact: await decryptFact(r.fact, rVaultKey, env.ENCRYPTION_KEY) });
         }
       }
     }
@@ -718,7 +825,11 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
       const tagsList = (item.tags ?? "").split(",").map(t => t.trim()).filter(Boolean);
       if (!tagsList.includes(source)) tagsList.push(source);
       const finalTags = tagsList.join(", ");
-      const encryptedFact = await encryptFact(item.fact, userKey);
+
+      const itemPk = item.projectKey || projectKey || null;
+      const vaultId = itemPk && (itemPk.startsWith("team:") || itemPk.startsWith("org:")) ? itemPk : user.id;
+      const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+      const encryptedFact = await encryptFact(item.fact, vaultKey);
 
       return {
         id: crypto.randomUUID(),
@@ -730,7 +841,7 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
         timestamp,
         embedding: embeddings[i],
         isDupe: dupeFlags[i],
-        projectKey: item.projectKey || projectKey || null,
+        projectKey: itemPk,
       };
     }));
 
@@ -742,6 +853,23 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
       await db.insert(memories).values(
         newRows.slice(i, i + CHUNK_SIZE).map(({ id, userId, fact, category, tags, timestamp: ts, projectKey: pk }) => ({
           id, userId, fact, category, tags, timestamp: ts, isActive: true, projectKey: pk,
+        }))
+      );
+    }
+
+    // Insert new memory versions for imported memories
+    for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
+      const chunk = newRows.slice(i, i + CHUNK_SIZE);
+      await db.insert(memoryVersions).values(
+        chunk.map((row) => ({
+          id: crypto.randomUUID(),
+          memoryId: row.id,
+          fact: row.fact,
+          category: row.category,
+          tags: row.tags,
+          changedBy: user.id,
+          changeReason: "imported",
+          timestamp: row.timestamp,
         }))
       );
     }
@@ -767,6 +895,10 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
       }
     }
 
+    // Audit logging & usage tracking
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "import_memories", metadata: { count: newRows.length } });
+    await logTokenUsage(db, "session", "commit", 0, newRows.length);
+
     return { imported: newRows.length, skipped: allRows.length - newRows.length };
   });
 
@@ -780,9 +912,40 @@ export const deleteMemory = createServerFn({ method: "POST" })
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
-    // Only delete if belongs to this user
+
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required");
+    }
+
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(sql`${memories.id} = ${data.id} AND ${memories.userId} = ${user.id}`)
+      .all();
+
+    if (!rows.length) {
+      throw new Error("Memory not found or unauthorized");
+    }
+    const existing = rows[0];
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, existing.projectKey);
+    if (!vaultAllowed) {
+      throw new Error(`Forbidden: no access to vault scope '${existing.projectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
+    if (!quotaCheck.allowed) {
+      throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
+    // Delete from DB and Vectorize
     await db.delete(memories).where(sql`${memories.id} = ${data.id} AND ${memories.userId} = ${user.id}`);
     await env.VECTOR_INDEX.deleteByIds([data.id]);
+
+    // Audit logging & usage tracking
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "delete_memory", memoryId: data.id });
+    await logTokenUsage(db, "session", "commit", 0);
+
     return { deleted: true };
   });
 
@@ -816,10 +979,35 @@ export const updateMemory = createServerFn({ method: "POST" })
     }
     const existing = existingRows[0];
 
-    const encryptedFact = await encryptFact(data.fact, env.ENCRYPTION_KEY);
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, existing.projectKey);
+    if (!vaultAllowed) {
+      throw new Error(`Forbidden: no access to vault scope '${existing.projectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
+    if (!quotaCheck.allowed) {
+      throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
+    const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : user.id;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const encryptedFact = await encryptFact(data.fact, vaultKey);
+
     await db.update(memories)
       .set({ fact: encryptedFact, category: data.category, tags: data.tags })
       .where(sql`${memories.id} = ${data.id} AND ${memories.userId} = ${user.id}`);
+
+    // Record Memory Version
+    await db.insert(memoryVersions).values({
+      id: crypto.randomUUID(),
+      memoryId: data.id,
+      fact: encryptedFact,
+      category: data.category,
+      tags: data.tags,
+      changedBy: user.id,
+      changeReason: "updated",
+      timestamp: Date.now(),
+    });
 
     const embedding = await generateEmbedding(env.AI, data.fact);
     await env.VECTOR_INDEX.upsert([{
@@ -827,6 +1015,10 @@ export const updateMemory = createServerFn({ method: "POST" })
       values: embedding,
       metadata: { userId: user.id, category: data.category, tags: data.tags, projectKey: existing.projectKey ?? "" } as Record<string, VectorizeVectorMetadata>,
     }]);
+
+    // Audit logging & usage tracking
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: data.id, metadata: { category: data.category } });
+    await logTokenUsage(db, "session", "commit", 0);
 
     const rows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
     return { ...rows[0], fact: data.fact };
@@ -879,12 +1071,27 @@ export const recallContext = createServerFn({ method: "POST" })
       throw new Error("Unauthorized: userId is required for vector query");
     }
 
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, data.projectKey);
+    if (!vaultAllowed) {
+      throw new Error(`Forbidden: no access to vault scope '${data.projectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, user.id, "session", "recall", orgId);
+    if (!quotaCheck.allowed) {
+      throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
     const embedding = await generateEmbedding(env.AI, data.query);
     const topK = Math.min(20, data.topK ?? 5);
 
-    const filter: Record<string, any> = { userId: user.id };
-    if (data.projectKey) {
-      filter.projectKey = { $in: [data.projectKey, ""] };
+    const filter: Record<string, any> = {};
+    if (data.projectKey && (data.projectKey.startsWith("team:") || data.projectKey.startsWith("org:"))) {
+      filter.projectKey = data.projectKey;
+    } else {
+      filter.userId = user.id;
+      if (data.projectKey) {
+        filter.projectKey = { $in: [data.projectKey, ""] };
+      }
     }
 
     const results = await env.VECTOR_INDEX.query(embedding, {
@@ -893,26 +1100,34 @@ export const recallContext = createServerFn({ method: "POST" })
       returnMetadata: "none",
     });
 
-    if (!results.matches || results.matches.length === 0) return [];
+    if (!results.matches || results.matches.length === 0) {
+      await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "recall_context", metadata: { query: data.query, projectKey: data.projectKey, matchCount: 0 } });
+      await logTokenUsage(db, "session", "recall", 0);
+      return [];
+    }
 
     const ids = results.matches.map((m: VectorizeMatch) => m.id);
     const conditions = [
-      sql`${memories.id} IN (${sql.join(ids.map((id: string) => sql`${id}`), sql`, `)})`,
-      eq(memories.userId, user.id)
+      sql`${memories.id} IN (${sql.join(ids.map((id: string) => sql`${id}`), sql`, `)})`
     ];
 
     if (data.isActive !== undefined) {
       conditions.push(eq(memories.isActive, data.isActive));
     }
 
-    if (data.projectKey) {
-      conditions.push(
-        sql`(${memories.projectKey} = ${data.projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
-      );
+    if (data.projectKey && (data.projectKey.startsWith("team:") || data.projectKey.startsWith("org:"))) {
+      conditions.push(eq(memories.projectKey, data.projectKey));
     } else {
-      conditions.push(
-        sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
-      );
+      conditions.push(eq(memories.userId, user.id));
+      if (data.projectKey) {
+        conditions.push(
+          sql`(${memories.projectKey} = ${data.projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+        );
+      } else {
+        conditions.push(
+          sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+        );
+      }
     }
 
     const rows = await db
@@ -921,9 +1136,20 @@ export const recallContext = createServerFn({ method: "POST" })
       .where(and(...conditions))
       .all();
 
+    const vaultId = (data.projectKey && (data.projectKey.startsWith("team:") || data.projectKey.startsWith("org:"))) ? data.projectKey : user.id;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+
     const idOrder = new Map(ids.map((id: string, i: number) => [id, i]));
     const sorted = rows.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
-    return decryptMemories(sorted, env.ENCRYPTION_KEY);
+    const decrypted = await Promise.all(
+      sorted.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY) }))
+    );
+
+    // Audit logging & usage tracking
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "recall_context", metadata: { query: data.query, projectKey: data.projectKey, matchCount: decrypted.length } });
+    await logTokenUsage(db, "session", "recall", 0);
+
+    return decrypted;
   });
 
 export const nukeEverything = createServerFn({ method: "POST" }).handler(
@@ -1293,7 +1519,7 @@ export const encryptAllMemories = createServerFn({ method: "POST" }).handler(
     await requireAdmin(env);
     const db = getDb(env);
 
-    const rows = await db.select({ id: memories.id, fact: memories.fact }).from(memories).all();
+    const rows = await db.select({ id: memories.id, fact: memories.fact, userId: memories.userId, projectKey: memories.projectKey }).from(memories).all();
 
     let encrypted = 0;
     let alreadyEncrypted = 0;
@@ -1304,13 +1530,29 @@ export const encryptAllMemories = createServerFn({ method: "POST" }).handler(
       const chunk = rows.slice(i, i + CHUNK);
       await Promise.all(chunk.map(async (row) => {
         try {
+          const vaultId = (row.projectKey && (row.projectKey.startsWith("team:") || row.projectKey.startsWith("org:"))) ? row.projectKey : row.userId;
+          const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+
           if (isEncrypted(row.fact)) {
-            alreadyEncrypted++;
-            return;
+            // Check if it's already encrypted with the derived key. If decrypting with derived key fails but decrypting with master key succeeds, re-encrypt it!
+            try {
+              await decrypt(row.fact, vaultKey);
+              alreadyEncrypted++;
+              return;
+            } catch {
+              // Try to decrypt with master key, then re-encrypt
+              const decrypted = await decrypt(row.fact, env.ENCRYPTION_KEY);
+              const reEncrypted = await encrypt(decrypted, vaultKey);
+              await db.update(memories).set({ fact: reEncrypted }).where(eq(memories.id, row.id));
+              encrypted++;
+              return;
+            }
+          } else {
+            // Plaintext fact
+            const encFact = await encrypt(row.fact, vaultKey);
+            await db.update(memories).set({ fact: encFact }).where(eq(memories.id, row.id));
+            encrypted++;
           }
-          const encFact = await encrypt(row.fact, env.ENCRYPTION_KEY);
-          await db.update(memories).set({ fact: encFact }).where(eq(memories.id, row.id));
-          encrypted++;
         } catch (err) {
           console.error(`[encryptAllMemories] failed for ${row.id}:`, err);
           failed++;
@@ -1338,9 +1580,13 @@ export const rebuildVectorizeIndex = createServerFn({ method: "POST" }).handler(
     for (let i = 0; i < allMemories.length; i += CHUNK_SIZE) {
       const chunk = allMemories.slice(i, i + CHUNK_SIZE);
       try {
-        // Decrypt facts in chunk
+        // Decrypt facts in chunk using derived vault keys
         const decryptedFacts = await Promise.all(
-          chunk.map(async (row) => decryptFact(row.fact, env.ENCRYPTION_KEY))
+          chunk.map(async (row) => {
+            const vaultId = (row.projectKey && (row.projectKey.startsWith("team:") || row.projectKey.startsWith("org:"))) ? row.projectKey : row.userId;
+            const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+            return decryptFact(row.fact, vaultKey, env.ENCRYPTION_KEY);
+          })
         );
 
         // Generate embeddings for decrypted facts
@@ -1377,3 +1623,147 @@ export const rebuildVectorizeIndex = createServerFn({ method: "POST" }).handler(
     return { processed, failed };
   }
 );
+
+export const getMemoryTimeline = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { memoryId: string } => {
+    const d = data as { memoryId: string };
+    if (!d.memoryId || typeof d.memoryId !== "string") throw new Error("memoryId is required");
+    return { memoryId: d.memoryId };
+  })
+  .handler(async ({ data, context }): Promise<any[]> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    // Fetch memory first to verify access
+    const memRows = await db
+      .select()
+      .from(memories)
+      .where(sql`${memories.id} = ${data.memoryId} AND ${memories.userId} = ${user.id}`)
+      .all();
+    if (memRows.length === 0) {
+      throw new Error("Memory not found or unauthorized");
+    }
+    const mem = memRows[0];
+    const { allowed } = await verifyVaultAccess(db, user.id, mem.projectKey);
+    if (!allowed) {
+      throw new Error("Forbidden: no access to vault scope");
+    }
+
+    const versions = await db
+      .select()
+      .from(memoryVersions)
+      .where(eq(memoryVersions.memoryId, data.memoryId))
+      .orderBy(desc(memoryVersions.timestamp))
+      .all();
+
+    // Decrypt versions using derived vault keys
+    const vaultId = (mem.projectKey && (mem.projectKey.startsWith("team:") || mem.projectKey.startsWith("org:"))) ? mem.projectKey : user.id;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+
+    return Promise.all(
+      versions.map(async (v: any) => ({
+        ...v,
+        fact: await decryptFact(v.fact, vaultKey, env.ENCRYPTION_KEY),
+      }))
+    );
+  });
+
+export const getAuditLogs = createServerFn({ method: "GET" })
+  .handler(async ({ context }): Promise<any[]> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = getDb(env);
+
+    return db
+      .select()
+      .from(auditLogs)
+      .orderBy(desc(auditLogs.timestamp))
+      .limit(100)
+      .all();
+  });
+
+export const revertMemoryVersion = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { versionId: string } => {
+    const d = data as { versionId: string };
+    if (!d.versionId || typeof d.versionId !== "string") throw new Error("versionId is required");
+    return { versionId: d.versionId };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const versionRows = await db
+      .select()
+      .from(memoryVersions)
+      .where(eq(memoryVersions.id, data.versionId))
+      .all();
+    if (versionRows.length === 0) {
+      throw new Error("Version not found");
+    }
+    const ver = versionRows[0];
+
+    const memRows = await db
+      .select()
+      .from(memories)
+      .where(sql`${memories.id} = ${ver.memoryId} AND ${memories.userId} = ${user.id}`)
+      .all();
+    if (memRows.length === 0) {
+      throw new Error("Memory not found or unauthorized");
+    }
+    const mem = memRows[0];
+
+    const { allowed, orgId } = await verifyVaultAccess(db, user.id, mem.projectKey);
+    if (!allowed) {
+      throw new Error("Forbidden");
+    }
+
+    const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
+    if (!quotaCheck.allowed) {
+      throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
+    // Decrypt the version to generate a new embedding
+    const vaultId = (mem.projectKey && (mem.projectKey.startsWith("team:") || mem.projectKey.startsWith("org:"))) ? mem.projectKey : user.id;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const decryptedFact = await decryptFact(ver.fact, vaultKey, env.ENCRYPTION_KEY);
+
+    const embedding = await generateEmbedding(env.AI, decryptedFact);
+
+    // Update memory
+    await db
+      .update(memories)
+      .set({
+        fact: ver.fact,
+        category: ver.category,
+        tags: ver.tags,
+        isActive: true, // Reverting also makes it active
+      })
+      .where(eq(memories.id, mem.id));
+
+    // Record a new memory version for the revert action
+    await db.insert(memoryVersions).values({
+      id: crypto.randomUUID(),
+      memoryId: mem.id,
+      fact: ver.fact,
+      category: ver.category,
+      tags: ver.tags,
+      changedBy: user.id,
+      changeReason: `reverted to version from ${new Date(ver.timestamp).toLocaleString()}`,
+      timestamp: Date.now(),
+    });
+
+    // Update vectorize
+    await env.VECTOR_INDEX.upsert([{
+      id: mem.id,
+      values: embedding,
+      metadata: { userId: user.id, category: ver.category, tags: ver.tags, projectKey: mem.projectKey ?? "" } as Record<string, VectorizeVectorMetadata>,
+    }]);
+
+    // Audit Log & usage
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "revert_version", memoryId: mem.id, metadata: { versionId: data.versionId } });
+    await logTokenUsage(db, "session", "commit", 0);
+
+    return { success: true };
+  });
