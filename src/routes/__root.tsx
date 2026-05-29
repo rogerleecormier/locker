@@ -7,7 +7,9 @@ import {
   useRouter,
   Link,
 } from "@tanstack/react-router";
-import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
+import { QueryClientProvider, type QueryClient, useQuery } from "@tanstack/react-query";
+import { getAdminStatus } from "~/routes/admin";
+import { getUserWorkspaces } from "~/server/memoryFunctions";
 import type { ReactNode } from "react";
 import { useSession, signOut } from "~/lib/authClient";
 
@@ -121,6 +123,24 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
     window.location.href = "/login";
   }
 
+  const { data: adminStatus } = useQuery({
+    queryKey: ["admin-status"],
+    queryFn: () => getAdminStatus(),
+    staleTime: 60000,
+  });
+
+  const { data: workspaces = [] } = useQuery({
+    queryKey: ["workspaces"],
+    queryFn: () => getUserWorkspaces(),
+    staleTime: 60000,
+  });
+
+  const isOrgAdmin = workspaces.some(
+    (w) =>
+      (w.type === "org" && (w.role === "owner" || w.role === "admin")) ||
+      (w.type === "team" && w.role === "admin")
+  );
+
   return (
     <nav style={navStyles.nav}>
       <div style={navStyles.brand}>
@@ -144,9 +164,14 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
         <Link to="/settings" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Settings
         </Link>
-        {user.id === ADMIN_USER_ID && (
+        {isOrgAdmin && (
+          <Link to="/organization" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+            Organization
+          </Link>
+        )}
+        {adminStatus?.isAdmin && (
           <Link to="/admin" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
-            Admin
+            Site Admin
           </Link>
         )}
       </div>

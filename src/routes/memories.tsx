@@ -9,7 +9,9 @@ import {
   updateMemory,
   getMemoryTimeline,
   revertMemoryVersion,
+  getUserWorkspaces,
 } from "~/server/memoryFunctions";
+import { getAdminStatus } from "~/routes/admin";
 import type { Memory } from "~/db/schema";
 
 export const Route = createFileRoute("/memories")({
@@ -367,14 +369,22 @@ function MemoryRow({
   );
 }
 
-function NewMemoryModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function NewMemoryModal({
+  onClose,
+  onSaved,
+  projectKey,
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+  projectKey?: string;
+}) {
   const queryClient = useQueryClient();
   const [fact, setFact] = useState("");
   const [category, setCategory] = useState<"rules" | "projects" | "references">("references");
   const [tags, setTags] = useState("");
 
   const mutation = useMutation({
-    mutationFn: () => addMemory({ data: { fact, category, tags } }),
+    mutationFn: () => addMemory({ data: { fact, category, tags, projectKey } }),
     onSuccess: (newMemory) => {
       queryClient.setQueryData<Memory[]>(["memories"], (old) =>
         old ? [newMemory, ...old] : [newMemory]
@@ -845,9 +855,21 @@ function Dashboard() {
   const [showNewMemory, setShowNewMemory] = useState(false);
   const [activeTimelineId, setActiveTimelineId] = useState<string | null>(null);
 
+  const [projectKey, setProjectKey] = useState<string>("personal");
+
+  const { data: workspaces = [] } = useQuery({
+    queryKey: ["workspaces"],
+    queryFn: () => getUserWorkspaces(),
+  });
+
+  const adminQuery = useQuery({
+    queryKey: ["admin-status"],
+    queryFn: () => getAdminStatus(),
+  });
+
   const { data: memories = [], isLoading, isError } = useQuery({
-    queryKey: ["memories"],
-    queryFn: () => getMemories(),
+    queryKey: ["memories", projectKey],
+    queryFn: () => getMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
   });
 
   async function triggerExport() {
@@ -927,29 +949,78 @@ function Dashboard() {
             >
               Export Zip
             </button>
-            <Link
-              to="/admin"
+            <select
+              value={projectKey}
+              onChange={(e) => setProjectKey(e.target.value)}
               style={{
                 padding: "6px 12px",
                 background: "var(--surface2)",
                 border: "1px solid var(--border)",
-                color: "var(--text-muted)",
+                color: "var(--text)",
                 fontSize: 12,
                 borderRadius: "var(--radius)",
-                textDecoration: "none",
-                transition: "all 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                (e.target as HTMLElement).style.borderColor = "var(--text-muted)";
-                (e.target as HTMLElement).style.color = "var(--text)";
-              }}
-              onMouseLeave={(e) => {
-                (e.target as HTMLElement).style.borderColor = "var(--border)";
-                (e.target as HTMLElement).style.color = "var(--text-muted)";
+                cursor: "pointer",
+                marginRight: 4,
               }}
             >
-              Admin
-            </Link>
+              {workspaces.map((w) => (
+                <option key={w.key} value={w.key}>
+                  {w.label}
+                </option>
+              ))}
+            </select>
+            {workspaces.some((w) => w.type !== "personal" && (w.role === "owner" || w.role === "admin")) && (
+              <Link
+                to="/organization"
+                style={{
+                  padding: "6px 12px",
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-muted)",
+                  fontSize: 12,
+                  borderRadius: "var(--radius)",
+                  textDecoration: "none",
+                  transition: "all 0.15s",
+                  marginRight: 4,
+                }}
+                onMouseEnter={(e) => {
+                  (e.target as HTMLElement).style.borderColor = "var(--text-muted)";
+                  (e.target as HTMLElement).style.color = "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.target as HTMLElement).style.borderColor = "var(--border)";
+                  (e.target as HTMLElement).style.color = "var(--text-muted)";
+                }}
+              >
+                Manage Org
+              </Link>
+            )}
+            {adminQuery.data?.isAdmin && (
+              <Link
+                to="/admin"
+                style={{
+                  padding: "6px 12px",
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-muted)",
+                  fontSize: 12,
+                  borderRadius: "var(--radius)",
+                  textDecoration: "none",
+                  transition: "all 0.15s",
+                  marginRight: 4,
+                }}
+                onMouseEnter={(e) => {
+                  (e.target as HTMLElement).style.borderColor = "var(--text-muted)";
+                  (e.target as HTMLElement).style.color = "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.target as HTMLElement).style.borderColor = "var(--border)";
+                  (e.target as HTMLElement).style.color = "var(--text-muted)";
+                }}
+              >
+                Site Admin
+              </Link>
+            )}
             <button
               onClick={() => setShowNewMemory(true)}
               style={{
@@ -1112,6 +1183,7 @@ function Dashboard() {
         <NewMemoryModal
           onClose={() => setShowNewMemory(false)}
           onSaved={invalidate}
+          projectKey={projectKey === "personal" ? undefined : projectKey}
         />
       )}
 

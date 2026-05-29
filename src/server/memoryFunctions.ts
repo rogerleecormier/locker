@@ -8,6 +8,10 @@ import {
   auditLogs,
   tokenUsages,
   orgQuotas,
+  organizations,
+  organizationMembers,
+  teams,
+  teamMembers,
   type Memory,
   type NewMemory,
 } from "~/db/schema";
@@ -259,18 +263,98 @@ Rules:
     return facts.map((item) => ({ fact: item.fact }));
   });
 
-export const getMemories = createServerFn({ method: "GET" }).handler(
-  async ({ context }): Promise<Memory[]> => {
+export const getMemories = createServerFn({ method: "GET" })
+  .inputValidator((data: unknown): { projectKey?: string } => {
+    const d = data as { projectKey?: string };
+    return { projectKey: d?.projectKey };
+  })
+  .handler(
+    async ({ data, context }): Promise<Memory[]> => {
+      const { env } = (context as unknown as CFContext).cloudflare;
+      const user = await requireSession(env);
+      const db = getDb(env);
+
+      let whereClause;
+      if (data?.projectKey) {
+        const { allowed: vaultAllowed } = await verifyVaultAccess(db, user.id, data.projectKey);
+        if (!vaultAllowed) {
+          throw new Error(`Forbidden: no access to vault scope '${data.projectKey}'`);
+        }
+        whereClause = eq(memories.projectKey, data.projectKey);
+      } else {
+        whereClause = and(eq(memories.userId, user.id), sql`${memories.projectKey} IS NULL`);
+      }
+
+      const rows = await db
+        .select()
+        .from(memories)
+        .where(whereClause)
+        .orderBy(desc(memories.timestamp))
+        .all();
+      return decryptMemories(rows, env.ENCRYPTION_KEY);
+    }
+  );
+
+export type WorkspaceItem = {
+  key: string;
+  label: string;
+  type: "personal" | "org" | "team";
+  role?: string;
+};
+
+export const getUserWorkspaces = createServerFn({ method: "GET" }).handler(
+  async ({ context }): Promise<WorkspaceItem[]> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
-    const rows = await db
-      .select()
-      .from(memories)
-      .where(eq(memories.userId, user.id))
-      .orderBy(desc(memories.timestamp))
+
+    const workspaces: WorkspaceItem[] = [
+      { key: "personal", label: "Personal Locker", type: "personal" }
+    ];
+
+    // Fetch Orgs
+    const orgRows = await db
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        role: organizationMembers.role,
+      })
+      .from(organizationMembers)
+      .innerJoin(organizations, eq(organizationMembers.orgId, organizations.id))
+      .where(eq(organizationMembers.userId, user.id))
       .all();
-    return decryptMemories(rows, env.ENCRYPTION_KEY);
+
+    for (const org of orgRows) {
+      workspaces.push({
+        key: `org:${org.id}`,
+        label: `${org.name} (Org)`,
+        type: "org",
+        role: org.role,
+      });
+    }
+
+    // Fetch Teams
+    const teamRows = await db
+      .select({
+        id: teams.id,
+        name: teams.name,
+        role: teamMembers.role,
+      })
+      .from(teamMembers)
+      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+      .where(eq(teamMembers.userId, user.id))
+      .all();
+
+    for (const team of teamRows) {
+      workspaces.push({
+        key: `team:${team.id}`,
+        label: `${team.name} (Team)`,
+        type: "team",
+        role: team.role,
+      });
+    }
+
+    return workspaces;
   }
 );
 
@@ -920,7 +1004,7 @@ export const deleteMemory = createServerFn({ method: "POST" })
     const rows = await db
       .select()
       .from(memories)
-      .where(sql`${memories.id} = ${data.id} AND ${memories.userId} = ${user.id}`)
+      .where(eq(memories.id, data.id))
       .all();
 
     if (!rows.length) {
@@ -933,13 +1017,18 @@ export const deleteMemory = createServerFn({ method: "POST" })
       throw new Error(`Forbidden: no access to vault scope '${existing.projectKey}'`);
     }
 
+    // Additional check: if personal memory, must be the owner
+    if ((!existing.projectKey || existing.projectKey === "personal") && existing.userId !== user.id) {
+      throw new Error("Unauthorized");
+    }
+
     const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
     if (!quotaCheck.allowed) {
       throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
     }
 
     // Delete from DB and Vectorize
-    await db.delete(memories).where(sql`${memories.id} = ${data.id} AND ${memories.userId} = ${user.id}`);
+    await db.delete(memories).where(eq(memories.id, data.id));
     await env.VECTOR_INDEX.deleteByIds([data.id]);
 
     // Audit logging & usage tracking
@@ -973,7 +1062,7 @@ export const updateMemory = createServerFn({ method: "POST" })
       throw new Error("Unauthorized: userId is required for vector upsert");
     }
 
-    const existingRows = await db.select().from(memories).where(sql`${memories.id} = ${data.id} AND ${memories.userId} = ${user.id}`).all();
+    const existingRows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
     if (existingRows.length === 0) {
       throw new Error("Memory not found or unauthorized");
     }
@@ -982,6 +1071,11 @@ export const updateMemory = createServerFn({ method: "POST" })
     const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, existing.projectKey);
     if (!vaultAllowed) {
       throw new Error(`Forbidden: no access to vault scope '${existing.projectKey}'`);
+    }
+
+    // Additional check: if personal memory, must be the owner
+    if ((!existing.projectKey || existing.projectKey === "personal") && existing.userId !== user.id) {
+      throw new Error("Unauthorized");
     }
 
     const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
@@ -995,7 +1089,7 @@ export const updateMemory = createServerFn({ method: "POST" })
 
     await db.update(memories)
       .set({ fact: encryptedFact, category: data.category, tags: data.tags })
-      .where(sql`${memories.id} = ${data.id} AND ${memories.userId} = ${user.id}`);
+      .where(eq(memories.id, data.id));
 
     // Record Memory Version
     await db.insert(memoryVersions).values({
@@ -1639,15 +1733,21 @@ export const getMemoryTimeline = createServerFn({ method: "POST" })
     const memRows = await db
       .select()
       .from(memories)
-      .where(sql`${memories.id} = ${data.memoryId} AND ${memories.userId} = ${user.id}`)
+      .where(eq(memories.id, data.memoryId))
       .all();
     if (memRows.length === 0) {
       throw new Error("Memory not found or unauthorized");
     }
     const mem = memRows[0];
+
     const { allowed } = await verifyVaultAccess(db, user.id, mem.projectKey);
     if (!allowed) {
       throw new Error("Forbidden: no access to vault scope");
+    }
+
+    // Additional check: if personal memory, must be the owner
+    if ((!mem.projectKey || mem.projectKey === "personal") && mem.userId !== user.id) {
+      throw new Error("Unauthorized");
     }
 
     const versions = await db
@@ -1707,7 +1807,7 @@ export const revertMemoryVersion = createServerFn({ method: "POST" })
     const memRows = await db
       .select()
       .from(memories)
-      .where(sql`${memories.id} = ${ver.memoryId} AND ${memories.userId} = ${user.id}`)
+      .where(eq(memories.id, ver.memoryId))
       .all();
     if (memRows.length === 0) {
       throw new Error("Memory not found or unauthorized");
@@ -1717,6 +1817,11 @@ export const revertMemoryVersion = createServerFn({ method: "POST" })
     const { allowed, orgId } = await verifyVaultAccess(db, user.id, mem.projectKey);
     if (!allowed) {
       throw new Error("Forbidden");
+    }
+
+    // Additional check: if personal memory, must be the owner
+    if ((!mem.projectKey || mem.projectKey === "personal") && mem.userId !== user.id) {
+      throw new Error("Unauthorized");
     }
 
     const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
