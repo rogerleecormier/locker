@@ -46,95 +46,6 @@ function extractText(result: unknown): string {
   return "";
 }
 
-async function archiveContradictingMemories(
-  db: any,
-  env: CloudflareEnv,
-  userId: string,
-  newFact: string,
-  embedding: number[],
-  projectKey: string | undefined
-): Promise<void> {
-  if (!userId) throw new Error("Unauthorized: userId is required for vector query");
-
-  const filter: Record<string, any> = { userId };
-  if (projectKey) {
-    filter.projectKey = { $in: [projectKey, ""] };
-  } else {
-    filter.projectKey = "";
-  }
-
-  const results = await env.VECTOR_INDEX.query(embedding, {
-    topK: 10,
-    filter,
-    returnMetadata: "none",
-  });
-
-  if (!results.matches || results.matches.length === 0) return;
-
-  const candidates = results.matches.filter((m) => m.score > 0.85);
-  if (candidates.length === 0) return;
-
-  const candidateIds = candidates.map((c) => c.id);
-
-  const rows = await db
-    .select()
-    .from(memories)
-    .where(
-      sql`${memories.id} IN (${sql.join(candidateIds.map((id) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${userId} AND ${memories.isActive} = 1`
-    )
-    .all();
-
-  if (rows.length === 0) return;
-
-  const decryptedCandidates = await Promise.all(
-    rows.map(async (r: any) => ({
-      id: r.id,
-      fact: await decryptFact(r.fact, env.ENCRYPTION_KEY),
-    }))
-  );
-
-  const prompt = `You are an AI assistant that detects contradictions or conflicts between a new memory and a list of existing memories.
-A contradiction/conflict occurs when the new memory makes the existing memory outdated, invalid, or directly contradicts it (e.g., a change in project stack, changed technical requirement, or updated preference).
-
-New Memory: "${newFact}"
-
-Existing Memories:
-${decryptedCandidates.map((c) => `[${c.id}] "${c.fact}"`).join("\n")}
-
-Identify which existing memories are contradicted or superseded by the new memory.
-Respond with ONLY a JSON array of the IDs of the contradicted memories. If none are contradicted, return an empty array [].
-Do not include markdown code fences or conversational text. Just the raw JSON array of strings.`;
-
-  try {
-    const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
-      prompt,
-      max_tokens: 256,
-    });
-    const text = extractText(result).trim();
-    const match = text.match(/\[[\s\S]*\]/);
-    if (match) {
-      const contradictedIds = JSON.parse(match[0]) as string[];
-      if (contradictedIds.length > 0) {
-        const validIdsToArchive = contradictedIds.filter((id) =>
-          decryptedCandidates.some((c) => c.id === id)
-        );
-        if (validIdsToArchive.length > 0) {
-          console.log("[contradiction] Archiving contradicted memories:", validIdsToArchive);
-          await db
-            .update(memories)
-            .set({ isActive: false })
-            .where(
-              sql`${memories.id} IN (${sql.join(validIdsToArchive.map((id) => sql`${id}`), sql`, `)})`
-            )
-            .run();
-        }
-      }
-    }
-  } catch (err) {
-    console.error("[archiveContradictingMemories] failed:", err);
-  }
-}
-
 const MCP_MANIFEST = {
   jsonrpc: "2.0",
   result: {
@@ -476,8 +387,6 @@ export async function handleMcpRequest(
     const filter: Record<string, any> = { userId: claims.userId };
     if (projectKey) {
       filter.projectKey = { $in: [projectKey, ""] };
-    } else {
-      filter.projectKey = "";
     }
 
     const vectorResults = await env.VECTOR_INDEX.query(embedding, {
@@ -665,8 +574,17 @@ export async function handleMcpRequest(
     const embedding = await generateEmbedding(env.AI, fact.trim());
     const encryptedFact = await encrypt(fact.trim(), env.ENCRYPTION_KEY);
 
-    // Archive contradicted memories before inserting the new one
-    await archiveContradictingMemories(db, env, claims.userId, fact.trim(), embedding, projectKey);
+    // Archive contradicted memories asynchronously via Queue
+    try {
+      await env.ARCHIVE_QUEUE.send({
+        userId: claims.userId,
+        newFact: fact.trim(),
+        embedding,
+        projectKey: projectKey || null,
+      });
+    } catch (err) {
+      console.error("[mcp] Failed to enqueue contradiction check:", err);
+    }
 
     await db.insert(memories).values({
       id: memId,

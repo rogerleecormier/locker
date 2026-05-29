@@ -15,6 +15,21 @@ function bytesToHex(bytes: Uint8Array): string {
     .join("");
 }
 
+// Derive a per-user encryption key from master key + userId
+export async function deriveUserKey(masterKey: string, userId: string): Promise<string> {
+  const masterBytes = hexToBytes(masterKey);
+  const keyMaterial = await crypto.subtle.importKey("raw", masterBytes, "HKDF", false, ["deriveKey"]);
+  const derived = await crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new TextEncoder().encode(userId), info: new TextEncoder().encode("locker-memory-key") },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+  const exported = await crypto.subtle.exportKey("raw", derived);
+  return bytesToHex(new Uint8Array(exported));
+}
+
 async function importKey(hexKey: string): Promise<CryptoKey> {
   const keyBytes = hexToBytes(hexKey);
   return crypto.subtle.importKey("raw", keyBytes.buffer as ArrayBuffer, { name: "AES-GCM" }, false, [

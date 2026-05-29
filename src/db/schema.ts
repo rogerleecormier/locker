@@ -159,3 +159,86 @@ export type NewMemory = typeof memories.$inferInsert;
 
 export const MCP_PERM_RECALL = 1 << 0;   // bit 0
 export const MCP_PERM_COMMIT = 1 << 1;   // bit 1
+
+// ── Multi-tenancy layer (organizations & teams) ──────────────────────────────
+export const organizations = sqliteTable("organizations", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  plan: text("plan").notNull().default("free"), // 'free' | 'pro' | 'enterprise'
+  settings: text("settings").notNull().default("{}"), // JSON settings
+  createdAt: integer("createdAt").notNull(),
+});
+
+export const organizationMembers = sqliteTable("organization_members", {
+  orgId: text("orgId").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role", { enum: ["owner", "admin", "member"] }).notNull().default("member"),
+  joinedAt: integer("joinedAt").notNull(),
+});
+
+export const teams = sqliteTable("teams", {
+  id: text("id").primaryKey(),
+  orgId: text("orgId").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: integer("createdAt").notNull(),
+});
+
+export const teamMembers = sqliteTable("team_members", {
+  teamId: text("teamId").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("member"),
+});
+
+// ── Audit Log ────────────────────────────────────────────────────────────────
+export const auditLogs = sqliteTable("audit_logs", {
+  id: text("id").primaryKey(),
+  orgId: text("orgId"),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenId: text("tokenId"),
+  action: text("action").notNull(), // 'recall_context' | 'commit_memory' | 'delete_memory' | 'update_memory' | 'export_memories'
+  memoryId: text("memoryId"),
+  ipAddress: text("ipAddress"),
+  userAgent: text("userAgent"),
+  timestamp: integer("timestamp").notNull(),
+  metadata: text("metadata"), // JSON string
+});
+
+// ── Rate Limiting & Quotas ───────────────────────────────────────────────────
+export const tokenUsages = sqliteTable("token_usages", {
+  id: text("id").primaryKey(),
+  tokenId: text("tokenId").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD
+  recallCount: integer("recallCount").notNull().default(0),
+  commitCount: integer("commitCount").notNull().default(0),
+  tokensConsumed: integer("tokensConsumed").notNull().default(0),
+});
+
+export const orgQuotas = sqliteTable("org_quotas", {
+  orgId: text("orgId").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
+  plan: text("plan").notNull().default("free"),
+  monthlyMemories: integer("monthlyMemories").notNull().default(100),
+  monthlyRecalls: integer("monthlyRecalls").notNull().default(1000),
+  monthlyCommits: integer("monthlyCommits").notNull().default(500),
+});
+
+// ── Memory Versioning / Change History ────────────────────────────────────────
+export const memoryVersions = sqliteTable("memory_versions", {
+  id: text("id").primaryKey(),
+  memoryId: text("memoryId").notNull().references(() => memories.id, { onDelete: "cascade" }),
+  fact: text("fact").notNull(),
+  category: text("category", { enum: ["rules", "projects", "references"] }).notNull(),
+  tags: text("tags").notNull(),
+  changedBy: text("changedBy").notNull(), // userId or 'system'
+  changeReason: text("changeReason"), // 'created', 'updated', 'contradiction (archived)', etc.
+  timestamp: integer("timestamp").notNull(),
+});
+
+export type Organization = typeof organizations.$inferSelect;
+export type OrganizationMember = typeof organizationMembers.$inferSelect;
+export type Team = typeof teams.$inferSelect;
+export type TeamMember = typeof teamMembers.$inferSelect;
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type TokenUsage = typeof tokenUsages.$inferSelect;
+export type OrgQuota = typeof orgQuotas.$inferSelect;
+export type MemoryVersion = typeof memoryVersions.$inferSelect;
+

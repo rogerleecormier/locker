@@ -4,7 +4,10 @@ import {
 } from "@tanstack/react-start/server";
 import { handleMcpRequest } from "./routes/-api.mcp";
 import { createAuth } from "./server/auth";
-import type { CloudflareEnv } from "./types/cloudflare";
+import type { CloudflareEnv, ArchiveMessage } from "./types/cloudflare";
+import { drizzle } from "drizzle-orm/d1";
+import { memories } from "./db/schema";
+import { archiveContradictingMemories } from "./server/memoryFunctions";
 
 const handler = createStartHandler(defaultStreamHandler);
 
@@ -126,4 +129,16 @@ export default {
       context: { cloudflare: { env, ctx } } as Record<string, unknown>,
     });
   },
+  async queue(batch: MessageBatch<ArchiveMessage>, env: CloudflareEnv, ctx: ExecutionContext) {
+    const db = drizzle(env.DB, { schema: { memories } });
+    for (const message of batch.messages) {
+      try {
+        const { userId, newFact, embedding, projectKey } = message.body;
+        console.log(`[queue] Processing contradiction check for user ${userId}: "${newFact.slice(0, 50)}..."`);
+        await archiveContradictingMemories(db, env, userId, newFact, embedding, projectKey ?? undefined);
+      } catch (err) {
+        console.error("[queue] Failed to process message:", err);
+      }
+    }
+  }
 } satisfies ExportedHandler<CloudflareEnv>;

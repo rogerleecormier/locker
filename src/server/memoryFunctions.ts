@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { desc, eq, sql, and } from "drizzle-orm";
 import { memories, apiTokens, type Memory, type NewMemory } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { encrypt, decrypt, isEncrypted, hashToken } from "./crypto";
+import { encrypt, decrypt, isEncrypted, hashToken, deriveUserKey } from "./crypto";
 import { requireSession, requireAdmin } from "./session";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -46,9 +46,20 @@ async function encryptFact(fact: string, encKey: string): Promise<string> {
 }
 
 // Decrypt a stored fact. If it's not encrypted (legacy plaintext), return as-is.
-async function decryptFact(stored: string, encKey: string): Promise<string> {
+async function decryptFact(stored: string, encKey: string, fallbackKey?: string): Promise<string> {
   if (!isEncrypted(stored)) return stored;
-  return decrypt(stored, encKey);
+  try {
+    return await decrypt(stored, encKey);
+  } catch (err) {
+    if (fallbackKey) {
+      try {
+        return await decrypt(stored, fallbackKey);
+      } catch {
+        // Fall back to original error
+      }
+    }
+    throw err;
+  }
 }
 
 // Decrypt all facts in a row array.
@@ -249,7 +260,7 @@ export const getMemories = createServerFn({ method: "GET" }).handler(
   }
 );
 
-async function archiveContradictingMemories(
+export async function archiveContradictingMemories(
   db: any,
   env: CloudflareEnv,
   userId: string,
@@ -262,8 +273,6 @@ async function archiveContradictingMemories(
   const filter: Record<string, any> = { userId };
   if (projectKey) {
     filter.projectKey = { $in: [projectKey, ""] };
-  } else {
-    filter.projectKey = "";
   }
 
   const results = await env.VECTOR_INDEX.query(embedding, {
@@ -289,10 +298,11 @@ async function archiveContradictingMemories(
 
   if (rows.length === 0) return;
 
+  const userKey = await deriveUserKey(env.ENCRYPTION_KEY, userId);
   const decryptedCandidates = await Promise.all(
     rows.map(async (r: any) => ({
       id: r.id,
-      fact: await decryptFact(r.fact, env.ENCRYPTION_KEY),
+      fact: await decryptFact(r.fact, userKey, env.ENCRYPTION_KEY),
     }))
   );
 
@@ -379,8 +389,17 @@ export const addMemory = createServerFn({ method: "POST" })
     }
     const finalTags = tagsList.join(", ");
 
-    // Run semantic lookup and archive contradicted memories first
-    await archiveContradictingMemories(db, env, user.id, data.fact, embedding, data.projectKey);
+    // Run semantic lookup and archive contradicted memories asynchronously via Queue
+    try {
+      await env.ARCHIVE_QUEUE.send({
+        userId: user.id,
+        newFact: data.fact,
+        embedding,
+        projectKey: data.projectKey || null,
+      });
+    } catch (err) {
+      console.error("[addMemory] Failed to enqueue contradiction check:", err);
+    }
 
     const newRow: NewMemory = {
       id,
@@ -827,8 +846,6 @@ export const recallContext = createServerFn({ method: "POST" })
     const filter: Record<string, any> = { userId: user.id };
     if (data.projectKey) {
       filter.projectKey = { $in: [data.projectKey, ""] };
-    } else {
-      filter.projectKey = "";
     }
 
     const results = await env.VECTOR_INDEX.query(embedding, {
