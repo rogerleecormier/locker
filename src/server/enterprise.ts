@@ -12,17 +12,35 @@ import {
   apiTokens
 } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
+import { PLAN_ORDER, resolvePlan, planAtLeast } from "~/lib/plans";
 
-// Helper to get organization membership for a user
+// Helper to get organization membership for a user, resolving to their highest-tier organization if in multiple
 export async function getUserOrg(db: any, userId: string): Promise<string | null> {
   const rows = await db
-    .select({ orgId: organizationMembers.orgId })
+    .select({
+      orgId: organizationMembers.orgId,
+      plan: orgQuotas.plan,
+    })
     .from(organizationMembers)
+    .leftJoin(orgQuotas, eq(orgQuotas.orgId, organizationMembers.orgId))
     .where(eq(organizationMembers.userId, userId))
-    .limit(1)
     .all();
-  return rows[0]?.orgId ?? null;
+
+  if (rows.length === 0) return null;
+
+  let bestOrgId = rows[0].orgId;
+  let bestPlan = resolvePlan(rows[0].plan);
+
+  for (let i = 1; i < rows.length; i++) {
+    const plan = resolvePlan(rows[i].plan);
+    if (planAtLeast(plan, bestPlan)) {
+      bestPlan = plan;
+      bestOrgId = rows[i].orgId;
+    }
+  }
+  return bestOrgId;
 }
+
 
 // Verify vault scoping access and return the organization ID
 export async function verifyVaultAccess(

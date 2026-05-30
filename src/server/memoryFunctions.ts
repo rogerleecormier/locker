@@ -1141,6 +1141,119 @@ export const updateMemory = createServerFn({ method: "POST" })
     return { ...rows[0], fact: data.fact };
   });
 
+export const moveMemories = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { ids: string[]; targetProjectKey: string } => {
+    const d = data as { ids: string[]; targetProjectKey: string };
+    if (!Array.isArray(d.ids) || d.ids.length === 0) throw new Error("ids must be a non-empty array");
+    if (typeof d.targetProjectKey !== "string") throw new Error("targetProjectKey is required");
+    return { ids: d.ids.filter((id) => typeof id === "string"), targetProjectKey: d.targetProjectKey.trim() };
+  })
+  .handler(async ({ data, context }): Promise<{ moved: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    // 1. Verify target vault access
+    const { allowed: targetAllowed, orgId: targetOrgId } = await verifyVaultAccess(db, user.id, data.targetProjectKey);
+    if (!targetAllowed) {
+      throw new Error(`Forbidden: no access to target vault scope '${data.targetProjectKey}'`);
+    }
+
+    // 2. Fetch existing memories to move
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(sql`${memories.id} IN (${sql.join(data.ids.map((id) => sql`${id}`), sql`, `)})`)
+      .all();
+
+    let movedCount = 0;
+
+    for (const mem of rows) {
+      // 3. Verify source vault access
+      const { allowed: sourceAllowed } = await verifyVaultAccess(db, user.id, mem.projectKey);
+      if (!sourceAllowed) continue;
+
+      // If personal memory, verify ownership
+      if ((!mem.projectKey || mem.projectKey === "personal") && mem.userId !== user.id) {
+        continue;
+      }
+
+      // 4. Decrypt from source vault key
+      const srcVaultId = (mem.projectKey && (mem.projectKey.startsWith("team:") || mem.projectKey.startsWith("org:"))) ? mem.projectKey : mem.userId;
+      const srcVaultKey = await deriveUserKey(env.ENCRYPTION_KEY, srcVaultId);
+      const plaintextFact = await decryptFact(mem.fact, srcVaultKey, env.ENCRYPTION_KEY);
+
+      // 5. Encrypt for target vault key
+      const targetVaultId = (data.targetProjectKey && (data.targetProjectKey.startsWith("team:") || data.targetProjectKey.startsWith("org:"))) ? data.targetProjectKey : user.id;
+      const targetVaultKey = await deriveUserKey(env.ENCRYPTION_KEY, targetVaultId);
+      const encryptedFact = await encryptFact(plaintextFact, targetVaultKey);
+
+      // 6. Generate embedding
+      const embedding = await generateEmbedding(env.AI, plaintextFact);
+
+      let scopeType: "personal" | "organization" | "team" = "personal";
+      let scopeId: string | null = null;
+      if (data.targetProjectKey) {
+        if (data.targetProjectKey.startsWith("org:")) {
+          scopeType = "organization";
+          scopeId = data.targetProjectKey.slice(4);
+        } else if (data.targetProjectKey.startsWith("team:")) {
+          scopeType = "team";
+          scopeId = data.targetProjectKey.slice(5);
+        }
+      }
+
+      // 7. Update database
+      await db.update(memories)
+        .set({
+          fact: encryptedFact,
+          projectKey: data.targetProjectKey === "personal" ? null : data.targetProjectKey,
+          scopeType,
+          scopeId,
+          timestamp: Date.now(),
+        })
+        .where(eq(memories.id, mem.id));
+
+      // Record Memory Version
+      await db.insert(memoryVersions).values({
+        id: crypto.randomUUID(),
+        memoryId: mem.id,
+        fact: encryptedFact,
+        category: mem.category,
+        tags: mem.tags,
+        changedBy: user.id,
+        changeReason: "moved",
+        timestamp: Date.now(),
+      });
+
+      // Update Vectorize index
+      await env.VECTOR_INDEX.upsert([{
+        id: mem.id,
+        values: embedding,
+        metadata: {
+          userId: user.id,
+          category: mem.category,
+          tags: mem.tags,
+          projectKey: data.targetProjectKey === "personal" ? "" : data.targetProjectKey,
+        } as Record<string, VectorizeVectorMetadata>,
+      }]);
+
+      // Log audit
+      await logAudit(db, {
+        orgId: targetOrgId,
+        userId: user.id,
+        tokenId: "session",
+        action: "update_memory",
+        memoryId: mem.id,
+        metadata: { action: "move_memory", from: mem.projectKey ?? "personal", to: data.targetProjectKey }
+      });
+
+      movedCount++;
+    }
+
+    return { moved: movedCount };
+  });
+
 export const bulkDeleteMemories = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): { ids: string[] } => {
     const d = data as { ids: string[] };

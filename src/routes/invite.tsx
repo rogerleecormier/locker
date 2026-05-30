@@ -7,6 +7,7 @@ import { eq, and } from "drizzle-orm";
 import { invitations, organizations, organizationMembers, users } from "~/db/schema";
 import { useSession } from "~/lib/authClient";
 import { requireSession } from "~/server/session";
+import { updateSubscriptionSeats } from "~/server/billing";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -103,6 +104,9 @@ export const acceptInvitation = createServerFn({ method: "POST" })
       role: invite.role,
       joinedAt: Date.now(),
     });
+
+    // Sync seats to Stripe
+    await updateSubscriptionSeats(db, env, invite.orgId);
 
     // Delete invite
     await db.delete(invitations).where(eq(invitations.id, invite.id));

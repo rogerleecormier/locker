@@ -242,11 +242,11 @@ function BillingPage() {
     }
   }
 
-  async function handlePortal() {
+  async function handlePortal(orgId?: string) {
     setPortalLoading(true);
     setStripeError(null);
     try {
-      const res = await createPortalSession({ data: {} });
+      const res = await createPortalSession({ data: { orgId } });
       if (res?.url) {
         window.location.href = res.url;
       } else {
@@ -279,7 +279,7 @@ function BillingPage() {
         </div>
         {billing?.hasBillingCustomer && (
           <button
-            onClick={handlePortal}
+            onClick={() => handlePortal()}
             disabled={portalLoading}
             style={{
               padding: "8px 16px",
@@ -399,7 +399,7 @@ function BillingPage() {
                       ) : (
                         billing.hasBillingCustomer && (
                           <button
-                            onClick={handlePortal}
+                            onClick={() => handlePortal(org.id)}
                             disabled={portalLoading}
                             style={{
                               padding: "8px 16px",

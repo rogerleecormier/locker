@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, type Memory } from "~/db/schema";
 import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, encryptAllMemories, rebuildVectorizeIndex, type DuplicateGroup } from "~/server/memoryFunctions";
 import { requireAdmin } from "~/server/session";
+import { updateSubscriptionSeats } from "~/server/billing";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -195,7 +196,7 @@ export const updateOrgQuota = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
-    const db = drizzle(env.DB, { schema: { orgQuotas } });
+    const db = drizzle(env.DB, { schema: { orgQuotas, organizations } });
 
     await db
       .update(orgQuotas)
@@ -205,6 +206,14 @@ export const updateOrgQuota = createServerFn({ method: "POST" })
         monthlyCommits: data.monthlyCommits,
       })
       .where(eq(orgQuotas.orgId, data.orgId));
+
+    // Clear Stripe subscription ref on manual quota override
+    await db
+      .update(organizations)
+      .set({
+        billingSubscriptionId: null,
+      })
+      .where(eq(organizations.id, data.orgId));
 
     return { success: true };
   });
@@ -623,6 +632,9 @@ export const assignUserToOrgAdmin = createServerFn({ method: "POST" })
         role: data.role,
         joinedAt: Date.now(),
       });
+
+      // Sync seats to Stripe
+      await updateSubscriptionSeats(db, env, data.orgId);
     }
 
     return { success: true };
@@ -662,6 +674,9 @@ export const removeUserFromOrgAdmin = createServerFn({ method: "POST" })
     await db
       .delete(organizationMembers)
       .where(and(eq(organizationMembers.orgId, data.orgId), eq(organizationMembers.userId, data.userId)));
+
+    // Sync seats to Stripe
+    await updateSubscriptionSeats(db, env, data.orgId);
 
     return { success: true };
   });

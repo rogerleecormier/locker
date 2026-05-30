@@ -10,6 +10,7 @@ import {
   getMemoryTimeline,
   revertMemoryVersion,
   getUserWorkspaces,
+  moveMemories,
 } from "~/server/memoryFunctions";
 import { getAdminStatus } from "~/routes/admin";
 import type { Memory } from "~/db/schema";
@@ -78,15 +79,21 @@ function MemoryRow({
   selected,
   onToggleSelect,
   onShowHistory,
+  workspaces = [],
+  currentProjectKey = "personal",
 }: {
   memory: Memory;
   selected: boolean;
   onToggleSelect: (id: string) => void;
   onShowHistory: (id: string) => void;
+  workspaces?: any[];
+  currentProjectKey?: string;
 }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [targetWorkspace, setTargetWorkspace] = useState("");
   const [editFact, setEditFact] = useState(memory.fact);
   const [editCategory, setEditCategory] = useState(memory.category);
   const [editTags, setEditTags] = useState(memory.tags);
@@ -113,6 +120,18 @@ function MemoryRow({
     },
     onError: () => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
+    },
+  });
+
+  const moveMutation = useMutation({
+    mutationFn: () => moveMemories({ data: { ids: [memory.id], targetProjectKey: targetWorkspace } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      setMoving(false);
+      setTargetWorkspace("");
+    },
+    onError: (err: Error) => {
+      alert("Failed to move memory: " + err.message);
     },
   });
 
@@ -247,61 +266,52 @@ function MemoryRow({
           })}
         </span>
         <div style={{ display: "flex", gap: 4 }}>
-          <button
-            onClick={() => setEditing(true)}
-            style={{
-              padding: "3px 8px",
-              background: "transparent",
-              border: "1px solid transparent",
-              color: "var(--text-muted)",
-              fontSize: 11,
-              borderRadius: "var(--radius)",
-              opacity: 0.5,
-              transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
-            }}
-            onMouseEnter={(e) => {
-              const b = e.currentTarget as HTMLButtonElement;
-              b.style.opacity = "1";
-              b.style.borderColor = "rgba(99,102,241,0.4)";
-              b.style.color = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              const b = e.currentTarget as HTMLButtonElement;
-              b.style.opacity = "0.5";
-              b.style.borderColor = "transparent";
-              b.style.color = "var(--text-muted)";
-            }}
-          >
-            Edit
-          </button>
-          <button
-            onClick={() => onShowHistory(memory.id)}
-            style={{
-              padding: "3px 8px",
-              background: "transparent",
-              border: "1px solid transparent",
-              color: "var(--text-muted)",
-              fontSize: 11,
-              borderRadius: "var(--radius)",
-              opacity: 0.5,
-              transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
-            }}
-            onMouseEnter={(e) => {
-              const b = e.currentTarget as HTMLButtonElement;
-              b.style.opacity = "1";
-              b.style.borderColor = "rgba(99,102,241,0.4)";
-              b.style.color = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              const b = e.currentTarget as HTMLButtonElement;
-              b.style.opacity = "0.5";
-              b.style.borderColor = "transparent";
-              b.style.color = "var(--text-muted)";
-            }}
-          >
-            History
-          </button>
-          {confirming ? (
+          {moving ? (
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              <select
+                value={targetWorkspace}
+                onChange={(e) => setTargetWorkspace(e.target.value)}
+                style={{ padding: "3.5px 6px", fontSize: 11, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+              >
+                <option value="">Move to...</option>
+                {workspaces
+                  .filter((w) => w.key !== currentProjectKey)
+                  .map((w) => (
+                    <option key={w.key} value={w.key}>
+                      {w.label}
+                    </option>
+                  ))}
+              </select>
+              <button
+                onClick={() => moveMutation.mutate()}
+                disabled={moveMutation.isPending || !targetWorkspace}
+                style={{
+                  padding: "3.5px 10px",
+                  background: "var(--accent)",
+                  color: "#fff",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  borderRadius: "var(--radius)",
+                }}
+              >
+                {moveMutation.isPending ? "Moving…" : "Move"}
+              </button>
+              <button
+                onClick={() => { setMoving(false); setTargetWorkspace(""); }}
+                disabled={moveMutation.isPending}
+                style={{
+                  padding: "3.5px 8px",
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-muted)",
+                  fontSize: 11,
+                  borderRadius: "var(--radius)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : confirming ? (
             <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
               <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Delete?</span>
               <button
@@ -335,33 +345,118 @@ function MemoryRow({
               </button>
             </div>
           ) : (
-            <button
-              onClick={() => setConfirming(true)}
-              style={{
-                padding: "3px 8px",
-                background: "transparent",
-                border: "1px solid transparent",
-                color: "var(--text-muted)",
-                fontSize: 11,
-                borderRadius: "var(--radius)",
-                opacity: 0.5,
-                transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                const b = e.currentTarget as HTMLButtonElement;
-                b.style.opacity = "1";
-                b.style.borderColor = "rgba(239,68,68,0.4)";
-                b.style.color = "var(--error)";
-              }}
-              onMouseLeave={(e) => {
-                const b = e.currentTarget as HTMLButtonElement;
-                b.style.opacity = "0.5";
-                b.style.borderColor = "transparent";
-                b.style.color = "var(--text-muted)";
-              }}
-            >
-              Delete
-            </button>
+            <>
+              <button
+                onClick={() => setEditing(true)}
+                style={{
+                  padding: "3px 8px",
+                  background: "transparent",
+                  border: "1px solid transparent",
+                  color: "var(--text-muted)",
+                  fontSize: 11,
+                  borderRadius: "var(--radius)",
+                  opacity: 0.5,
+                  transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  const b = e.currentTarget as HTMLButtonElement;
+                  b.style.opacity = "1";
+                  b.style.borderColor = "rgba(99,102,241,0.4)";
+                  b.style.color = "var(--accent)";
+                }}
+                onMouseLeave={(e) => {
+                  const b = e.currentTarget as HTMLButtonElement;
+                  b.style.opacity = "0.5";
+                  b.style.borderColor = "transparent";
+                  b.style.color = "var(--text-muted)";
+                }}
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => onShowHistory(memory.id)}
+                style={{
+                  padding: "3px 8px",
+                  background: "transparent",
+                  border: "1px solid transparent",
+                  color: "var(--text-muted)",
+                  fontSize: 11,
+                  borderRadius: "var(--radius)",
+                  opacity: 0.5,
+                  transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  const b = e.currentTarget as HTMLButtonElement;
+                  b.style.opacity = "1";
+                  b.style.borderColor = "rgba(99,102,241,0.4)";
+                  b.style.color = "var(--accent)";
+                }}
+                onMouseLeave={(e) => {
+                  const b = e.currentTarget as HTMLButtonElement;
+                  b.style.opacity = "0.5";
+                  b.style.borderColor = "transparent";
+                  b.style.color = "var(--text-muted)";
+                }}
+              >
+                History
+              </button>
+              {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
+                <button
+                  onClick={() => setMoving(true)}
+                  style={{
+                    padding: "3px 8px",
+                    background: "transparent",
+                    border: "1px solid transparent",
+                    color: "var(--text-muted)",
+                    fontSize: 11,
+                    borderRadius: "var(--radius)",
+                    opacity: 0.5,
+                    transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.opacity = "1";
+                    b.style.borderColor = "rgba(99,102,241,0.4)";
+                    b.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.opacity = "0.5";
+                    b.style.borderColor = "transparent";
+                    b.style.color = "var(--text-muted)";
+                  }}
+                >
+                  Move
+                </button>
+              )}
+              <button
+                onClick={() => setConfirming(true)}
+                style={{
+                  padding: "3px 8px",
+                  background: "transparent",
+                  border: "1px solid transparent",
+                  color: "var(--text-muted)",
+                  fontSize: 11,
+                  borderRadius: "var(--radius)",
+                  opacity: 0.5,
+                  transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  const b = e.currentTarget as HTMLButtonElement;
+                  b.style.opacity = "1";
+                  b.style.borderColor = "rgba(239,68,68,0.4)";
+                  b.style.color = "var(--error)";
+                }}
+                onMouseLeave={(e) => {
+                  const b = e.currentTarget as HTMLButtonElement;
+                  b.style.opacity = "0.5";
+                  b.style.borderColor = "transparent";
+                  b.style.color = "var(--text-muted)";
+                }}
+              >
+                Delete
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -523,16 +618,22 @@ function MemoryTable({
   categoryFilter,
   onShowHistory,
   onExportZip,
+  workspaces = [],
+  currentProjectKey = "personal",
 }: {
   memories: Memory[];
   filter: string;
   categoryFilter: string;
   onShowHistory: (id: string) => void;
   onExportZip: () => void;
+  workspaces?: any[];
+  currentProjectKey?: string;
 }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [bulkMoving, setBulkMoving] = useState(false);
+  const [bulkTargetWorkspace, setBulkTargetWorkspace] = useState("");
 
   function handleExport(itemsToExport: Memory[], format: "json" | "md") {
     if (format === "json") {
@@ -573,6 +674,20 @@ function MemoryTable({
     },
     onError: () => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
+    },
+  });
+
+  const bulkMoveMutation = useMutation({
+    mutationFn: (ids: string[]) => moveMemories({ data: { ids, targetProjectKey: bulkTargetWorkspace } }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      setSelected(new Set());
+      setBulkMoving(false);
+      setBulkTargetWorkspace("");
+      alert(`Successfully moved ${res.moved} memories.`);
+    },
+    onError: (err: Error) => {
+      alert("Failed to move memories: " + err.message);
     },
   });
 
@@ -684,6 +799,54 @@ function MemoryTable({
                   Cancel
                 </button>
               </div>
+            ) : bulkMoving ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  Move {selectedInView.length} to:
+                </span>
+                <select
+                  value={bulkTargetWorkspace}
+                  onChange={(e) => setBulkTargetWorkspace(e.target.value)}
+                  style={{ padding: "4px 8px", fontSize: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                >
+                  <option value="">Select workspace...</option>
+                  {workspaces
+                    .filter((w) => w.key !== currentProjectKey)
+                    .map((w) => (
+                      <option key={w.key} value={w.key}>
+                        {w.label}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  onClick={() => bulkMoveMutation.mutate(selectedInView.map((m) => m.id))}
+                  disabled={bulkMoveMutation.isPending || !bulkTargetWorkspace}
+                  style={{
+                    padding: "4px 12px",
+                    background: "var(--accent)",
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                  }}
+                >
+                  {bulkMoveMutation.isPending ? "Moving…" : "Move"}
+                </button>
+                <button
+                  onClick={() => { setBulkMoving(false); setBulkTargetWorkspace(""); }}
+                  disabled={bulkMoveMutation.isPending}
+                  style={{
+                    padding: "4px 10px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-muted)",
+                    fontSize: 12,
+                    borderRadius: "var(--radius)",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
             ) : (
               <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
                 <button
@@ -764,6 +927,34 @@ function MemoryTable({
                 >
                   Export Zip
                 </button>
+                {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
+                  <button
+                    onClick={() => setBulkMoving(true)}
+                    style={{
+                      padding: "4.5px 12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: "var(--radius)",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--accent)";
+                      b.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--border)";
+                      b.style.color = "var(--text)";
+                    }}
+                  >
+                    Move selected
+                  </button>
+                )}
                 <button
                   onClick={() => setBulkConfirming(true)}
                   style={{
@@ -896,6 +1087,8 @@ function MemoryTable({
           selected={selected.has(m.id)}
           onToggleSelect={toggleOne}
           onShowHistory={onShowHistory}
+          workspaces={workspaces}
+          currentProjectKey={currentProjectKey}
         />
       ))}
     </div>
@@ -1207,7 +1400,15 @@ function Dashboard() {
         </div>
       )}
       {!isLoading && !isError && memories.length > 0 && (
-        <MemoryTable memories={memories} filter={filter} categoryFilter={categoryFilter} onShowHistory={setActiveTimelineId} onExportZip={triggerExport} />
+        <MemoryTable
+          memories={memories}
+          filter={filter}
+          categoryFilter={categoryFilter}
+          onShowHistory={setActiveTimelineId}
+          onExportZip={triggerExport}
+          workspaces={workspaces}
+          currentProjectKey={projectKey}
+        />
       )}
 
       {showNewMemory && (

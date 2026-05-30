@@ -19,6 +19,7 @@ import {
 } from "~/db/schema";
 import { requireSession } from "~/server/session";
 import { getAdminStatus } from "~/routes/admin";
+import { updateSubscriptionSeats } from "~/server/billing";
 import {
   requireFeature,
   getUserEffectivePlan,
@@ -83,16 +84,14 @@ export const getUserOrgsAndTeams = createServerFn({ method: "GET" }).handler(
       })
       .from(organizationMembers)
       .innerJoin(organizations, eq(organizationMembers.orgId, organizations.id))
-      .where(
-        and(
-          eq(organizationMembers.userId, user.id),
-          sql`${organizationMembers.role} IN ('owner', 'admin')`
-        )
-      )
+      .where(eq(organizationMembers.userId, user.id))
       .all();
 
     const managedOrgs = [];
     const orgIds = orgMemberships.map((o) => o.orgId);
+    const adminOrgIds = orgMemberships
+      .filter((o) => o.role === "owner" || o.role === "admin")
+      .map((o) => o.orgId);
 
     for (const m of orgMemberships) {
       const members = await db
@@ -149,7 +148,7 @@ export const getUserOrgsAndTeams = createServerFn({ method: "GET" }).handler(
       const teamDetails = teamRow[0];
       if (!teamDetails) continue;
       let role = "member";
-      const isParentOrgAdmin = orgIds.includes(teamDetails.orgId);
+      const isParentOrgAdmin = adminOrgIds.includes(teamDetails.orgId);
       if (isParentOrgAdmin) {
         role = "admin";
       } else {
@@ -340,6 +339,9 @@ export const removeOrgMember = createServerFn({ method: "POST" })
     await db.delete(organizationMembers)
       .where(and(eq(organizationMembers.orgId, data.orgId), eq(organizationMembers.userId, data.userId)));
 
+    // Sync seats to Stripe
+    await updateSubscriptionSeats(db, env, data.orgId);
+
     const orgTeams = await db.select({ id: teams.id }).from(teams).where(eq(teams.orgId, data.orgId)).all();
     const orgTeamIds = orgTeams.map((t) => t.id);
     if (orgTeamIds.length > 0) {
@@ -416,11 +418,13 @@ export const addTeamMemberByEmail = createServerFn({ method: "POST" })
     if (userRow.length === 0) throw new Error(`User with email '${data.email}' not found.`);
     const targetUser = userRow[0];
 
+    let addedToOrg = false;
     const orgMemberRow = await db.select().from(organizationMembers)
       .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, targetUser.id)))
       .limit(1).all();
     if (orgMemberRow.length === 0) {
       await db.insert(organizationMembers).values({ orgId, userId: targetUser.id, role: "member", joinedAt: Date.now() });
+      addedToOrg = true;
     }
 
     const teamMemberRow = await db.select().from(teamMembers)
@@ -429,6 +433,11 @@ export const addTeamMemberByEmail = createServerFn({ method: "POST" })
     if (teamMemberRow.length > 0) throw new Error("User is already a member of this team");
 
     await db.insert(teamMembers).values({ teamId: data.teamId, userId: targetUser.id, role: data.role });
+
+    if (addedToOrg) {
+      await updateSubscriptionSeats(db, env, orgId);
+    }
+
     return { success: true };
   });
 
@@ -473,6 +482,7 @@ function MemberRow({
   roles,
   isUpdating,
   isRemoving,
+  currentUserRole = "member",
 }: {
   member: { userId: string; name: string; email: string; role: string };
   onUpdateRole: (userId: string, role: string) => void;
@@ -480,8 +490,10 @@ function MemberRow({
   roles: string[];
   isUpdating: boolean;
   isRemoving: boolean;
+  currentUserRole?: string;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const isReadOnly = currentUserRole === "member";
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
       <div style={{ display: "flex", flexDirection: "column" }}>
@@ -489,30 +501,38 @@ function MemberRow({
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{member.email}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <select
-          value={member.role}
-          onChange={(e) => onUpdateRole(member.userId, e.target.value)}
-          disabled={isUpdating}
-          style={{ padding: "4px 6px", fontSize: 11, background: "var(--surface)" }}
-        >
-          {roles.map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
-        </select>
-        {confirming ? (
-          <>
-            <button onClick={() => onRemove(member.userId)} disabled={isRemoving}
-              style={{ padding: "3px 8px", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "var(--error)", fontSize: 11, fontWeight: 600 }}>
-              {isRemoving ? "…" : "Yes"}
-            </button>
-            <button onClick={() => setConfirming(false)}
-              style={{ padding: "3px 8px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 11 }}>
-              No
-            </button>
-          </>
+        {isReadOnly ? (
+          <span style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "capitalize", paddingRight: 8 }}>
+            {member.role}
+          </span>
         ) : (
-          <button onClick={() => setConfirming(true)}
-            style={{ padding: "3px 8px", background: "transparent", color: "var(--error)", border: "1px solid transparent", fontSize: 11 }}>
-            Remove
-          </button>
+          <>
+            <select
+              value={member.role}
+              onChange={(e) => onUpdateRole(member.userId, e.target.value)}
+              disabled={isUpdating}
+              style={{ padding: "4px 6px", fontSize: 11, background: "var(--surface)" }}
+            >
+              {roles.map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
+            </select>
+            {confirming ? (
+              <>
+                <button onClick={() => onRemove(member.userId)} disabled={isRemoving}
+                  style={{ padding: "3px 8px", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "var(--error)", fontSize: 11, fontWeight: 600 }}>
+                  {isRemoving ? "…" : "Yes"}
+                </button>
+                <button onClick={() => setConfirming(false)}
+                  style={{ padding: "3px 8px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 11 }}>
+                  No
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setConfirming(true)}
+                style={{ padding: "3px 8px", background: "transparent", color: "var(--error)", border: "1px solid transparent", fontSize: 11 }}>
+                Remove
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -802,23 +822,41 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
           <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Members</h3>
-          <InviteForm label="Add Member by Email" email={inviteEmail} setEmail={setInviteEmail} role={inviteRole} setRole={setInviteRole} roles={["member", "admin"]} onSubmit={() => onAddMember(inviteEmail, inviteRole)} loading={isAddingMember} />
+          {org.role !== "member" ? (
+            <InviteForm label="Add Member by Email" email={inviteEmail} setEmail={setInviteEmail} role={inviteRole} setRole={setInviteRole} roles={["member", "admin"]} onSubmit={() => onAddMember(inviteEmail, inviteRole)} loading={isAddingMember} />
+          ) : (
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+              Viewing only (Owner/Admin permissions required to invite members)
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "300px", overflowY: "auto" }}>
             {org.members.map((m: any) => (
-              <MemberRow key={m.userId} member={m} roles={["member", "admin", "owner"]} onUpdateRole={(uid, role) => onUpdateRole(uid, role)} onRemove={(uid) => onRemoveMember(uid)} isUpdating={isUpdatingRole} isRemoving={isRemovingMember} />
+              <MemberRow key={m.userId} member={m} roles={["member", "admin", "owner"]} onUpdateRole={(uid, role) => onUpdateRole(uid, role)} onRemove={(uid) => onRemoveMember(uid)} isUpdating={isUpdatingRole} isRemoving={isRemovingMember} currentUserRole={org.role} />
             ))}
           </div>
         </div>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
           <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Teams</h3>
-          <InviteForm label="Create Team" email={newTeamName} setEmail={setNewTeamName} role="" setRole={() => {}} roles={[]} onSubmit={() => onCreateTeam(newTeamName)} loading={isCreatingTeam} />
+          {org.role !== "member" ? (
+            <InviteForm label="Create Team" email={newTeamName} setEmail={setNewTeamName} role="" setRole={() => {}} roles={[]} onSubmit={() => onCreateTeam(newTeamName)} loading={isCreatingTeam} />
+          ) : (
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+              Viewing only (Owner/Admin permissions required to create teams)
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "300px", overflowY: "auto" }}>
             {org.teams.map((t: any) => (
               <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{t.name}</span>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => onSelectTeam(t.id)} style={{ padding: "3px 8px", background: "transparent", border: "1px solid var(--border)", fontSize: 11, cursor: "pointer" }}>Edit</button>
-                  <button onClick={() => onDeleteTeam(t.id)} disabled={isDeletingTeam} style={{ padding: "3px 8px", background: "transparent", color: "var(--error)", border: "1px solid transparent", fontSize: 11, cursor: "pointer" }}>Delete</button>
+                  {org.role !== "member" ? (
+                    <>
+                      <button onClick={() => onSelectTeam(t.id)} style={{ padding: "3px 8px", background: "transparent", border: "1px solid var(--border)", fontSize: 11, cursor: "pointer" }}>Edit</button>
+                      <button onClick={() => onDeleteTeam(t.id)} disabled={isDeletingTeam} style={{ padding: "3px 8px", background: "transparent", color: "var(--error)", border: "1px solid transparent", fontSize: 11, cursor: "pointer" }}>Delete</button>
+                    </>
+                  ) : (
+                    <button onClick={() => onSelectTeam(t.id)} style={{ padding: "3px 8px", background: "transparent", border: "1px solid var(--border)", fontSize: 11, cursor: "pointer" }}>View members</button>
+                  )}
                 </div>
               </div>
             ))}
@@ -837,14 +875,22 @@ function TeamView({ team, inviteEmail, setInviteEmail, inviteRole, setInviteRole
           <h2 style={{ fontSize: "20px", fontWeight: "bold", margin: "0 0 4px 0" }}>{team.name}</h2>
           <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>{team.orgName} · {team.members.length} members · Role: <strong>{team.role}</strong></p>
         </div>
-        <button onClick={onDeleteTeam} disabled={isDeletingTeam} style={{ padding: "6px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--error)", fontSize: 12, cursor: "pointer" }}>Delete Team</button>
+        {team.role !== "member" && (
+          <button onClick={onDeleteTeam} disabled={isDeletingTeam} style={{ padding: "6px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--error)", fontSize: 12, cursor: "pointer" }}>Delete Team</button>
+        )}
       </div>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
         <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Members</h3>
-        <InviteForm label="Add Member by Email" email={inviteEmail} setEmail={setInviteEmail} role={inviteRole} setRole={setInviteRole} roles={["member", "admin"]} onSubmit={() => onAddMember(inviteEmail, inviteRole)} loading={isAddingMember} />
+        {team.role !== "member" ? (
+          <InviteForm label="Add Member by Email" email={inviteEmail} setEmail={setInviteEmail} role={inviteRole} setRole={setInviteRole} roles={["member", "admin"]} onSubmit={() => onAddMember(inviteEmail, inviteRole)} loading={isAddingMember} />
+        ) : (
+          <div style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+            Viewing only (Team Admin permissions required to manage members)
+          </div>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "400px", overflowY: "auto" }}>
           {team.members.map((m: any) => (
-            <MemberRow key={m.userId} member={m} roles={["member", "admin"]} onUpdateRole={(uid, role) => onUpdateRole(uid, role)} onRemove={(uid) => onRemoveMember(uid)} isUpdating={isUpdatingRole} isRemoving={isRemovingMember} />
+            <MemberRow key={m.userId} member={m} roles={["member", "admin"]} onUpdateRole={(uid, role) => onUpdateRole(uid, role)} onRemove={(uid) => onRemoveMember(uid)} isUpdating={isUpdatingRole} isRemoving={isRemovingMember} currentUserRole={team.role} />
           ))}
         </div>
       </div>

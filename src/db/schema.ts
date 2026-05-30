@@ -172,6 +172,10 @@ export const organizations = sqliteTable("organizations", {
   name: text("name").notNull(),
   plan: text("plan").notNull().default("free"), // 'free' | 'pro' | 'enterprise'
   settings: text("settings").notNull().default("{}"), // JSON settings
+  billingCustomerId: text("billingCustomerId"),
+  billingSubscriptionId: text("billingSubscriptionId"),
+  planActivatedAt: integer("planActivatedAt"),
+  planExpiresAt: integer("planExpiresAt"),
   createdAt: integer("createdAt").notNull(),
 });
 

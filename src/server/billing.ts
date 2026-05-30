@@ -74,14 +74,26 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
     const stripe = new Stripe(env.STRIPE_SECRET_KEY);
 
     let customerId: string | undefined = undefined;
-    const userPlanRow = await db
-      .select({ billingCustomerId: userPlans.billingCustomerId })
-      .from(userPlans)
-      .where(eq(userPlans.userId, user.id))
-      .limit(1)
-      .all();
-    if (userPlanRow[0]?.billingCustomerId) {
-      customerId = userPlanRow[0].billingCustomerId;
+    if (data.orgId) {
+      const orgRow = await db
+        .select({ billingCustomerId: organizations.billingCustomerId })
+        .from(organizations)
+        .where(eq(organizations.id, data.orgId))
+        .limit(1)
+        .all();
+      if (orgRow[0]?.billingCustomerId) {
+        customerId = orgRow[0].billingCustomerId;
+      }
+    } else {
+      const userPlanRow = await db
+        .select({ billingCustomerId: userPlans.billingCustomerId })
+        .from(userPlans)
+        .where(eq(userPlans.userId, user.id))
+        .limit(1)
+        .all();
+      if (userPlanRow[0]?.billingCustomerId) {
+        customerId = userPlanRow[0].billingCustomerId;
+      }
     }
 
     const origin = env.BETTER_AUTH_URL || "http://localhost:5173";
@@ -134,16 +146,31 @@ export const createPortalSession = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
-    const db = drizzle(env.DB, { schema: { userPlans } });
+    const db = drizzle(env.DB, { schema: { userPlans, organizations, organizationMembers } });
 
-    const userPlanRow = await db
-      .select({ billingCustomerId: userPlans.billingCustomerId })
-      .from(userPlans)
-      .where(eq(userPlans.userId, user.id))
-      .limit(1)
-      .all();
+    let customerId: string | undefined = undefined;
+    if (data.orgId) {
+      const isOrgAdmin = await verifyOrgAdmin(db, user.id, data.orgId);
+      if (!isOrgAdmin) {
+        throw new Error("Forbidden: Not an organization owner/admin");
+      }
+      const orgRow = await db
+        .select({ billingCustomerId: organizations.billingCustomerId })
+        .from(organizations)
+        .where(eq(organizations.id, data.orgId))
+        .limit(1)
+        .all();
+      customerId = orgRow[0]?.billingCustomerId ?? undefined;
+    } else {
+      const userPlanRow = await db
+        .select({ billingCustomerId: userPlans.billingCustomerId })
+        .from(userPlans)
+        .where(eq(userPlans.userId, user.id))
+        .limit(1)
+        .all();
+      customerId = userPlanRow[0]?.billingCustomerId ?? undefined;
+    }
 
-    const customerId = userPlanRow[0]?.billingCustomerId;
     if (!customerId) {
       throw new Error("No billing history found. Please upgrade first.");
     }
@@ -240,7 +267,12 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
         if (orgId) {
           await db
             .update(organizations)
-            .set({ plan: "business" })
+            .set({
+              plan: "business",
+              billingCustomerId,
+              billingSubscriptionId,
+              planActivatedAt: Date.now(),
+            })
             .where(eq(organizations.id, orgId));
 
           const existingQuota = await db
@@ -320,7 +352,12 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
           if (orgId) {
             await db
               .update(organizations)
-              .set({ plan })
+              .set({
+                plan,
+                billingCustomerId,
+                billingSubscriptionId,
+                planActivatedAt: (status === "active" || status === "trialing") ? Date.now() : null,
+              })
               .where(eq(organizations.id, orgId));
 
             await db
@@ -374,7 +411,11 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
           if (orgId) {
             await db
               .update(organizations)
-              .set({ plan: "free" })
+              .set({
+                plan: "free",
+                billingSubscriptionId: null,
+                planExpiresAt: Date.now(),
+              })
               .where(eq(organizations.id, orgId));
 
             await db
@@ -400,5 +441,61 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
   }
 
   return new Response("OK", { status: 200 });
+}
+
+export async function updateSubscriptionSeats(db: any, env: CloudflareEnv, orgId: string): Promise<void> {
+  if (!env.STRIPE_SECRET_KEY) {
+    console.warn("[stripe-sync] Stripe is not configured, skipping seat sync.");
+    return;
+  }
+
+  const syncDb = drizzle(env.DB, { schema: { organizations, organizationMembers } });
+
+  try {
+    // 1. Get organization subscription information
+    const orgRow = await syncDb
+      .select({
+        plan: organizations.plan,
+        billingSubscriptionId: organizations.billingSubscriptionId,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1)
+      .all();
+
+    const org = orgRow[0];
+    if (!org || org.plan !== "business" || !org.billingSubscriptionId) {
+      console.log(`[stripe-sync] Org ${orgId} is not on an active business subscription, skipping seat sync.`);
+      return;
+    }
+
+    // 2. Count current active members in organization
+    const membersCountResult = await syncDb
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(organizationMembers)
+      .where(eq(organizationMembers.orgId, orgId))
+      .all();
+    const quantity = Math.max(1, Number(membersCountResult[0]?.count ?? 1));
+
+    // 3. Update Stripe subscription item quantity
+    const stripe = new Stripe(env.STRIPE_SECRET_KEY);
+    const subscription = await stripe.subscriptions.retrieve(org.billingSubscriptionId);
+    const item = subscription.items.data[0];
+    if (item) {
+      if (item.quantity !== quantity) {
+        await stripe.subscriptionItems.update(item.id, {
+          quantity,
+          proration_behavior: "always_invoice",
+        });
+        console.log(`[stripe-sync] Synced Stripe subscription ${org.billingSubscriptionId} for org ${orgId} to quantity ${quantity}`);
+      } else {
+        console.log(`[stripe-sync] Stripe subscription quantity already matches member count (${quantity})`);
+      }
+    } else {
+      console.warn(`[stripe-sync] No items found on Stripe subscription ${org.billingSubscriptionId}`);
+    }
+  } catch (err: any) {
+    console.error(`[stripe-sync] Failed to sync subscription seats for org ${orgId}: ${err.message}`);
+  }
 }
 
