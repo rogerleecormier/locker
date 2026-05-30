@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AdminLayout, type AdminSection } from "~/components/AdminLayout";
@@ -920,6 +920,3 @@ export function AdminGuard() {
   return <AdminPage />;
 }
 
-export const Route = createFileRoute("/admin-refactored")({
-  component: AdminGuard,
-});
