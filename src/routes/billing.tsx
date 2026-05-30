@@ -589,12 +589,22 @@ export function PersonalBillingSection() {
 
 function BillingPage() {
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 20px" }}>
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Plan & Billing</h1>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Manage your plan, track usage, and view available features.</p>
+    <div>
+      <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
+        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+              <line x1="1" y1="10" x2="23" y2="10" />
+            </svg>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Plan & Billing</h1>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Manage your plan, track usage, and view available features.</p>
+        </div>
       </div>
-      <PersonalBillingSection />
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
+        <PersonalBillingSection />
+      </div>
     </div>
   );
 }

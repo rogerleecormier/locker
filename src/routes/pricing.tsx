@@ -46,25 +46,26 @@ function PricingPage() {
   });
 
   return (
-    <div style={{ maxWidth: 880, margin: "0 auto", padding: "48px 20px" }}>
-      <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          fontSize: 11,
-          fontWeight: 600,
-          color: "var(--accent)",
-          textTransform: "uppercase",
-          letterSpacing: "0.1em",
-          background: "var(--accent-dim)",
-          border: "1px solid rgba(168,85,247,0.3)",
-          borderRadius: 20,
-          padding: "4px 12px",
-          marginBottom: 16,
-        }}>
-          Pricing
+    <div>
+      <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
+        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23" />
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Pricing</h1>
+            <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
+              Plans
+            </span>
+          </div>
+          <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
+            Start free. Upgrade when your team is ready for shared memory vaults and collaboration tools.
+          </p>
         </div>
+      </div>
+    <div style={{ maxWidth: 960, margin: "0 auto", padding: "48px 24px" }}>
+      <div style={{ textAlign: "center", marginBottom: 48 }}>
         <h1 style={{ fontSize: 40, fontWeight: 800, letterSpacing: "-0.04em", color: "var(--text)", marginBottom: 12, lineHeight: 1.1 }}>
           Simple, transparent pricing
         </h1>
@@ -193,6 +194,7 @@ function PricingPage() {
           Contact Sales →
         </a>
       </div>
+    </div>
     </div>
   );
 }
