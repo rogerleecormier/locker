@@ -607,7 +607,7 @@ function LandingPage() {
               },
             ].map(({ title, desc, icon }) => (
               <FadeIn key={title}>
-                <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: "24px 20px" }}>
+                <div style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.03) 0%, rgba(139,92,246,0.01) 100%)", border: "1px solid rgba(168,85,247,0.12)", borderRadius: 12, padding: "24px 20px" }}>
                   <div style={{ marginBottom: 12 }}>{icon}</div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>{title}</div>
                   <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>{desc}</div>
