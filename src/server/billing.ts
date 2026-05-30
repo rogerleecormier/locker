@@ -199,14 +199,13 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
   const signature = request.headers.get("stripe-signature") || "";
   const bodyText = await request.text();
 
+  if (!env.STRIPE_WEBHOOK_SECRET) {
+    return new Response("STRIPE_WEBHOOK_SECRET not configured", { status: 500 });
+  }
+
   let event: Stripe.Event;
   try {
-    if (env.STRIPE_WEBHOOK_SECRET) {
-      event = await stripe.webhooks.constructEventAsync(bodyText, signature, env.STRIPE_WEBHOOK_SECRET);
-    } else {
-      console.warn("STRIPE_WEBHOOK_SECRET not set. Bypassing signature verification.");
-      event = JSON.parse(bodyText) as Stripe.Event;
-    }
+    event = await stripe.webhooks.constructEventAsync(bodyText, signature, env.STRIPE_WEBHOOK_SECRET);
   } catch (err: any) {
     console.error(`Webhook signature verification failed: ${err.message}`);
     return new Response(`Webhook Error: ${err.message}`, { status: 400 });

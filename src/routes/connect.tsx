@@ -86,7 +86,7 @@ function ConnectPage() {
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
             <li>Run the command below in your terminal, replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>To scope it to one project instead of globally, add <code>--scope project</code> — this writes a <code>.mcp.json</code> at the project root.</li>
+            <li>The default scope is <code>local</code> (project-level, not committed). Add <code>--scope project</code> to write a shareable <code>.mcp.json</code> at the project root, or <code>--scope user</code> to apply it across all projects.</li>
             <li>Verify with <code>claude mcp list</code>. Locker tools are now available in your Claude Code CLI sessions.</li>
           </ol>
         </div>
@@ -105,7 +105,7 @@ function ConnectPage() {
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Settings → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
             <li>Run the command below in your terminal, replacing <code>lkr_your_token_here</code> with your token. <strong>The CLI is required to add servers</strong> — this cannot be done from the VS Code extension.</li>
-            <li>To scope it to one project instead of globally, add <code>--scope project</code> — this writes a <code>.mcp.json</code> at the project root.</li>
+            <li>The default scope is <code>local</code> (project-level, not committed). Add <code>--scope project</code> to write a shareable <code>.mcp.json</code> at the project root, or <code>--scope user</code> to apply it across all projects.</li>
             <li>Verify with <code>claude mcp list</code>. Once added, the VS Code extension picks up the server automatically — use <code>/mcp</code> in the chat panel to view status or reconnect.</li>
           </ol>
         </div>
