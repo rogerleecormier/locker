@@ -11,11 +11,6 @@ import {
   listAllUsersAndDetails,
   clearDatabase,
   clearVectorizeIndex,
-  nukeEverything,
-  scanDatabaseDuplicates,
-  bulkDeleteMemories,
-  encryptAllMemories,
-  rebuildVectorizeIndex,
   createUserAdmin,
   updateUserAdmin,
   deleteUserAdmin,
@@ -26,10 +21,17 @@ import {
   removeUserFromOrgAdmin,
   updateOrgQuota,
   deleteOrganization,
-  type DuplicateGroup,
   type UserDetails,
   type OrgWithQuota,
 } from "~/routes/admin";
+import {
+  nukeEverything,
+  scanDatabaseDuplicates,
+  bulkDeleteMemories,
+  encryptAllMemories,
+  rebuildVectorizeIndex,
+  type DuplicateGroup,
+} from "~/server/memoryFunctions";
 
 function AdminPage() {
   const [activeSection, setActiveSection] = useState<AdminSection>("system");
@@ -488,6 +490,6 @@ function AdminGuard() {
   return <AdminPage />;
 }
 
-export const Route = createFileRoute("/admin")({
+export const Route = createFileRoute("/admin-refactored")({
   component: AdminGuard,
 });
