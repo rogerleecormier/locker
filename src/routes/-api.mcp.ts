@@ -71,6 +71,16 @@ const MCP_MANIFEST = {
 
 const ALL_TOOLS = [
   {
+    name: "list_accessible_scopes",
+    description:
+      "List all locker scopes (personal, organizational, team) that this user can access. Use this to discover available workspaces before querying memories.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
     name: "recall_context",
     description:
       "Semantic search over stored long-term memory. Returns facts ranked by cosine similarity.",
@@ -494,6 +504,7 @@ export async function handleMcpRequest(
 
   if (method === "tools/list") {
     const allowedTools = ALL_TOOLS.filter((t) => {
+      if (t.name === "list_accessible_scopes") return true;
       if (t.name === "recall_context" || t.name === "search_memories" || t.name === "get_memory_summary") return !!(claims.permissions & MCP_PERM_RECALL);
       if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
@@ -508,7 +519,24 @@ export async function handleMcpRequest(
   }
 
   const toolName = params?.name;
-  const args = params?.arguments ?? {};  if (toolName === "recall_context") {
+  const args = params?.arguments ?? {};
+
+  if (toolName === "list_accessible_scopes") {
+    const scopes = claims.accessibleScopes.map((s) => {
+      if (s.type === "personal") {
+        return { type: "personal", id: null, projectKey: null, label: "Personal Locker" };
+      } else if (s.type === "organization") {
+        return { type: "organization", id: s.id, projectKey: `org:${s.id}`, label: `Organization (${s.id})` };
+      } else if (s.type === "team") {
+        return { type: "team", id: s.id, projectKey: `team:${s.id}`, label: `Team (${s.id})` };
+      }
+      return null;
+    }).filter((s): s is NonNullable<typeof s> => s !== null);
+
+    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(scopes) }] });
+  }
+
+  if (toolName === "recall_context") {
     if (!(claims.permissions & MCP_PERM_RECALL)) {
       return mcpError(id, -32001, "Token does not have recall_context permission");
     }
