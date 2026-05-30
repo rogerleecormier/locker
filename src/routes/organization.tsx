@@ -20,7 +20,7 @@ import {
 import { requireSession } from "~/server/session";
 import { getAdminStatus } from "~/routes/admin";
 import { updateSubscriptionSeats } from "~/server/billing";
-import { submitMemoryRecommendation, listMemoryRecommendations, reviewMemoryRecommendation } from "~/server/memoryFunctions";
+import { addMemory, submitMemoryRecommendation, listMemoryRecommendations, reviewMemoryRecommendation } from "~/server/memoryFunctions";
 import {
   requireFeature,
   getUserEffectivePlan,
@@ -846,6 +846,18 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
     onError: (err: Error) => alert(err.message),
   });
 
+  const addDirectMemoryMut = useMutation({
+    mutationFn: (data: { fact: string; category: "rules" | "projects" | "references"; tags: string; projectKey?: string; isLocked?: boolean; authorityType?: "authoritative" | "contributed" }) => addMemory({ data }),
+    onSuccess: () => {
+      setRecFact("");
+      setRecTags("");
+      setRecProjectKey("");
+      queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] });
+      alert("Success: Authoritative memory added directly to vault!");
+    },
+    onError: (err: Error) => alert(err.message),
+  });
+
   const reviewRecMut = useMutation({
     mutationFn: (data: { id: string; action: "approve" | "reject"; reviewNotes?: string }) => reviewMemoryRecommendation({ data }),
     onSuccess: () => {
@@ -945,12 +957,14 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
           {/* Submit Recommendation */}
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Recommend Memory to Org Vault</h3>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>
+              {isAdmin ? "Add Authoritative Memory to Org Vault" : "Recommend Memory to Org Vault"}
+            </h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div>
                 <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>FACT</label>
                 <textarea
-                  placeholder="Recommend a rule or fact (e.g. Always use camelCase for folder structure)"
+                  placeholder={isAdmin ? "Enter an authoritative rule or fact (e.g. Always use camelCase for folder structure)" : "Recommend a rule or fact (e.g. Always use camelCase for folder structure)"}
                   value={recFact}
                   onChange={(e) => setRecFact(e.target.value)}
                   style={{ width: "100%", height: "80px", padding: "8px 10px", resize: "none" }}
@@ -994,8 +1008,27 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
                 />
               </div>
               <button
-                onClick={() => submitRecMut.mutate({ orgId: org.id, fact: recFact, category: recCategory, tags: recTags, projectKey: recProjectKey || undefined })}
-                disabled={submitRecMut.isPending || !recFact.trim()}
+                onClick={() => {
+                  if (isAdmin) {
+                    addDirectMemoryMut.mutate({
+                      fact: recFact,
+                      category: recCategory,
+                      tags: recTags,
+                      projectKey: recProjectKey || `org:${org.id}`,
+                      isLocked: true,
+                      authorityType: "authoritative",
+                    });
+                  } else {
+                    submitRecMut.mutate({
+                      orgId: org.id,
+                      fact: recFact,
+                      category: recCategory,
+                      tags: recTags,
+                      projectKey: recProjectKey || undefined,
+                    });
+                  }
+                }}
+                disabled={isAdmin ? (addDirectMemoryMut.isPending || !recFact.trim()) : (submitRecMut.isPending || !recFact.trim())}
                 style={{
                   padding: "8px 16px",
                   background: "var(--accent)",
@@ -1007,7 +1040,10 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
                   cursor: "pointer"
                 }}
               >
-                {submitRecMut.isPending ? "Submitting..." : "Submit Recommendation"}
+                {isAdmin 
+                  ? (addDirectMemoryMut.isPending ? "Creating..." : "Add Authoritative Memory") 
+                  : (submitRecMut.isPending ? "Submitting..." : "Submit Recommendation")
+                }
               </button>
             </div>
           </div>

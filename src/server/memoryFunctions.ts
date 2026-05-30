@@ -502,6 +502,8 @@ type AddMemoryInput = {
   category: "rules" | "projects" | "references";
   tags: string;
   projectKey?: string;
+  isLocked?: boolean;
+  authorityType?: "authoritative" | "contributed";
 };
 
 export const addMemory = createServerFn({ method: "POST" })
@@ -515,6 +517,8 @@ export const addMemory = createServerFn({ method: "POST" })
       category: d.category,
       tags: typeof d.tags === "string" ? d.tags.trim() : "",
       projectKey: typeof d.projectKey === "string" ? d.projectKey.trim() : undefined,
+      isLocked: typeof d.isLocked === "boolean" ? d.isLocked : undefined,
+      authorityType: d.authorityType === "authoritative" || d.authorityType === "contributed" ? d.authorityType : undefined,
     };
   })
   .handler(async ({ data, context }): Promise<Memory> => {
@@ -565,6 +569,43 @@ export const addMemory = createServerFn({ method: "POST" })
       console.error("[addMemory] Failed to enqueue contradiction check:", err);
     }
 
+    let isLocked = false;
+    let authorityType: "authoritative" | "contributed" = "contributed";
+
+    if (data.isLocked || data.authorityType === "authoritative") {
+      let actualOrgId = orgId;
+      if (data.projectKey) {
+        if (data.projectKey.startsWith("org:")) {
+          actualOrgId = data.projectKey.slice(4);
+        } else if (data.projectKey.startsWith("team:")) {
+          const teamId = data.projectKey.slice(5);
+          const teamRows = await db
+            .select({ orgId: teams.orgId })
+            .from(teams)
+            .where(eq(teams.id, teamId))
+            .limit(1)
+            .all();
+          actualOrgId = teamRows[0]?.orgId ?? orgId;
+        }
+      }
+      
+      if (actualOrgId) {
+        const memberRow = await db
+          .select({ role: organizationMembers.role })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.orgId, actualOrgId), eq(organizationMembers.userId, user.id)))
+          .limit(1)
+          .all();
+        const role = memberRow[0]?.role;
+        if (role === "owner" || role === "admin") {
+          isLocked = data.isLocked ?? false;
+          authorityType = data.authorityType ?? "contributed";
+        } else {
+          throw new Error("Forbidden: Only organization owners/admins can create locked authoritative memories.");
+        }
+      }
+    }
+
     let scopeType: "personal" | "organization" | "team" = "personal";
     let scopeId: string | null = null;
     if (data.projectKey) {
@@ -588,6 +629,8 @@ export const addMemory = createServerFn({ method: "POST" })
       projectKey: data.projectKey || null,
       scopeType,
       scopeId,
+      isLocked,
+      authorityType,
     };
 
     await db.insert(memories).values(newRow);
