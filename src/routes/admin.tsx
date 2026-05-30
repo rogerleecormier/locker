@@ -7,20 +7,11 @@ import { memories, organizations, orgQuotas, organizationMembers, users, account
 import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, encryptAllMemories, rebuildVectorizeIndex, type DuplicateGroup } from "~/server/memoryFunctions";
 import { requireAdmin } from "~/server/session";
 import { updateSubscriptionSeats } from "~/server/billing";
-import { registerClaudeOAuthClient } from "~/server/oauthSetup";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
 // Server functions for admin operations
-export const setupClaudeOAuth = createServerFn({ method: "POST" }).handler(
-  async ({ context }): Promise<{ success: boolean; message: string; clientId: string }> => {
-    const { env } = (context as unknown as CFContext).cloudflare;
-    await requireAdmin(env);
-    return registerClaudeOAuthClient(env);
-  }
-);
-
 export const getDbStats = createServerFn({ method: "GET" }).handler(
   async ({ context }): Promise<{ memoryCount: number; vectorCount: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
@@ -691,60 +682,7 @@ export const removeUserFromOrgAdmin = createServerFn({ method: "POST" })
   });
 
 // Helper import for sql and eq in query filters
-import { sql, eq, and, or, like } from "drizzle-orm";
-
-function SetupClaudeOAuthButton() {
-  const [setupMessage, setSetupMessage] = useState<{ success: boolean; message: string } | null>(null);
-  const setupMutation = useMutation({
-    mutationFn: setupClaudeOAuth,
-    onSuccess: (data) => {
-      setSetupMessage({ success: data.success, message: data.message });
-      setTimeout(() => setSetupMessage(null), 5000);
-    },
-    onError: (err) => {
-      setSetupMessage({ success: false, message: `Error: ${String(err)}` });
-    },
-  });
-
-  return (
-    <div>
-      <button
-        onClick={() => setupMutation.mutate()}
-        disabled={setupMutation.isPending}
-        style={{
-          padding: "8px 16px",
-          background: setupMutation.isPending ? "var(--text-muted)" : "var(--accent)",
-          color: "white",
-          border: "none",
-          borderRadius: "var(--radius)",
-          cursor: setupMutation.isPending ? "default" : "pointer",
-          fontWeight: 600,
-          fontSize: "13px",
-          opacity: setupMutation.isPending ? 0.6 : 1,
-          transition: "opacity 0.2s ease",
-        }}
-      >
-        {setupMutation.isPending ? "Registering..." : "Register Claude OAuth Client"}
-      </button>
-      {setupMessage && (
-        <div
-          style={{
-            marginTop: "10px",
-            padding: "10px 12px",
-            background: setupMessage.success ? "var(--success)" : "var(--error)",
-            color: "white",
-            borderRadius: "var(--radius)",
-            fontSize: "12px",
-          }}
-        >
-          {setupMessage.message}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AdminPage() {
+import { sql, eq, and, or, like } from "drizzle-orm";function AdminPage() {
   const [activeTab, setActiveTab] = useState<"system" | "orgs" | "users">("system");
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmClearVectorize, setConfirmClearVectorize] = useState(false);
@@ -1084,14 +1022,6 @@ function AdminPage() {
                 </div>
               </div>
             )}
-          </section>
-
-          <section style={{ marginTop: "30px" }}>
-            <h2>OAuth Configuration</h2>
-            <div style={{ marginTop: "10px", padding: "15px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-              <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "12px" }}>Register the Claude OAuth client to enable OAuth2 authentication with Claude.</p>
-              <SetupClaudeOAuthButton />
-            </div>
           </section>
 
           <section style={{ marginTop: "30px" }}>

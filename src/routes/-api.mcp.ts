@@ -265,7 +265,7 @@ async function validateBearerToken(
   // OAuth JWT path — validate via userinfo endpoint internally (JWT plugin uses separate key from JWKS)
   if (rawToken.startsWith("eyJ")) {
     try {
-      const auth = createAuth(env);
+      const auth = await createAuth(env);
       const userinfoReq = new Request(`${env.BETTER_AUTH_URL}/api/auth/oauth2/userinfo`, {
         method: "GET",
         headers: { Authorization: `Bearer ${rawToken}` },
@@ -385,10 +385,8 @@ export async function handleMcpRequest(
       if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
       return false;
     });
-    const response = { ...MCP_MANIFEST, result: { ...MCP_MANIFEST.result, tools: allowedTools } };
-    console.log(`[mcp] GET response: ${JSON.stringify(response).slice(0, 200)}`);
     return new Response(
-      JSON.stringify(response),
+      JSON.stringify({ ...MCP_MANIFEST, result: { ...MCP_MANIFEST.result, tools: allowedTools } }),
       { headers: { "Content-Type": "application/json", ...headers } }
     );
   }
