@@ -113,6 +113,22 @@ export async function createAuth(env: CloudflareEnv) {
           oauthAuthServerConfig: true,
           openidConfig: true,
         },
+        callbacks: {
+          // Customize userinfo response to include orgIds and teamIds from JWT claims
+          userinfoResponse: async ({ user, token }) => {
+            const orgIds = (token as Record<string, unknown>).orgIds ?? [];
+            const teamIds = (token as Record<string, unknown>).teamIds ?? [];
+            return {
+              sub: user.id,
+              email: user.email,
+              name: user.name,
+              email_verified: user.emailVerified,
+              picture: user.image,
+              orgIds,
+              teamIds,
+            };
+          },
+        },
       }),
     ],
   });
