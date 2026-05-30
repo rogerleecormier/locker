@@ -339,11 +339,11 @@ export function MyBillingSection() {
           </div>
           <div style={{ padding: "14px 16px", background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8, fontSize: 13, lineHeight: 1.6, color: "var(--text-muted)" }}>
             <div style={{ fontWeight: 600, color: "var(--success)", marginBottom: 6 }}>
-              ✓ Your seat is covered by your organization
+              ✓ Your limits are governed by your organization's plan
             </div>
             You are a member of an organization on the <strong style={{ color: "var(--text)" }}>{effectivePlan}</strong> plan.
-            Your organization's subscription covers your access — you do not need a separate personal subscription
-            to use {effectivePlan} features. Personal billing only applies to work done outside of any organization scope.
+            Your org membership sets your effective limits for all usage — memories, recalls, commits, and tokens.
+            A personal subscription is only needed if you want those higher limits to persist after leaving the organization.
           </div>
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             {billing?.hasBillingCustomer && (
