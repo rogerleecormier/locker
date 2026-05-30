@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { AdminLayout, type AdminSection } from "~/components/AdminLayout";
 import { SiteAdminSection, OrgAdminSection, StatBox, AdminCard } from "~/components/AdminSections";
 import {
@@ -47,7 +48,7 @@ const modalBox: React.CSSProperties = {
 };
 
 function AdminPage() {
-  const [activeSection, setActiveSection] = useState<AdminSection>("system");
+  const [activeSection, setActiveSection] = useState<AdminSection>("personal-account");
 
   // ── state ──────────────────────────────────────────────────────────────────
   const [confirmClear, setConfirmClear] = useState(false);
@@ -113,10 +114,10 @@ function AdminPage() {
     queryKey: ["admin-status"],
     queryFn: () => getAdminStatus(),
   });
-  const orgBillingQuery = useQuery({
-    queryKey: ["admin-org-billing"],
+  const billingQuery = useQuery({
+    queryKey: ["admin-billing"],
     queryFn: () => getBillingInfo(),
-    enabled: activeSection === "org-billing",
+    enabled: activeSection === "org-billing" || activeSection === "personal-billing",
   });
 
   // ── mutations ──────────────────────────────────────────────────────────────
@@ -234,6 +235,92 @@ function AdminPage() {
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <AdminLayout activeSection={activeSection} onSectionChange={setActiveSection}>
+
+      {/* ── PERSONAL ACCOUNT ────────────────────────────────────────────── */}
+      {activeSection === "personal-account" && (
+        <AdminCard>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h2 style={{ margin: "0 0 4px 0", fontSize: "16px", fontWeight: "bold" }}>My Account</h2>
+              <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)" }}>
+                Manage your profile, API tokens, and security settings
+              </p>
+            </div>
+            <Link
+              to="/settings"
+              style={{ padding: "8px 16px", background: "var(--accent)", color: "white", borderRadius: "var(--radius)", textDecoration: "none", fontWeight: "bold", fontSize: "13px" }}
+            >
+              Open Settings →
+            </Link>
+          </div>
+          <div style={{ marginTop: "20px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+            {[
+              { label: "Profile & Email", desc: "Update your name and email address", icon: "👤" },
+              { label: "API Tokens", desc: "Create and manage personal API tokens", icon: "🔑" },
+              { label: "Connected Apps", desc: "Manage OAuth integrations", icon: "🔗" },
+              { label: "Security", desc: "Password and session management", icon: "🔒" },
+            ].map(({ label, desc, icon }) => (
+              <Link
+                key={label}
+                to="/settings"
+                style={{ display: "block", padding: "14px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "8px", textDecoration: "none", color: "var(--text)" }}
+              >
+                <div style={{ fontSize: "20px", marginBottom: "8px" }}>{icon}</div>
+                <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>{label}</div>
+                <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{desc}</div>
+              </Link>
+            ))}
+          </div>
+        </AdminCard>
+      )}
+
+      {/* ── PERSONAL BILLING ────────────────────────────────────────────── */}
+      {activeSection === "personal-billing" && (
+        <>
+          <AdminCard>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 style={{ margin: "0 0 4px 0", fontSize: "16px", fontWeight: "bold" }}>My Plan & Billing</h2>
+                <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)" }}>
+                  Your personal subscription, usage, and payment management
+                </p>
+              </div>
+              <Link
+                to="/billing"
+                style={{ padding: "8px 16px", background: "var(--accent)", color: "white", borderRadius: "var(--radius)", textDecoration: "none", fontWeight: "bold", fontSize: "13px" }}
+              >
+                Manage Billing →
+              </Link>
+            </div>
+          </AdminCard>
+
+          {billingQuery.isPending && <p style={{ marginTop: "16px" }}>Loading...</p>}
+          {billingQuery.isError && <p style={{ color: "var(--error)", marginTop: "16px" }}>Failed to load billing data.</p>}
+          {billingQuery.data && (
+            <>
+              <AdminCard>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 600 }}>Current Plan</span>
+                  <span style={{
+                    fontSize: "11px", fontWeight: "bold", textTransform: "uppercase",
+                    background: billingQuery.data.planId === "enterprise" ? "rgba(16,185,129,0.15)" : billingQuery.data.planId === "business" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
+                    color: billingQuery.data.planId === "enterprise" ? "#10b981" : billingQuery.data.planId === "business" ? "var(--accent)" : "var(--text-muted)",
+                    padding: "3px 10px", borderRadius: "20px",
+                  }}>
+                    {billingQuery.data.planId}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "12px" }}>
+                  <StatBox label="Memories" value={billingQuery.data.usage.memories} />
+                  <StatBox label="Recalls (mo)" value={billingQuery.data.usage.monthlyRecalls} />
+                  <StatBox label="Commits (mo)" value={billingQuery.data.usage.monthlyCommits} />
+                  <StatBox label="Tokens (mo)" value={billingQuery.data.usage.monthlyTokens} />
+                </div>
+              </AdminCard>
+            </>
+          )}
+        </>
+      )}
 
       {/* ── SYSTEM OVERVIEW ─────────────────────────────────────────────── */}
       {activeSection === "system" && (
@@ -558,11 +645,11 @@ function AdminPage() {
       {/* ── ORG BILLING ─────────────────────────────────────────────────────── */}
       {activeSection === "org-billing" && (
         <OrgAdminSection title="Organization Billing" description="Subscription status and plan management for all orgs" icon="💰">
-          {orgBillingQuery.isPending && <p>Loading billing data...</p>}
-          {orgBillingQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load billing data: {String(orgBillingQuery.error)}</p>}
+          {billingQuery.isPending && <p>Loading billing data...</p>}
+          {billingQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load billing data: {String(billingQuery.error)}</p>}
 
           {/* Usage summary for the admin's own context */}
-          {orgBillingQuery.data && (
+          {billingQuery.data && (
             <>
               <AdminCard>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
@@ -572,33 +659,33 @@ function AdminPage() {
                   </div>
                   <span style={{
                     fontSize: "11px", fontWeight: "bold", textTransform: "uppercase",
-                    background: orgBillingQuery.data.planId === "enterprise" ? "rgba(16,185,129,0.15)" : orgBillingQuery.data.planId === "business" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
-                    color: orgBillingQuery.data.planId === "enterprise" ? "#10b981" : orgBillingQuery.data.planId === "business" ? "var(--accent)" : "var(--text-muted)",
+                    background: billingQuery.data.planId === "enterprise" ? "rgba(16,185,129,0.15)" : billingQuery.data.planId === "business" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
+                    color: billingQuery.data.planId === "enterprise" ? "#10b981" : billingQuery.data.planId === "business" ? "var(--accent)" : "var(--text-muted)",
                     padding: "3px 10px", borderRadius: "20px",
                   }}>
-                    {orgBillingQuery.data.planId}
+                    {billingQuery.data.planId}
                   </span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "12px" }}>
-                  <StatBox label="Memories" value={orgBillingQuery.data.usage.memories} />
-                  <StatBox label="Recalls (month)" value={orgBillingQuery.data.usage.monthlyRecalls} />
-                  <StatBox label="Commits (month)" value={orgBillingQuery.data.usage.monthlyCommits} />
-                  <StatBox label="Tokens (month)" value={orgBillingQuery.data.usage.monthlyTokens} />
+                  <StatBox label="Memories" value={billingQuery.data.usage.memories} />
+                  <StatBox label="Recalls (month)" value={billingQuery.data.usage.monthlyRecalls} />
+                  <StatBox label="Commits (month)" value={billingQuery.data.usage.monthlyCommits} />
+                  <StatBox label="Tokens (month)" value={billingQuery.data.usage.monthlyTokens} />
                 </div>
               </AdminCard>
 
               {/* Orgs where admin is owner/admin */}
               <div style={{ marginTop: "20px" }}>
                 <h3 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Managed Organizations ({orgBillingQuery.data.managedOrgs.length})
+                  Managed Organizations ({billingQuery.data.managedOrgs.length})
                 </h3>
-                {orgBillingQuery.data.managedOrgs.length === 0 ? (
+                {billingQuery.data.managedOrgs.length === 0 ? (
                   <AdminCard>
                     <p style={{ color: "var(--text-muted)", margin: 0, textAlign: "center" }}>No organizations with admin/owner access found.</p>
                   </AdminCard>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                    {orgBillingQuery.data.managedOrgs.map((org) => (
+                    {billingQuery.data.managedOrgs.map((org) => (
                       <AdminCard key={org.id}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                           <div>

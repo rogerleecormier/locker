@@ -237,16 +237,13 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
         </Link>
         {adminStatus?.isAdmin && (
           <Link to="/admin" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
-            Site Admin
+            Admin
           </Link>
         )}
       </div>
 
       <div style={navStyles.right}>
         {planData && <PlanBadge plan={currentPlan} />}
-        <Link to="/billing" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
-          Billing
-        </Link>
 
         {/* Notification Bell & Dropdown */}
         <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
