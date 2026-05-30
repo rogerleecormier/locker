@@ -680,7 +680,7 @@ function OrganizationPage() {
           Set up a shared memory vault for your team with role-based access.
         </p>
         <button onClick={() => setShowCreateOrg(true)}
-          style={{ padding: "10px 24px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, borderRadius: "var(--radius)", border: "none", cursor: "pointer", boxShadow: "0 4px 12px rgba(99, 102, 241, 0.25)" }}>
+          style={{ padding: "10px 24px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, borderRadius: "var(--radius)", border: "none", cursor: "pointer", boxShadow: "0 4px 12px rgba(168, 85, 247, 0.25)" }}>
           + Create Organization
         </button>
 
@@ -1126,7 +1126,7 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
                     </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 9, color: "var(--text-muted)", alignItems: "center" }}>
                       <span style={{
-                        background: m.isLocked ? "rgba(99,102,241,0.15)" : "transparent",
+                        background: m.isLocked ? "rgba(168,85,247,0.15)" : "transparent",
                         color: m.isLocked ? "var(--accent)" : "var(--text-muted)",
                         padding: "1px 4px",
                         borderRadius: 3,

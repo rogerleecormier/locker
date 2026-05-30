@@ -58,7 +58,7 @@ function PricingPage() {
           textTransform: "uppercase",
           letterSpacing: "0.1em",
           background: "var(--accent-dim)",
-          border: "1px solid rgba(99,102,241,0.3)",
+          border: "1px solid rgba(168,85,247,0.3)",
           borderRadius: 20,
           padding: "4px 12px",
           marginBottom: 16,
@@ -85,7 +85,7 @@ function PricingPage() {
 
       <div style={{
         background: "var(--surface)",
-        border: "1px solid rgba(99,102,241,0.3)",
+        border: "1px solid rgba(168,85,247,0.3)",
         borderRadius: 16,
         padding: "32px 28px",
         textAlign: "center",

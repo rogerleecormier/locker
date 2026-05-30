@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 export function PlanBadge({ plan }: { plan: PlanId }) {
   const styles: Record<PlanId, React.CSSProperties> = {
     free: { color: "var(--text-muted)", background: "var(--surface2)", border: "1px solid var(--border)" },
-    business: { color: "#6366f1", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.3)" },
+    business: { color: "#a855f7", background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.3)" },
     enterprise: { color: "#f59e0b", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)" },
   };
   const labels: Record<PlanId, string> = {
@@ -31,7 +31,7 @@ export function RequiredPlanChip({ plan }: { plan: PlanId }) {
   if (plan === "free") return null;
   const colors: Record<PlanId, string> = {
     free: "transparent",
-    business: "#6366f1",
+    business: "#a855f7",
     enterprise: "#f59e0b",
   };
   return (
@@ -71,8 +71,8 @@ export function PaywallGate({ feature, currentPlan, requiredPlan, children, comp
     return (
       <div style={{
         padding: "12px 16px",
-        background: "rgba(99,102,241,0.06)",
-        border: "1px solid rgba(99,102,241,0.2)",
+        background: "rgba(168,85,247,0.06)",
+        border: "1px solid rgba(168,85,247,0.2)",
         borderRadius: "var(--radius)",
         display: "flex",
         alignItems: "center",
@@ -105,8 +105,8 @@ export function PaywallGate({ feature, currentPlan, requiredPlan, children, comp
         width: 56,
         height: 56,
         borderRadius: 16,
-        background: "rgba(99,102,241,0.1)",
-        border: "1px solid rgba(99,102,241,0.3)",
+        background: "rgba(168,85,247,0.1)",
+        border: "1px solid rgba(168,85,247,0.3)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -162,8 +162,8 @@ function UpgradeButton({ requiredPlan }: { requiredPlan: PlanId }) {
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
         <div style={{
           padding: "10px 24px",
-          background: "rgba(99,102,241,0.08)",
-          border: "1px solid rgba(99,102,241,0.2)",
+          background: "rgba(168,85,247,0.08)",
+          border: "1px solid rgba(168,85,247,0.2)",
           borderRadius: 10,
           color: "var(--text-muted)",
           fontSize: 13,
@@ -331,7 +331,7 @@ export function PlanCard({
     <div style={{
       background: "var(--surface)",
       border: isBusiness
-        ? "2px solid rgba(99,102,241,0.5)"
+        ? "2px solid rgba(168,85,247,0.5)"
         : "1px solid var(--border)",
       borderRadius: 12,
       padding: "24px 22px",

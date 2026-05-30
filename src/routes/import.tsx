@@ -359,7 +359,7 @@ function IngestPanel() {
         )}
 
         {preview && (
-          <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "var(--radius)", fontSize: 12, color: "var(--text-muted)" }}>
+          <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.25)", borderRadius: "var(--radius)", fontSize: 12, color: "var(--text-muted)" }}>
             <strong style={{ color: "var(--accent)" }}>Preview:</strong> {preview.length} memor{preview.length !== 1 ? "ies" : "y"} extracted.{" "}
             {preview.slice(0, 2).map((p, i) => (
               <span key={i} style={{ color: "var(--text)" }}>
@@ -451,7 +451,7 @@ function ImportPage() {
             fontSize: 11,
             background: "var(--accent-dim)",
             color: "var(--accent)",
-            border: "1px solid rgba(99,102,241,0.3)",
+            border: "1px solid rgba(168,85,247,0.3)",
             borderRadius: 20,
             padding: "2px 8px",
             fontWeight: 600,

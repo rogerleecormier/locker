@@ -806,7 +806,7 @@ enabled = true`,
             fontSize: 11,
             background: "var(--accent-dim)",
             color: "var(--accent)",
-            border: "1px solid rgba(99,102,241,0.3)",
+            border: "1px solid rgba(168,85,247,0.3)",
             borderRadius: 20,
             padding: "2px 8px",
             fontWeight: 600,
@@ -830,7 +830,7 @@ enabled = true`,
         <div style={{
           padding: "12px 18px",
           borderBottom: "1px solid var(--border)",
-          background: "rgba(99,102,241,0.04)",
+          background: "rgba(168,85,247,0.04)",
         }}>
           <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
             Select platform

@@ -155,7 +155,7 @@ function MemoryRow({
           display: "grid",
           gridTemplateColumns: "auto 1fr",
           gap: "8px 16px",
-          background: "rgba(99,102,241,0.04)",
+          background: "rgba(168,85,247,0.04)",
         }}
       >
         <input
@@ -235,7 +235,7 @@ function MemoryRow({
         gridTemplateColumns: "auto 1fr auto",
         gap: "8px 16px",
         alignItems: "start",
-        background: selected ? "rgba(99,102,241,0.05)" : undefined,
+        background: selected ? "rgba(168,85,247,0.05)" : undefined,
       }}
     >
       <input
@@ -361,7 +361,7 @@ function MemoryRow({
                 onMouseEnter={(e) => {
                   const b = e.currentTarget as HTMLButtonElement;
                   b.style.opacity = "1";
-                  b.style.borderColor = "rgba(99,102,241,0.4)";
+                  b.style.borderColor = "rgba(168,85,247,0.4)";
                   b.style.color = "var(--accent)";
                 }}
                 onMouseLeave={(e) => {
@@ -388,7 +388,7 @@ function MemoryRow({
                 onMouseEnter={(e) => {
                   const b = e.currentTarget as HTMLButtonElement;
                   b.style.opacity = "1";
-                  b.style.borderColor = "rgba(99,102,241,0.4)";
+                  b.style.borderColor = "rgba(168,85,247,0.4)";
                   b.style.color = "var(--accent)";
                 }}
                 onMouseLeave={(e) => {
@@ -416,7 +416,7 @@ function MemoryRow({
                   onMouseEnter={(e) => {
                     const b = e.currentTarget as HTMLButtonElement;
                     b.style.opacity = "1";
-                    b.style.borderColor = "rgba(99,102,241,0.4)";
+                    b.style.borderColor = "rgba(168,85,247,0.4)";
                     b.style.color = "var(--accent)";
                   }}
                   onMouseLeave={(e) => {
@@ -1164,7 +1164,7 @@ function Dashboard() {
               fontSize: 11,
               background: "var(--accent-dim)",
               color: "var(--accent)",
-              border: "1px solid rgba(99,102,241,0.3)",
+              border: "1px solid rgba(168,85,247,0.3)",
               borderRadius: 20,
               padding: "2px 8px",
               fontWeight: 600,

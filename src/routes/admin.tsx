@@ -1139,7 +1139,7 @@ import { sql, eq, and, or, like } from "drizzle-orm";function AdminPage() {
                                     alignItems: "start",
                                     gap: "10px",
                                     padding: "10px",
-                                    background: selectedId === item.id ? "rgba(99,102,241,0.06)" : "var(--surface)",
+                                    background: selectedId === item.id ? "rgba(168,85,247,0.06)" : "var(--surface)",
                                     border: `1px solid ${selectedId === item.id ? "var(--accent)" : "var(--border)"}`,
                                     borderRadius: "var(--radius)",
                                     cursor: "pointer",
@@ -1371,7 +1371,7 @@ import { sql, eq, and, or, like } from "drizzle-orm";function AdminPage() {
             </div>
           </section>
 
-          <section style={{ marginTop: "30px", padding: "15px", background: "rgba(99,102,241,0.1)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
+          <section style={{ marginTop: "30px", padding: "15px", background: "rgba(168,85,247,0.1)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
             <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>
               <strong>Status:</strong> {clearDbMutation.isPending || clearVectorizeMutation.isPending || clearAllMutation.isPending ? "Operating..." : "Ready"}
             </p>
@@ -1415,7 +1415,7 @@ import { sql, eq, and, or, like } from "drizzle-orm";function AdminPage() {
                             <span
                               style={{
                                 fontSize: "10px",
-                                background: org.plan === "enterprise" ? "rgba(16,185,129,0.15)" : org.plan === "pro" ? "rgba(99,102,241,0.15)" : "var(--surface2)",
+                                background: org.plan === "enterprise" ? "rgba(16,185,129,0.15)" : org.plan === "pro" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
                                 color: org.plan === "enterprise" ? "#10b981" : org.plan === "pro" ? "var(--accent)" : "var(--text-muted)",
                                 padding: "2px 8px",
                                 borderRadius: "20px",
@@ -1622,7 +1622,7 @@ import { sql, eq, and, or, like } from "drizzle-orm";function AdminPage() {
                           <div style={{ fontWeight: "bold", fontSize: "14px" }}>{user.name}</div>
                           <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{user.email}</div>
                           {user.id === adminStatus?.userId && (
-                            <span style={{ fontSize: "9px", background: "rgba(99,102,241,0.15)", color: "var(--accent)", padding: "1px 6px", borderRadius: "10px", fontWeight: "bold", display: "inline-block", marginTop: "4px" }}>
+                            <span style={{ fontSize: "9px", background: "rgba(168,85,247,0.15)", color: "var(--accent)", padding: "1px 6px", borderRadius: "10px", fontWeight: "bold", display: "inline-block", marginTop: "4px" }}>
                               ADMIN
                             </span>
                           )}
@@ -1631,7 +1631,7 @@ import { sql, eq, and, or, like } from "drizzle-orm";function AdminPage() {
                           <span
                             style={{
                               fontSize: "10px",
-                              background: user.plan === "enterprise" ? "rgba(16,185,129,0.15)" : user.plan === "business" ? "rgba(99,102,241,0.15)" : "var(--surface2)",
+                              background: user.plan === "enterprise" ? "rgba(16,185,129,0.15)" : user.plan === "business" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
                               color: user.plan === "enterprise" ? "#10b981" : user.plan === "business" ? "var(--accent)" : "var(--text-muted)",
                               padding: "2px 8px",
                               borderRadius: "20px",
@@ -1653,7 +1653,7 @@ import { sql, eq, and, or, like } from "drizzle-orm";function AdminPage() {
                                   <span
                                     style={{
                                       fontSize: "9px",
-                                      background: org.role === "owner" ? "rgba(239,68,68,0.1)" : org.role === "admin" ? "rgba(99,102,241,0.1)" : "var(--surface2)",
+                                      background: org.role === "owner" ? "rgba(239,68,68,0.1)" : org.role === "admin" ? "rgba(168,85,247,0.1)" : "var(--surface2)",
                                       color: org.role === "owner" ? "var(--error)" : org.role === "admin" ? "var(--accent)" : "var(--text-muted)",
                                       padding: "1px 4px",
                                       borderRadius: "4px",

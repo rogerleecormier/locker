@@ -100,7 +100,7 @@ function McpCallMockup() {
     return () => clearInterval(id);
   }, []);
   const steps = [
-    { label: "AI sends recall_context", color: "#6366f1", icon: "→" },
+    { label: "AI sends recall_context", color: "#a855f7", icon: "→" },
     { label: "Bearer token verified", color: "#22c55e", icon: "🔑" },
     { label: "Semantic search in Vectorize", color: "#fbbf24", icon: "⚡" },
     { label: "Decrypted facts returned", color: "#818cf8", icon: "←" },
@@ -134,14 +134,14 @@ function TokenMockup() {
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>{tok.name}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {tools.map((t, j) => (
-                <span key={j} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: tok.perms.includes(j) ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)", border: `1px solid ${tok.perms.includes(j) ? "rgba(99,102,241,0.4)" : "var(--border)"}`, color: tok.perms.includes(j) ? "var(--accent)" : "var(--text-muted)", fontFamily: "monospace" }}>
+                <span key={j} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: tok.perms.includes(j) ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.03)", border: `1px solid ${tok.perms.includes(j) ? "rgba(168,85,247,0.4)" : "var(--border)"}`, color: tok.perms.includes(j) ? "var(--accent)" : "var(--text-muted)", fontFamily: "monospace" }}>
                   {tok.perms.includes(j) ? "✓" : "✗"} {t}
                 </span>
               ))}
             </div>
           </div>
         ))}
-        <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 8, padding: "8px 12px", fontSize: 11, color: "var(--accent)", fontFamily: "monospace" }}>
+        <div style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 8, padding: "8px 12px", fontSize: 11, color: "var(--accent)", fontFamily: "monospace" }}>
           lkr_a8f3c2e1d9b7...  <span style={{ color: "var(--text-muted)" }}>shown once</span>
         </div>
       </div>
@@ -185,7 +185,7 @@ function PlatformGrid() {
               delay += 25;
               return (
                 <FadeIn key={p.id} delay={d}>
-                  <div style={{ padding: "5px 13px", borderRadius: 20, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", color: "var(--accent)", fontSize: 12, fontWeight: 400, whiteSpace: "nowrap" }}>
+                  <div style={{ padding: "5px 13px", borderRadius: 20, background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.25)", color: "var(--accent)", fontSize: 12, fontWeight: 400, whiteSpace: "nowrap" }}>
                     {p.label}
                   </div>
                 </FadeIn>
@@ -232,7 +232,7 @@ function EncryptionMockup() {
         <div style={{ position: "absolute", inset: 0, padding: "10px 12px", borderRadius: 8, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", fontSize: 11, color: "#22c55e", lineHeight: 1.5, opacity: flipped ? 0 : 1, transition: "opacity 0.5s ease" }}>
           <span style={{ color: "var(--text-muted)", fontSize: 10 }}>plaintext </span>{plain}
         </div>
-        <div style={{ position: "absolute", inset: 0, padding: "10px 12px", borderRadius: 8, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", fontSize: 10, color: "var(--accent)", lineHeight: 1.5, wordBreak: "break-all", opacity: flipped ? 1 : 0, transition: "opacity 0.5s ease" }}>
+        <div style={{ position: "absolute", inset: 0, padding: "10px 12px", borderRadius: 8, background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.25)", fontSize: 10, color: "var(--accent)", lineHeight: 1.5, wordBreak: "break-all", opacity: flipped ? 1 : 0, transition: "opacity 0.5s ease" }}>
           <span style={{ color: "var(--text-muted)" }}>encrypted </span>{enc}
         </div>
       </div>
@@ -254,7 +254,7 @@ function Section({ children, style }: { children: React.ReactNode; style?: React
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14, background: "var(--accent-dim)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 20, padding: "4px 12px" }}>
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14, background: "var(--accent-dim)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "4px 12px" }}>
       {children}
     </div>
   );
@@ -268,7 +268,7 @@ function FeatureCard({ icon, title, desc, delay }: { icon: React.ReactNode; titl
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        style={{ background: "var(--surface)", border: `1px solid ${hovered ? "rgba(99,102,241,0.4)" : "var(--border)"}`, borderRadius: 12, padding: "22px 20px", height: "100%", transition: "border-color 0.2s, transform 0.2s, box-shadow 0.2s", transform: hovered ? "translateY(-3px)" : "none", boxShadow: hovered ? "0 8px 24px rgba(99,102,241,0.12)" : "none" }}
+        style={{ background: "var(--surface)", border: `1px solid ${hovered ? "rgba(168,85,247,0.4)" : "var(--border)"}`, borderRadius: 12, padding: "22px 20px", height: "100%", transition: "border-color 0.2s, transform 0.2s, box-shadow 0.2s", transform: hovered ? "translateY(-3px)" : "none", boxShadow: hovered ? "0 8px 24px rgba(168,85,247,0.12)" : "none" }}
       >
         <div style={{ marginBottom: 12 }}>{icon}</div>
         <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{title}</div>
@@ -282,7 +282,7 @@ function FeatureCard({ icon, title, desc, delay }: { icon: React.ReactNode; titl
 function Step({ num, title, desc, delay }: { num: string; title: string; desc: string; delay?: number }) {
   return (
     <FadeIn delay={delay} style={{ display: "flex", gap: 18 }}>
-      <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: "50%", background: "var(--accent-dim)", border: "1px solid rgba(99,102,241,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "var(--accent)" }}>
+      <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: "50%", background: "var(--accent-dim)", border: "1px solid rgba(168,85,247,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "var(--accent)" }}>
         {num}
       </div>
       <div>
@@ -310,15 +310,23 @@ function LandingPage() {
       {/* ── HERO ── */}
       <div style={{ position: "relative", padding: "100px 24px 80px", textAlign: "center", overflow: "hidden" }}>
         {/* radial glow */}
-        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-60%)", width: 700, height: 700, borderRadius: "50%", background: "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-60%)", width: 700, height: 700, borderRadius: "50%", background: "radial-gradient(circle, rgba(168,85,247,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
 
         <div style={{ position: "relative", maxWidth: 720, margin: "0 auto" }}>
           {/* lock icon animated */}
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
-            <div style={{ width: 64, height: 64, borderRadius: 18, background: "var(--accent-dim)", border: "1px solid rgba(99,102,241,0.35)", display: "flex", alignItems: "center", justifyContent: "center", animation: "float 4s ease-in-out infinite", opacity: heroVisible ? 1 : 0, transition: "opacity 0.6s ease" }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            <div style={{ width: 64, height: 64, borderRadius: 18, background: "var(--accent-dim)", border: "1px solid rgba(168,85,247,0.35)", display: "flex", alignItems: "center", justifyContent: "center", animation: "float 4s ease-in-out infinite", opacity: heroVisible ? 1 : 0, transition: "opacity 0.6s ease" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-hero)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <defs>
+                  <linearGradient id="logo-grad-hero" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="var(--accent)" />
+                    <stop offset="100%" stopColor="#a855f7" />
+                  </linearGradient>
+                </defs>
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" strokeWidth="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" strokeWidth="2" />
+                <path d="M9 14.5h6M9 16.5h6M9 18.5h6M11 11v11M13 11v11" strokeWidth="1" opacity="0.6" />
+                <rect x="9.5" y="14" width="5" height="5" rx="0.5" fill="var(--accent)" stroke="url(#logo-grad-hero)" strokeWidth="1" />
               </svg>
             </div>
           </div>
@@ -702,7 +710,7 @@ function LandingPage() {
       <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)" }}>
         <div style={{ maxWidth: 600, margin: "0 auto", padding: "80px 24px", textAlign: "center" }}>
           <FadeIn>
-            <div style={{ width: 56, height: 56, borderRadius: 16, background: "var(--accent-dim)", border: "1px solid rgba(99,102,241,0.35)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, background: "var(--accent-dim)", border: "1px solid rgba(168,85,247,0.35)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"/>

@@ -28,6 +28,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Locker — Memory Vault" },
     ],
+    links: [
+      { rel: "icon", type: "image/png", href: "/favicon.png" },
+      { rel: "shortcut icon", href: "/favicon.ico" },
+    ],
   }),
   component: RootLayout,
 });
@@ -100,9 +104,17 @@ function LandingNav() {
   return (
     <nav style={navStyles.nav}>
       <div style={navStyles.brand}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-landing)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <defs>
+            <linearGradient id="logo-grad-landing" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="var(--accent)" />
+              <stop offset="100%" stopColor="#a855f7" />
+            </linearGradient>
+          </defs>
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" strokeWidth="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" strokeWidth="2" />
+          <path d="M9 14.5h6M9 16.5h6M9 18.5h6M11 11v11M13 11v11" strokeWidth="1" opacity="0.6" />
+          <rect x="9.5" y="14" width="5" height="5" rx="0.5" fill="var(--accent)" stroke="url(#logo-grad-landing)" strokeWidth="1" />
         </svg>
         <Link to="/" style={{ ...navStyles.brandName, textDecoration: "none", color: "var(--text)" }}>Locker</Link>
       </div>
@@ -192,9 +204,17 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
   return (
     <nav style={navStyles.nav}>
       <div style={navStyles.brand}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-nav)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <defs>
+            <linearGradient id="logo-grad-nav" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="var(--accent)" />
+              <stop offset="100%" stopColor="#a855f7" />
+            </linearGradient>
+          </defs>
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" strokeWidth="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" strokeWidth="2" />
+          <path d="M9 14.5h6M9 16.5h6M9 18.5h6M11 11v11M13 11v11" strokeWidth="1" opacity="0.6" />
+          <rect x="9.5" y="14" width="5" height="5" rx="0.5" fill="var(--accent)" stroke="url(#logo-grad-nav)" strokeWidth="1" />
         </svg>
         <Link to="/" style={{ ...navStyles.brandName, textDecoration: "none", color: "var(--text)" }}>Locker</Link>
       </div>
@@ -515,19 +535,19 @@ function RootDocument({ children }: { children: ReactNode }) {
         <style>{`
           *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
           :root {
-            --bg: #0f1117;
-            --surface: #1a1d27;
-            --surface2: #22263a;
-            --border: #2e3250;
-            --text: #e2e4f0;
-            --text-muted: #7b80a0;
-            --accent: #6366f1;
-            --accent-hover: #818cf8;
-            --accent-dim: rgba(99,102,241,0.15);
+            --bg: #0b0914;
+            --surface: #141221;
+            --surface2: #1b182e;
+            --border: #2e254d;
+            --text: #f3f1f8;
+            --text-muted: #8e85a6;
+            --accent: #a855f7;
+            --accent-hover: #c084fc;
+            --accent-dim: rgba(168, 85, 247, 0.12);
             --success: #22c55e;
             --error: #ef4444;
-            --tag-bg: #1e2238;
-            --tag-border: #3a3f6e;
+            --tag-bg: #1c1538;
+            --tag-border: #44357a;
             --radius: 8px;
             --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
           }
