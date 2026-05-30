@@ -519,13 +519,30 @@ export async function handleMcpRequest(
   const args = params?.arguments ?? {};
 
   if (toolName === "list_accessible_scopes") {
+    const orgIds = claims.accessibleScopes.filter((s) => s.type === "organization" && s.id).map((s) => s.id as string);
+    const teamIds = claims.accessibleScopes.filter((s) => s.type === "team" && s.id).map((s) => s.id as string);
+
+    const [orgRows, teamRows] = await Promise.all([
+      orgIds.length > 0
+        ? db.select({ id: organizations.id, name: organizations.name }).from(organizations).where(sql`${organizations.id} IN (${sql.join(orgIds.map((o) => sql`${o}`), sql`, `)})`).all()
+        : Promise.resolve([] as { id: string; name: string }[]),
+      teamIds.length > 0
+        ? db.select({ id: teams.id, name: teams.name }).from(teams).where(sql`${teams.id} IN (${sql.join(teamIds.map((t) => sql`${t}`), sql`, `)})`).all()
+        : Promise.resolve([] as { id: string; name: string }[]),
+    ]);
+
+    const orgNameMap = new Map(orgRows.map((r) => [r.id, r.name]));
+    const teamNameMap = new Map(teamRows.map((r) => [r.id, r.name]));
+
     const scopes = claims.accessibleScopes.map((s) => {
       if (s.type === "personal") {
         return { type: "personal", id: null, projectKey: null, label: "Personal Locker" };
       } else if (s.type === "organization") {
-        return { type: "organization", id: s.id, projectKey: `org:${s.id}`, label: `Organization (${s.id})` };
+        const name = orgNameMap.get(s.id!) ?? s.id;
+        return { type: "organization", id: s.id, projectKey: `org:${s.id}`, label: name };
       } else if (s.type === "team") {
-        return { type: "team", id: s.id, projectKey: `team:${s.id}`, label: `Team (${s.id})` };
+        const name = teamNameMap.get(s.id!) ?? s.id;
+        return { type: "team", id: s.id, projectKey: `team:${s.id}`, label: name };
       }
       return null;
     }).filter((s): s is NonNullable<typeof s> => s !== null);
