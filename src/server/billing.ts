@@ -291,38 +291,53 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
           break;
         }
 
-        const plan = (status === "active" || status === "trialing") ? "business" : "free";
+        // Verify that this subscription is either the active one or we are transitioning a new active subscription
+        const currentPlanRow = await db
+          .select({ billingSubscriptionId: userPlans.billingSubscriptionId })
+          .from(userPlans)
+          .where(eq(userPlans.userId, userId))
+          .limit(1)
+          .all();
+        
+        const isSelf = currentPlanRow.length > 0 && currentPlanRow[0].billingSubscriptionId === billingSubscriptionId;
+        const isEmpty = currentPlanRow.length === 0 || !currentPlanRow[0].billingSubscriptionId;
 
-        // Update user plans table
-        await db
-          .update(userPlans)
-          .set({
-            plan,
-            billingCustomerId,
-            billingSubscriptionId,
-            updatedAt: new Date(),
-          })
-          .where(eq(userPlans.userId, userId));
+        if (isSelf || isEmpty) {
+          const plan = (status === "active" || status === "trialing") ? "business" : "free";
 
-        // Update organization if metadata exists
-        if (orgId) {
+          // Update user plans table
           await db
-            .update(organizations)
-            .set({ plan })
-            .where(eq(organizations.id, orgId));
-
-          await db
-            .update(orgQuotas)
+            .update(userPlans)
             .set({
               plan,
-              monthlyMemories: plan === "business" ? 10000 : 100,
-              monthlyRecalls: plan === "business" ? 50000 : 1000,
-              monthlyCommits: plan === "business" ? 10000 : 500,
+              billingCustomerId,
+              billingSubscriptionId,
+              updatedAt: new Date(),
             })
-            .where(eq(orgQuotas.orgId, orgId));
-        }
+            .where(eq(userPlans.userId, userId));
 
-        console.log(`[stripe-webhook] Subscription updated for user ${userId} (org: ${orgId ?? "none"}), status is now: ${status}`);
+          // Update organization if metadata exists
+          if (orgId) {
+            await db
+              .update(organizations)
+              .set({ plan })
+              .where(eq(organizations.id, orgId));
+
+            await db
+              .update(orgQuotas)
+              .set({
+                plan,
+                monthlyMemories: plan === "business" ? 10000 : 100,
+                monthlyRecalls: plan === "business" ? 50000 : 1000,
+                monthlyCommits: plan === "business" ? 10000 : 500,
+              })
+              .where(eq(orgQuotas.orgId, orgId));
+          }
+
+          console.log(`[stripe-webhook] Subscription updated for user ${userId} (org: ${orgId ?? "none"}), status is now: ${status}`);
+        } else {
+          console.log(`[stripe-webhook] Ignored subscription update for user ${userId} (active subscription does not match)`);
+        }
         break;
       }
 
@@ -330,8 +345,22 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
         const subscription = event.data.object as Stripe.Subscription;
         const userId = subscription.metadata?.userId;
         const orgId = subscription.metadata?.orgId;
+        const billingSubscriptionId = subscription.id;
 
-        if (userId) {
+        if (!userId) {
+          console.error("[stripe-webhook] missing userId in subscription metadata");
+          break;
+        }
+
+        // Verify that this subscription is indeed the active one for the user
+        const currentPlanRow = await db
+          .select({ billingSubscriptionId: userPlans.billingSubscriptionId })
+          .from(userPlans)
+          .where(eq(userPlans.userId, userId))
+          .limit(1)
+          .all();
+
+        if (currentPlanRow.length > 0 && currentPlanRow[0].billingSubscriptionId === billingSubscriptionId) {
           await db
             .update(userPlans)
             .set({
@@ -341,26 +370,27 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
               updatedAt: new Date(),
             })
             .where(eq(userPlans.userId, userId));
+
+          if (orgId) {
+            await db
+              .update(organizations)
+              .set({ plan: "free" })
+              .where(eq(organizations.id, orgId));
+
+            await db
+              .update(orgQuotas)
+              .set({
+                plan: "free",
+                monthlyMemories: 100,
+                monthlyRecalls: 1000,
+                monthlyCommits: 500,
+              })
+              .where(eq(orgQuotas.orgId, orgId));
+          }
+          console.log(`[stripe-webhook] Subscription deleted for user ${userId} (org: ${orgId ?? "none"})`);
+        } else {
+          console.log(`[stripe-webhook] Ignored subscription deletion for user ${userId} (active subscription does not match)`);
         }
-
-        if (orgId) {
-          await db
-            .update(organizations)
-            .set({ plan: "free" })
-            .where(eq(organizations.id, orgId));
-
-          await db
-            .update(orgQuotas)
-            .set({
-              plan: "free",
-              monthlyMemories: 100,
-              monthlyRecalls: 1000,
-              monthlyCommits: 500,
-            })
-            .where(eq(orgQuotas.orgId, orgId));
-        }
-
-        console.log(`[stripe-webhook] Subscription deleted for user ${userId} (org: ${orgId ?? "none"})`);
         break;
       }
     }

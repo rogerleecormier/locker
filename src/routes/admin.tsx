@@ -455,6 +455,7 @@ export const updateUserPlanAdmin = createServerFn({ method: "POST" })
         .update(userPlans)
         .set({
           plan: data.plan,
+          billingSubscriptionId: null, // Clear Stripe subscription ref on manual override
           updatedAt: new Date(),
         })
         .where(eq(userPlans.userId, data.userId));
@@ -462,6 +463,7 @@ export const updateUserPlanAdmin = createServerFn({ method: "POST" })
       await db.insert(userPlans).values({
         userId: data.userId,
         plan: data.plan,
+        billingSubscriptionId: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
