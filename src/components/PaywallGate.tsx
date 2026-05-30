@@ -323,6 +323,7 @@ export function PlanCard({
     { key: "customProjectKeys", included: plan.features.customProjectKeys },
     { key: "crossWorkspaceSearch", included: plan.features.crossWorkspaceSearch },
     { key: "bulkExport", included: plan.features.bulkExport },
+    { key: "priorityAI", included: plan.features.priorityAI },
   ];
 
   const isBusiness = plan.id === "business";
