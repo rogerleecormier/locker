@@ -140,7 +140,7 @@ export const Route = createFileRoute("/billing")({
   component: BillingPage,
 });
 
-function UsageBar({ label, current, max }: { label: string; current: number; max: number }) {
+export function UsageBar({ label, current, max }: { label: string; current: number; max: number }) {
   const pct = max === Infinity ? 0 : Math.min(100, (current / max) * 100);
   const isNearLimit = pct >= 80;
   const isAtLimit = pct >= 100;
@@ -209,7 +209,7 @@ function TokenUsageChart({ tokenName, dailyBreakdown }: {
   );
 }
 
-function BillingPage() {
+export function PersonalBillingSection() {
   const { data: billing, isLoading } = useQuery({
     queryKey: ["billing"],
     queryFn: () => getBillingInfo(),
@@ -270,17 +270,14 @@ function BillingPage() {
   const limits = planObj.limits;
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 20px" }}>
-      <header style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 24 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" />
-            </svg>
-            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>Plan & Billing</h1>
+            <h2 style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Plan & Billing</h2>
             {billing && <PlanBadge plan={currentPlan} />}
           </div>
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
             Manage your plan, track usage, and view available features.
           </p>
         </div>
@@ -288,19 +285,7 @@ function BillingPage() {
           <button
             onClick={() => handlePortal()}
             disabled={portalLoading}
-            style={{
-              padding: "8px 16px",
-              background: "transparent",
-              border: "1px solid var(--border)",
-              color: "var(--text)",
-              fontWeight: 600,
-              fontSize: 13,
-              borderRadius: 8,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
+            style={{ padding: "8px 16px", background: "transparent", border: "1px solid var(--border)", color: "var(--text)", fontWeight: 600, fontSize: 13, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -308,7 +293,7 @@ function BillingPage() {
             {portalLoading ? "Opening Stripe..." : "Manage Subscription"}
           </button>
         )}
-      </header>
+      </div>
 
       {successMsg && (
         <div style={{ padding: "12px 16px", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500 }}>
@@ -482,6 +467,14 @@ function BillingPage() {
           </div>
         </>
       )}
+    </>
+  );
+}
+
+function BillingPage() {
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 20px" }}>
+      <PersonalBillingSection />
     </div>
   );
 }

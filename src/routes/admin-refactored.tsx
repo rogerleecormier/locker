@@ -32,7 +32,7 @@ import {
   rebuildVectorizeIndex,
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
-import { getBillingInfo } from "~/routes/billing";
+import { getBillingInfo, PersonalBillingSection } from "~/routes/billing";
 import { ProfileSection, ApiTokensSection, McpEndpointSection } from "~/routes/settings";
 
 const modalOverlay: React.CSSProperties = {
@@ -117,7 +117,7 @@ function AdminPage() {
   const billingQuery = useQuery({
     queryKey: ["admin-billing"],
     queryFn: () => getBillingInfo(),
-    enabled: activeSection === "org-billing" || activeSection === "personal-billing",
+    enabled: activeSection === "org-billing",
   });
 
   // ── mutations ──────────────────────────────────────────────────────────────
@@ -246,52 +246,7 @@ function AdminPage() {
       {activeSection === "personal-mcp" && <McpEndpointSection />}
 
       {/* ── PERSONAL BILLING ────────────────────────────────────────────── */}
-      {activeSection === "personal-billing" && (
-        <>
-          <AdminCard>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <h2 style={{ margin: "0 0 4px 0", fontSize: "16px", fontWeight: "bold" }}>My Plan & Billing</h2>
-                <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)" }}>
-                  Your personal subscription, usage, and payment management
-                </p>
-              </div>
-              <Link
-                to="/billing"
-                style={{ padding: "8px 16px", background: "var(--accent)", color: "white", borderRadius: "var(--radius)", textDecoration: "none", fontWeight: "bold", fontSize: "13px" }}
-              >
-                Manage Billing →
-              </Link>
-            </div>
-          </AdminCard>
-
-          {billingQuery.isPending && <p style={{ marginTop: "16px" }}>Loading...</p>}
-          {billingQuery.isError && <p style={{ color: "var(--error)", marginTop: "16px" }}>Failed to load billing data.</p>}
-          {billingQuery.data && (
-            <>
-              <AdminCard>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                  <span style={{ fontSize: "13px", fontWeight: 600 }}>Current Plan</span>
-                  <span style={{
-                    fontSize: "11px", fontWeight: "bold", textTransform: "uppercase",
-                    background: billingQuery.data.planId === "enterprise" ? "rgba(16,185,129,0.15)" : billingQuery.data.planId === "business" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
-                    color: billingQuery.data.planId === "enterprise" ? "#10b981" : billingQuery.data.planId === "business" ? "var(--accent)" : "var(--text-muted)",
-                    padding: "3px 10px", borderRadius: "20px",
-                  }}>
-                    {billingQuery.data.planId}
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "12px" }}>
-                  <StatBox label="Memories" value={billingQuery.data.usage.memories} />
-                  <StatBox label="Recalls (mo)" value={billingQuery.data.usage.monthlyRecalls} />
-                  <StatBox label="Commits (mo)" value={billingQuery.data.usage.monthlyCommits} />
-                  <StatBox label="Tokens (mo)" value={billingQuery.data.usage.monthlyTokens} />
-                </div>
-              </AdminCard>
-            </>
-          )}
-        </>
-      )}
+      {activeSection === "personal-billing" && <PersonalBillingSection />}
 
       {/* ── SYSTEM OVERVIEW ─────────────────────────────────────────────── */}
       {activeSection === "system" && (
