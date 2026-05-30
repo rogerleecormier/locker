@@ -447,8 +447,6 @@ function OrganizationPage() {
   const currentOrgId = selectedOrgId || orgs[0]?.id;
   const currentOrg = orgs.find((o) => o.id === currentOrgId);
 
-  if (isLoading) return <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>;
-
   const orgPageHeader = (
     <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
       <div style={{ maxWidth: 960, margin: "0 auto" }}>
@@ -468,6 +466,8 @@ function OrganizationPage() {
       </div>
     </div>
   );
+
+  if (isLoading) return <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>;
 
   if (planId === "free") {
     return (
@@ -534,6 +534,7 @@ function OrganizationPage() {
       )}
 
       {currentOrg && <OrgVaultView org={currentOrg} onRefetch={refetch} />}
+      </div>
     </div>
   );
 }
@@ -748,7 +749,6 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
           </div>
         </div>
       )}
-      </div>
     </div>
   );
 }
