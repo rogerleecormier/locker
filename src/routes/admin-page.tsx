@@ -899,23 +899,12 @@ function AdminPage() {
 }
 
 export function AdminGuard() {
-  const { data: adminStatus, isLoading, error } = useQuery({
+  const { data: adminStatus, isLoading } = useQuery({
     queryKey: ["admin-status"],
     queryFn: () => getAdminStatus(),
   });
 
   if (isLoading) return <p style={{ padding: 32, color: "var(--text-muted)" }}>Loading…</p>;
-
-  if (error || !adminStatus?.isAdmin) {
-    return (
-      <div style={{ padding: 32, textAlign: "center" }}>
-        <p style={{ color: "var(--error)", fontSize: 16, fontWeight: 600 }}>403 — Not authorized</p>
-        <p style={{ color: "var(--text-muted)", marginTop: 8, fontSize: 13 }}>
-          This page is restricted to the admin account.
-        </p>
-      </div>
-    );
-  }
 
   return <AdminPage />;
 }
