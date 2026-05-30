@@ -321,6 +321,12 @@ export const notifications = sqliteTable("notifications", {
   createdAt: integer("createdAt").notNull(),
 });
 
+export const rateLimitCounters = sqliteTable("rate_limit_counters", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull().default(1),
+  minuteStart: integer("minuteStart").notNull(),
+});
+
 export type UserPlan = typeof userPlans.$inferSelect;
 export type PlanEvent = typeof planEvents.$inferSelect;
 export type Invitation = typeof invitations.$inferSelect;

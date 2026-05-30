@@ -50,6 +50,13 @@
       "when": 1780141489000,
       "tag": "0006_wild_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1780169983015,
+      "tag": "0008_neat_prism",
+      "breakpoints": true
     }
   ]
 }

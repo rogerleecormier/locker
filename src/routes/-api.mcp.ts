@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
@@ -406,6 +406,38 @@ async function validateBearerToken(
   };
 }
 
+const MCP_RATE_LIMIT_PER_MINUTE = 60;
+
+async function checkFallbackRateLimit(db: any, key: string): Promise<boolean> {
+  const now = Date.now();
+  const minuteStart = Math.floor(now / 60000) * 60000;
+
+  const existing = await db
+    .select()
+    .from(rateLimitCounters)
+    .where(eq(rateLimitCounters.key, key))
+    .get();
+
+  if (existing && existing.minuteStart === minuteStart) {
+    if (existing.count >= MCP_RATE_LIMIT_PER_MINUTE) return false;
+    await db
+      .update(rateLimitCounters)
+      .set({ count: existing.count + 1 })
+      .where(eq(rateLimitCounters.key, key));
+    return true;
+  }
+
+  await db
+    .insert(rateLimitCounters)
+    .values({ key, count: 1, minuteStart })
+    .onConflictDoUpdate({
+      target: rateLimitCounters.key,
+      set: { count: 1, minuteStart },
+    });
+
+  return true;
+}
+
 export async function handleMcpRequest(
   request: Request,
   env: CloudflareEnv
@@ -455,17 +487,23 @@ export async function handleMcpRequest(
     );
   }
 
-  // Rate Limiting Check (Cloudflare Worker Level)
+  // Rate Limiting Check (with fallback to D1-based per-minute counter)
+  const limitKey = claims.tokenId || claims.userId;
+  let rateLimitSuccess = true;
+
   if (env.RATE_LIMITER) {
-    const limitKey = claims.tokenId || claims.userId;
     try {
       const { success } = await env.RATE_LIMITER.limit({ key: limitKey });
-      if (!success) {
-        return new Response("Too Many Requests", { status: 429, headers });
-      }
+      rateLimitSuccess = success;
     } catch (err) {
       console.error("[rate-limit] Limiter error:", err);
     }
+  } else {
+    rateLimitSuccess = await checkFallbackRateLimit(drizzle(env.DB), limitKey);
+  }
+
+  if (!rateLimitSuccess) {
+    return new Response("Too Many Requests", { status: 429, headers });
   }
 
   if (request.method === "GET") {
