@@ -18,14 +18,14 @@ export async function createAuth(env: CloudflareEnv) {
     });
 
     if (!existing) {
+      const now = new Date();
       await db.insert(schema.oauthClients).values({
         id: crypto.randomUUID(),
         clientId: env.CLAUDE_CLIENT_ID,
         clientSecret: env.CLAUDE_CLIENT_SECRET,
         name: "Claude",
         redirectUris: JSON.stringify([
-          "http://localhost:5173/oauth/callback",
-          "http://localhost:3000/oauth/callback",
+          `${env.BETTER_AUTH_URL}/oauth/callback`,
         ]),
         scopes: JSON.stringify(["openid", "profile", "email", "offline_access"]),
         public: false,
@@ -34,8 +34,8 @@ export async function createAuth(env: CloudflareEnv) {
         grantTypes: JSON.stringify(["authorization_code", "refresh_token"]),
         responseTypes: JSON.stringify(["code"]),
         icon: `${env.BETTER_AUTH_URL}/logo.png`,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
       });
     }
   }
