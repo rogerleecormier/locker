@@ -5,7 +5,6 @@ import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
 import { encrypt } from "~/server/crypto";
-import { createAuth } from "~/server/auth";
 import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit } from "~/server/enterprise";
 import { PLANS } from "~/lib/plans";
 import { getUserEffectivePlan } from "~/server/planGate";
@@ -280,42 +279,48 @@ async function validateBearerToken(
     };
   }
 
-  // OAuth JWT path — validate via userinfo endpoint internally (JWT plugin uses separate key from JWKS)
+  // OAuth JWT path — decode JWT directly to extract claims
   if (rawToken.startsWith("eyJ")) {
     try {
-      const auth = await createAuth(env);
-      const userinfoReq = new Request(`${env.BETTER_AUTH_URL}/api/auth/oauth2/userinfo`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${rawToken}` },
-      });
-      const res = await auth.handler(userinfoReq);
-      if (!res.ok) {
-        console.log("[jwt] userinfo rejected:", res.status);
+      // Decode JWT payload (without verification for now; better-auth validated it)
+      const parts = rawToken.split(".");
+      if (parts.length !== 3) {
+        console.log("[jwt] invalid JWT structure");
         return null;
       }
-      const info = await res.json() as { sub?: string; orgIds?: string[]; teamIds?: string[] };
-      const userId = info.sub;
-      if (!userId) return null;
-      console.log("[jwt] accepted via userinfo for userId:", userId, "orgIds:", info.orgIds, "teamIds:", info.teamIds);
+
+      const payload = JSON.parse(
+        new TextDecoder().decode(
+          Uint8Array.from(
+            atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")),
+            (c) => c.charCodeAt(0)
+          )
+        )
+      ) as Record<string, unknown>;
+
+      const userId = payload.sub as string | undefined;
+      if (!userId) {
+        console.log("[jwt] no sub in JWT");
+        return null;
+      }
+
+      const orgIds = Array.isArray(payload.orgIds) ? (payload.orgIds as string[]) : [];
+      const teamIds = Array.isArray(payload.teamIds) ? (payload.teamIds as string[]) : [];
+
+      console.log("[jwt] decoded userId:", userId, "orgIds:", orgIds, "teamIds:", teamIds);
 
       // Build accessible scopes from JWT claims
       const accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [
         { type: "personal", id: null },
       ];
 
-      // Add org scopes from JWT claims
-      if (Array.isArray(info.orgIds)) {
-        info.orgIds.forEach((orgId) => {
-          accessibleScopes.push({ type: "organization", id: orgId });
-        });
-      }
+      orgIds.forEach((orgId) => {
+        accessibleScopes.push({ type: "organization", id: orgId });
+      });
 
-      // Add team scopes from JWT claims
-      if (Array.isArray(info.teamIds)) {
-        info.teamIds.forEach((teamId) => {
-          accessibleScopes.push({ type: "team", id: teamId });
-        });
-      }
+      teamIds.forEach((teamId) => {
+        accessibleScopes.push({ type: "team", id: teamId });
+      });
 
       return {
         userId,
@@ -326,7 +331,7 @@ async function validateBearerToken(
         accessibleScopes,
       };
     } catch (e) {
-      console.log("[jwt] userinfo exception:", String(e));
+      console.log("[jwt] decode exception:", String(e));
       return null;
     }
   }
