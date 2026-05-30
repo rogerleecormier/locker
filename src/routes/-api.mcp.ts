@@ -6,7 +6,7 @@ import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
 import { encrypt } from "~/server/crypto";
-import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit } from "~/server/enterprise";
+import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens } from "~/server/enterprise";
 import { PLANS } from "~/lib/plans";
 import { getUserEffectivePlan } from "~/server/planGate";
 
@@ -619,7 +619,9 @@ export async function handleMcpRequest(
       return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
     }
 
-    const embedding = await generateEmbedding(env.AI, query.trim());
+    const queryTrimmed = query.trim();
+    const embedding = await generateEmbedding(env.AI, queryTrimmed);
+    const tokensConsumed = estimateEmbeddingTokens(queryTrimmed);
     const vectorTopK = (category || tag || keyword)
       ? Math.min(20, topK * 3)
       : Math.min(20, topK);
@@ -662,7 +664,7 @@ export async function handleMcpRequest(
 
     if (!matches.length) {
       await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: 0 } });
-      await logTokenUsage(db, claims.tokenId, "recall", 0);
+      await logTokenUsage(db, claims.tokenId, "recall", tokensConsumed);
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify([]) }] });
     }
 
@@ -742,7 +744,7 @@ export async function handleMcpRequest(
 
     // Audit log & token usage
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: finalResults.length } });
-    await logTokenUsage(db, claims.tokenId, "recall", 0);
+    await logTokenUsage(db, claims.tokenId, "recall", tokensConsumed);
 
     return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(finalResults) }] });
   }
@@ -934,18 +936,20 @@ export async function handleMcpRequest(
 
     const memId = crypto.randomUUID();
     const timestamp = Date.now();
-    const embedding = await generateEmbedding(env.AI, fact.trim());
+    const factTrimmed = fact.trim();
+    const embedding = await generateEmbedding(env.AI, factTrimmed);
+    const tokensConsumed = estimateEmbeddingTokens(factTrimmed);
 
     // Derive vault key
     const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
     const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-    const encryptedFact = await encrypt(fact.trim(), vaultKey);
+    const encryptedFact = await encrypt(factTrimmed, vaultKey);
 
     // Archive contradicted memories asynchronously via Queue
     try {
       await env.ARCHIVE_QUEUE.send({
         userId: claims.userId,
-        newFact: fact.trim(),
+        newFact: factTrimmed,
         embedding,
         projectKey: projectKey || null,
       });
@@ -1005,11 +1009,11 @@ export async function handleMcpRequest(
 
     // Audit log & token usage
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "commit_memory", memoryId: memId, ipAddress, userAgent, metadata: { category, projectKey } });
-    await logTokenUsage(db, claims.tokenId, "commit", 0);
+    await logTokenUsage(db, claims.tokenId, "commit", tokensConsumed);
 
     return mcpResult(id, {
       content: [
-        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: fact.trim(), category, tags: finalTags, projectKey }) },
+        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: factTrimmed, category, tags: finalTags, projectKey }) },
       ],
     });
   }
@@ -1122,12 +1126,14 @@ export async function handleMcpRequest(
       ? (typeof args.tags === "string" ? args.tags.trim() : "")
       : existing.tags;
 
-    const embedding = await generateEmbedding(env.AI, fact.trim());
+    const factTrimmed = fact.trim();
+    const embedding = await generateEmbedding(env.AI, factTrimmed);
+    const tokensConsumed = estimateEmbeddingTokens(factTrimmed);
 
     // Derive vault key
     const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : claims.userId;
     const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-    const encryptedFact = await encrypt(fact.trim(), vaultKey);
+    const encryptedFact = await encrypt(factTrimmed, vaultKey);
 
     await db.update(memories)
       .set({
@@ -1164,11 +1170,11 @@ export async function handleMcpRequest(
 
     // Audit log & token usage
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_memory", memoryId: memId, ipAddress, userAgent, metadata: { category } });
-    await logTokenUsage(db, claims.tokenId, "commit", 0);
+    await logTokenUsage(db, claims.tokenId, "commit", tokensConsumed);
 
     return mcpResult(id, {
       content: [
-        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: fact.trim(), category, tags: rawTags }) },
+        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: factTrimmed, category, tags: rawTags }) },
       ],
     });
   }

@@ -21,7 +21,7 @@ import {
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { encrypt, decrypt, isEncrypted, hashToken, deriveUserKey } from "./crypto";
 import { requireSession, requireAdmin } from "./session";
-import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit } from "./enterprise";
+import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens } from "./enterprise";
 import { checkMemoryLimit, checkApiTokenLimit, getUserEffectivePlan } from "./planGate";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -550,6 +550,7 @@ export const addMemory = createServerFn({ method: "POST" })
     const encryptedFact = await encryptFact(data.fact, vaultKey);
 
     const embedding = await generateEmbedding(env.AI, data.fact);
+    const tokensConsumed = estimateEmbeddingTokens(data.fact);
 
     const tagsList = data.tags.split(",").map(t => t.trim()).filter(Boolean);
     if (!tagsList.includes("manual")) {
@@ -666,7 +667,7 @@ export const addMemory = createServerFn({ method: "POST" })
 
     // Audit Log & usage tracking
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "commit_memory", memoryId: id, metadata: { category: data.category, projectKey: data.projectKey } });
-    await logTokenUsage(db, "session", "commit", 0);
+    await logTokenUsage(db, "session", "commit", tokensConsumed);
 
     return { ...newRow, fact: data.fact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null } as Memory;
   });
@@ -766,6 +767,7 @@ export const batchImportMemories = createServerFn({ method: "POST" })
     const embeddings = await Promise.all(
       valid.map((item) => generateEmbedding(env.AI, item.fact))
     );
+    const totalTokensConsumed = valid.reduce((sum, item) => sum + estimateEmbeddingTokens(item.fact), 0);
 
     const DUPE_THRESHOLD = 0.98;
     const CANDIDATE_THRESHOLD = 0.80;
@@ -1049,7 +1051,7 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
 
     // Audit logging & usage tracking
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "import_memories", metadata: { count: newRows.length } });
-    await logTokenUsage(db, "session", "commit", 0, newRows.length);
+    await logTokenUsage(db, "session", "commit", totalTokensConsumed, newRows.length);
 
     return { imported: newRows.length, skipped: allRows.length - newRows.length };
   });
@@ -1236,6 +1238,7 @@ export const updateMemory = createServerFn({ method: "POST" })
     });
 
     const embedding = await generateEmbedding(env.AI, data.fact);
+    const tokensConsumed = estimateEmbeddingTokens(data.fact);
     await env.VECTOR_INDEX.upsert([{
       id: data.id,
       values: embedding,
@@ -1244,7 +1247,7 @@ export const updateMemory = createServerFn({ method: "POST" })
 
     // Audit logging & usage tracking
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: data.id, metadata: { category: data.category } });
-    await logTokenUsage(db, "session", "commit", 0);
+    await logTokenUsage(db, "session", "commit", tokensConsumed);
 
     const rows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
     return { ...rows[0], fact: data.fact };
@@ -1488,7 +1491,9 @@ export const recallContext = createServerFn({ method: "POST" })
       throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
     }
 
-    const embedding = await generateEmbedding(env.AI, data.query);
+    const queryTrimmed = data.query;
+    const embedding = await generateEmbedding(env.AI, queryTrimmed);
+    const tokensConsumed = estimateEmbeddingTokens(queryTrimmed);
     const topK = Math.min(20, data.topK ?? 5);
 
     const filter: Record<string, any> = {};
@@ -1509,7 +1514,7 @@ export const recallContext = createServerFn({ method: "POST" })
 
     if (!results.matches || results.matches.length === 0) {
       await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "recall_context", metadata: { query: data.query, projectKey: data.projectKey, matchCount: 0 } });
-      await logTokenUsage(db, "session", "recall", 0);
+      await logTokenUsage(db, "session", "recall", tokensConsumed);
       return [];
     }
 
@@ -1558,7 +1563,7 @@ export const recallContext = createServerFn({ method: "POST" })
 
     // Audit logging & usage tracking
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "recall_context", metadata: { query: data.query, projectKey: data.projectKey, matchCount: decrypted.length } });
-    await logTokenUsage(db, "session", "recall", 0);
+    await logTokenUsage(db, "session", "recall", tokensConsumed);
 
     return decrypted;
   });
@@ -1810,6 +1815,7 @@ export const saveProfile = createServerFn({ method: "POST" })
       const fact = `Name is ${data.name}`;
       const encFact = await encryptFact(fact, env.ENCRYPTION_KEY);
       const embedding = await generateEmbedding(env.AI, fact);
+      const tokensConsumed = estimateEmbeddingTokens(fact);
       if (nameRow) {
         await db.update(memories).set({ fact: encFact }).where(eq(memories.id, nameRow.id));
         await env.VECTOR_INDEX.upsert([{
@@ -2178,6 +2184,7 @@ export const revertMemoryVersion = createServerFn({ method: "POST" })
     const decryptedFact = await decryptFact(ver.fact, vaultKey, env.ENCRYPTION_KEY);
 
     const embedding = await generateEmbedding(env.AI, decryptedFact);
+    const tokensConsumed = estimateEmbeddingTokens(decryptedFact);
 
     // Update memory
     await db
@@ -2211,7 +2218,7 @@ export const revertMemoryVersion = createServerFn({ method: "POST" })
 
     // Audit Log & usage
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "revert_version", memoryId: mem.id, metadata: { versionId: data.versionId } });
-    await logTokenUsage(db, "session", "commit", 0);
+    await logTokenUsage(db, "session", "commit", tokensConsumed);
 
     return { success: true };
   });

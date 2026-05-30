@@ -14,6 +14,13 @@ import {
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { PLAN_ORDER, resolvePlan, planAtLeast } from "~/lib/plans";
 
+// Estimate tokens consumed for embedding generation. BGE-M3 charges per token in the input text.
+// Using a conservative estimate of ~4 characters per token.
+export function estimateEmbeddingTokens(text: string): number {
+  const tokenEstimate = Math.ceil(text.length / 4);
+  return Math.max(1, tokenEstimate);
+}
+
 // Helper to get organization membership for a user, resolving to their highest-tier organization if in multiple
 export async function getUserOrg(db: any, userId: string): Promise<string | null> {
   const rows = await db
