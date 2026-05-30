@@ -4,6 +4,8 @@ import { Link } from "@tanstack/react-router";
 export type AdminSection =
   // Personal
   | "personal-account"
+  | "personal-tokens"
+  | "personal-mcp"
   | "personal-billing"
   // Org
   | "orgs"
@@ -24,8 +26,10 @@ interface MenuItem {
 
 const MENU_ITEMS: MenuItem[] = [
   // Personal
-  { id: "personal-account", label: "My Account", icon: "👤", category: "personal" },
-  { id: "personal-billing", label: "My Plan & Billing", icon: "💳", category: "personal" },
+  { id: "personal-account",  label: "My Account",     icon: "👤", category: "personal" },
+  { id: "personal-tokens",   label: "API Tokens",      icon: "🔑", category: "personal" },
+  { id: "personal-mcp",      label: "MCP Endpoint",    icon: "🔌", category: "personal" },
+  { id: "personal-billing",  label: "My Plan & Billing", icon: "💳", category: "personal" },
   // Org
   { id: "orgs", label: "Organizations", icon: "🏢", category: "org" },
   { id: "org-billing", label: "Org Billing", icon: "💰", category: "org" },

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AdminLayout, type AdminSection } from "~/components/AdminLayout";
@@ -237,13 +237,13 @@ function AdminPage() {
     <AdminLayout activeSection={activeSection} onSectionChange={setActiveSection}>
 
       {/* ── PERSONAL ACCOUNT ────────────────────────────────────────────── */}
-      {activeSection === "personal-account" && (
-        <>
-          <ProfileSection />
-          <ApiTokensSection />
-          <McpEndpointSection />
-        </>
-      )}
+      {activeSection === "personal-account" && <ProfileSection />}
+
+      {/* ── API TOKENS ──────────────────────────────────────────────────── */}
+      {activeSection === "personal-tokens" && <ApiTokensSection />}
+
+      {/* ── MCP ENDPOINT ────────────────────────────────────────────────── */}
+      {activeSection === "personal-mcp" && <McpEndpointSection />}
 
       {/* ── PERSONAL BILLING ────────────────────────────────────────────── */}
       {activeSection === "personal-billing" && (
