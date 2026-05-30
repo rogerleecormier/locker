@@ -76,8 +76,8 @@ export async function createAuth(env: CloudflareEnv) {
         loginPage: "/login",
         consentPage: "/oauth/consent",
         scopes: ["openid", "profile", "email", "offline_access"],
-        allowDynamicClientRegistration: true,
-        allowUnauthenticatedClientRegistration: true,
+        allowDynamicClientRegistration: false,
+        allowUnauthenticatedClientRegistration: false,
         validAudiences: [env.BETTER_AUTH_URL, `${env.BETTER_AUTH_URL}/api/mcp`],
         silenceWarnings: {
           oauthAuthServerConfig: true,
