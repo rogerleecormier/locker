@@ -74,7 +74,7 @@ export const getUserOrgsAndTeams = createServerFn({ method: "GET" }).handler(
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { organizations, organizationMembers, teams, teamMembers, users, orgQuotas } });
 
-    const { planId } = await getUserEffectivePlan(db, user.id, env.ADMIN_USER_ID);
+    const { planId } = await getUserEffectivePlan(db, user.id);
 
     const orgMemberships = await db
       .select({
@@ -174,7 +174,7 @@ export const getUserPlan = createServerFn({ method: "GET" }).handler(
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { organizationMembers, orgQuotas, userPlans } });
-    return getUserEffectivePlan(db, user.id, env.ADMIN_USER_ID);
+    return getUserEffectivePlan(db, user.id);
   }
 );
 
@@ -189,7 +189,7 @@ export const createOrganizationSelfServe = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { organizations, organizationMembers, orgQuotas } });
 
-    await requireFeature(db, user.id, "organizations", env.ADMIN_USER_ID);
+    await requireFeature(db, user.id, "organizations");
 
     const orgId = `org_${crypto.randomUUID().replace(/-/g, "")}`;
     await db.insert(organizations).values({ id: orgId, name: data.name, plan: "free", createdAt: Date.now() });
@@ -209,12 +209,12 @@ export const addOrgMemberByEmail = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { organizationMembers, users, invitations, organizations } });
 
-    await requireFeature(db, user.id, "organizations", env.ADMIN_USER_ID);
+    await requireFeature(db, user.id, "organizations");
 
     const isOrgAdmin = await verifyOrgAdmin(db, user.id, data.orgId);
     if (!isOrgAdmin) throw new Error("Forbidden: Not an organization owner/admin");
 
-    await checkOrgMemberLimit(db, data.orgId, user.id, env.ADMIN_USER_ID);
+    await checkOrgMemberLimit(db, data.orgId, user.id);
 
     const emailAddress = data.email.toLowerCase().trim();
 
@@ -288,7 +288,7 @@ export const updateOrgMemberRole = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { organizationMembers } });
 
-    await requireFeature(db, user.id, "organizations", env.ADMIN_USER_ID);
+    await requireFeature(db, user.id, "organizations");
     const isOrgAdmin = await verifyOrgAdmin(db, user.id, data.orgId);
     if (!isOrgAdmin) throw new Error("Forbidden: Not an organization owner/admin");
 
@@ -320,7 +320,7 @@ export const removeOrgMember = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { organizationMembers, teamMembers, teams } });
 
-    await requireFeature(db, user.id, "organizations", env.ADMIN_USER_ID);
+    await requireFeature(db, user.id, "organizations");
     const isOrgAdmin = await verifyOrgAdmin(db, user.id, data.orgId);
     if (!isOrgAdmin) throw new Error("Forbidden: Not an organization owner/admin");
 
@@ -365,11 +365,11 @@ export const createTeam = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { teams, teamMembers } });
 
-    await requireFeature(db, user.id, "teams", env.ADMIN_USER_ID);
+    await requireFeature(db, user.id, "teams");
     const isOrgAdmin = await verifyOrgAdmin(db, user.id, data.orgId);
     if (!isOrgAdmin) throw new Error("Forbidden: Not an organization owner/admin");
 
-    await checkTeamLimit(db, data.orgId, user.id, env.ADMIN_USER_ID);
+    await checkTeamLimit(db, data.orgId, user.id);
 
     const teamId = `team_${crypto.randomUUID()}`;
     await db.insert(teams).values({ id: teamId, orgId: data.orgId, name: data.name, createdAt: Date.now() });
@@ -387,7 +387,7 @@ export const deleteTeam = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { teams } });
 
-    await requireFeature(db, user.id, "teams", env.ADMIN_USER_ID);
+    await requireFeature(db, user.id, "teams");
     const isTeamAdmin = await verifyTeamAdmin(db, user.id, data.teamId);
     if (!isTeamAdmin) throw new Error("Forbidden: Not authorized to manage this team");
 
@@ -405,11 +405,11 @@ export const addTeamMemberByEmail = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { teams, teamMembers, organizationMembers, users } });
 
-    await requireFeature(db, user.id, "teams", env.ADMIN_USER_ID);
+    await requireFeature(db, user.id, "teams");
     const isTeamAdmin = await verifyTeamAdmin(db, user.id, data.teamId);
     if (!isTeamAdmin) throw new Error("Forbidden: Not authorized to manage this team");
 
-    await checkTeamMemberLimit(db, data.teamId, user.id, env.ADMIN_USER_ID);
+    await checkTeamMemberLimit(db, data.teamId, user.id);
 
     const teamRow = await db.select({ orgId: teams.orgId }).from(teams).where(eq(teams.id, data.teamId)).limit(1).all();
     if (teamRow.length === 0) throw new Error("Team not found");
@@ -451,7 +451,7 @@ export const updateTeamMemberRole = createServerFn({ method: "POST" })
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { teamMembers } });
-    await requireFeature(db, user.id, "teams", env.ADMIN_USER_ID);
+    await requireFeature(db, user.id, "teams");
     const isTeamAdmin = await verifyTeamAdmin(db, user.id, data.teamId);
     if (!isTeamAdmin) throw new Error("Forbidden");
     await db.update(teamMembers).set({ role: data.role })
@@ -468,7 +468,7 @@ export const removeTeamMember = createServerFn({ method: "POST" })
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = drizzle(env.DB, { schema: { teamMembers } });
-    await requireFeature(db, user.id, "teams", env.ADMIN_USER_ID);
+    await requireFeature(db, user.id, "teams");
     const isTeamAdmin = await verifyTeamAdmin(db, user.id, data.teamId);
     if (!isTeamAdmin) throw new Error("Forbidden");
     await db.delete(teamMembers)

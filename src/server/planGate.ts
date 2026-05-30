@@ -1,4 +1,4 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, gt, or } from "drizzle-orm";
 import {
   organizationMembers,
   orgQuotas,
@@ -9,6 +9,7 @@ import {
   teamMembers,
   userPlans,
   oauthAccessTokensV2,
+  featureOverrides,
 } from "~/db/schema";
 import {
   PLANS,
@@ -46,11 +47,26 @@ export class PlanLimitError extends Error {
 
 export async function getUserEffectivePlan(
   db: any,
-  userId: string,
-  adminUserId?: string
+  userId: string
 ): Promise<{ planId: PlanId; orgId: string | null }> {
-  if (adminUserId && userId === adminUserId) {
-    return { planId: "enterprise", orgId: null };
+  const now = Date.now();
+  const overrideRows = await db
+    .select({ planId: featureOverrides.planId })
+    .from(featureOverrides)
+    .where(
+      and(
+        eq(featureOverrides.userId, userId),
+        or(
+          sql`${featureOverrides.expiresAt} IS NULL`,
+          gt(featureOverrides.expiresAt, now)
+        )
+      )
+    )
+    .limit(1)
+    .all();
+
+  if (overrideRows.length > 0) {
+    return { planId: overrideRows[0].planId as PlanId, orgId: null };
   }
 
   const userPlanRow = await db
@@ -89,10 +105,9 @@ export async function getUserEffectivePlan(
 export async function requireFeature(
   db: any,
   userId: string,
-  feature: keyof PlanFeatures,
-  adminUserId?: string
+  feature: keyof PlanFeatures
 ): Promise<{ planId: PlanId; orgId: string | null }> {
-  const { planId, orgId } = await getUserEffectivePlan(db, userId, adminUserId);
+  const { planId, orgId } = await getUserEffectivePlan(db, userId);
 
   if (!planHasFeature(planId, feature)) {
     const requiredPlan: PlanId =
@@ -107,10 +122,9 @@ export async function requireFeature(
 
 export async function checkMemoryLimit(
   db: any,
-  userId: string,
-  adminUserId?: string
+  userId: string
 ): Promise<void> {
-  const { planId } = await getUserEffectivePlan(db, userId, adminUserId);
+  const { planId } = await getUserEffectivePlan(db, userId);
   const limits = PLANS[planId].limits;
   if (limits.maxMemories === Infinity) return;
 
@@ -134,10 +148,9 @@ export async function checkMemoryLimit(
 
 export async function checkApiTokenLimit(
   db: any,
-  userId: string,
-  adminUserId?: string
+  userId: string
 ): Promise<void> {
-  const { planId } = await getUserEffectivePlan(db, userId, adminUserId);
+  const { planId } = await getUserEffectivePlan(db, userId);
   const limits = PLANS[planId].limits;
   if (limits.maxApiTokens === Infinity) return;
 
@@ -156,10 +169,8 @@ export async function checkApiTokenLimit(
 export async function checkOrgMemberLimit(
   db: any,
   orgId: string,
-  performingUserId?: string,
-  adminUserId?: string
+  performingUserId?: string
 ): Promise<void> {
-  if (adminUserId && performingUserId === adminUserId) return;
 
   const quotaRows = await db
     .select({ plan: orgQuotas.plan })
@@ -187,10 +198,8 @@ export async function checkOrgMemberLimit(
 export async function checkTeamLimit(
   db: any,
   orgId: string,
-  performingUserId?: string,
-  adminUserId?: string
+  performingUserId?: string
 ): Promise<void> {
-  if (adminUserId && performingUserId === adminUserId) return;
 
   const quotaRows = await db
     .select({ plan: orgQuotas.plan })
@@ -218,10 +227,8 @@ export async function checkTeamLimit(
 export async function checkTeamMemberLimit(
   db: any,
   teamId: string,
-  performingUserId?: string,
-  adminUserId?: string
+  performingUserId?: string
 ): Promise<void> {
-  if (adminUserId && performingUserId === adminUserId) return;
 
   const teamRows = await db
     .select({ orgId: teams.orgId })
@@ -331,4 +338,40 @@ export async function getUserUsageStats(
       return { tokenId: token.id, tokenName: token.name, totalRecalls, totalCommits, totalTokens, dailyBreakdown };
     })
     .filter((token: any) => token.totalRecalls > 0 || token.totalCommits > 0 || token.totalTokens > 0 || token.dailyBreakdown.length > 0);
+}
+
+export async function grantFeatureOverride(
+  db: any,
+  userId: string,
+  planId: PlanId,
+  grantedByUserId: string,
+  reason?: string,
+  expiresAt?: number
+): Promise<void> {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+
+  await db
+    .insert(featureOverrides)
+    .values({
+      id,
+      userId,
+      planId,
+      reason,
+      grantedBy: grantedByUserId,
+      grantedAt: now,
+      expiresAt,
+      createdAt: now,
+    })
+    .run();
+}
+
+export async function revokeFeatureOverride(
+  db: any,
+  userId: string
+): Promise<void> {
+  await db
+    .delete(featureOverrides)
+    .where(eq(featureOverrides.userId, userId))
+    .run();
 }

@@ -327,9 +327,21 @@ export const rateLimitCounters = sqliteTable("rate_limit_counters", {
   minuteStart: integer("minuteStart").notNull(),
 });
 
+export const featureOverrides = sqliteTable("feature_overrides", {
+  id: text("id").primaryKey(),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  planId: text("planId").notNull(), // 'free' | 'business' | 'enterprise'
+  reason: text("reason"), // e.g., 'admin', 'beta_access', 'custom_deal'
+  grantedBy: text("grantedBy").notNull().references(() => users.id, { onDelete: "restrict" }),
+  grantedAt: integer("grantedAt").notNull(),
+  expiresAt: integer("expiresAt"), // null = permanent
+  createdAt: integer("createdAt").notNull(),
+});
+
 export type UserPlan = typeof userPlans.$inferSelect;
 export type PlanEvent = typeof planEvents.$inferSelect;
 export type Invitation = typeof invitations.$inferSelect;
 export type MemoryRecommendation = typeof memoryRecommendations.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type FeatureOverride = typeof featureOverrides.$inferSelect;
 
