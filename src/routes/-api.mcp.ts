@@ -385,8 +385,10 @@ export async function handleMcpRequest(
       if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
       return false;
     });
+    const response = { ...MCP_MANIFEST, result: { ...MCP_MANIFEST.result, tools: allowedTools } };
+    console.log(`[mcp] GET response: ${JSON.stringify(response).slice(0, 200)}`);
     return new Response(
-      JSON.stringify({ ...MCP_MANIFEST, result: { ...MCP_MANIFEST.result, tools: allowedTools } }),
+      JSON.stringify(response),
       { headers: { "Content-Type": "application/json", ...headers } }
     );
   }
