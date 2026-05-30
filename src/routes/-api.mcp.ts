@@ -285,26 +285,33 @@ async function validateBearerToken(
     try {
       const jwtDb = drizzle(env.DB);
 
-      // Load all non-expired public keys and try each until one verifies
-      const keyRows = await jwtDb
-        .select({ id: jwks.id, publicKey: jwks.publicKey })
-        .from(jwks)
-        .all();
+      // Decode header to get kid and alg without trusting the payload yet
+      const headerJson = JSON.parse(
+        new TextDecoder().decode(
+          Uint8Array.from(atob(rawToken.split(".")[0].replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))
+        )
+      ) as Record<string, unknown>;
+      const kid = headerJson.kid as string | undefined;
+      const alg = (headerJson.alg as string | undefined) ?? "RS256";
+
+      // Load the matching key by kid, or all keys if no kid
+      const keyRows = kid
+        ? await jwtDb.select({ publicKey: jwks.publicKey }).from(jwks).where(eq(jwks.id, kid)).all()
+        : await jwtDb.select({ publicKey: jwks.publicKey }).from(jwks).all();
 
       let payload: Record<string, unknown> | null = null;
       for (const row of keyRows) {
         try {
           const jwk = JSON.parse(row.publicKey) as Record<string, unknown>;
-          const alg = (jwk.alg as string | undefined) ?? "RS256";
           const publicKey = await importJWK(jwk, alg);
           const result = await jwtVerify(rawToken, publicKey, {
             issuer: env.BETTER_AUTH_URL,
-            audience: env.BETTER_AUTH_URL,
+            audience: `${env.BETTER_AUTH_URL}/api/mcp`,
           });
           payload = result.payload as Record<string, unknown>;
           break;
-        } catch {
-          // try next key
+        } catch (e) {
+          console.log("[jwt] key attempt failed:", String(e));
         }
       }
 
