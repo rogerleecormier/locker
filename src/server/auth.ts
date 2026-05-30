@@ -25,7 +25,7 @@ export async function createAuth(env: CloudflareEnv) {
       tokenEndpointAuthMethod: "none",
       grantTypes: JSON.stringify(["authorization_code", "refresh_token"]),
       responseTypes: JSON.stringify(["code"]),
-      updatedAt: Date.now(),
+      updatedAt: new Date(),
     };
 
     const existing = await db.query.oauthClients.findFirst({
@@ -35,7 +35,7 @@ export async function createAuth(env: CloudflareEnv) {
     if (!existing) {
       await db.insert(schema.oauthClients).values({
         id: crypto.randomUUID(),
-        createdAt: Date.now(),
+        createdAt: new Date(),
         ...claudeClientValues,
       });
     } else {
