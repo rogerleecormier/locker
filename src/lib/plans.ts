@@ -4,6 +4,7 @@ export type PlanLimits = {
   maxMemories: number;
   maxMonthlyRecalls: number;
   maxMonthlyCommits: number;
+  maxMonthlyTokens: number;
   maxApiTokens: number;
   maxOrgMembers: number;
   maxTeams: number;
@@ -44,6 +45,7 @@ export const PLANS: Record<PlanId, Plan> = {
       maxMemories: 500,
       maxMonthlyRecalls: 2000,
       maxMonthlyCommits: 500,
+      maxMonthlyTokens: 100000,
       maxApiTokens: 3,
       maxOrgMembers: 0,
       maxTeams: 0,
@@ -71,6 +73,7 @@ export const PLANS: Record<PlanId, Plan> = {
       maxMemories: 10000,
       maxMonthlyRecalls: 50000,
       maxMonthlyCommits: 10000,
+      maxMonthlyTokens: 1000000,
       maxApiTokens: 50,
       maxOrgMembers: 50,
       maxTeams: 20,
@@ -98,6 +101,7 @@ export const PLANS: Record<PlanId, Plan> = {
       maxMemories: Infinity,
       maxMonthlyRecalls: Infinity,
       maxMonthlyCommits: Infinity,
+      maxMonthlyTokens: Infinity,
       maxApiTokens: Infinity,
       maxOrgMembers: Infinity,
       maxTeams: Infinity,

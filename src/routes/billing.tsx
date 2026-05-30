@@ -70,11 +70,13 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
 
     let monthlyRecalls = 0;
     let monthlyCommits = 0;
+    let monthlyTokens = 0;
     if (allTokenIds.length > 0) {
       const usageRows = await db
         .select({
           recalls: sql<number>`SUM(${tokenUsages.recallCount})`,
           commits: sql<number>`SUM(${tokenUsages.commitCount})`,
+          tokens: sql<number>`SUM(${tokenUsages.tokensConsumed})`,
         })
         .from(tokenUsages)
         .where(
@@ -86,6 +88,7 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
         .all();
       monthlyRecalls = Number(usageRows[0]?.recalls ?? 0);
       monthlyCommits = Number(usageRows[0]?.commits ?? 0);
+      monthlyTokens = Number(usageRows[0]?.tokens ?? 0);
     }
 
     const usageStats = planId !== "free" ? await getUserUsageStats(db, user.id) : [];
@@ -127,6 +130,7 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
         apiTokens: Number(tokensCount[0]?.count ?? 0),
         monthlyRecalls,
         monthlyCommits,
+        monthlyTokens,
       },
       usageStats,
     };
@@ -164,23 +168,27 @@ function UsageBar({ label, current, max }: { label: string; current: number; max
 
 function TokenUsageChart({ tokenName, dailyBreakdown }: {
   tokenName: string;
-  dailyBreakdown: Array<{ date: string; recalls: number; commits: number }>;
+  dailyBreakdown: Array<{ date: string; recalls: number; commits: number; tokens: number }>;
 }) {
   if (dailyBreakdown.length === 0) return null;
-  const maxVal = Math.max(...dailyBreakdown.map((d) => d.recalls + d.commits), 1);
   const last14 = dailyBreakdown.slice(-14);
+
+  const totalTokens = dailyBreakdown.reduce((sum, d) => sum + d.tokens, 0);
 
   return (
     <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "14px 16px" }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>{tokenName}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>{tokenName}</span>
+        <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>Tokens: {totalTokens.toLocaleString()}</span>
+      </div>
       <div style={{ display: "flex", alignItems: "flex-end", gap: "3px", height: "60px" }}>
         {last14.map((d) => {
           const total = d.recalls + d.commits;
-          const height = Math.max(2, (total / maxVal) * 56);
+          const height = Math.max(2, (total / Math.max(...last14.map((x) => x.recalls + x.commits), 1)) * 56);
           const recallH = (d.recalls / Math.max(total, 1)) * height;
           const commitH = (d.commits / Math.max(total, 1)) * height;
           return (
-            <div key={d.date} title={`${d.date}\nRecalls: ${d.recalls}\nCommits: ${d.commits}`}
+            <div key={d.date} title={`${d.date}\nRecalls: ${d.recalls}\nCommits: ${d.commits}\nTokens: ${d.tokens}`}
               style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: "1px" }}>
               <div style={{ height: `${recallH}px`, background: "var(--accent)", borderRadius: "2px 2px 0 0", minHeight: d.recalls > 0 ? "2px" : "0px" }} />
               <div style={{ height: `${commitH}px`, background: "#34d399", borderRadius: d.recalls > 0 ? 0 : "2px 2px 0 0", minHeight: d.commits > 0 ? "2px" : "0px" }} />
@@ -328,13 +336,14 @@ function BillingPage() {
           <section style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 22px", marginBottom: 24 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Current Usage</h2>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Resets monthly for recall/commit counts</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Resets monthly for recall/commit/token counts</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <UsageBar label="Personal Memories" current={billing?.usage.memories ?? 0} max={limits.maxMemories} />
               <UsageBar label="API Tokens" current={billing?.usage.apiTokens ?? 0} max={limits.maxApiTokens} />
               <UsageBar label="Monthly Recalls (MCP)" current={billing?.usage.monthlyRecalls ?? 0} max={limits.maxMonthlyRecalls} />
               <UsageBar label="Monthly Commits (MCP)" current={billing?.usage.monthlyCommits ?? 0} max={limits.maxMonthlyCommits} />
+              <UsageBar label="Monthly Embedding Tokens" current={billing?.usage.monthlyTokens ?? 0} max={limits.maxMonthlyTokens} />
             </div>
           </section>
 

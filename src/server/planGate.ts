@@ -259,10 +259,12 @@ export type UsageStats = {
   tokenName: string;
   totalRecalls: number;
   totalCommits: number;
+  totalTokens: number;
   dailyBreakdown: Array<{
     date: string;
     recalls: number;
     commits: number;
+    tokens: number;
   }>;
 };
 
@@ -322,10 +324,11 @@ export async function getUserUsageStats(
       const rows = byToken.get(token.id) ?? [];
       const totalRecalls = rows.reduce((acc: number, r: any) => acc + (r.recallCount ?? 0), 0);
       const totalCommits = rows.reduce((acc: number, r: any) => acc + (r.commitCount ?? 0), 0);
+      const totalTokens = rows.reduce((acc: number, r: any) => acc + (r.tokensConsumed ?? 0), 0);
       const dailyBreakdown = rows
-        .map((r: any) => ({ date: r.date, recalls: r.recallCount ?? 0, commits: r.commitCount ?? 0 }))
+        .map((r: any) => ({ date: r.date, recalls: r.recallCount ?? 0, commits: r.commitCount ?? 0, tokens: r.tokensConsumed ?? 0 }))
         .sort((a: any, b: any) => a.date.localeCompare(b.date));
-      return { tokenId: token.id, tokenName: token.name, totalRecalls, totalCommits, dailyBreakdown };
+      return { tokenId: token.id, tokenName: token.name, totalRecalls, totalCommits, totalTokens, dailyBreakdown };
     })
-    .filter((token: any) => token.totalRecalls > 0 || token.totalCommits > 0 || token.dailyBreakdown.length > 0);
+    .filter((token: any) => token.totalRecalls > 0 || token.totalCommits > 0 || token.totalTokens > 0 || token.dailyBreakdown.length > 0);
 }
