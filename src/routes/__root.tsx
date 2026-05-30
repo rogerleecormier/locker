@@ -154,7 +154,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
   });
 
   const { data: planData } = useQuery({
-    queryKey: ["user-plan"],
+    queryKey: ["user-plan-v2"],
     queryFn: () => getUserPlan(),
     staleTime: 60000,
   });

@@ -339,25 +339,20 @@ export function MyBillingSection() {
           </div>
           <div style={{ padding: "14px 16px", background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8, fontSize: 13, lineHeight: 1.6, color: "var(--text-muted)" }}>
             <div style={{ fontWeight: 600, color: "var(--success)", marginBottom: 6 }}>
-              ✓ Your limits are governed by your organization's plan
+              ✓ Your {effectivePlan} features come from your organization
             </div>
-            You are a member of an organization on the <strong style={{ color: "var(--text)" }}>{effectivePlan}</strong> plan.
-            Your org membership sets your effective limits for all usage — memories, recalls, commits, and tokens.
-            A personal subscription is only needed if you want those higher limits to persist after leaving the organization.
+            You currently have full <strong style={{ color: "var(--text)" }}>{effectivePlan}</strong> access through your org seat.
+            Your personal subscription is <strong style={{ color: "var(--text)" }}>{personalPlan}</strong> — if you lose your org seat
+            (leave, get removed, or the org downgrades), you would immediately fall back to your personal plan's limits and features.
           </div>
-          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            {billing?.hasBillingCustomer && (
-              <button onClick={handlePortal} disabled={portalLoading} style={btnOutline}>
+          {billing?.hasBillingCustomer && (
+            <div style={{ marginTop: 12 }}>
+              <button onClick={handlePortal} disabled={portalLoading} style={{ ...btnOutline, fontSize: 12 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                 {portalLoading ? "Opening…" : "Manage Personal Subscription"}
               </button>
-            )}
-            {personalPlan === "free" && (
-              <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
-                Personal subscription: <strong>Free</strong> — only needed if you want personal-scope {effectivePlan} limits outside this org.
-              </p>
-            )}
-          </div>
+            </div>
+          )}
         </section>
       ) : (
         <>
