@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
@@ -607,7 +607,11 @@ export async function handleMcpRequest(
     }
 
     const idOrder = new Map(ids.map((dbId, i) => [dbId, i]));
-    const ranked = filtered.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
+    const ranked = filtered.sort((a, b) => {
+      if (a.authorityType === "authoritative" && b.authorityType !== "authoritative") return -1;
+      if (a.authorityType !== "authoritative" && b.authorityType === "authoritative") return 1;
+      return (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999);
+    });
     const finalResults = ranked.slice(0, topK);
 
     // Audit log & token usage
@@ -924,6 +928,38 @@ export async function handleMcpRequest(
       return mcpError(id, -32003, `Forbidden: no access to vault scope '${existing.projectKey}'`);
     }
 
+    if (existing.isLocked) {
+      let actualOrgId = orgId;
+      if (existing.projectKey) {
+        if (existing.projectKey.startsWith("org:")) {
+          actualOrgId = existing.projectKey.slice(4);
+        } else if (existing.projectKey.startsWith("team:")) {
+          const teamId = existing.projectKey.slice(5);
+          const teamRows = await db
+            .select({ orgId: teams.orgId })
+            .from(teams)
+            .where(eq(teams.id, teamId))
+            .limit(1)
+            .all();
+          actualOrgId = teamRows[0]?.orgId ?? orgId;
+        }
+      }
+      if (actualOrgId) {
+        const memberRow = await db
+          .select({ role: organizationMembers.role })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.orgId, actualOrgId), eq(organizationMembers.userId, claims.userId)))
+          .limit(1)
+          .all();
+        const role = memberRow[0]?.role;
+        if (role !== "owner" && role !== "admin") {
+          return mcpError(id, -32003, `Forbidden: Locked organization memories can only be modified by organization owners/admins.`);
+        }
+      } else {
+        return mcpError(id, -32003, `Forbidden: Locked memories can only be modified by organization owners/admins.`);
+      }
+    }
+
     const isSharedVault = existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"));
     if (!isSharedVault && existing.userId !== claims.userId) {
       return mcpError(id, -32003, `Forbidden: You do not have permission to modify this memory.`);
@@ -1045,6 +1081,38 @@ export async function handleMcpRequest(
     const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
     if (!vaultAllowed) {
       return mcpError(id, -32003, `Forbidden: no access to vault scope '${existing.projectKey}'`);
+    }
+
+    if (existing.isLocked) {
+      let actualOrgId = orgId;
+      if (existing.projectKey) {
+        if (existing.projectKey.startsWith("org:")) {
+          actualOrgId = existing.projectKey.slice(4);
+        } else if (existing.projectKey.startsWith("team:")) {
+          const teamId = existing.projectKey.slice(5);
+          const teamRows = await db
+            .select({ orgId: teams.orgId })
+            .from(teams)
+            .where(eq(teams.id, teamId))
+            .limit(1)
+            .all();
+          actualOrgId = teamRows[0]?.orgId ?? orgId;
+        }
+      }
+      if (actualOrgId) {
+        const memberRow = await db
+          .select({ role: organizationMembers.role })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.orgId, actualOrgId), eq(organizationMembers.userId, claims.userId)))
+          .limit(1)
+          .all();
+        const role = memberRow[0]?.role;
+        if (role !== "owner" && role !== "admin") {
+          return mcpError(id, -32003, `Forbidden: Locked organization memories can only be deleted by organization owners/admins.`);
+        }
+      } else {
+        return mcpError(id, -32003, `Forbidden: Locked memories can only be deleted by organization owners/admins.`);
+      }
     }
 
     const isSharedVault = existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"));

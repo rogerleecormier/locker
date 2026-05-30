@@ -71,6 +71,8 @@ export const memories = sqliteTable("memories", {
   projectKey: text("projectKey"),
   scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
   scopeId: text("scopeId"),
+  isLocked: integer("isLocked", { mode: "boolean" }).notNull().default(false),
+  authorityType: text("authorityType", { enum: ["authoritative", "contributed"] }).notNull().default("contributed"),
 });
 
 // ── better-auth jwt plugin ─────────────────────────────────────────────────────
@@ -293,7 +295,35 @@ export const invitations = sqliteTable("invitations", {
   createdAt: integer("createdAt").notNull(),
 });
 
+export const memoryRecommendations = sqliteTable("memory_recommendations", {
+  id: text("id").primaryKey(),
+  orgId: text("orgId").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  fact: text("fact").notNull(),
+  category: text("category", { enum: ["rules", "projects", "references"] }).notNull(),
+  tags: text("tags").notNull().default(""),
+  projectKey: text("projectKey"),
+  status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
+  reviewedBy: text("reviewedBy").references(() => users.id),
+  reviewNotes: text("reviewNotes"),
+  createdAt: integer("createdAt").notNull(),
+  reviewedAt: integer("reviewedAt"),
+});
+
+export const notifications = sqliteTable("notifications", {
+  id: text("id").primaryKey(),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  type: text("type").notNull().default("info"),
+  status: text("status", { enum: ["unread", "read", "archived"] }).notNull().default("unread"),
+  linkUrl: text("linkUrl"),
+  createdAt: integer("createdAt").notNull(),
+});
+
 export type UserPlan = typeof userPlans.$inferSelect;
 export type PlanEvent = typeof planEvents.$inferSelect;
 export type Invitation = typeof invitations.$inferSelect;
+export type MemoryRecommendation = typeof memoryRecommendations.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
 

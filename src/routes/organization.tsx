@@ -20,6 +20,7 @@ import {
 import { requireSession } from "~/server/session";
 import { getAdminStatus } from "~/routes/admin";
 import { updateSubscriptionSeats } from "~/server/billing";
+import { submitMemoryRecommendation, listMemoryRecommendations, reviewMemoryRecommendation } from "~/server/memoryFunctions";
 import {
   requireFeature,
   getUserEffectivePlan,
@@ -813,56 +814,331 @@ function InviteForm({ label, email, setEmail, role, setRole, roles, onSubmit, lo
 }
 
 function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, newTeamName, setNewTeamName, onAddMember, onUpdateRole, onRemoveMember, onCreateTeam, onSelectTeam, onDeleteTeam, isAddingMember, isUpdatingRole, isRemovingMember, isCreatingTeam, isDeletingTeam }: any) {
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<"overview" | "reviews">("overview");
+
+  // Submit recommendation states
+  const [recFact, setRecFact] = useState("");
+  const [recCategory, setRecCategory] = useState<"rules" | "projects" | "references">("references");
+  const [recTags, setRecTags] = useState("");
+  const [recProjectKey, setRecProjectKey] = useState("");
+
+  // Review states
+  const [notesMap, setNotesMap] = useState<Record<string, string>>({});
+
+  const isAdmin = org.role === "owner" || org.role === "admin";
+
+  const { data: recs = [], refetch: refetchRecs, isLoading: recsLoading } = useQuery({
+    queryKey: ["org-recommendations", org.id],
+    queryFn: () => listMemoryRecommendations({ data: { orgId: org.id } }),
+    enabled: activeTab === "reviews",
+  });
+
+  const submitRecMut = useMutation({
+    mutationFn: (data: { orgId: string; fact: string; category: "rules" | "projects" | "references"; tags: string; projectKey?: string }) => submitMemoryRecommendation({ data }),
+    onSuccess: () => {
+      setRecFact("");
+      setRecTags("");
+      setRecProjectKey("");
+      refetchRecs();
+      alert("Success: Memory recommendation submitted for review!");
+    },
+    onError: (err: Error) => alert(err.message),
+  });
+
+  const reviewRecMut = useMutation({
+    mutationFn: (data: { id: string; action: "approve" | "reject"; reviewNotes?: string }) => reviewMemoryRecommendation({ data }),
+    onSuccess: () => {
+      refetchRecs();
+      queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] });
+    },
+    onError: (err: Error) => alert(err.message),
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div style={{ padding: "20px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
         <h2 style={{ fontSize: "20px", fontWeight: "bold", margin: "0 0 4px 0" }}>{org.name}</h2>
         <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>{org.members.length} members · {org.teams.length} teams · Role: <strong>{org.role}</strong></p>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-          <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Members</h3>
-          {org.role !== "member" ? (
-            <InviteForm label="Add Member by Email" email={inviteEmail} setEmail={setInviteEmail} role={inviteRole} setRole={setInviteRole} roles={["member", "admin"]} onSubmit={() => onAddMember(inviteEmail, inviteRole)} loading={isAddingMember} />
-          ) : (
-            <div style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-              Viewing only (Owner/Admin permissions required to invite members)
+
+      {/* Tabs */}
+      <div style={{ display: "flex", borderBottom: "1px solid var(--border)", gap: 16 }}>
+        <button
+          onClick={() => setActiveTab("overview")}
+          style={{
+            padding: "8px 16px",
+            background: "transparent",
+            color: activeTab === "overview" ? "var(--accent)" : "var(--text-muted)",
+            borderBottom: activeTab === "overview" ? "2px solid var(--accent)" : "2px solid transparent",
+            fontWeight: "bold",
+            borderRadius: 0,
+            cursor: "pointer",
+            fontSize: 13
+          }}
+        >
+          Overview (Members & Teams)
+        </button>
+        <button
+          onClick={() => setActiveTab("reviews")}
+          style={{
+            padding: "8px 16px",
+            background: "transparent",
+            color: activeTab === "reviews" ? "var(--accent)" : "var(--text-muted)",
+            borderBottom: activeTab === "reviews" ? "2px solid var(--accent)" : "2px solid transparent",
+            fontWeight: "bold",
+            borderRadius: 0,
+            cursor: "pointer",
+            fontSize: 13
+          }}
+        >
+          {isAdmin ? "Review Recommendations" : "My Recommendations"}
+        </button>
+      </div>
+
+      {activeTab === "overview" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Members</h3>
+            {org.role !== "member" ? (
+              <InviteForm label="Add Member by Email" email={inviteEmail} setEmail={setInviteEmail} role={inviteRole} setRole={setInviteRole} roles={["member", "admin"]} onSubmit={() => onAddMember(inviteEmail, inviteRole)} loading={isAddingMember} />
+            ) : (
+              <div style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+                Viewing only (Owner/Admin permissions required to invite members)
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "300px", overflowY: "auto" }}>
+              {org.members.map((m: any) => (
+                <MemberRow key={m.userId} member={m} roles={["member", "admin", "owner"]} onUpdateRole={(uid, role) => onUpdateRole(uid, role)} onRemove={(uid) => onRemoveMember(uid)} isUpdating={isUpdatingRole} isRemoving={isRemovingMember} currentUserRole={org.role} />
+              ))}
             </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "300px", overflowY: "auto" }}>
-            {org.members.map((m: any) => (
-              <MemberRow key={m.userId} member={m} roles={["member", "admin", "owner"]} onUpdateRole={(uid, role) => onUpdateRole(uid, role)} onRemove={(uid) => onRemoveMember(uid)} isUpdating={isUpdatingRole} isRemoving={isRemovingMember} currentUserRole={org.role} />
-            ))}
+          </div>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Teams</h3>
+            {org.role !== "member" ? (
+              <InviteForm label="Create Team" email={newTeamName} setEmail={setNewTeamName} role="" setRole={() => {}} roles={[]} onSubmit={() => onCreateTeam(newTeamName)} loading={isCreatingTeam} />
+            ) : (
+              <div style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+                Viewing only (Owner/Admin permissions required to create teams)
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "300px", overflowY: "auto" }}>
+              {org.teams.map((t: any) => (
+                <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{t.name}</span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {org.role !== "member" ? (
+                      <>
+                        <button onClick={() => onSelectTeam(t.id)} style={{ padding: "3px 8px", background: "transparent", border: "1px solid var(--border)", fontSize: 11, cursor: "pointer" }}>Edit</button>
+                        <button onClick={() => onDeleteTeam(t.id)} disabled={isDeletingTeam} style={{ padding: "3px 8px", background: "transparent", color: "var(--error)", border: "1px solid transparent", fontSize: 11, cursor: "pointer" }}>Delete</button>
+                      </>
+                    ) : (
+                      <button onClick={() => onSelectTeam(t.id)} style={{ padding: "3px 8px", background: "transparent", border: "1px solid var(--border)", fontSize: 11, cursor: "pointer" }}>View members</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-          <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Teams</h3>
-          {org.role !== "member" ? (
-            <InviteForm label="Create Team" email={newTeamName} setEmail={setNewTeamName} role="" setRole={() => {}} roles={[]} onSubmit={() => onCreateTeam(newTeamName)} loading={isCreatingTeam} />
-          ) : (
-            <div style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-              Viewing only (Owner/Admin permissions required to create teams)
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "300px", overflowY: "auto" }}>
-            {org.teams.map((t: any) => (
-              <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{t.name}</span>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {org.role !== "member" ? (
-                    <>
-                      <button onClick={() => onSelectTeam(t.id)} style={{ padding: "3px 8px", background: "transparent", border: "1px solid var(--border)", fontSize: 11, cursor: "pointer" }}>Edit</button>
-                      <button onClick={() => onDeleteTeam(t.id)} disabled={isDeletingTeam} style={{ padding: "3px 8px", background: "transparent", color: "var(--error)", border: "1px solid transparent", fontSize: 11, cursor: "pointer" }}>Delete</button>
-                    </>
-                  ) : (
-                    <button onClick={() => onSelectTeam(t.id)} style={{ padding: "3px 8px", background: "transparent", border: "1px solid var(--border)", fontSize: 11, cursor: "pointer" }}>View members</button>
-                  )}
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+          {/* Submit Recommendation */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Recommend Memory to Org Vault</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>FACT</label>
+                <textarea
+                  placeholder="Recommend a rule or fact (e.g. Always use camelCase for folder structure)"
+                  value={recFact}
+                  onChange={(e) => setRecFact(e.target.value)}
+                  style={{ width: "100%", height: "80px", padding: "8px 10px", resize: "none" }}
+                />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>CATEGORY</label>
+                  <select
+                    value={recCategory}
+                    onChange={(e: any) => setRecCategory(e.target.value)}
+                    style={{ width: "100%", padding: "6px 8px" }}
+                  >
+                    <option value="rules">Rules</option>
+                    <option value="projects">Projects</option>
+                    <option value="references">References</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>SCOPE (OPTIONAL)</label>
+                  <select
+                    value={recProjectKey}
+                    onChange={(e) => setRecProjectKey(e.target.value)}
+                    style={{ width: "100%", padding: "6px 8px" }}
+                  >
+                    <option value="">Whole Organization</option>
+                    {org.teams.map((t: any) => (
+                      <option key={t.id} value={`team:${t.id}`}>Team: {t.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
-            ))}
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>TAGS (COMMA SEPARATED)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. guidelines, styles, deploy"
+                  value={recTags}
+                  onChange={(e) => setRecTags(e.target.value)}
+                  style={{ width: "100%", padding: "6px 10px" }}
+                />
+              </div>
+              <button
+                onClick={() => submitRecMut.mutate({ orgId: org.id, fact: recFact, category: recCategory, tags: recTags, projectKey: recProjectKey || undefined })}
+                disabled={submitRecMut.isPending || !recFact.trim()}
+                style={{
+                  padding: "8px 16px",
+                  background: "var(--accent)",
+                  color: "#fff",
+                  fontWeight: "bold",
+                  marginTop: 8,
+                  borderRadius: "var(--radius)",
+                  border: "none",
+                  cursor: "pointer"
+                }}
+              >
+                {submitRecMut.isPending ? "Submitting..." : "Submit Recommendation"}
+              </button>
+            </div>
+          </div>
+
+          {/* History/Review Panel */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>
+              {isAdmin ? "Pending & Historical Recommendations" : "My Submission History"}
+            </h3>
+            {recsLoading ? (
+              <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>Loading...</div>
+            ) : recs.length === 0 ? (
+              <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0", fontSize: 12 }}>
+                No recommendations found.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", maxHeight: "350px", paddingRight: 4 }}>
+                {recs.map((r: any) => {
+                  const statusColors = {
+                    pending: { bg: "rgba(234,179,8,0.1)", text: "#eab308", border: "rgba(234,179,8,0.3)" },
+                    approved: { bg: "rgba(34,197,94,0.1)", text: "#22c55e", border: "rgba(34,197,94,0.3)" },
+                    rejected: { bg: "rgba(239,68,68,0.1)", text: "#ef4444", border: "rgba(239,68,68,0.3)" }
+                  };
+                  const colors = statusColors[r.status as keyof typeof statusColors] || statusColors.pending;
+
+                  return (
+                    <div
+                      key={r.id}
+                      style={{
+                        padding: 12,
+                        background: "var(--surface2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 6,
+                        textAlign: "left"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{
+                          fontSize: 10,
+                          fontWeight: "bold",
+                          textTransform: "uppercase",
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          background: colors.bg,
+                          color: colors.text,
+                          border: `1px solid ${colors.border}`
+                        }}>
+                          {r.status}
+                        </span>
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                          {new Date(r.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 12, margin: 0, color: "var(--text)", lineHeight: 1.4 }}>
+                        "{r.fact}"
+                      </p>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", fontSize: 9, color: "var(--text-muted)" }}>
+                        <span>Category: {r.category}</span>
+                        {r.tags && <span>· Tags: {r.tags}</span>}
+                      </div>
+
+                      {r.reviewNotes && (
+                        <div style={{
+                          fontSize: 11,
+                          color: "var(--text-muted)",
+                          background: "var(--surface)",
+                          padding: "6px 8px",
+                          borderRadius: 4,
+                          borderLeft: `2px solid ${colors.text}`
+                        }}>
+                          <strong>Notes:</strong> {r.reviewNotes}
+                        </div>
+                      )}
+
+                      {/* Admin controls */}
+                      {isAdmin && r.status === "pending" && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+                          <input
+                            type="text"
+                            placeholder="Add review notes (optional)..."
+                            value={notesMap[r.id] ?? ""}
+                            onChange={(e) => setNotesMap({ ...notesMap, [r.id]: e.target.value })}
+                            style={{ padding: "6px 10px", fontSize: 11, width: "100%", background: "var(--surface)" }}
+                          />
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                            <button
+                              onClick={() => reviewRecMut.mutate({ id: r.id, action: "reject", reviewNotes: notesMap[r.id] })}
+                              disabled={reviewRecMut.isPending}
+                              style={{
+                                padding: "4px 10px",
+                                background: "rgba(239,68,68,0.1)",
+                                color: "var(--error)",
+                                border: "1px solid var(--error)",
+                                fontSize: 11,
+                                fontWeight: "bold",
+                                borderRadius: "var(--radius)",
+                                cursor: "pointer"
+                              }}
+                            >
+                              Reject
+                            </button>
+                            <button
+                              onClick={() => reviewRecMut.mutate({ id: r.id, action: "approve", reviewNotes: notesMap[r.id] })}
+                              disabled={reviewRecMut.isPending}
+                              style={{
+                                padding: "4px 10px",
+                                background: "var(--success)",
+                                color: "white",
+                                border: "none",
+                                fontSize: 11,
+                                fontWeight: "bold",
+                                borderRadius: "var(--radius)",
+                                cursor: "pointer"
+                              }}
+                            >
+                              Approve
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

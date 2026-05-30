@@ -13,6 +13,8 @@ import {
   teams,
   teamMembers,
   userPlans,
+  memoryRecommendations,
+  notifications,
   type Memory,
   type NewMemory,
 } from "~/db/schema";
@@ -1040,6 +1042,38 @@ export const deleteMemory = createServerFn({ method: "POST" })
       throw new Error(`Forbidden: no access to vault scope '${existing.projectKey}'`);
     }
 
+    if (existing.isLocked) {
+      let actualOrgId = orgId;
+      if (existing.projectKey) {
+        if (existing.projectKey.startsWith("org:")) {
+          actualOrgId = existing.projectKey.slice(4);
+        } else if (existing.projectKey.startsWith("team:")) {
+          const teamId = existing.projectKey.slice(5);
+          const teamRows = await db
+            .select({ orgId: teams.orgId })
+            .from(teams)
+            .where(eq(teams.id, teamId))
+            .limit(1)
+            .all();
+          actualOrgId = teamRows[0]?.orgId ?? orgId;
+        }
+      }
+      if (actualOrgId) {
+        const memberRow = await db
+          .select({ role: organizationMembers.role })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.orgId, actualOrgId), eq(organizationMembers.userId, user.id)))
+          .limit(1)
+          .all();
+        const role = memberRow[0]?.role;
+        if (role !== "owner" && role !== "admin") {
+          throw new Error("Forbidden: Locked organization memories can only be deleted by organization owners/admins.");
+        }
+      } else {
+        throw new Error("Forbidden: Locked memories can only be deleted by organization owners/admins.");
+      }
+    }
+
     // Additional check: if personal memory, must be the owner
     if ((!existing.projectKey || existing.projectKey === "personal") && existing.userId !== user.id) {
       throw new Error("Unauthorized");
@@ -1094,6 +1128,38 @@ export const updateMemory = createServerFn({ method: "POST" })
     const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, existing.projectKey);
     if (!vaultAllowed) {
       throw new Error(`Forbidden: no access to vault scope '${existing.projectKey}'`);
+    }
+
+    if (existing.isLocked) {
+      let actualOrgId = orgId;
+      if (existing.projectKey) {
+        if (existing.projectKey.startsWith("org:")) {
+          actualOrgId = existing.projectKey.slice(4);
+        } else if (existing.projectKey.startsWith("team:")) {
+          const teamId = existing.projectKey.slice(5);
+          const teamRows = await db
+            .select({ orgId: teams.orgId })
+            .from(teams)
+            .where(eq(teams.id, teamId))
+            .limit(1)
+            .all();
+          actualOrgId = teamRows[0]?.orgId ?? orgId;
+        }
+      }
+      if (actualOrgId) {
+        const memberRow = await db
+          .select({ role: organizationMembers.role })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.orgId, actualOrgId), eq(organizationMembers.userId, user.id)))
+          .limit(1)
+          .all();
+        const role = memberRow[0]?.role;
+        if (role !== "owner" && role !== "admin") {
+          throw new Error("Forbidden: Locked organization memories can only be modified by organization owners/admins.");
+        }
+      } else {
+        throw new Error("Forbidden: Locked memories can only be modified by organization owners/admins.");
+      }
     }
 
     // Additional check: if personal memory, must be the owner
@@ -1370,7 +1436,11 @@ export const recallContext = createServerFn({ method: "POST" })
     const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
 
     const idOrder = new Map(ids.map((id: string, i: number) => [id, i]));
-    const sorted = rows.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
+    const sorted = rows.sort((a, b) => {
+      if (a.authorityType === "authoritative" && b.authorityType !== "authoritative") return -1;
+      if (a.authorityType !== "authoritative" && b.authorityType === "authoritative") return 1;
+      return (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999);
+    });
     const decrypted = await Promise.all(
       sorted.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY) }))
     );
@@ -2031,6 +2101,302 @@ export const revertMemoryVersion = createServerFn({ method: "POST" })
     // Audit Log & usage
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "revert_version", memoryId: mem.id, metadata: { versionId: data.versionId } });
     await logTokenUsage(db, "session", "commit", 0);
+
+    return { success: true };
+  });
+
+export const submitMemoryRecommendation = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { orgId: string; fact: string; category: "rules" | "projects" | "references"; tags: string; projectKey?: string } => {
+    const d = data as { orgId: string; fact: string; category: "rules" | "projects" | "references"; tags: string; projectKey?: string };
+    if (!d.orgId || typeof d.orgId !== "string") throw new Error("orgId is required");
+    if (!d.fact || typeof d.fact !== "string") throw new Error("fact is required");
+    if (!["rules", "projects", "references"].includes(d.category)) throw new Error("invalid category");
+    return {
+      orgId: d.orgId.trim(),
+      fact: d.fact.trim(),
+      category: d.category,
+      tags: typeof d.tags === "string" ? d.tags.trim() : "",
+      projectKey: d.projectKey,
+    };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean; id: string }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    // 1. Verify user belongs to the organization
+    const memberRow = await db
+      .select()
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.orgId, data.orgId), eq(organizationMembers.userId, user.id)))
+      .limit(1)
+      .all();
+    if (memberRow.length === 0) {
+      throw new Error("Forbidden: User is not a member of this organization.");
+    }
+
+    const recId = crypto.randomUUID();
+    const timestamp = Date.now();
+
+    // 2. Insert the recommendation
+    await db.insert(memoryRecommendations).values({
+      id: recId,
+      orgId: data.orgId,
+      userId: user.id,
+      fact: data.fact,
+      category: data.category,
+      tags: data.tags,
+      projectKey: data.projectKey || `org:${data.orgId}`,
+      status: "pending",
+      createdAt: timestamp,
+    });
+
+    // 3. Create notifications for organization admins/owners
+    const admins = await db
+      .select({ userId: organizationMembers.userId })
+      .from(organizationMembers)
+      .where(and(
+        eq(organizationMembers.orgId, data.orgId),
+        sql`${organizationMembers.role} IN ('admin', 'owner')`
+      ))
+      .all();
+
+    const submitterName = user.name || user.email || "A team member";
+
+    for (const admin of admins) {
+      await db.insert(notifications).values({
+        id: crypto.randomUUID(),
+        userId: admin.userId,
+        title: "New Memory Recommendation",
+        message: `${submitterName} recommended a new memory for the organization vault.`,
+        type: "recommendation_submitted",
+        status: "unread",
+        linkUrl: `/organization?tab=reviews`,
+        createdAt: timestamp,
+      });
+    }
+
+    return { success: true, id: recId };
+  });
+
+export const listMemoryRecommendations = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { orgId: string } => {
+    const d = data as { orgId: string };
+    if (!d.orgId || typeof d.orgId !== "string") throw new Error("orgId is required");
+    return { orgId: d.orgId.trim() };
+  })
+  .handler(async ({ data, context }): Promise<any[]> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    // Verify membership
+    const memberRow = await db
+      .select()
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.orgId, data.orgId), eq(organizationMembers.userId, user.id)))
+      .limit(1)
+      .all();
+    if (memberRow.length === 0) {
+      throw new Error("Forbidden");
+    }
+
+    const role = memberRow[0].role;
+    let queryBuilder = db
+      .select()
+      .from(memoryRecommendations)
+      .where(eq(memoryRecommendations.orgId, data.orgId));
+
+    // If they aren't admin/owner, they can only see their own recommendations
+    if (role !== "owner" && role !== "admin") {
+      queryBuilder = db
+        .select()
+        .from(memoryRecommendations)
+        .where(and(
+          eq(memoryRecommendations.orgId, data.orgId),
+          eq(memoryRecommendations.userId, user.id)
+        ));
+    }
+
+    return queryBuilder.orderBy(desc(memoryRecommendations.createdAt)).all();
+  });
+
+export const reviewMemoryRecommendation = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { id: string; action: "approve" | "reject"; reviewNotes?: string } => {
+    const d = data as { id: string; action: "approve" | "reject"; reviewNotes?: string };
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    if (!["approve", "reject"].includes(d.action)) throw new Error("invalid action");
+    return { id: d.id, action: d.action, reviewNotes: d.reviewNotes?.trim() };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    // 1. Fetch recommendation
+    const recs = await db
+      .select()
+      .from(memoryRecommendations)
+      .where(eq(memoryRecommendations.id, data.id))
+      .all();
+    if (recs.length === 0) {
+      throw new Error("Recommendation not found");
+    }
+    const rec = recs[0];
+
+    // 2. Verify reviewer is admin/owner
+    const reviewerMember = await db
+      .select({ role: organizationMembers.role })
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.orgId, rec.orgId), eq(organizationMembers.userId, user.id)))
+      .limit(1)
+      .all();
+    const reviewerRole = reviewerMember[0]?.role;
+    if (reviewerRole !== "owner" && reviewerRole !== "admin") {
+      throw new Error("Forbidden: Only organization owners/admins can review recommendations.");
+    }
+
+    const timestamp = Date.now();
+
+    if (data.action === "approve") {
+      // 3. Encrypt & Save to memories
+      const projectKey = rec.projectKey || `org:${rec.orgId}`;
+      const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, projectKey);
+      const encryptedFact = await encryptFact(rec.fact, vaultKey);
+
+      const memId = crypto.randomUUID();
+
+      await db.insert(memories).values({
+        id: memId,
+        userId: rec.userId, // keep the recommender as the owner
+        fact: encryptedFact,
+        category: rec.category,
+        tags: rec.tags,
+        timestamp,
+        isActive: true,
+        projectKey,
+        scopeType: "organization",
+        scopeId: rec.orgId,
+        isLocked: true,
+        authorityType: "authoritative",
+      });
+
+      // 4. Record Memory Version
+      await db.insert(memoryVersions).values({
+        id: crypto.randomUUID(),
+        memoryId: memId,
+        fact: encryptedFact,
+        category: rec.category,
+        tags: rec.tags,
+        changedBy: user.id, // changed by the reviewer
+        changeReason: "approved_recommendation",
+        timestamp,
+      });
+
+      // 5. Insert Vector Embedding
+      const embedding = await generateEmbedding(env.AI, rec.fact);
+      await env.VECTOR_INDEX.insert([{
+        id: memId,
+        values: embedding,
+        metadata: {
+          userId: rec.userId,
+          category: rec.category,
+          tags: rec.tags,
+          projectKey,
+        } as Record<string, VectorizeVectorMetadata>,
+      }]);
+
+      // 6. Update Recommendation Status
+      await db
+        .update(memoryRecommendations)
+        .set({
+          status: "approved",
+          reviewedBy: user.id,
+          reviewedAt: timestamp,
+          reviewNotes: data.reviewNotes,
+        })
+        .where(eq(memoryRecommendations.id, data.id));
+
+      // 7. Notify Submitter
+      await db.insert(notifications).values({
+        id: crypto.randomUUID(),
+        userId: rec.userId,
+        title: "Recommendation Approved!",
+        message: `Your memory recommendation has been approved and added to the official org vault.`,
+        type: "recommendation_actioned",
+        status: "unread",
+        createdAt: timestamp,
+      });
+
+      // 8. Log Audit
+      await logAudit(db, { orgId: rec.orgId, userId: user.id, tokenId: "session", action: "approve_recommendation", memoryId: memId, metadata: { recId: rec.id } });
+
+    } else {
+      // Reject Action
+      await db
+        .update(memoryRecommendations)
+        .set({
+          status: "rejected",
+          reviewedBy: user.id,
+          reviewedAt: timestamp,
+          reviewNotes: data.reviewNotes,
+        })
+        .where(eq(memoryRecommendations.id, data.id));
+
+      // Notify Submitter
+      await db.insert(notifications).values({
+        id: crypto.randomUUID(),
+        userId: rec.userId,
+        title: "Recommendation Rejected",
+        message: `Your memory recommendation was rejected. Notes: ${data.reviewNotes || "No details provided."}`,
+        type: "recommendation_actioned",
+        status: "unread",
+        createdAt: timestamp,
+      });
+
+      // Log Audit
+      await logAudit(db, { orgId: rec.orgId, userId: user.id, tokenId: "session", action: "reject_recommendation", metadata: { recId: rec.id } });
+    }
+
+    return { success: true };
+  });
+
+export const listNotifications = createServerFn({ method: "GET" })
+  .handler(async ({ context }): Promise<any[]> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    return db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, user.id))
+      .orderBy(desc(notifications.createdAt))
+      .limit(50)
+      .all();
+  });
+
+export const markNotificationRead = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { id?: string; all?: boolean } => {
+    const d = data as { id?: string; all?: boolean };
+    return { id: d.id, all: d.all };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    if (data.all) {
+      await db
+        .update(notifications)
+        .set({ status: "read" })
+        .where(and(eq(notifications.userId, user.id), eq(notifications.status, "unread")));
+    } else if (data.id) {
+      await db
+        .update(notifications)
+        .set({ status: "read" })
+        .where(and(eq(notifications.userId, user.id), eq(notifications.id, data.id)));
+    }
 
     return { success: true };
   });

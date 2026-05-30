@@ -43,6 +43,13 @@
       "when": 1780139853164,
       "tag": "0005_clear_lady_bullseye",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1780141489000,
+      "tag": "0006_wild_red_skull",
+      "breakpoints": true
     }
   ]
 }
