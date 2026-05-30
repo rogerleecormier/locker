@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
+import { eq } from "drizzle-orm";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { jwt } from "better-auth/plugins";
 import * as schema from "~/db/schema";
@@ -11,8 +12,22 @@ import type { CloudflareEnv } from "~/types/cloudflare";
 export async function createAuth(env: CloudflareEnv) {
   const db = drizzle(env.DB, { schema });
 
-  // Pre-register Claude client if it doesn't exist
-  if (env.CLAUDE_CLIENT_ID && env.CLAUDE_CLIENT_SECRET) {
+  // Pre-register Claude client, upserting on every request to keep redirect URIs in sync.
+  if (env.CLAUDE_CLIENT_ID) {
+    const claudeClientValues = {
+      clientId: env.CLAUDE_CLIENT_ID,
+      clientSecret: env.CLAUDE_CLIENT_SECRET ?? null,
+      name: "Claude",
+      redirectUris: JSON.stringify(["https://claude.ai/api/mcp/auth_callback"]),
+      scopes: JSON.stringify(["openid", "profile", "email", "offline_access"]),
+      public: true,
+      requirePKCE: true,
+      tokenEndpointAuthMethod: "none",
+      grantTypes: JSON.stringify(["authorization_code", "refresh_token"]),
+      responseTypes: JSON.stringify(["code"]),
+      updatedAt: Date.now(),
+    };
+
     const existing = await db.query.oauthClients.findFirst({
       where: (clients, { eq }) => eq(clients.clientId, env.CLAUDE_CLIENT_ID),
     });
@@ -20,21 +35,14 @@ export async function createAuth(env: CloudflareEnv) {
     if (!existing) {
       await db.insert(schema.oauthClients).values({
         id: crypto.randomUUID(),
-        clientId: env.CLAUDE_CLIENT_ID,
-        clientSecret: env.CLAUDE_CLIENT_SECRET,
-        name: "Claude",
-        redirectUris: JSON.stringify([
-          "https://claude.ai/api/mcp/auth_callback",
-        ]),
-        scopes: JSON.stringify(["openid", "profile", "email", "offline_access"]),
-        public: true,
-        requirePKCE: true,
-        tokenEndpointAuthMethod: "none",
-        grantTypes: JSON.stringify(["authorization_code", "refresh_token"]),
-        responseTypes: JSON.stringify(["code"]),
         createdAt: Date.now(),
-        updatedAt: Date.now(),
+        ...claudeClientValues,
       });
+    } else {
+      await db
+        .update(schema.oauthClients)
+        .set(claudeClientValues)
+        .where(eq(schema.oauthClients.clientId, env.CLAUDE_CLIENT_ID));
     }
   }
 
