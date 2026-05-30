@@ -167,8 +167,8 @@ function PromptPanel() {
   }, [bot]);
 
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
-      <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.02) 0%, rgba(139,92,246,0.01) 100%)", border: "1px solid rgba(168,85,247,0.12)", borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ padding: "14px 18px", borderBottom: "1px solid rgba(168,85,247,0.1)", display: "flex", alignItems: "center", gap: 10, background: "rgba(168,85,247,0.03)" }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
@@ -326,8 +326,8 @@ function IngestPanel() {
   }
 
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
-      <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.02) 0%, rgba(139,92,246,0.01) 100%)", border: "1px solid rgba(168,85,247,0.12)", borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ padding: "14px 18px", borderBottom: "1px solid rgba(168,85,247,0.1)", display: "flex", alignItems: "center", gap: 10, background: "rgba(168,85,247,0.03)" }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 5v14M5 12l7 7 7-7" />
         </svg>
@@ -440,33 +440,29 @@ function IngestPanel() {
 
 function ImportPage() {
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px" }}>
-      <header style={{ marginBottom: 28 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12l7 7 7-7" />
-          </svg>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>Import</h1>
-          <span style={{
-            fontSize: 11,
-            background: "var(--accent-dim)",
-            color: "var(--accent)",
-            border: "1px solid rgba(168,85,247,0.3)",
-            borderRadius: 20,
-            padding: "2px 8px",
-            fontWeight: 600,
-          }}>
-            Memory Extraction
-          </span>
+    <div>
+      <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
+        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12l7 7 7-7" />
+            </svg>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Import</h1>
+            <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
+              Memory Extraction
+            </span>
+          </div>
+          <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
+            Pull your memories out of ChatGPT, Claude, Gemini, Grok, or Perplexity — then paste the output to import them into Locker.
+          </p>
         </div>
-        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-          Pull your memories out of ChatGPT, Claude, Gemini, Grok, or Perplexity — then paste the output to import them into Locker.
-        </p>
-      </header>
+      </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-        <PromptPanel />
-        <IngestPanel />
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <PromptPanel />
+          <IngestPanel />
+        </div>
       </div>
     </div>
   );
