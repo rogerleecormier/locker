@@ -112,31 +112,36 @@ export default {
         },
       );
       const auth = createAuth(env);
-      const response = await auth.handler(rewritten);
-      const text = await response.clone().text();
-      console.log(`[oauth/${segment}] response:`, response.status, text);
+      try {
+        const response = await auth.handler(rewritten);
+        const text = await response.clone().text();
+        console.log(`[oauth/${segment}] response:`, response.status, text);
 
-      // For token responses, normalize to strict RFC 6749 shape
-      if (segment === "token" && response.ok) {
-        try {
-          const data = JSON.parse(text) as Record<string, unknown>;
-          // Strip non-standard fields; keep Bearer and id_token (now using RS256 for OIDC validation by Claude)
-          const cleaned = {
-            access_token: data.access_token,
-            token_type: "Bearer",
-            expires_in: data.expires_in,
-            ...(data.refresh_token ? { refresh_token: data.refresh_token } : {}),
-            ...(data.id_token ? { id_token: data.id_token } : {}),
-            scope: data.scope,
-          };
-          const headers = new Headers(response.headers);
-          headers.set("Content-Type", "application/json");
-          return new Response(JSON.stringify(cleaned), { status: response.status, headers });
-        } catch {
-          // Fall through to original response on parse error
+        // For token responses, normalize to strict RFC 6749 shape
+        if (segment === "token" && response.ok) {
+          try {
+            const data = JSON.parse(text) as Record<string, unknown>;
+            // Strip non-standard fields; keep Bearer and id_token (now using RS256 for OIDC validation by Claude)
+            const cleaned = {
+              access_token: data.access_token,
+              token_type: "Bearer",
+              expires_in: data.expires_in,
+              ...(data.refresh_token ? { refresh_token: data.refresh_token } : {}),
+              ...(data.id_token ? { id_token: data.id_token } : {}),
+              scope: data.scope,
+            };
+            const headers = new Headers(response.headers);
+            headers.set("Content-Type", "application/json");
+            return new Response(JSON.stringify(cleaned), { status: response.status, headers });
+          } catch {
+            // Fall through to original response on parse error
+          }
         }
+        return response;
+      } catch (err) {
+        console.error(`[oauth/${segment}] handler error:`, err);
+        return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { "Content-Type": "application/json" } });
       }
-      return response;
     }
 
     const ua = request.headers.get("user-agent") ?? "";
