@@ -162,7 +162,7 @@ function TokenUsageChart({ tokenName, dailyBreakdown }: {
   return (
     <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "14px 16px" }}>
       <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>{tokenName}</div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 60 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: "3px", height: "60px" }}>
         {last14.map((d) => {
           const total = d.recalls + d.commits;
           const height = Math.max(2, (total / maxVal) * 56);
@@ -170,9 +170,9 @@ function TokenUsageChart({ tokenName, dailyBreakdown }: {
           const commitH = (d.commits / Math.max(total, 1)) * height;
           return (
             <div key={d.date} title={`${d.date}\nRecalls: ${d.recalls}\nCommits: ${d.commits}`}
-              style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: 1 }}>
-              <div style={{ height: recallH, background: "var(--accent)", borderRadius: "2px 2px 0 0", minHeight: d.recalls > 0 ? 2 : 0 }} />
-              <div style={{ height: commitH, background: "#34d399", borderRadius: d.recalls > 0 ? 0 : "2px 2px 0 0", minHeight: d.commits > 0 ? 2 : 0 }} />
+              style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: "1px" }}>
+              <div style={{ height: `${recallH}px`, background: "var(--accent)", borderRadius: "2px 2px 0 0", minHeight: d.recalls > 0 ? "2px" : "0px" }} />
+              <div style={{ height: `${commitH}px`, background: "#34d399", borderRadius: d.recalls > 0 ? 0 : "2px 2px 0 0", minHeight: d.commits > 0 ? "2px" : "0px" }} />
             </div>
           );
         })}
