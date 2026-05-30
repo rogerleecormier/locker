@@ -6,7 +6,7 @@ import type { CloudflareEnv } from "~/types/cloudflare";
 // Throws a 401 Response if no valid session exists.
 export async function requireSession(env: CloudflareEnv) {
   const request = getRequest();
-  const auth = createAuth(env);
+  const auth = await createAuth(env);
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) {
     throw new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -33,7 +33,7 @@ export async function requireAdmin(env: CloudflareEnv) {
 export async function getSession(env: CloudflareEnv) {
   try {
     const request = getRequest();
-    const auth = createAuth(env);
+    const auth = await createAuth(env);
     const session = await auth.api.getSession({ headers: request.headers });
     return session?.user ?? null;
   } catch {

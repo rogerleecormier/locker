@@ -8,8 +8,36 @@ import type { CloudflareEnv } from "~/types/cloudflare";
 
 // Create a better-auth instance scoped to a single request's env bindings.
 // Called once per request from the auth route handler.
-export function createAuth(env: CloudflareEnv) {
+export async function createAuth(env: CloudflareEnv) {
   const db = drizzle(env.DB, { schema });
+
+  // Pre-register Claude client if it doesn't exist
+  if (env.CLAUDE_CLIENT_ID && env.CLAUDE_CLIENT_SECRET) {
+    const existing = await db.query.oauthClients.findFirst({
+      where: (clients, { eq }) => eq(clients.clientId, env.CLAUDE_CLIENT_ID),
+    });
+
+    if (!existing) {
+      await db.insert(schema.oauthClients).values({
+        id: crypto.randomUUID(),
+        clientId: env.CLAUDE_CLIENT_ID,
+        clientSecret: env.CLAUDE_CLIENT_SECRET,
+        name: "Claude",
+        redirectUris: JSON.stringify([
+          "http://localhost:5173/oauth/callback",
+          "http://localhost:3000/oauth/callback",
+        ]),
+        scopes: JSON.stringify(["openid", "profile", "email", "offline_access"]),
+        public: false,
+        requirePKCE: true,
+        tokenEndpointAuthMethod: "client_secret_basic",
+        grantTypes: JSON.stringify(["authorization_code", "refresh_token"]),
+        responseTypes: JSON.stringify(["code"]),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+  }
 
   return betterAuth({
     secret: env.BETTER_AUTH_SECRET,
@@ -49,8 +77,8 @@ export function createAuth(env: CloudflareEnv) {
         loginPage: "/login",
         consentPage: "/oauth/consent",
         scopes: ["openid", "profile", "email", "offline_access"],
-        allowDynamicClientRegistration: true,
-        allowUnauthenticatedClientRegistration: true,
+        allowDynamicClientRegistration: false,
+        allowUnauthenticatedClientRegistration: false,
         validAudiences: [env.BETTER_AUTH_URL, `${env.BETTER_AUTH_URL}/api/mcp`],
         silenceWarnings: {
           oauthAuthServerConfig: true,
