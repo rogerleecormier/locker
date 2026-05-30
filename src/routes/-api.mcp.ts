@@ -296,7 +296,7 @@ async function validateBearerToken(
       const info = await res.json() as { sub?: string; orgIds?: string[]; teamIds?: string[] };
       const userId = info.sub;
       if (!userId) return null;
-      console.log("[jwt] accepted via userinfo for userId:", userId);
+      console.log("[jwt] accepted via userinfo for userId:", userId, "orgIds:", info.orgIds, "teamIds:", info.teamIds);
 
       // Build accessible scopes from JWT claims
       const accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [
