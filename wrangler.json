@@ -27,8 +27,6 @@
   },
   "vars": {
     "BETTER_AUTH_URL": "https://locker.rcormier.dev",
-    "CLAUDE_CLIENT_ID": "Locker",
-    "CLAUDE_CLIENT_SECRET": "thisisasecret"
   },
   "queues": {
     "producers": [
