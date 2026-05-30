@@ -49,7 +49,7 @@ export default {
 
 
     if (url.pathname.startsWith("/api/auth/")) {
-      const auth = createAuth(env);
+      const auth = await createAuth(env);
       const response = await auth.handler(request);
       if (url.pathname === "/api/auth/oauth2/token" || url.pathname === "/api/auth/oauth2/consent" || url.pathname === "/api/auth/oauth2/userinfo") {
         const text = await response.clone().text();
