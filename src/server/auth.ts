@@ -8,37 +8,8 @@ import type { CloudflareEnv } from "~/types/cloudflare";
 
 // Create a better-auth instance scoped to a single request's env bindings.
 // Called once per request from the auth route handler.
-export async function createAuth(env: CloudflareEnv) {
+export function createAuth(env: CloudflareEnv) {
   const db = drizzle(env.DB, { schema });
-
-  // Pre-register Claude client if it doesn't exist
-  if (env.CLAUDE_CLIENT_ID && env.CLAUDE_CLIENT_SECRET) {
-    const existing = await db.query.oauthClients.findFirst({
-      where: (clients, { eq }) => eq(clients.clientId, env.CLAUDE_CLIENT_ID),
-    });
-
-    if (!existing) {
-      const now = new Date();
-      await db.insert(schema.oauthClients).values({
-        id: crypto.randomUUID(),
-        clientId: env.CLAUDE_CLIENT_ID,
-        clientSecret: env.CLAUDE_CLIENT_SECRET,
-        name: "Claude",
-        redirectUris: JSON.stringify([
-          `${env.BETTER_AUTH_URL}/oauth/callback`,
-        ]),
-        scopes: JSON.stringify(["openid", "profile", "email", "offline_access"]),
-        public: false,
-        requirePKCE: true,
-        tokenEndpointAuthMethod: "client_secret_basic",
-        grantTypes: JSON.stringify(["authorization_code", "refresh_token"]),
-        responseTypes: JSON.stringify(["code"]),
-        icon: `${env.BETTER_AUTH_URL}/logo.png`,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
-  }
 
   return betterAuth({
     secret: env.BETTER_AUTH_SECRET,

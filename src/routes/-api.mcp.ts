@@ -265,7 +265,7 @@ async function validateBearerToken(
   // OAuth JWT path — validate via userinfo endpoint internally (JWT plugin uses separate key from JWKS)
   if (rawToken.startsWith("eyJ")) {
     try {
-      const auth = await createAuth(env);
+      const auth = createAuth(env);
       const userinfoReq = new Request(`${env.BETTER_AUTH_URL}/api/auth/oauth2/userinfo`, {
         method: "GET",
         headers: { Authorization: `Bearer ${rawToken}` },
