@@ -1374,20 +1374,88 @@ export const bulkDeleteMemories = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = getDb(env);
 
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required");
+    }
+
+    // Fetch all memories to be deleted
+    const FETCH_CHUNK = 50;
+    const memoriesToDelete: Memory[] = [];
+    for (let i = 0; i < data.ids.length; i += FETCH_CHUNK) {
+      const chunk = data.ids.slice(i, i + FETCH_CHUNK);
+      const rows = await db
+        .select()
+        .from(memories)
+        .where(sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`)
+        .all();
+      memoriesToDelete.push(...rows);
+    }
+
+    // Verify authorization for each memory
+    const authorizedIds: string[] = [];
+    for (const mem of memoriesToDelete) {
+      const { allowed: vaultAllowed } = await verifyVaultAccess(db, user.id, mem.projectKey);
+      if (!vaultAllowed) {
+        continue;
+      }
+
+      // Additional check: if personal memory, must be the owner
+      if ((!mem.projectKey || mem.projectKey === "personal") && mem.userId !== user.id) {
+        continue;
+      }
+
+      // Check if memory is locked
+      if (mem.isLocked) {
+        let actualOrgId: string | null = null;
+        if (mem.projectKey) {
+          if (mem.projectKey.startsWith("org:")) {
+            actualOrgId = mem.projectKey.slice(4);
+          } else if (mem.projectKey.startsWith("team:")) {
+            const teamId = mem.projectKey.slice(5);
+            const teamRows = await db
+              .select({ orgId: teams.orgId })
+              .from(teams)
+              .where(eq(teams.id, teamId))
+              .limit(1)
+              .all();
+            actualOrgId = teamRows[0]?.orgId ?? null;
+          }
+        }
+        if (actualOrgId) {
+          const memberRow = await db
+            .select({ role: organizationMembers.role })
+            .from(organizationMembers)
+            .where(and(eq(organizationMembers.orgId, actualOrgId), eq(organizationMembers.userId, user.id)))
+            .limit(1)
+            .all();
+          const role = memberRow[0]?.role;
+          if (role !== "owner" && role !== "admin") {
+            continue;
+          }
+        } else {
+          continue;
+        }
+      }
+
+      authorizedIds.push(mem.id);
+    }
+
+    // Delete authorized memories
     const CHUNK = 10;
-    for (let i = 0; i < data.ids.length; i += CHUNK) {
-      const chunk = data.ids.slice(i, i + CHUNK);
+    for (let i = 0; i < authorizedIds.length; i += CHUNK) {
+      const chunk = authorizedIds.slice(i, i + CHUNK);
       await db.delete(memories).where(
-        sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${user.id}`
+        sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`
       );
     }
 
+    // Delete from Vectorize
     const VECTOR_CHUNK = 100;
-    for (let i = 0; i < data.ids.length; i += VECTOR_CHUNK) {
-      await env.VECTOR_INDEX.deleteByIds(data.ids.slice(i, i + VECTOR_CHUNK));
+    for (let i = 0; i < authorizedIds.length; i += VECTOR_CHUNK) {
+      await env.VECTOR_INDEX.deleteByIds(authorizedIds.slice(i, i + VECTOR_CHUNK));
     }
 
-    return { deleted: data.ids.length };
+    return { deleted: authorizedIds.length };
   });
 
 export const recallContext = createServerFn({ method: "POST" })
