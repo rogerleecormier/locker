@@ -190,6 +190,26 @@ export const createPortalSession = createServerFn({ method: "POST" })
     return { url: session.url };
   });
 
+async function userExists(db: any, userId: string): Promise<boolean> {
+  const row = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+    .all();
+  return row.length > 0;
+}
+
+async function orgExists(db: any, orgId: string): Promise<boolean> {
+  const row = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1)
+    .all();
+  return row.length > 0;
+}
+
 export async function handleStripeWebhook(request: Request, env: CloudflareEnv): Promise<Response> {
   if (!env.STRIPE_SECRET_KEY) {
     return new Response("Stripe not configured", { status: 500 });
@@ -211,7 +231,7 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
     return new Response(`Webhook Error: ${err.message}`, { status: 400 });
   }
 
-  const db = drizzle(env.DB, { schema: { userPlans, organizations, orgQuotas } });
+  const db = drizzle(env.DB, { schema: { userPlans, organizations, orgQuotas, users } });
 
   console.log(`[stripe-webhook] received event: ${event.type}`);
 
@@ -227,6 +247,18 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
         if (!userId) {
           console.error("[stripe-webhook] missing userId in session metadata");
           return new Response("Missing userId metadata", { status: 400 });
+        }
+
+        // Verify userId actually exists in the database
+        if (!(await userExists(db, userId))) {
+          console.error("[stripe-webhook] userId does not exist in database: " + userId);
+          return new Response("Invalid userId", { status: 400 });
+        }
+
+        // Verify orgId exists if provided
+        if (orgId && !(await orgExists(db, orgId))) {
+          console.error("[stripe-webhook] orgId does not exist in database: " + orgId);
+          return new Response("Invalid orgId", { status: 400 });
         }
 
         // Upsert user plans table
@@ -322,6 +354,18 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
           break;
         }
 
+        // Verify userId actually exists in the database
+        if (!(await userExists(db, userId))) {
+          console.error("[stripe-webhook] userId does not exist in database: " + userId);
+          break;
+        }
+
+        // Verify orgId exists if provided
+        if (orgId && !(await orgExists(db, orgId))) {
+          console.error("[stripe-webhook] orgId does not exist in database: " + orgId);
+          break;
+        }
+
         // Verify that this subscription is either the active one or we are transitioning a new active subscription
         const currentPlanRow = await db
           .select({ billingSubscriptionId: userPlans.billingSubscriptionId })
@@ -385,6 +429,18 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
 
         if (!userId) {
           console.error("[stripe-webhook] missing userId in subscription metadata");
+          break;
+        }
+
+        // Verify userId actually exists in the database
+        if (!(await userExists(db, userId))) {
+          console.error("[stripe-webhook] userId does not exist in database: " + userId);
+          break;
+        }
+
+        // Verify orgId exists if provided
+        if (orgId && !(await orgExists(db, orgId))) {
+          console.error("[stripe-webhook] orgId does not exist in database: " + orgId);
           break;
         }
 
