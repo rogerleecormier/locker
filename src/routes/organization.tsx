@@ -20,7 +20,7 @@ import {
 import { requireSession } from "~/server/session";
 import { getAdminStatus } from "~/routes/admin";
 import { updateSubscriptionSeats } from "~/server/billing";
-import { addMemory, submitMemoryRecommendation, listMemoryRecommendations, reviewMemoryRecommendation } from "~/server/memoryFunctions";
+import { addMemory, deleteMemory, getMemories, submitMemoryRecommendation, listMemoryRecommendations, reviewMemoryRecommendation } from "~/server/memoryFunctions";
 import {
   requireFeature,
   getUserEffectivePlan,
@@ -815,13 +815,19 @@ function InviteForm({ label, email, setEmail, role, setRole, roles, onSubmit, lo
 
 function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, newTeamName, setNewTeamName, onAddMember, onUpdateRole, onRemoveMember, onCreateTeam, onSelectTeam, onDeleteTeam, isAddingMember, isUpdatingRole, isRemovingMember, isCreatingTeam, isDeletingTeam }: any) {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"overview" | "reviews">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "vault" | "recommendations">("overview");
 
-  // Submit recommendation states
+  // Input states
   const [recFact, setRecFact] = useState("");
   const [recCategory, setRecCategory] = useState<"rules" | "projects" | "references">("references");
   const [recTags, setRecTags] = useState("");
   const [recProjectKey, setRecProjectKey] = useState("");
+
+  // Direct memory input states
+  const [directFact, setDirectFact] = useState("");
+  const [directCategory, setDirectCategory] = useState<"rules" | "projects" | "references">("references");
+  const [directTags, setDirectTags] = useState("");
+  const [directProjectKey, setDirectProjectKey] = useState("");
 
   // Review states
   const [notesMap, setNotesMap] = useState<Record<string, string>>({});
@@ -831,7 +837,13 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
   const { data: recs = [], refetch: refetchRecs, isLoading: recsLoading } = useQuery({
     queryKey: ["org-recommendations", org.id],
     queryFn: () => listMemoryRecommendations({ data: { orgId: org.id } }),
-    enabled: activeTab === "reviews",
+    enabled: activeTab === "recommendations",
+  });
+
+  const { data: orgMemories = [], refetch: refetchOrgMemories, isLoading: memoriesLoading } = useQuery({
+    queryKey: ["org-memories", org.id],
+    queryFn: () => getMemories({ data: { projectKey: `org:${org.id}` } }),
+    enabled: activeTab === "vault",
   });
 
   const submitRecMut = useMutation({
@@ -849,11 +861,21 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
   const addDirectMemoryMut = useMutation({
     mutationFn: (data: { fact: string; category: "rules" | "projects" | "references"; tags: string; projectKey?: string; isLocked?: boolean; authorityType?: "authoritative" | "contributed" }) => addMemory({ data }),
     onSuccess: () => {
-      setRecFact("");
-      setRecTags("");
-      setRecProjectKey("");
+      setDirectFact("");
+      setDirectTags("");
+      setDirectProjectKey("");
+      refetchOrgMemories();
       queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] });
       alert("Success: Authoritative memory added directly to vault!");
+    },
+    onError: (err: Error) => alert(err.message),
+  });
+
+  const deleteMemoryMut = useMutation({
+    mutationFn: (data: { id: string }) => deleteMemory({ data }),
+    onSuccess: () => {
+      refetchOrgMemories();
+      queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] });
     },
     onError: (err: Error) => alert(err.message),
   });
@@ -889,26 +911,42 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
             fontSize: 13
           }}
         >
-          Overview (Members & Teams)
+          Members & Teams
         </button>
         <button
-          onClick={() => setActiveTab("reviews")}
+          onClick={() => setActiveTab("vault")}
           style={{
             padding: "8px 16px",
             background: "transparent",
-            color: activeTab === "reviews" ? "var(--accent)" : "var(--text-muted)",
-            borderBottom: activeTab === "reviews" ? "2px solid var(--accent)" : "2px solid transparent",
+            color: activeTab === "vault" ? "var(--accent)" : "var(--text-muted)",
+            borderBottom: activeTab === "vault" ? "2px solid var(--accent)" : "2px solid transparent",
             fontWeight: "bold",
             borderRadius: 0,
             cursor: "pointer",
             fontSize: 13
           }}
         >
-          {isAdmin ? "Review Recommendations" : "My Recommendations"}
+          Authoritative Vault
+        </button>
+        <button
+          onClick={() => setActiveTab("recommendations")}
+          style={{
+            padding: "8px 16px",
+            background: "transparent",
+            color: activeTab === "recommendations" ? "var(--accent)" : "var(--text-muted)",
+            borderBottom: activeTab === "recommendations" ? "2px solid var(--accent)" : "2px solid transparent",
+            fontWeight: "bold",
+            borderRadius: 0,
+            cursor: "pointer",
+            fontSize: 13
+          }}
+        >
+          {isAdmin ? "Review Recommendations" : "Recommendations"}
         </button>
       </div>
 
-      {activeTab === "overview" ? (
+      {/* Tab Panel: Members & Teams */}
+      {activeTab === "overview" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
             <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Members</h3>
@@ -941,7 +979,7 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
                   <div style={{ display: "flex", gap: 6 }}>
                     {org.role !== "member" ? (
                       <>
-                        <button onClick={() => onSelectTeam(t.id)} style={{ padding: "3px 8px", background: "transparent", border: "1px solid var(--border)", fontSize: 11, cursor: "pointer" }}>Edit</button>
+                         <button onClick={() => onSelectTeam(t.id)} style={{ padding: "3px 8px", background: "transparent", border: "1px solid var(--border)", fontSize: 11, cursor: "pointer" }}>Edit</button>
                         <button onClick={() => onDeleteTeam(t.id)} disabled={isDeletingTeam} style={{ padding: "3px 8px", background: "transparent", color: "var(--error)", border: "1px solid transparent", fontSize: 11, cursor: "pointer" }}>Delete</button>
                       </>
                     ) : (
@@ -953,105 +991,244 @@ function OrgView({ org, inviteEmail, setInviteEmail, inviteRole, setInviteRole, 
             </div>
           </div>
         </div>
-      ) : (
+      )}
+
+      {/* Tab Panel: Authoritative Vault */}
+      {activeTab === "vault" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-          {/* Submit Recommendation */}
+          {/* Direct Add Column */}
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>
-              {isAdmin ? "Add Authoritative Memory to Org Vault" : "Recommend Memory to Org Vault"}
-            </h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>FACT</label>
-                <textarea
-                  placeholder={isAdmin ? "Enter an authoritative rule or fact (e.g. Always use camelCase for folder structure)" : "Recommend a rule or fact (e.g. Always use camelCase for folder structure)"}
-                  value={recFact}
-                  onChange={(e) => setRecFact(e.target.value)}
-                  style={{ width: "100%", height: "80px", padding: "8px 10px", resize: "none" }}
-                />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Add Authoritative Memory</h3>
+            {isAdmin ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>CATEGORY</label>
-                  <select
-                    value={recCategory}
-                    onChange={(e: any) => setRecCategory(e.target.value)}
-                    style={{ width: "100%", padding: "6px 8px" }}
-                  >
-                    <option value="rules">Rules</option>
-                    <option value="projects">Projects</option>
-                    <option value="references">References</option>
-                  </select>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>FACT</label>
+                  <textarea
+                    placeholder="Enter an authoritative rule or fact (e.g. Always use camelCase for folder structure)"
+                    value={directFact}
+                    onChange={(e) => setDirectFact(e.target.value)}
+                    style={{ width: "100%", height: "80px", padding: "8px 10px", resize: "none" }}
+                  />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>CATEGORY</label>
+                    <select
+                      value={directCategory}
+                      onChange={(e: any) => setDirectCategory(e.target.value)}
+                      style={{ width: "100%", padding: "6px 8px" }}
+                    >
+                      <option value="rules">Rules</option>
+                      <option value="projects">Projects</option>
+                      <option value="references">References</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>SCOPE (OPTIONAL)</label>
+                    <select
+                      value={directProjectKey}
+                      onChange={(e) => setDirectProjectKey(e.target.value)}
+                      style={{ width: "100%", padding: "6px 8px" }}
+                    >
+                      <option value="">Whole Organization</option>
+                      {org.teams.map((t: any) => (
+                        <option key={t.id} value={`team:${t.id}`}>Team: {t.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>SCOPE (OPTIONAL)</label>
-                  <select
-                    value={recProjectKey}
-                    onChange={(e) => setRecProjectKey(e.target.value)}
-                    style={{ width: "100%", padding: "6px 8px" }}
-                  >
-                    <option value="">Whole Organization</option>
-                    {org.teams.map((t: any) => (
-                      <option key={t.id} value={`team:${t.id}`}>Team: {t.name}</option>
-                    ))}
-                  </select>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>TAGS (COMMA SEPARATED)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. guidelines, styles, deploy"
+                    value={directTags}
+                    onChange={(e) => setDirectTags(e.target.value)}
+                    style={{ width: "100%", padding: "6px 10px" }}
+                  />
                 </div>
+                <button
+                  onClick={() => addDirectMemoryMut.mutate({
+                    fact: directFact,
+                    category: directCategory,
+                    tags: directTags,
+                    projectKey: directProjectKey || `org:${org.id}`,
+                    isLocked: true,
+                    authorityType: "authoritative",
+                  })}
+                  disabled={addDirectMemoryMut.isPending || !directFact.trim()}
+                  style={{
+                    padding: "8px 16px",
+                    background: "var(--accent)",
+                    color: "#fff",
+                    fontWeight: "bold",
+                    marginTop: 8,
+                    borderRadius: "var(--radius)",
+                    border: "none",
+                    cursor: "pointer"
+                  }}
+                >
+                  {addDirectMemoryMut.isPending ? "Creating..." : "Add Authoritative Memory"}
+                </button>
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>TAGS (COMMA SEPARATED)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. guidelines, styles, deploy"
-                  value={recTags}
-                  onChange={(e) => setRecTags(e.target.value)}
-                  style={{ width: "100%", padding: "6px 10px" }}
-                />
+            ) : (
+              <div style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic", padding: "20px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)", textAlign: "center" }}>
+                Only organization owners/admins can add authoritative memories directly.
               </div>
-              <button
-                onClick={() => {
-                  if (isAdmin) {
-                    addDirectMemoryMut.mutate({
-                      fact: recFact,
-                      category: recCategory,
-                      tags: recTags,
-                      projectKey: recProjectKey || `org:${org.id}`,
-                      isLocked: true,
-                      authorityType: "authoritative",
-                    });
-                  } else {
-                    submitRecMut.mutate({
-                      orgId: org.id,
-                      fact: recFact,
-                      category: recCategory,
-                      tags: recTags,
-                      projectKey: recProjectKey || undefined,
-                    });
-                  }
-                }}
-                disabled={isAdmin ? (addDirectMemoryMut.isPending || !recFact.trim()) : (submitRecMut.isPending || !recFact.trim())}
-                style={{
-                  padding: "8px 16px",
-                  background: "var(--accent)",
-                  color: "#fff",
-                  fontWeight: "bold",
-                  marginTop: 8,
-                  borderRadius: "var(--radius)",
-                  border: "none",
-                  cursor: "pointer"
-                }}
-              >
-                {isAdmin 
-                  ? (addDirectMemoryMut.isPending ? "Creating..." : "Add Authoritative Memory") 
-                  : (submitRecMut.isPending ? "Submitting..." : "Submit Recommendation")
-                }
-              </button>
-            </div>
+            )}
           </div>
+
+          {/* List Column */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Vault Memories</h3>
+            {memoriesLoading ? (
+              <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>Loading...</div>
+            ) : orgMemories.length === 0 ? (
+              <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0", fontSize: 12 }}>
+                No memories in the organization vault.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", maxHeight: "350px", paddingRight: 4 }}>
+                {orgMemories.map((m: any) => (
+                  <div
+                    key={m.id}
+                    style={{
+                      padding: 12,
+                      background: "var(--surface2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                      textAlign: "left"
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                      <p style={{ fontSize: 12, margin: 0, color: "var(--text)", lineHeight: 1.4, flex: 1 }}>
+                        "{m.fact}"
+                      </p>
+                      {isAdmin && (
+                        <button
+                          onClick={() => { if (confirm("Delete this memory?")) deleteMemoryMut.mutate({ id: m.id }); }}
+                          disabled={deleteMemoryMut.isPending}
+                          style={{
+                            background: "transparent",
+                            color: "var(--error)",
+                            border: "none",
+                            fontSize: 10,
+                            padding: "2px 4px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 9, color: "var(--text-muted)", alignItems: "center" }}>
+                      <span style={{
+                        background: m.isLocked ? "rgba(99,102,241,0.15)" : "transparent",
+                        color: m.isLocked ? "var(--accent)" : "var(--text-muted)",
+                        padding: "1px 4px",
+                        borderRadius: 3,
+                        fontWeight: m.isLocked ? "bold" : "normal"
+                      }}>
+                        {m.authorityType}
+                      </span>
+                      <span>· Category: {m.category}</span>
+                      {m.tags && <span>· Tags: {m.tags}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab Panel: Recommendations */}
+      {activeTab === "recommendations" && (
+        <div style={{ display: "grid", gridTemplateColumns: isAdmin ? "1fr" : "1fr 1fr", gap: "24px" }}>
+          {/* Submit Panel (only for non-admins) */}
+          {!isAdmin && (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+              <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Recommend Memory to Org Vault</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>FACT</label>
+                  <textarea
+                    placeholder="Recommend a rule or fact (e.g. Always use camelCase for folder structure)"
+                    value={recFact}
+                    onChange={(e) => setRecFact(e.target.value)}
+                    style={{ width: "100%", height: "80px", padding: "8px 10px", resize: "none" }}
+                  />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>CATEGORY</label>
+                    <select
+                      value={recCategory}
+                      onChange={(e: any) => setRecCategory(e.target.value)}
+                      style={{ width: "100%", padding: "6px 8px" }}
+                    >
+                      <option value="rules">Rules</option>
+                      <option value="projects">Projects</option>
+                      <option value="references">References</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>SCOPE (OPTIONAL)</label>
+                    <select
+                      value={recProjectKey}
+                      onChange={(e) => setRecProjectKey(e.target.value)}
+                      style={{ width: "100%", padding: "6px 8px" }}
+                    >
+                      <option value="">Whole Organization</option>
+                      {org.teams.map((t: any) => (
+                        <option key={t.id} value={`team:${t.id}`}>Team: {t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: "600" }}>TAGS (COMMA SEPARATED)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. guidelines, styles, deploy"
+                    value={recTags}
+                    onChange={(e) => setRecTags(e.target.value)}
+                    style={{ width: "100%", padding: "6px 10px" }}
+                  />
+                </div>
+                <button
+                  onClick={() => submitRecMut.mutate({
+                    orgId: org.id,
+                    fact: recFact,
+                    category: recCategory,
+                    tags: recTags,
+                    projectKey: recProjectKey || undefined,
+                  })}
+                  disabled={submitRecMut.isPending || !recFact.trim()}
+                  style={{
+                    padding: "8px 16px",
+                    background: "var(--accent)",
+                    color: "#fff",
+                    fontWeight: "bold",
+                    marginTop: 8,
+                    borderRadius: "var(--radius)",
+                    border: "none",
+                    cursor: "pointer"
+                  }}
+                >
+                  {submitRecMut.isPending ? "Submitting..." : "Submit Recommendation"}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* History/Review Panel */}
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
             <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>
-              {isAdmin ? "Pending & Historical Recommendations" : "My Submission History"}
+              {isAdmin ? "Review Queue" : "My Submission History"}
             </h3>
             {recsLoading ? (
               <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>Loading...</div>
