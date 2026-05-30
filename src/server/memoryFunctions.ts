@@ -1779,13 +1779,22 @@ export const getProfile = createServerFn({ method: "GET" }).handler(
 );
 
 export const getUserPlan = createServerFn({ method: "GET" }).handler(
-  async ({ context }): Promise<{ planId: string }> => {
+  async ({ context }): Promise<{ planId: string; personalPlanId: string }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
 
     const { planId } = await getUserEffectivePlan(db, user.id, env.ADMIN_USER_ID);
-    return { planId };
+
+    const personalRow = await db
+      .select({ plan: userPlans.plan })
+      .from(userPlans)
+      .where(eq(userPlans.userId, user.id))
+      .limit(1)
+      .all();
+    const personalPlanId = personalRow[0]?.plan ?? "free";
+
+    return { planId, personalPlanId };
   }
 );
 

@@ -330,99 +330,111 @@ export function MyBillingSection() {
       {cancelMsg && <div style={alertWarn}>{cancelMsg}</div>}
       {stripeError && <div style={alertError}>{stripeError}</div>}
 
-      {/* Current plan + portal */}
-      <section style={card}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: elevatedByOrg ? 12 : 16 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-              <h2 style={{ ...sectionTitle, margin: 0 }}>My Plan</h2>
-              <PlanBadge plan={personalPlan} />
+      {/* If org is covering this user, show a clear explainer instead of upgrade prompts */}
+      {elevatedByOrg ? (
+        <section style={card}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <h2 style={{ ...sectionTitle, margin: 0 }}>My Billing</h2>
+            <PlanBadge plan={effectivePlan} />
+          </div>
+          <div style={{ padding: "14px 16px", background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8, fontSize: 13, lineHeight: 1.6, color: "var(--text-muted)" }}>
+            <div style={{ fontWeight: 600, color: "var(--success)", marginBottom: 6 }}>
+              ✓ Your seat is covered by your organization
             </div>
-            <p style={sectionDesc}>Your personal subscription, independent of any org membership.</p>
+            You are a member of an organization on the <strong style={{ color: "var(--text)" }}>{effectivePlan}</strong> plan.
+            Your organization's subscription covers your access — you do not need a separate personal subscription
+            to use {effectivePlan} features. Personal billing only applies to work done outside of any organization scope.
           </div>
-          {billing?.hasBillingCustomer && (
-            <button onClick={handlePortal} disabled={portalLoading} style={btnOutline}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              {portalLoading ? "Opening…" : "Manage Subscription"}
-            </button>
-          )}
-        </div>
-
-        {/* Callout when effective plan is elevated by org membership */}
-        {elevatedByOrg && (
-          <div style={{ padding: "10px 14px", background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 8, fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
-            <strong style={{ color: "var(--accent)" }}>Note:</strong> Your active features are on the{" "}
-            <strong>{effectivePlan}</strong> tier via your organization membership. Your personal subscription is{" "}
-            <strong>{personalPlan}</strong>.
-          </div>
-        )}
-
-        {/* Upgrade/downgrade actions for personal account */}
-        {personalPlan === "free" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-              You're on the free plan. Upgrade to unlock more memories, recalls, and advanced analytics.
-            </p>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={handleUpgrade}
-                disabled={upgradingId !== null}
-                style={btnPrimary}
-              >
-                {upgradingId === "personal" ? "Redirecting to Checkout…" : "Upgrade to Business"}
-              </button>
-              <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>
-                Contact Sales for Enterprise
-              </a>
-            </div>
-          </div>
-        )}
-
-        {personalPlan === "business" && (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>
-              Upgrade to Enterprise
-            </a>
+          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             {billing?.hasBillingCustomer && (
-              <button onClick={handlePortal} disabled={portalLoading} style={{ ...btnOutline, fontSize: 12 }}>
-                {portalLoading ? "Opening…" : "Downgrade / Cancel"}
+              <button onClick={handlePortal} disabled={portalLoading} style={btnOutline}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                {portalLoading ? "Opening…" : "Manage Personal Subscription"}
               </button>
             )}
+            {personalPlan === "free" && (
+              <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                Personal subscription: <strong>Free</strong> — only needed if you want personal-scope {effectivePlan} limits outside this org.
+              </p>
+            )}
           </div>
-        )}
+        </section>
+      ) : (
+        <>
+          <section style={card}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                  <h2 style={{ ...sectionTitle, margin: 0 }}>My Plan</h2>
+                  <PlanBadge plan={personalPlan} />
+                </div>
+                <p style={sectionDesc}>Your personal subscription tier.</p>
+              </div>
+              {billing?.hasBillingCustomer && (
+                <button onClick={handlePortal} disabled={portalLoading} style={btnOutline}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  {portalLoading ? "Opening…" : "Manage Subscription"}
+                </button>
+              )}
+            </div>
 
-        {personalPlan === "enterprise" && (
-          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-            You're on the Enterprise plan. Contact{" "}
-            <a href="mailto:enterprise@locker.rcormier.dev" style={{ color: "var(--accent)" }}>enterprise@locker.rcormier.dev</a>
-            {" "}to make changes to your contract.
-          </p>
-        )}
-      </section>
+            {personalPlan === "free" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+                  You're on the free plan. Upgrade to unlock more memories, recalls, and advanced analytics.
+                </p>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button onClick={handleUpgrade} disabled={upgradingId !== null} style={btnPrimary}>
+                    {upgradingId === "personal" ? "Redirecting to Checkout…" : "Upgrade to Business"}
+                  </button>
+                  <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Contact Sales for Enterprise</a>
+                </div>
+              </div>
+            )}
 
-      {/* Available plans grid */}
-      <section style={{ marginBottom: 24 }}>
-        <h2 style={{ ...sectionTitle, marginBottom: 16 }}>Available Plans</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-          {PLAN_ORDER.map((planId) => (
-            <PlanCard
-              key={planId}
-              plan={PLANS[planId]}
-              isCurrentPlan={planId === personalPlan}
-              onSelect={planId === "business" && personalPlan === "free" ? handleUpgrade : undefined}
-            />
-          ))}
-        </div>
-      </section>
+            {personalPlan === "business" && (
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Upgrade to Enterprise</a>
+                {billing?.hasBillingCustomer && (
+                  <button onClick={handlePortal} disabled={portalLoading} style={{ ...btnOutline, fontSize: 12 }}>
+                    {portalLoading ? "Opening…" : "Downgrade / Cancel"}
+                  </button>
+                )}
+              </div>
+            )}
 
-      {/* Enterprise CTA */}
-      <div style={enterpriseCta}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 3 }}>Need Enterprise?</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Unlimited memories, SAML SSO, custom contracts, dedicated support.</div>
-        </div>
-        <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Contact Sales</a>
-      </div>
+            {personalPlan === "enterprise" && (
+              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+                You're on the Enterprise plan. Contact{" "}
+                <a href="mailto:enterprise@locker.rcormier.dev" style={{ color: "var(--accent)" }}>enterprise@locker.rcormier.dev</a>
+                {" "}to make changes to your contract.
+              </p>
+            )}
+          </section>
+
+          <section style={{ marginBottom: 24 }}>
+            <h2 style={{ ...sectionTitle, marginBottom: 16 }}>Available Plans</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+              {PLAN_ORDER.map((planId) => (
+                <PlanCard
+                  key={planId}
+                  plan={PLANS[planId]}
+                  isCurrentPlan={planId === personalPlan}
+                  onSelect={planId === "business" && personalPlan === "free" ? handleUpgrade : undefined}
+                />
+              ))}
+            </div>
+          </section>
+
+          <div style={enterpriseCta}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 3 }}>Need Enterprise?</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Unlimited memories, SAML SSO, custom contracts, dedicated support.</div>
+            </div>
+            <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Contact Sales</a>
+          </div>
+        </>
+      )}
     </>
   );
 }

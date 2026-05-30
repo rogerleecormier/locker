@@ -198,7 +198,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
     }
   }, [notificationsList]);
 
-  const currentPlan = (planData?.planId ?? "free") as PlanId;
+  const currentPlan = (planData?.personalPlanId ?? "free") as PlanId;
   const unreadCount = notificationsList.filter((n) => n.status === "unread").length;
 
   return (
