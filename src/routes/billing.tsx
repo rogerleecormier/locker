@@ -33,6 +33,16 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
 
     const { planId, orgId } = await getUserEffectivePlan(db, user.id);
 
+    // Personal plan is what the user directly subscribed to, independent of
+    // any org membership. Used to show the correct upgrade options in My Billing.
+    const personalPlanRow = await db
+      .select({ plan: userPlans.plan })
+      .from(userPlans)
+      .where(eq(userPlans.userId, user.id))
+      .limit(1)
+      .all();
+    const personalPlanId = personalPlanRow[0] ? resolvePlan(personalPlanRow[0].plan) : "free" as const;
+
     const memoriesCount = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(memories)
@@ -120,7 +130,8 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
       .all();
 
     return {
-      planId,
+      planId,        // effective plan (highest of personal + orgs)
+      personalPlanId, // what the user personally subscribes to
       orgId,
       userId: user.id,
       hasBillingCustomer,
@@ -307,7 +318,11 @@ export function MyBillingSection() {
 
   if (isLoading) return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>;
 
-  const currentPlan: PlanId = billing?.planId ?? "free";
+  // personalPlanId = what the user directly subscribes to
+  // planId = effective plan (may be elevated by org membership)
+  const personalPlan: PlanId = billing?.personalPlanId ?? "free";
+  const effectivePlan: PlanId = billing?.planId ?? "free";
+  const elevatedByOrg = effectivePlan !== personalPlan;
 
   return (
     <>
@@ -317,13 +332,13 @@ export function MyBillingSection() {
 
       {/* Current plan + portal */}
       <section style={card}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: elevatedByOrg ? 12 : 16 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
               <h2 style={{ ...sectionTitle, margin: 0 }}>My Plan</h2>
-              <PlanBadge plan={currentPlan} />
+              <PlanBadge plan={personalPlan} />
             </div>
-            <p style={sectionDesc}>Your current personal subscription tier.</p>
+            <p style={sectionDesc}>Your personal subscription, independent of any org membership.</p>
           </div>
           {billing?.hasBillingCustomer && (
             <button onClick={handlePortal} disabled={portalLoading} style={btnOutline}>
@@ -333,8 +348,17 @@ export function MyBillingSection() {
           )}
         </div>
 
+        {/* Callout when effective plan is elevated by org membership */}
+        {elevatedByOrg && (
+          <div style={{ padding: "10px 14px", background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 8, fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+            <strong style={{ color: "var(--accent)" }}>Note:</strong> Your active features are on the{" "}
+            <strong>{effectivePlan}</strong> tier via your organization membership. Your personal subscription is{" "}
+            <strong>{personalPlan}</strong>.
+          </div>
+        )}
+
         {/* Upgrade/downgrade actions for personal account */}
-        {currentPlan === "free" && (
+        {personalPlan === "free" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
               You're on the free plan. Upgrade to unlock more memories, recalls, and advanced analytics.
@@ -354,7 +378,7 @@ export function MyBillingSection() {
           </div>
         )}
 
-        {currentPlan === "business" && (
+        {personalPlan === "business" && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>
               Upgrade to Enterprise
@@ -367,7 +391,7 @@ export function MyBillingSection() {
           </div>
         )}
 
-        {currentPlan === "enterprise" && (
+        {personalPlan === "enterprise" && (
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
             You're on the Enterprise plan. Contact{" "}
             <a href="mailto:enterprise@locker.rcormier.dev" style={{ color: "var(--accent)" }}>enterprise@locker.rcormier.dev</a>
@@ -384,8 +408,8 @@ export function MyBillingSection() {
             <PlanCard
               key={planId}
               plan={PLANS[planId]}
-              isCurrentPlan={planId === currentPlan}
-              onSelect={planId === "business" && currentPlan === "free" ? handleUpgrade : undefined}
+              isCurrentPlan={planId === personalPlan}
+              onSelect={planId === "business" && personalPlan === "free" ? handleUpgrade : undefined}
             />
           ))}
         </div>
