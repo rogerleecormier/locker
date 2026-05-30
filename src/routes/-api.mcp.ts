@@ -156,29 +156,30 @@ const ALL_TOOLS = [
 ];
 
 function isProjectKeyAllowedByToken(
-  tokenScopeType: "personal" | "organization" | "team",
-  tokenScopeId: string | null,
+  accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }>,
   requestedProjectKey: string | undefined | null
 ): boolean {
-  if (tokenScopeType === "personal") {
-    if (requestedProjectKey && (requestedProjectKey.startsWith("org:") || requestedProjectKey.startsWith("team:"))) {
-      return false;
-    }
-    return true;
+  // If no projectKey specified, allow access to personal scope
+  if (!requestedProjectKey) {
+    return accessibleScopes.some((s) => s.type === "personal");
   }
 
-  if (tokenScopeType === "organization") {
-    if (requestedProjectKey === `org:${tokenScopeId}`) {
-      return true;
+  // Check if requestedProjectKey matches any accessible scope
+  for (const scope of accessibleScopes) {
+    if (scope.type === "personal") {
+      // Personal scope allows personal projectKey (null/"")
+      if (!requestedProjectKey || requestedProjectKey === "") {
+        return true;
+      }
+    } else if (scope.type === "organization") {
+      if (requestedProjectKey === `org:${scope.id}`) {
+        return true;
+      }
+    } else if (scope.type === "team") {
+      if (requestedProjectKey === `team:${scope.id}`) {
+        return true;
+      }
     }
-    return false;
-  }
-
-  if (tokenScopeType === "team") {
-    if (requestedProjectKey === `team:${tokenScopeId}`) {
-      return true;
-    }
-    return false;
   }
 
   return false;
@@ -222,6 +223,7 @@ type TokenClaims = {
   permissions: number;
   scopeType: "personal" | "organization" | "team";
   scopeId: string | null;
+  accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }>;
 };
 
 async function validateBearerToken(
@@ -253,12 +255,18 @@ async function validateBearerToken(
       .run()
       .catch(() => {});
 
+    // For scoped tokens, only allow the specified scope
+    const accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [
+      { type: token.scopeType as any, id: token.scopeId },
+    ];
+
     return {
       userId: token.userId,
       tokenId: token.id,
       permissions: token.permissions,
       scopeType: token.scopeType as any,
       scopeId: token.scopeId,
+      accessibleScopes,
     };
   }
 
@@ -279,12 +287,41 @@ async function validateBearerToken(
       const userId = info.sub;
       if (!userId) return null;
       console.log("[jwt] accepted via userinfo for userId:", userId);
+
+      // Check for org and team memberships
+      const db = drizzle(env.DB, { schema: { organizationMembers, teamMembers } });
+      const [orgMemberships, teamMemberships] = await Promise.all([
+        db
+          .select({ orgId: organizationMembers.orgId })
+          .from(organizationMembers)
+          .where(eq(organizationMembers.userId, userId))
+          .all(),
+        db
+          .select({ teamId: teamMembers.teamId })
+          .from(teamMembers)
+          .where(eq(teamMembers.userId, userId))
+          .all(),
+      ]);
+
+      const accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [
+        { type: "personal", id: null },
+      ];
+
+      orgMemberships.forEach((m) => {
+        accessibleScopes.push({ type: "organization", id: m.orgId });
+      });
+
+      teamMemberships.forEach((m) => {
+        accessibleScopes.push({ type: "team", id: m.teamId });
+      });
+
       return {
         userId,
         tokenId: userId,
         permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE,
         scopeType: "personal",
         scopeId: null,
+        accessibleScopes,
       };
     } catch (e) {
       console.log("[jwt] userinfo exception:", String(e));
@@ -306,12 +343,39 @@ async function validateBearerToken(
   if (!oauthToken.userId) return null;
   if (oauthToken.expiresAt && oauthToken.expiresAt.getTime() < Date.now()) return null;
 
+  // Check for org and team memberships
+  const [orgMemberships, teamMemberships] = await Promise.all([
+    db
+      .select({ orgId: organizationMembers.orgId })
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, oauthToken.userId))
+      .all(),
+    db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(eq(teamMembers.userId, oauthToken.userId))
+      .all(),
+  ]);
+
+  const accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [
+    { type: "personal", id: null },
+  ];
+
+  orgMemberships.forEach((m) => {
+    accessibleScopes.push({ type: "organization", id: m.orgId });
+  });
+
+  teamMemberships.forEach((m) => {
+    accessibleScopes.push({ type: "team", id: m.teamId });
+  });
+
   return {
     userId: oauthToken.userId,
     tokenId: oauthToken.id,
     permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE,
     scopeType: "personal",
     scopeId: null,
+    accessibleScopes,
   };
 }
 
@@ -477,8 +541,8 @@ export async function handleMcpRequest(
         return mcpError(id, -32005, `Forbidden: Scoped API tokens cannot perform cross-workspace searches.`);
       }
     } else {
-      if (!isProjectKeyAllowedByToken(claims.scopeType, claims.scopeId, projectKey)) {
-        return mcpError(id, -32003, `Forbidden: API token scope constraint '${claims.scopeType}' prevents access to vault scope '${projectKey ?? "personal"}'`);
+      if (!isProjectKeyAllowedByToken(claims.accessibleScopes, projectKey)) {
+        return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${projectKey ?? "personal"}'`);
       }
 
       const { allowed: vaultAllowed, orgId: vOrgId } = await verifyVaultAccess(db, claims.userId, projectKey);
@@ -634,8 +698,8 @@ export async function handleMcpRequest(
     const projectKey = resolveProjectKey(claims, args.projectKey as string | undefined);
     const isActive = typeof args.isActive === "boolean" ? args.isActive : true;
 
-    if (!isProjectKeyAllowedByToken(claims.scopeType, claims.scopeId, projectKey)) {
-      return mcpError(id, -32003, `Forbidden: API token scope constraint '${claims.scopeType}' prevents access to vault scope '${projectKey ?? "personal"}'`);
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, projectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${projectKey ?? "personal"}'`);
     }
 
     // Vault Scoping & Quota Check
@@ -787,8 +851,8 @@ export async function handleMcpRequest(
       throw new Error("Unauthorized: userId is required for vector insert");
     }
 
-    if (!isProjectKeyAllowedByToken(claims.scopeType, claims.scopeId, projectKey)) {
-      return mcpError(id, -32003, `Forbidden: API token scope constraint '${claims.scopeType}' prevents access to vault scope '${projectKey ?? "personal"}'`);
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, projectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${projectKey ?? "personal"}'`);
     }
 
     // Vault Scoping & Quota Check
@@ -918,8 +982,8 @@ export async function handleMcpRequest(
     }
     const existing = rows[0];
 
-    if (!isProjectKeyAllowedByToken(claims.scopeType, claims.scopeId, existing.projectKey)) {
-      return mcpError(id, -32003, `Forbidden: API token scope constraint '${claims.scopeType}' prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, existing.projectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
     }
 
     // Vault Scoping & Quota Check
@@ -1073,8 +1137,8 @@ export async function handleMcpRequest(
     }
     const existing = rows[0];
 
-    if (!isProjectKeyAllowedByToken(claims.scopeType, claims.scopeId, existing.projectKey)) {
-      return mcpError(id, -32003, `Forbidden: API token scope constraint '${claims.scopeType}' prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, existing.projectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
     }
 
     // Vault Scoping & Quota Check
