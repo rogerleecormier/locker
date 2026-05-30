@@ -154,6 +154,10 @@ function PricingPage() {
             a: "Every call to the recall_context MCP tool from any AI client counts as one recall. Semantic search is efficient – most sessions use fewer than 20 recalls.",
           },
           {
+            q: "What are embedding tokens?",
+            a: "Embedding tokens are used for semantic search on your memories. They're consumed when you recall or commit memories (roughly 1 token per 4 characters). Your plan includes a monthly budget: Personal gets 100k, Business gets 1M, Enterprise gets unlimited.",
+          },
+          {
             q: "Can I switch plans?",
             a: "Yes. Downgrading from Business to Personal will disable org/team features but your memories are never deleted. They'll be accessible again if you upgrade.",
           },
@@ -168,10 +172,6 @@ function PricingPage() {
           {
             q: "Do shared vaults count against personal limits?",
             a: "No. Organization and team vault memories count against the org's quota, not your personal quota.",
-          },
-          {
-            q: "What's included in Enterprise?",
-            a: "Unlimited everything, SAML SSO, custom data retention policies, SLA guarantees, dedicated Slack support, and custom contracts. Contact us.",
           },
         ].map(({ q, a }) => (
           <div key={q} style={{ padding: "16px 18px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10 }}>

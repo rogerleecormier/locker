@@ -384,6 +384,7 @@ export function PlanCard({
         {[
           ["Memories", plan.limits.maxMemories === Infinity ? "Unlimited" : plan.limits.maxMemories.toLocaleString()],
           ["Monthly Recalls", plan.limits.maxMonthlyRecalls === Infinity ? "Unlimited" : plan.limits.maxMonthlyRecalls.toLocaleString()],
+          ["Monthly Embedding Tokens", plan.limits.maxMonthlyTokens === Infinity ? "Unlimited" : plan.limits.maxMonthlyTokens.toLocaleString()],
           ["API Tokens", plan.limits.maxApiTokens === Infinity ? "Unlimited" : plan.limits.maxApiTokens],
           ...(plan.id !== "free" ? [["Org Members", plan.limits.maxOrgMembers === Infinity ? "Unlimited" : String(plan.limits.maxOrgMembers)]] : []),
         ].map(([label, value]) => (
