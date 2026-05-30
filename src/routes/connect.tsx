@@ -795,42 +795,37 @@ enabled = true`,
   }, [service.copyText]);
 
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px" }}>
-      <header style={{ marginBottom: 28 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-          </svg>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>MCP Connect</h1>
-          <span style={{
-            fontSize: 11,
-            background: "var(--accent-dim)",
-            color: "var(--accent)",
-            border: "1px solid rgba(168,85,247,0.3)",
-            borderRadius: 20,
-            padding: "2px 8px",
-            fontWeight: 600,
-          }}>
-            {SERVICES.length} platforms
-          </span>
+    <div>
+      <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
+        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+            </svg>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>MCP Connect</h1>
+            <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
+              {SERVICES.length} platforms
+            </span>
+          </div>
+          <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
+            Connect any AI client to your Locker vault via the{" "}
+            <code style={{ color: "var(--accent)", fontSize: 12 }}>/api/mcp</code> endpoint.
+            <strong> Claude (Web) and Claude Code</strong> are fully tested. Guides for other platforms are provided as a best-effort reference and may need adjustment.
+          </p>
         </div>
-        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-          Connect any AI client to your Locker vault via the{" "}
-          <code style={{ color: "var(--accent)", fontSize: 12 }}>/api/mcp</code> endpoint.
-          <strong> Claude (Web) and Claude Code</strong> are fully tested. Guides for other platforms are provided as a best-effort reference and may need adjustment.
-        </p>
-      </header>
+      </div>
 
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
       <div style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius)",
+        background: "linear-gradient(135deg, rgba(168,85,247,0.02) 0%, rgba(139,92,246,0.01) 100%)",
+        border: "1px solid rgba(168,85,247,0.12)",
+        borderRadius: 12,
         overflow: "hidden",
       }}>
         <div style={{
           padding: "12px 18px",
-          borderBottom: "1px solid var(--border)",
-          background: "rgba(168,85,247,0.04)",
+          borderBottom: "1px solid rgba(168,85,247,0.1)",
+          background: "rgba(168,85,247,0.03)",
         }}>
           <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
             Select platform
@@ -947,6 +942,7 @@ enabled = true`,
             </>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
