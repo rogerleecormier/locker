@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 
-export type AdminSection = "system" | "site-config" | "billing-manage" | "orgs" | "users" | "teams";
+export type AdminSection = "system" | "site-config" | "billing-manage" | "orgs" | "org-billing" | "users" | "teams";
 
 interface MenuItem {
   id: AdminSection;
@@ -15,6 +15,7 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "site-config", label: "Configuration", icon: "🔧", category: "site" },
   { id: "billing-manage", label: "Billing Management", icon: "💳", category: "site" },
   { id: "orgs", label: "Organizations", icon: "🏢", category: "org" },
+  { id: "org-billing", label: "Org Billing", icon: "💰", category: "org" },
   { id: "users", label: "Users", icon: "👥", category: "org" },
   { id: "teams", label: "Teams", icon: "👤", category: "org" },
 ];

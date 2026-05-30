@@ -32,443 +32,978 @@ import {
   rebuildVectorizeIndex,
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
+import { getBillingInfo } from "~/routes/billing";
+
+const modalOverlay: React.CSSProperties = {
+  position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+  background: "rgba(15, 17, 23, 0.75)", backdropFilter: "blur(4px)",
+  display: "flex", alignItems: "center", justifyContent: "center",
+  zIndex: 1000, padding: "20px",
+};
+const modalBox: React.CSSProperties = {
+  background: "var(--surface)", border: "1px solid var(--border)",
+  borderRadius: "12px", width: "100%", maxWidth: "450px",
+  boxShadow: "0 20px 25px -5px rgba(0,0,0,0.3)", padding: "24px",
+};
 
 function AdminPage() {
   const [activeSection, setActiveSection] = useState<AdminSection>("system");
 
-  // System stats
+  // ── state ──────────────────────────────────────────────────────────────────
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmClearVectorize, setConfirmClearVectorize] = useState(false);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [scanResults, setScanResults] = useState<DuplicateGroup[] | null>(null);
+  const [retainSelections, setRetainSelections] = useState<Record<number, string>>({});
+  const [encryptResult, setEncryptResult] = useState<{ encrypted: number; alreadyEncrypted: number; failed: number } | null>(null);
+  const [rebuildResult, setRebuildResult] = useState<{ processed: number; failed: number } | null>(null);
+
+  // users modals
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isOrgsModalOpen, setIsOrgsModalOpen] = useState(false);
+  const [isResetSuccessModalOpen, setIsResetSuccessModalOpen] = useState(false);
+
+  const [createName, setCreateName] = useState("");
+  const [createEmail, setCreateEmail] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+  const [createPlan, setCreatePlan] = useState("free");
+
+  const [selectedUser, setSelectedUser] = useState<UserDetails | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editEmailVerified, setEditEmailVerified] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState("free");
+  const [passwordValue, setPasswordValue] = useState("");
+  const [generatedPassword, setGeneratedPassword] = useState("");
+  const [assignOrgId, setAssignOrgId] = useState("");
+  const [assignRole, setAssignRole] = useState<"owner" | "admin" | "member">("member");
+  const [userSearch, setUserSearch] = useState("");
+
+  // orgs
+  const [editingOrgQuotaId, setEditingOrgQuotaId] = useState<string | null>(null);
+  const [editMemories, setEditMemories] = useState(100);
+  const [editRecalls, setEditRecalls] = useState(1000);
+  const [editCommits, setEditCommits] = useState(500);
+
+  // ── queries ────────────────────────────────────────────────────────────────
   const statsQuery = useQuery({
     queryKey: ["admin-stats"],
-    queryFn: async () => (await import("~/routes/admin")).getDbStats(),
+    queryFn: () => getDbStats(),
     refetchInterval: 5000,
   });
-
   const debugQuery = useQuery({
     queryKey: ["admin-debug"],
-    queryFn: async () => (await import("~/routes/admin")).getVectorizeDebug(),
+    queryFn: () => getVectorizeDebug(),
     refetchInterval: 10000,
   });
-
-  // Organizations
   const orgsQuery = useQuery({
     queryKey: ["admin-orgs"],
     queryFn: () => listAllOrgsAndQuotas(),
-    enabled: activeSection === "orgs" || activeSection === "users",
+    enabled: activeSection === "orgs" || activeSection === "users" || activeSection === "org-billing",
   });
-
-  // Users
   const usersQuery = useQuery({
     queryKey: ["admin-users"],
     queryFn: () => listAllUsersAndDetails(),
     enabled: activeSection === "users",
   });
-
-  // Admin status
   const { data: adminStatus } = useQuery({
     queryKey: ["admin-status"],
     queryFn: () => getAdminStatus(),
   });
+  const orgBillingQuery = useQuery({
+    queryKey: ["admin-org-billing"],
+    queryFn: () => getBillingInfo(),
+    enabled: activeSection === "org-billing",
+  });
 
-  // Mutations
+  // ── mutations ──────────────────────────────────────────────────────────────
   const clearDbMutation = useMutation({
     mutationFn: clearDatabase,
-    onSuccess: () => {
-      statsQuery.refetch();
-      debugQuery.refetch();
-    },
+    onSuccess: () => { setConfirmClear(false); statsQuery.refetch(); debugQuery.refetch(); },
   });
-
   const clearVectorizeMutation = useMutation({
     mutationFn: clearVectorizeIndex,
-    onSuccess: () => {
-      statsQuery.refetch();
-      debugQuery.refetch();
-    },
+    onSuccess: () => { setConfirmClearVectorize(false); statsQuery.refetch(); debugQuery.refetch(); },
   });
-
   const clearAllMutation = useMutation({
     mutationFn: nukeEverything,
-    onSuccess: () => {
-      statsQuery.refetch();
-      debugQuery.refetch();
+    onSuccess: () => { setConfirmClearAll(false); statsQuery.refetch(); debugQuery.refetch(); },
+  });
+  const rebuildMutation = useMutation({
+    mutationFn: () => rebuildVectorizeIndex({}),
+    onSuccess: (data) => { setRebuildResult(data); statsQuery.refetch(); debugQuery.refetch(); },
+  });
+  const scanMutation = useMutation({
+    mutationFn: scanDatabaseDuplicates,
+    onSuccess: (data) => {
+      setScanResults(data.groups);
+      const defaults: Record<number, string> = {};
+      data.groups.forEach((g, idx) => { defaults[idx] = g.primary.id; });
+      setRetainSelections(defaults);
     },
   });
+  const resolveMutation = useMutation({
+    mutationFn: async () => {
+      if (!scanResults) return;
+      const idsToDelete: string[] = [];
+      scanResults.forEach((group, idx) => {
+        const retainedId = retainSelections[idx] || group.primary.id;
+        [group.primary, ...group.duplicates].forEach((item) => {
+          if (item.id !== retainedId) idsToDelete.push(item.id);
+        });
+      });
+      if (idsToDelete.length > 0) await bulkDeleteMemories({ data: { ids: idsToDelete } });
+    },
+    onSuccess: () => {
+      setScanResults(null);
+      setRetainSelections({});
+      statsQuery.refetch();
+      debugQuery.refetch();
+      alert("Successfully resolved duplicates!");
+    },
+  });
+  const encryptMutation = useMutation({
+    mutationFn: () => encryptAllMemories({}),
+    onSuccess: (data) => setEncryptResult(data),
+  });
 
-  // State for modals and confirmations
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [confirmClearVectorize, setConfirmClearVectorize] = useState(false);
-  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const createUserMut = useMutation({
+    mutationFn: (data: { name: string; email: string; password?: string; plan?: string }) => createUserAdmin({ data }),
+    onSuccess: () => {
+      usersQuery.refetch();
+      setIsCreateModalOpen(false);
+      setCreateName(""); setCreateEmail(""); setCreatePassword(""); setCreatePlan("free");
+    },
+    onError: (err) => alert("Failed to create user: " + String(err)),
+  });
+  const updateUserMut = useMutation({
+    mutationFn: (data: { userId: string; name: string; email: string; emailVerified: boolean }) => updateUserAdmin({ data }),
+    onSuccess: () => { usersQuery.refetch(); setIsEditModalOpen(false); },
+    onError: (err) => alert("Failed to update user: " + String(err)),
+  });
+  const deleteUserMut = useMutation({
+    mutationFn: (userId: string) => deleteUserAdmin({ data: { userId } }),
+    onSuccess: () => usersQuery.refetch(),
+    onError: (err) => alert("Failed to delete user: " + String(err)),
+  });
+  const updateUserPlanMut = useMutation({
+    mutationFn: (data: { userId: string; plan: string }) => updateUserPlanAdmin({ data }),
+    onSuccess: () => { usersQuery.refetch(); setIsPlanModalOpen(false); },
+    onError: (err) => alert("Failed to update user plan: " + String(err)),
+  });
+  const setUserPasswordMut = useMutation({
+    mutationFn: (data: { userId: string; password: string }) => setUserPasswordAdmin({ data }),
+    onSuccess: () => { setIsPasswordModalOpen(false); setPasswordValue(""); alert("Password set successfully!"); },
+    onError: (err) => alert("Failed to set password: " + String(err)),
+  });
+  const resetUserPasswordMut = useMutation({
+    mutationFn: (userId: string) => resetUserPasswordAdmin({ data: { userId } }),
+    onSuccess: (res) => { setGeneratedPassword(res.password || ""); setIsResetSuccessModalOpen(true); },
+    onError: (err) => alert("Failed to reset password: " + String(err)),
+  });
+  const assignUserToOrgMut = useMutation({
+    mutationFn: (data: { userId: string; orgId: string; role: "owner" | "admin" | "member" }) => assignUserToOrgAdmin({ data }),
+    onSuccess: () => { usersQuery.refetch(); orgsQuery.refetch(); },
+    onError: (err) => alert("Failed to assign user to organization: " + String(err)),
+  });
+  const removeUserFromOrgMut = useMutation({
+    mutationFn: (data: { userId: string; orgId: string }) => removeUserFromOrgAdmin({ data }),
+    onSuccess: () => { usersQuery.refetch(); orgsQuery.refetch(); },
+    onError: (err) => alert("Failed to remove user from organization: " + String(err)),
+  });
+  const updateQuotaMut = useMutation({
+    mutationFn: (data: { orgId: string; monthlyMemories: number; monthlyRecalls: number; monthlyCommits: number }) => updateOrgQuota({ data }),
+    onSuccess: () => { setEditingOrgQuotaId(null); orgsQuery.refetch(); },
+    onError: (err) => alert("Failed to update quota: " + String(err)),
+  });
+  const deleteOrgMut = useMutation({
+    mutationFn: (id: string) => deleteOrganization({ data: { id } }),
+    onSuccess: () => orgsQuery.refetch(),
+    onError: (err) => alert("Failed to delete org: " + String(err)),
+  });
 
+  const filteredUsers = (usersQuery.data || []).filter(
+    (u) =>
+      u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
+      u.email.toLowerCase().includes(userSearch.toLowerCase())
+  );
+
+  // ── render ─────────────────────────────────────────────────────────────────
   return (
     <AdminLayout activeSection={activeSection} onSectionChange={setActiveSection}>
-      {/* SYSTEM OVERVIEW */}
+
+      {/* ── SYSTEM OVERVIEW ─────────────────────────────────────────────── */}
       {activeSection === "system" && (
         <>
-          <SiteAdminSection
-            title="Database Statistics"
-            description="Real-time metrics for your system storage"
-            icon="📊"
-          >
-            {statsQuery.isPending && <p>Loading stats...</p>}
-            {statsQuery.isError && (
-              <p style={{ color: "var(--error)" }}>Failed to load stats</p>
-            )}
+          <SiteAdminSection title="Database Stats" description="Real-time storage metrics" icon="📊">
+            {statsQuery.isPending && <p>Loading...</p>}
+            {statsQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load stats: {String(statsQuery.error)}</p>}
             {statsQuery.data && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-                <StatBox label="Memories in D1" value={statsQuery.data.memoryCount} />
-                <StatBox label="Vectors in Vectorize" value={statsQuery.data.vectorCount} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                <StatBox label="D1 Memories" value={statsQuery.data.memoryCount} />
+                <StatBox label="Vectorize Vectors" value={statsQuery.data.vectorCount} />
               </div>
             )}
           </SiteAdminSection>
 
-          <SiteAdminSection
-            title="Vector Index Health"
-            description="Check for orphaned or missing vectors"
-            icon="🔍"
-          >
+          <SiteAdminSection title="Vector Index Health" description="Orphaned vector detection" icon="🔍">
             {debugQuery.data?.vectors?.length ? (
               <AdminCard status="error">
-                <p style={{ margin: "0 0 12px 0", fontWeight: 600, color: "var(--error)" }}>
-                  Found {debugQuery.data.vectors.length} orphaned vectors
+                <p style={{ color: "var(--error)", marginBottom: "10px" }}>
+                  Found {debugQuery.data.vectors.length} D1 records with no matching vector (first 100 checked):
                 </p>
-                <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0 }}>
-                  These are D1 records without matching vectors. Consider running a rebuild.
-                </p>
+                <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "10px", fontFamily: "monospace", fontSize: "11px", maxHeight: "200px", overflowY: "auto" }}>
+                  {debugQuery.data.vectors.map((v) => (
+                    <div key={v.id} style={{ color: "var(--text-muted)", padding: "3px 0" }}>
+                      {v.id.slice(0, 8)}... (missing from Vectorize)
+                    </div>
+                  ))}
+                </div>
               </AdminCard>
             ) : (
               <AdminCard status="success">
-                <p style={{ margin: 0, fontWeight: 600, color: "var(--success)" }}>
-                  ✓ No orphaned vectors detected
-                </p>
+                <p style={{ margin: 0, fontWeight: 600, color: "var(--success)" }}>✓ No orphaned vectors detected</p>
               </AdminCard>
             )}
           </SiteAdminSection>
 
-          <SiteAdminSection
-            title="Destructive Operations"
-            description="Dangerous actions that cannot be undone"
-            icon="⚠️"
-          >
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+          <SiteAdminSection title="Database Deduplication Scanner" description="Find and resolve semantic duplicate memories" icon="🔎">
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "15px" }}>
+              Scan all stored memories for semantic duplicates. Locker will identify identical facts with different phrasings and let you choose which to retain.
+            </p>
+            {!scanResults ? (
+              <button
+                onClick={() => scanMutation.mutate({})}
+                disabled={scanMutation.isPending}
+                style={{ padding: "10px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer" }}
+              >
+                {scanMutation.isPending ? "Scanning & Analyzing Database..." : "Scan for Duplicates"}
+              </button>
+            ) : (
               <div>
-                <button
-                  onClick={() => setConfirmClearVectorize(true)}
-                  disabled={clearVectorizeMutation.isPending}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    background: "rgba(239,68,68,0.1)",
-                    border: "1px solid rgba(239,68,68,0.3)",
-                    color: "var(--error)",
-                    borderRadius: "8px",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                  }}
-                >
-                  Clear Vectorize
+                <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+                  <button onClick={() => scanMutation.mutate({})} disabled={scanMutation.isPending || resolveMutation.isPending}
+                    style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: "var(--radius)", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>
+                    {scanMutation.isPending ? "Scanning..." : "Rescan"}
+                  </button>
+                  <button onClick={() => setScanResults(null)} disabled={scanMutation.isPending || resolveMutation.isPending}
+                    style={{ padding: "8px 16px", background: "transparent", border: "1px solid transparent", color: "var(--text-muted)", borderRadius: "var(--radius)", fontSize: "13px", cursor: "pointer" }}>
+                    Clear Results
+                  </button>
+                </div>
+                {scanResults.length === 0 ? (
+                  <AdminCard status="success">
+                    <p style={{ margin: 0 }}>🎉 No duplicate memories found in your database!</p>
+                  </AdminCard>
+                ) : (
+                  <div>
+                    <p style={{ marginBottom: "15px", fontSize: "13px", color: "var(--text-muted)" }}>
+                      Found {scanResults.length} duplicate group{scanResults.length !== 1 ? "s" : ""}. Choose which memory to retain (non-selected will be deleted):
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                      {scanResults.map((group, groupIdx) => {
+                        const allItems = [group.primary, ...group.duplicates];
+                        const selectedId = retainSelections[groupIdx] || group.primary.id;
+                        return (
+                          <div key={groupIdx} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "15px" }}>
+                            <div style={{ fontSize: "12px", fontWeight: "bold", color: "var(--accent)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                              Group {groupIdx + 1}
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                              {allItems.map((item) => (
+                                <label key={item.id} style={{
+                                  display: "flex", alignItems: "start", gap: "10px", padding: "10px",
+                                  background: selectedId === item.id ? "rgba(168,85,247,0.06)" : "var(--surface)",
+                                  border: `1px solid ${selectedId === item.id ? "var(--accent)" : "var(--border)"}`,
+                                  borderRadius: "var(--radius)", cursor: "pointer", transition: "all 0.15s ease",
+                                }}>
+                                  <input type="radio" name={`group-${groupIdx}`} checked={selectedId === item.id}
+                                    onChange={() => setRetainSelections((prev) => ({ ...prev, [groupIdx]: item.id }))}
+                                    style={{ marginTop: "3px", accentColor: "var(--accent)" }} />
+                                  <div style={{ flex: 1, fontSize: "13px", lineHeight: "1.5" }}>
+                                    <p style={{ margin: 0, color: "var(--text)" }}>{item.fact}</p>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "6px" }}>
+                                      <span style={{ fontSize: "10px", background: "var(--surface2)", color: "var(--text-muted)", padding: "2px 6px", borderRadius: "4px", textTransform: "uppercase" }}>
+                                        {item.category}
+                                      </span>
+                                      <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                                        Added {new Date(item.timestamp).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: "20px" }}>
+                      <button onClick={() => resolveMutation.mutate()} disabled={resolveMutation.isPending}
+                        style={{ padding: "10px 24px", background: "var(--error)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer", boxShadow: "0 4px 12px rgba(239,68,68,0.2)" }}>
+                        {resolveMutation.isPending ? "Resolving Duplicates..." : "Resolve & Delete Duplicates"}
+                      </button>
+                      {resolveMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Failed to resolve duplicates. Please try again.</p>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </SiteAdminSection>
+
+          <SiteAdminSection title="Vector Index Management" description="Rebuild Vectorize from D1" icon="⚡">
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "15px" }}>
+              Rebuild the Vectorize index by generating embeddings for all database memories. Use this if the Vectorize index was migrated or is out of sync with D1.
+            </p>
+            {rebuildResult && (
+              <AdminCard status="success">
+                <p style={{ margin: 0 }}>Done — processed {rebuildResult.processed} memories{rebuildResult.failed > 0 ? `, ${rebuildResult.failed} failed` : ""}.</p>
+              </AdminCard>
+            )}
+            <button onClick={() => { setRebuildResult(null); rebuildMutation.mutate(); }} disabled={rebuildMutation.isPending}
+              style={{ padding: "9px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer", marginTop: rebuildResult ? "12px" : 0 }}>
+              {rebuildMutation.isPending ? "Rebuilding Index…" : "Rebuild Vector Index"}
+            </button>
+            {rebuildMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Index rebuild failed. Check logs.</p>}
+          </SiteAdminSection>
+
+          <SiteAdminSection title="Encryption" description="Encrypt plaintext memories at rest" icon="🔒">
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "15px" }}>
+              Encrypt any plaintext memory facts stored before encryption was enabled. Safe to run multiple times — already-encrypted facts are skipped.
+            </p>
+            {encryptResult && (
+              <AdminCard status="success">
+                <p style={{ margin: 0 }}>Done — encrypted {encryptResult.encrypted}, skipped {encryptResult.alreadyEncrypted} already encrypted{encryptResult.failed > 0 ? `, ${encryptResult.failed} failed` : ""}.</p>
+              </AdminCard>
+            )}
+            <button onClick={() => { setEncryptResult(null); encryptMutation.mutate(); }} disabled={encryptMutation.isPending}
+              style={{ padding: "9px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer", marginTop: encryptResult ? "12px" : 0 }}>
+              {encryptMutation.isPending ? "Encrypting…" : "Encrypt All Plaintext Memories"}
+            </button>
+            {encryptMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Encryption failed. Check logs.</p>}
+          </SiteAdminSection>
+
+          <SiteAdminSection title="Destructive Operations" description="Irreversible data deletion" icon="⚠️">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+              <div>
+                <button onClick={() => setConfirmClearVectorize(true)} disabled={clearVectorizeMutation.isPending}
+                  style={{ width: "100%", padding: "10px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--error)", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer" }}>
+                  Clear Vectorize Only
                 </button>
                 {confirmClearVectorize && (
                   <AdminCard status="warning">
-                    <p style={{ fontSize: "12px", marginBottom: "8px" }}>
-                      Delete all vectors from Vectorize (keeps D1 data)?
-                    </p>
+                    <p style={{ fontSize: "12px", marginBottom: "8px" }}>This will delete all vectors from Vectorize but keep D1 data.</p>
                     <div style={{ display: "flex", gap: "5px" }}>
-                      <button
-                        onClick={() => {
-                          clearVectorizeMutation.mutate({});
-                          setConfirmClearVectorize(false);
-                        }}
-                        style={{ flex: 1, padding: "6px", background: "var(--error)", color: "white" }}
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        onClick={() => setConfirmClearVectorize(false)}
-                        style={{ flex: 1, padding: "6px", background: "var(--surface2)" }}
-                      >
-                        Cancel
-                      </button>
+                      <button onClick={() => clearVectorizeMutation.mutate({})} style={{ flex: 1, padding: "6px", background: "var(--error)", color: "white" }}>Confirm</button>
+                      <button onClick={() => setConfirmClearVectorize(false)} style={{ flex: 1, padding: "6px", background: "var(--surface2)", border: "1px solid var(--border)" }}>Cancel</button>
                     </div>
                   </AdminCard>
                 )}
               </div>
-
               <div>
-                <button
-                  onClick={() => setConfirmClear(true)}
-                  disabled={clearDbMutation.isPending}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    background: "rgba(239,68,68,0.1)",
-                    border: "1px solid rgba(239,68,68,0.3)",
-                    color: "var(--error)",
-                    borderRadius: "8px",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                  }}
-                >
-                  Clear Database
+                <button onClick={() => setConfirmClear(true)} disabled={clearDbMutation.isPending}
+                  style={{ width: "100%", padding: "10px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--error)", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer" }}>
+                  Clear Database Only
                 </button>
                 {confirmClear && (
                   <AdminCard status="warning">
-                    <p style={{ fontSize: "12px", marginBottom: "8px" }}>
-                      Delete all memories from D1 and Vectorize?
-                    </p>
+                    <p style={{ fontSize: "12px", marginBottom: "8px" }}>This will delete all memories from D1 and Vectorize.</p>
                     <div style={{ display: "flex", gap: "5px" }}>
-                      <button
-                        onClick={() => {
-                          clearDbMutation.mutate({});
-                          setConfirmClear(false);
-                        }}
-                        style={{ flex: 1, padding: "6px", background: "var(--error)", color: "white" }}
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        onClick={() => setConfirmClear(false)}
-                        style={{ flex: 1, padding: "6px", background: "var(--surface2)" }}
-                      >
-                        Cancel
-                      </button>
+                      <button onClick={() => clearDbMutation.mutate({})} style={{ flex: 1, padding: "6px", background: "var(--error)", color: "white" }}>Confirm</button>
+                      <button onClick={() => setConfirmClear(false)} style={{ flex: 1, padding: "6px", background: "var(--surface2)", border: "1px solid var(--border)" }}>Cancel</button>
                     </div>
                   </AdminCard>
                 )}
               </div>
-
               <div style={{ gridColumn: "1 / -1" }}>
-                <button
-                  onClick={() => setConfirmClearAll(true)}
-                  disabled={clearAllMutation.isPending}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    background: "rgba(239,68,68,0.15)",
-                    border: "2px solid rgba(239,68,68,0.5)",
-                    color: "var(--error)",
-                    borderRadius: "8px",
-                    fontWeight: "bold",
-                    fontSize: "14px",
-                    cursor: "pointer",
-                  }}
-                >
+                <button onClick={() => setConfirmClearAll(true)} disabled={clearAllMutation.isPending}
+                  style={{ width: "100%", padding: "10px", background: "rgba(239,68,68,0.15)", border: "2px solid rgba(239,68,68,0.5)", color: "var(--error)", borderRadius: "var(--radius)", fontWeight: "bold", fontSize: "14px", cursor: "pointer" }}>
                   🔥 NUKE: Clear Everything
                 </button>
                 {confirmClearAll && (
                   <AdminCard status="error">
-                    <p style={{ fontSize: "13px", marginBottom: "8px", fontWeight: "bold" }}>
-                      Delete ALL memories from both D1 and Vectorize. This cannot be undone!
-                    </p>
+                    <p style={{ fontSize: "13px", marginBottom: "8px", fontWeight: "bold" }}>This will delete ALL memories from both D1 and Vectorize. This cannot be undone!</p>
                     <div style={{ display: "flex", gap: "5px" }}>
-                      <button
-                        onClick={() => {
-                          clearAllMutation.mutate({});
-                          setConfirmClearAll(false);
-                        }}
-                        style={{ flex: 1, padding: "8px", background: "var(--error)", color: "white", fontWeight: "bold" }}
-                      >
-                        NUKE IT
-                      </button>
-                      <button
-                        onClick={() => setConfirmClearAll(false)}
-                        style={{ flex: 1, padding: "8px", background: "var(--surface2)" }}
-                      >
-                        Cancel
-                      </button>
+                      <button onClick={() => clearAllMutation.mutate({})} style={{ flex: 1, padding: "8px", background: "var(--error)", color: "white", fontWeight: "bold" }}>NUKE IT</button>
+                      <button onClick={() => setConfirmClearAll(false)} style={{ flex: 1, padding: "8px", background: "var(--surface2)", border: "1px solid var(--border)" }}>Cancel</button>
                     </div>
                   </AdminCard>
                 )}
               </div>
+            </div>
+            <div style={{ marginTop: "16px", padding: "10px 14px", background: "rgba(168,85,247,0.08)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>
+                <strong>Status:</strong>{" "}
+                {clearDbMutation.isPending || clearVectorizeMutation.isPending || clearAllMutation.isPending ? "Operating..." : "Ready"}
+              </p>
             </div>
           </SiteAdminSection>
         </>
       )}
 
-      {/* SITE CONFIGURATION */}
+      {/* ── SITE CONFIGURATION ──────────────────────────────────────────────── */}
       {activeSection === "site-config" && (
-        <SiteAdminSection
-          title="Site Configuration"
-          description="Global settings and configuration"
-          icon="🔧"
-        >
+        <SiteAdminSection title="Site Configuration" description="Global settings and configuration" icon="🔧">
           <AdminCard>
-            <p style={{ color: "var(--text-muted)", margin: 0 }}>
-              Configuration options coming soon...
-            </p>
+            <p style={{ color: "var(--text-muted)", margin: 0 }}>Configuration options coming soon...</p>
           </AdminCard>
         </SiteAdminSection>
       )}
 
-      {/* BILLING MANAGEMENT */}
+      {/* ── BILLING MANAGEMENT ──────────────────────────────────────────────── */}
       {activeSection === "billing-manage" && (
-        <SiteAdminSection
-          title="Billing Management"
-          description="Manage subscription metrics and revenue"
-          icon="💳"
-        >
+        <SiteAdminSection title="Billing Management" description="Manage subscription metrics and revenue" icon="💳">
           <AdminCard>
-            <p style={{ color: "var(--text-muted)", margin: 0 }}>
-              Billing dashboard coming soon...
-            </p>
+            <p style={{ color: "var(--text-muted)", margin: 0 }}>Billing dashboard coming soon...</p>
           </AdminCard>
         </SiteAdminSection>
       )}
 
-      {/* ORGANIZATIONS */}
+      {/* ── ORGANIZATIONS ───────────────────────────────────────────────────── */}
       {activeSection === "orgs" && (
-        <OrgAdminSection
-          title="Global Organizations"
-          description="Manage all organizations and their quotas"
-          icon="🏢"
-        >
+        <OrgAdminSection title="Global Organizations" description="Manage all organizations and their quotas" icon="🏢">
           {orgsQuery.isPending && <p>Loading organizations...</p>}
-          {orgsQuery.isError && (
-            <p style={{ color: "var(--error)" }}>Failed to load organizations</p>
-          )}
-          {orgsQuery.data && orgsQuery.data.length === 0 && (
-            <AdminCard>
-              <p style={{ color: "var(--text-muted)", margin: 0, textAlign: "center" }}>
-                No organizations created yet
-              </p>
-            </AdminCard>
-          )}
+          {orgsQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load organizations: {String(orgsQuery.error)}</p>}
           {orgsQuery.data && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {orgsQuery.data.map((org) => (
-                <AdminCard key={org.id}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div>
-                      <h3 style={{ margin: "0 0 4px 0", fontSize: "14px", fontWeight: "bold" }}>
-                        {org.name}
-                      </h3>
-                      <p style={{ margin: "4px 0 0 0", fontSize: "11px", color: "var(--text-muted)" }}>
-                        {org.memberCount} members · {org.plan} plan
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (confirm(`Delete organization ${org.name}?`)) {
-                          deleteOrganization({ data: { id: org.id } });
-                        }
-                      }}
-                      style={{
-                        padding: "4px 8px",
-                        background: "transparent",
-                        color: "var(--error)",
-                        border: "1px solid transparent",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </AdminCard>
-              ))}
-            </div>
-          )}
-        </OrgAdminSection>
-      )}
-
-      {/* USERS */}
-      {activeSection === "users" && (
-        <OrgAdminSection
-          title="Users Directory"
-          description="Manage all users and their plans"
-          icon="👥"
-        >
-          {usersQuery.isPending && <p>Loading users...</p>}
-          {usersQuery.isError && (
-            <p style={{ color: "var(--error)" }}>Failed to load users</p>
-          )}
-          {usersQuery.data && usersQuery.data.length === 0 && (
-            <AdminCard>
-              <p style={{ color: "var(--text-muted)", margin: 0, textAlign: "center" }}>
-                No users found
-              </p>
-            </AdminCard>
-          )}
-          {usersQuery.data && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {usersQuery.data.map((user) => (
-                <AdminCard key={user.id}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div>
-                      <h3 style={{ margin: "0 0 4px 0", fontSize: "14px", fontWeight: "bold" }}>
-                        {user.name}
-                      </h3>
-                      <p style={{ margin: "4px 0 0 0", fontSize: "11px", color: "var(--text-muted)" }}>
-                        {user.email} · {user.plan} · {user.memoryCount} memories
-                      </p>
-                    </div>
-                    <div style={{ display: "flex", gap: "4px" }}>
-                      <button
-                        style={{
-                          padding: "4px 8px",
-                          background: "var(--surface2)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "4px",
-                          fontSize: "11px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        style={{
-                          padding: "4px 8px",
-                          background: "var(--surface2)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "4px",
-                          fontSize: "11px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Plan
-                      </button>
-                      {user.id !== adminStatus?.userId && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {orgsQuery.data.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px", border: "1px dashed var(--border)", borderRadius: "var(--radius)", color: "var(--text-muted)" }}>
+                  No organizations created yet. Organizations can be registered directly by users from the Organization Console.
+                </div>
+              ) : (
+                orgsQuery.data.map((org) => {
+                  const isEditing = editingOrgQuotaId === org.id;
+                  return (
+                    <div key={org.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "bold" }}>{org.name}</h3>
+                            <span style={{
+                              fontSize: "10px",
+                              background: org.plan === "enterprise" ? "rgba(16,185,129,0.15)" : org.plan === "pro" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
+                              color: org.plan === "enterprise" ? "#10b981" : org.plan === "pro" ? "var(--accent)" : "var(--text-muted)",
+                              padding: "2px 8px", borderRadius: "20px", fontWeight: "bold", textTransform: "uppercase",
+                            }}>
+                              {org.plan}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+                            ID: <code style={{ color: "var(--accent)" }}>{org.id}</code> · Joined {new Date(org.createdAt).toLocaleDateString()} · {org.memberCount} member(s)
+                          </div>
+                        </div>
                         <button
-                          style={{
-                            padding: "4px 8px",
-                            background: "rgba(239,68,68,0.1)",
-                            border: "1px solid rgba(239,68,68,0.2)",
-                            color: "var(--error)",
-                            borderRadius: "4px",
-                            fontSize: "11px",
-                            cursor: "pointer",
-                          }}
+                          onClick={() => { if (confirm(`Delete org ${org.name}? This will delete all its teams, members, and quotas!`)) deleteOrgMut.mutate(org.id); }}
+                          style={{ padding: "4px 8px", background: "transparent", color: "var(--error)", border: "1px solid transparent", borderRadius: "var(--radius)", cursor: "pointer", fontSize: "12px" }}
+                          onMouseEnter={(e) => { (e.target as HTMLElement).style.background = "rgba(239,68,68,0.1)"; (e.target as HTMLElement).style.borderColor = "rgba(239,68,68,0.2)"; }}
+                          onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "transparent"; (e.target as HTMLElement).style.borderColor = "transparent"; }}
                         >
                           Delete
                         </button>
-                      )}
+                      </div>
+                      <div style={{ background: "var(--surface2)", borderRadius: "8px", padding: "14px", border: "1px solid var(--border)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                          <span style={{ fontSize: "12px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Monthly Quotas</span>
+                          {!isEditing ? (
+                            <button onClick={() => { setEditingOrgQuotaId(org.id); setEditMemories(org.monthlyMemories); setEditRecalls(org.monthlyRecalls); setEditCommits(org.monthlyCommits); }}
+                              style={{ padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", cursor: "pointer", color: "var(--text-muted)" }}>
+                              Edit Quotas
+                            </button>
+                          ) : (
+                            <div style={{ display: "flex", gap: "5px" }}>
+                              <button onClick={() => updateQuotaMut.mutate({ orgId: org.id, monthlyMemories: editMemories, monthlyRecalls: editRecalls, monthlyCommits: editCommits })}
+                                disabled={updateQuotaMut.isPending}
+                                style={{ padding: "4px 8px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontSize: "11px", cursor: "pointer", fontWeight: "bold" }}>
+                                {updateQuotaMut.isPending ? "Saving..." : "Save"}
+                              </button>
+                              <button onClick={() => setEditingOrgQuotaId(null)}
+                                style={{ padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", cursor: "pointer", color: "var(--text-muted)" }}>
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {!isEditing ? (
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+                            {[["Memories Max", org.monthlyMemories], ["Recalls Max", org.monthlyRecalls], ["Commits Max", org.monthlyCommits]].map(([label, val]) => (
+                              <div key={label as string} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{label}</span>
+                                <span style={{ fontSize: "14px", fontWeight: "bold" }}>{val}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
+                            {([["Memories Max", editMemories, setEditMemories], ["Recalls Max", editRecalls, setEditRecalls], ["Commits Max", editCommits, setEditCommits]] as [string, number, (v: number) => void][]).map(([label, val, setter]) => (
+                              <div key={label}>
+                                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>{label}</span>
+                                <input type="number" value={val} onChange={(e) => setter(Number(e.target.value))} style={{ width: "100%", padding: "5px 8px", fontSize: "12px", borderRadius: "4px" }} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </AdminCard>
-              ))}
+                  );
+                })
+              )}
             </div>
           )}
         </OrgAdminSection>
       )}
 
-      {/* TEAMS */}
+      {/* ── ORG BILLING ─────────────────────────────────────────────────────── */}
+      {activeSection === "org-billing" && (
+        <OrgAdminSection title="Organization Billing" description="Subscription status and plan management for all orgs" icon="💰">
+          {orgBillingQuery.isPending && <p>Loading billing data...</p>}
+          {orgBillingQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load billing data: {String(orgBillingQuery.error)}</p>}
+
+          {/* Usage summary for the admin's own context */}
+          {orgBillingQuery.data && (
+            <>
+              <AdminCard>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "var(--text)" }}>Your Current Plan</p>
+                    <p style={{ margin: "4px 0 0 0", fontSize: "11px", color: "var(--text-muted)" }}>Admin account billing context</p>
+                  </div>
+                  <span style={{
+                    fontSize: "11px", fontWeight: "bold", textTransform: "uppercase",
+                    background: orgBillingQuery.data.planId === "enterprise" ? "rgba(16,185,129,0.15)" : orgBillingQuery.data.planId === "business" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
+                    color: orgBillingQuery.data.planId === "enterprise" ? "#10b981" : orgBillingQuery.data.planId === "business" ? "var(--accent)" : "var(--text-muted)",
+                    padding: "3px 10px", borderRadius: "20px",
+                  }}>
+                    {orgBillingQuery.data.planId}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "12px" }}>
+                  <StatBox label="Memories" value={orgBillingQuery.data.usage.memories} />
+                  <StatBox label="Recalls (month)" value={orgBillingQuery.data.usage.monthlyRecalls} />
+                  <StatBox label="Commits (month)" value={orgBillingQuery.data.usage.monthlyCommits} />
+                  <StatBox label="Tokens (month)" value={orgBillingQuery.data.usage.monthlyTokens} />
+                </div>
+              </AdminCard>
+
+              {/* Orgs where admin is owner/admin */}
+              <div style={{ marginTop: "20px" }}>
+                <h3 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Managed Organizations ({orgBillingQuery.data.managedOrgs.length})
+                </h3>
+                {orgBillingQuery.data.managedOrgs.length === 0 ? (
+                  <AdminCard>
+                    <p style={{ color: "var(--text-muted)", margin: 0, textAlign: "center" }}>No organizations with admin/owner access found.</p>
+                  </AdminCard>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {orgBillingQuery.data.managedOrgs.map((org) => (
+                      <AdminCard key={org.id}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div>
+                            <h4 style={{ margin: "0 0 4px 0", fontSize: "14px", fontWeight: "bold" }}>{org.name}</h4>
+                            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                              <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>ID: {org.id}</span>
+                              <span style={{
+                                fontSize: "10px", fontWeight: "bold", textTransform: "uppercase",
+                                background: org.plan === "enterprise" ? "rgba(16,185,129,0.15)" : org.plan === "business" || org.plan === "pro" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
+                                color: org.plan === "enterprise" ? "#10b981" : org.plan === "business" || org.plan === "pro" ? "var(--accent)" : "var(--text-muted)",
+                                padding: "1px 6px", borderRadius: "10px",
+                              }}>
+                                {org.plan}
+                              </span>
+                              <span style={{
+                                fontSize: "10px", fontWeight: "bold", textTransform: "uppercase",
+                                background: org.role === "owner" ? "rgba(239,68,68,0.1)" : "rgba(168,85,247,0.1)",
+                                color: org.role === "owner" ? "var(--error)" : "var(--accent)",
+                                padding: "1px 6px", borderRadius: "10px",
+                              }}>
+                                {org.role}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => { setActiveSection("orgs"); }}
+                            style={{ padding: "4px 10px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", cursor: "pointer", color: "var(--text-muted)", fontWeight: 600 }}
+                          >
+                            Manage Quotas →
+                          </button>
+                        </div>
+                      </AdminCard>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* All orgs from the global list with plan info */}
+              {orgsQuery.data && orgsQuery.data.length > 0 && (
+                <div style={{ marginTop: "24px" }}>
+                  <h3 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    All Organization Plans
+                  </h3>
+                  <div style={{ width: "100%", overflowX: "auto", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                          {["Organization", "Plan", "Members", "Mem Quota", "Recall Quota", "Commit Quota"].map((h, i) => (
+                            <th key={h} style={{ padding: "10px 14px", color: "var(--text-muted)", fontSize: "11px", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: i > 1 ? "center" : "left" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orgsQuery.data.map((org) => (
+                          <tr key={org.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "12px 14px" }}>
+                              <div style={{ fontWeight: 600, fontSize: "13px" }}>{org.name}</div>
+                              <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{org.id}</div>
+                            </td>
+                            <td style={{ padding: "12px 14px" }}>
+                              <span style={{
+                                fontSize: "10px", fontWeight: "bold", textTransform: "uppercase",
+                                background: org.plan === "enterprise" ? "rgba(16,185,129,0.15)" : org.plan === "pro" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
+                                color: org.plan === "enterprise" ? "#10b981" : org.plan === "pro" ? "var(--accent)" : "var(--text-muted)",
+                                padding: "2px 8px", borderRadius: "20px",
+                              }}>
+                                {org.plan}
+                              </span>
+                            </td>
+                            <td style={{ padding: "12px 14px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>{org.memberCount}</td>
+                            <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, fontSize: "13px" }}>{org.monthlyMemories.toLocaleString()}</td>
+                            <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, fontSize: "13px" }}>{org.monthlyRecalls.toLocaleString()}</td>
+                            <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, fontSize: "13px" }}>{org.monthlyCommits.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </OrgAdminSection>
+      )}
+
+      {/* ── USERS ───────────────────────────────────────────────────────────── */}
+      {activeSection === "users" && (
+        <OrgAdminSection title="Users Directory" description="Manage all users and their plans" icon="👥">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <input
+              type="text"
+              placeholder="Search users by name or email..."
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              style={{ flex: 1, padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", marginRight: "12px" }}
+            />
+            <button
+              onClick={() => { setCreateName(""); setCreateEmail(""); setCreatePassword(""); setCreatePlan("free"); setIsCreateModalOpen(true); }}
+              style={{ padding: "8px 16px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", fontSize: "13px", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              Create User
+            </button>
+          </div>
+
+          {usersQuery.isPending && <p>Loading users...</p>}
+          {usersQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load users: {String(usersQuery.error)}</p>}
+          {usersQuery.data && (
+            <div style={{ width: "100%", overflowX: "auto", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    {["User", "Pricing Plan", "Organizations", "Memories", "Joined", "Actions"].map((h, i) => (
+                      <th key={h} style={{ padding: "12px 16px", color: "var(--text-muted)", fontSize: "11px", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: i === 3 ? "center" : i === 5 ? "right" : "left" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)", fontStyle: "italic" }}>
+                        No users found matching search criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map((user) => (
+                      <tr key={user.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "14px 16px" }}>
+                          <div style={{ fontWeight: "bold", fontSize: "14px" }}>{user.name}</div>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{user.email}</div>
+                          {user.id === adminStatus?.userId && (
+                            <span style={{ fontSize: "9px", background: "rgba(168,85,247,0.15)", color: "var(--accent)", padding: "1px 6px", borderRadius: "10px", fontWeight: "bold", display: "inline-block", marginTop: "4px" }}>ADMIN</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "14px 16px" }}>
+                          <span style={{
+                            fontSize: "10px",
+                            background: user.plan === "enterprise" ? "rgba(16,185,129,0.15)" : user.plan === "business" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
+                            color: user.plan === "enterprise" ? "#10b981" : user.plan === "business" ? "var(--accent)" : "var(--text-muted)",
+                            padding: "2px 8px", borderRadius: "20px", fontWeight: "bold", textTransform: "uppercase",
+                          }}>
+                            {user.plan}
+                          </span>
+                        </td>
+                        <td style={{ padding: "14px 16px" }}>
+                          {user.organizations.length === 0 ? (
+                            <span style={{ fontSize: "11px", color: "var(--text-muted)", fontStyle: "italic" }}>None</span>
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                              {user.organizations.map((org) => (
+                                <div key={org.id} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                  <span style={{ fontSize: "11px", fontWeight: 600 }}>{org.name}</span>
+                                  <span style={{
+                                    fontSize: "9px",
+                                    background: org.role === "owner" ? "rgba(239,68,68,0.1)" : org.role === "admin" ? "rgba(168,85,247,0.1)" : "var(--surface2)",
+                                    color: org.role === "owner" ? "var(--error)" : org.role === "admin" ? "var(--accent)" : "var(--text-muted)",
+                                    padding: "1px 4px", borderRadius: "4px", fontWeight: 600, textTransform: "uppercase",
+                                  }}>
+                                    {org.role}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 600, color: "var(--accent)" }}>{user.memoryCount}</td>
+                        <td style={{ padding: "14px 16px", fontSize: "12px", color: "var(--text-muted)" }}>{new Date(user.createdAt).toLocaleDateString()}</td>
+                        <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                          <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+                            <button onClick={() => { setSelectedUser(user); setEditName(user.name); setEditEmail(user.email); setEditEmailVerified(user.emailVerified); setIsEditModalOpen(true); }}
+                              style={{ padding: "4px 8px", background: "var(--surface2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}>Edit</button>
+                            <button onClick={() => { setSelectedUser(user); setSelectedPlan(user.plan); setIsPlanModalOpen(true); }}
+                              style={{ padding: "4px 8px", background: "var(--surface2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}>Plan</button>
+                            <button onClick={() => { setSelectedUser(user); setIsOrgsModalOpen(true); setAssignOrgId(""); setAssignRole("member"); }}
+                              style={{ padding: "4px 8px", background: "var(--surface2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}>Orgs</button>
+                            <button onClick={() => { setSelectedUser(user); setPasswordValue(""); setIsPasswordModalOpen(true); }}
+                              style={{ padding: "4px 8px", background: "var(--surface2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}>Password</button>
+                            <button onClick={() => { if (confirm(`Reset password for ${user.name}? A new random password will be generated.`)) resetUserPasswordMut.mutate(user.id); }}
+                              style={{ padding: "4px 8px", background: "var(--surface2)", color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", cursor: "pointer" }}>Reset</button>
+                            {user.id !== adminStatus?.userId && (
+                              <button onClick={() => { if (confirm(`DELETE user ${user.name}? This will delete all their data permanently.`)) deleteUserMut.mutate(user.id); }}
+                                style={{ padding: "4px 8px", background: "rgba(239,68,68,0.1)", color: "var(--error)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "var(--radius)", fontSize: "11px", fontWeight: "bold", cursor: "pointer" }}>Delete</button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </OrgAdminSection>
+      )}
+
+      {/* ── TEAMS ───────────────────────────────────────────────────────────── */}
       {activeSection === "teams" && (
-        <OrgAdminSection
-          title="Teams Management"
-          description="Manage team structure and permissions"
-          icon="👤"
-        >
+        <OrgAdminSection title="Teams Management" description="Manage team structure and permissions" icon="👤">
           <AdminCard>
-            <p style={{ color: "var(--text-muted)", margin: 0 }}>
-              Teams management coming soon...
-            </p>
+            <p style={{ color: "var(--text-muted)", margin: 0 }}>Teams management coming soon...</p>
           </AdminCard>
         </OrgAdminSection>
       )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          MODALS
+      ══════════════════════════════════════════════════════════════════════ */}
+
+      {/* Create User */}
+      {isCreateModalOpen && (
+        <div style={modalOverlay}>
+          <div style={modalBox}>
+            <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: "bold" }}>Create New User</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {[
+                { label: "Full Name", type: "text", value: createName, setter: setCreateName, placeholder: "e.g. John Doe" },
+                { label: "Email Address", type: "email", value: createEmail, setter: setCreateEmail, placeholder: "e.g. john@example.com" },
+                { label: "Initial Password (Optional)", type: "password", value: createPassword, setter: setCreatePassword, placeholder: "Leave blank for passwordless OAuth" },
+              ].map(({ label, type, value, setter, placeholder }) => (
+                <div key={label}>
+                  <label style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: "bold", textTransform: "uppercase" }}>{label}</label>
+                  <input type={type} value={value} onChange={(e) => setter(e.target.value)} placeholder={placeholder} style={{ width: "100%", padding: "8px 12px" }} />
+                </div>
+              ))}
+              <div>
+                <label style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: "bold", textTransform: "uppercase" }}>Personal Pricing Plan</label>
+                <select value={createPlan} onChange={(e) => setCreatePlan(e.target.value)} style={{ width: "100%", padding: "8px 12px" }}>
+                  <option value="free">Free (Personal)</option>
+                  <option value="business">Business</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "10px", marginTop: "24px", justifyContent: "flex-end" }}>
+              <button onClick={() => setIsCreateModalOpen(false)} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontWeight: 600 }}>Cancel</button>
+              <button onClick={() => { if (!createName || !createEmail) { alert("Name and email are required."); return; } createUserMut.mutate({ name: createName, email: createEmail, password: createPassword || undefined, plan: createPlan }); }}
+                disabled={createUserMut.isPending} style={{ padding: "8px 16px", background: "var(--accent)", color: "white", fontWeight: "bold" }}>
+                {createUserMut.isPending ? "Creating..." : "Create User"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User */}
+      {isEditModalOpen && selectedUser && (
+        <div style={modalOverlay}>
+          <div style={modalBox}>
+            <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: "bold" }}>Edit User</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: "bold", textTransform: "uppercase" }}>Full Name</label>
+                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} style={{ width: "100%", padding: "8px 12px" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: "bold", textTransform: "uppercase" }}>Email Address</label>
+                <input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} style={{ width: "100%", padding: "8px 12px" }} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                <input type="checkbox" id="edit-email-verified" checked={editEmailVerified} onChange={(e) => setEditEmailVerified(e.target.checked)} style={{ width: "auto" }} />
+                <label htmlFor="edit-email-verified" style={{ fontSize: "13px", fontWeight: 500 }}>Email Verified</label>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "10px", marginTop: "24px", justifyContent: "flex-end" }}>
+              <button onClick={() => setIsEditModalOpen(false)} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontWeight: 600 }}>Cancel</button>
+              <button onClick={() => { if (!editName || !editEmail) { alert("Name and email are required."); return; } updateUserMut.mutate({ userId: selectedUser.id, name: editName, email: editEmail, emailVerified: editEmailVerified }); }}
+                disabled={updateUserMut.isPending} style={{ padding: "8px 16px", background: "var(--accent)", color: "white", fontWeight: "bold" }}>
+                {updateUserMut.isPending ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Plan */}
+      {isPlanModalOpen && selectedUser && (
+        <div style={modalOverlay}>
+          <div style={{ ...modalBox, maxWidth: "400px" }}>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: "bold" }}>Change Plan</h3>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "16px" }}>Assign pricing plan for <strong>{selectedUser.name}</strong>.</p>
+            <div>
+              <label style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: "bold", textTransform: "uppercase" }}>Plan</label>
+              <select value={selectedPlan} onChange={(e) => setSelectedPlan(e.target.value)} style={{ width: "100%", padding: "8px 12px" }}>
+                <option value="free">Free (Personal)</option>
+                <option value="business">Business</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: "10px", marginTop: "24px", justifyContent: "flex-end" }}>
+              <button onClick={() => setIsPlanModalOpen(false)} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontWeight: 600 }}>Cancel</button>
+              <button onClick={() => updateUserPlanMut.mutate({ userId: selectedUser.id, plan: selectedPlan })} disabled={updateUserPlanMut.isPending}
+                style={{ padding: "8px 16px", background: "var(--accent)", color: "white", fontWeight: "bold" }}>
+                {updateUserPlanMut.isPending ? "Updating..." : "Update Plan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Set Password */}
+      {isPasswordModalOpen && selectedUser && (
+        <div style={modalOverlay}>
+          <div style={{ ...modalBox, maxWidth: "400px" }}>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: "bold" }}>Set Password</h3>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "16px" }}>Set a manual password for <strong>{selectedUser.name}</strong>.</p>
+            <div>
+              <label style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: "bold", textTransform: "uppercase" }}>New Password</label>
+              <input type="password" value={passwordValue} onChange={(e) => setPasswordValue(e.target.value)} placeholder="At least 8 characters" style={{ width: "100%", padding: "8px 12px" }} />
+            </div>
+            <div style={{ display: "flex", gap: "10px", marginTop: "24px", justifyContent: "flex-end" }}>
+              <button onClick={() => setIsPasswordModalOpen(false)} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontWeight: 600 }}>Cancel</button>
+              <button onClick={() => { if (passwordValue.length < 8) { alert("Password must be at least 8 characters."); return; } setUserPasswordMut.mutate({ userId: selectedUser.id, password: passwordValue }); }}
+                disabled={setUserPasswordMut.isPending} style={{ padding: "8px 16px", background: "var(--accent)", color: "white", fontWeight: "bold" }}>
+                {setUserPasswordMut.isPending ? "Setting..." : "Set Password"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Success */}
+      {isResetSuccessModalOpen && (
+        <div style={{ ...modalOverlay, zIndex: 1010 }}>
+          <div style={modalBox}>
+            <h3 style={{ margin: "0 0 12px 0", fontSize: "16px", fontWeight: "bold", color: "var(--success)" }}>Password Reset Success</h3>
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "16px" }}>A new temporary password has been generated:</p>
+            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", padding: "12px 16px", borderRadius: "8px", fontFamily: "monospace", fontSize: "18px", textAlign: "center", color: "var(--text)", letterSpacing: "0.08em", fontWeight: "bold", marginBottom: "20px" }}>
+              {generatedPassword}
+            </div>
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button onClick={() => { navigator.clipboard.writeText(generatedPassword); alert("Copied to clipboard!"); }}
+                style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text)", fontWeight: 600 }}>Copy Password</button>
+              <button onClick={() => { setIsResetSuccessModalOpen(false); setGeneratedPassword(""); }}
+                style={{ padding: "8px 16px", background: "var(--accent)", color: "white", fontWeight: "bold" }}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Organizations */}
+      {isOrgsModalOpen && selectedUser && (
+        <div style={modalOverlay}>
+          <div style={{ ...modalBox, maxWidth: "500px" }}>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: "bold" }}>Manage Organizations</h3>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "16px" }}>Organization memberships for <strong>{selectedUser.name}</strong>.</p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "200px", overflowY: "auto", marginBottom: "20px", border: "1px solid var(--border)", borderRadius: "8px", padding: "10px", background: "var(--surface2)" }}>
+              <span style={{ fontSize: "11px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase" }}>Current Memberships</span>
+              {selectedUser.organizations.length === 0 ? (
+                <span style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic", padding: "8px 0" }}>Not a member of any organization.</span>
+              ) : (
+                selectedUser.organizations.map((org) => (
+                  <div key={org.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                    <div>
+                      <div style={{ fontWeight: "bold", fontSize: "13px" }}>{org.name}</div>
+                      <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>ID: {org.id}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <select value={org.role} onChange={(e) => {
+                        assignUserToOrgMut.mutate({ userId: selectedUser.id, orgId: org.id, role: e.target.value as "owner" | "admin" | "member" });
+                        setSelectedUser({ ...selectedUser, organizations: selectedUser.organizations.map(o => o.id === org.id ? { ...o, role: e.target.value } : o) });
+                      }} style={{ padding: "3px 6px", fontSize: "11px", borderRadius: "4px" }}>
+                        <option value="member">Member</option>
+                        <option value="admin">Admin</option>
+                        <option value="owner">Owner</option>
+                      </select>
+                      <button onClick={() => { if (confirm(`Remove ${selectedUser.name} from ${org.name}?`)) { removeUserFromOrgMut.mutate({ userId: selectedUser.id, orgId: org.id }); setSelectedUser({ ...selectedUser, organizations: selectedUser.organizations.filter(o => o.id !== org.id) }); } }}
+                        style={{ padding: "4px 8px", background: "transparent", color: "var(--error)", fontSize: "11px", fontWeight: "bold", cursor: "pointer" }}>Remove</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
+              <span style={{ display: "block", fontSize: "11px", fontWeight: "bold", color: "var(--text-muted)", marginBottom: "8px", textTransform: "uppercase" }}>Add to Organization</span>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <select value={assignOrgId} onChange={(e) => setAssignOrgId(e.target.value)} style={{ flex: 1, padding: "8px 12px" }}>
+                  <option value="">Select organization...</option>
+                  {(orgsQuery.data || []).filter((org) => !selectedUser.organizations.some((o) => o.id === org.id)).map((org) => (
+                    <option key={org.id} value={org.id}>{org.name}</option>
+                  ))}
+                </select>
+                <select value={assignRole} onChange={(e) => setAssignRole(e.target.value as "owner" | "admin" | "member")} style={{ padding: "8px 12px" }}>
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                  <option value="owner">Owner</option>
+                </select>
+                <button onClick={() => { if (!assignOrgId) return; assignUserToOrgMut.mutate({ userId: selectedUser.id, orgId: assignOrgId, role: assignRole }); const matchedName = (orgsQuery.data || []).find(o => o.id === assignOrgId)?.name || "New Organization"; setSelectedUser({ ...selectedUser, organizations: [...selectedUser.organizations, { id: assignOrgId, name: matchedName, role: assignRole }] }); setAssignOrgId(""); }}
+                  disabled={!assignOrgId || assignUserToOrgMut.isPending}
+                  style={{ padding: "8px 16px", background: "var(--accent)", color: "white", fontWeight: "bold", cursor: "pointer" }}>Add</button>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
+              <button onClick={() => setIsOrgsModalOpen(false)} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontWeight: 600 }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </AdminLayout>
   );
 }
 
-function AdminGuard() {
+export function AdminGuard() {
   const { data: adminStatus, isLoading, error } = useQuery({
     queryKey: ["admin-status"],
     queryFn: () => getAdminStatus(),

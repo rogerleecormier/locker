@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { AdminGuard } from "./admin-refactored";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, type Memory } from "~/db/schema";
@@ -2136,30 +2137,6 @@ import { sql, eq, and, or, like } from "drizzle-orm";function AdminPage() {
   );
 }
 
-import { useSession } from "~/lib/authClient";
-
-function AdminGuard() {
-  const { data: adminStatus, isLoading, error } = useQuery({
-    queryKey: ["admin-status"],
-    queryFn: () => getAdminStatus(),
-  });
-
-  if (isLoading) return <p style={{ padding: 32, color: "var(--text-muted)" }}>Loading…</p>;
-
-  if (error || !adminStatus?.isAdmin) {
-    return (
-      <div style={{ padding: 32, textAlign: "center" }}>
-        <p style={{ color: "var(--error)", fontSize: 16, fontWeight: 600 }}>403 — Not authorized</p>
-        <p style={{ color: "var(--text-muted)", marginTop: 8, fontSize: 13 }}>This page is restricted to the admin account.</p>
-        <div style={{ marginTop: 24, fontSize: 12, color: "var(--text-muted)", background: "var(--surface2)", padding: 16, borderRadius: "var(--radius)", display: "inline-block", textAlign: "left", border: "1px solid var(--border)" }}>
-          <div style={{ marginBottom: 4 }}><strong>Your User ID:</strong> {adminStatus?.userId ?? "Not logged in"}</div>
-          <div><strong>Configured Admin ID:</strong> {adminStatus?.configuredAdminId ? `${adminStatus.configuredAdminId.slice(0, 4)}...${adminStatus.configuredAdminId.slice(-4)}` : "None"}</div>
-        </div>
-      </div>
-    );
-  }
-  return <AdminPage />;
-}
 
 export const Route = createFileRoute("/admin")({
   component: AdminGuard,
