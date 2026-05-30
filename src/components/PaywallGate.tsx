@@ -1,4 +1,5 @@
 import { PLANS, PLAN_ORDER, FEATURE_DESCRIPTIONS, type PlanId, type PlanFeatures } from "~/lib/plans";
+import { useState, useEffect, useRef } from "react";
 
 export function PlanBadge({ plan }: { plan: PlanId }) {
   const styles: Record<PlanId, React.CSSProperties> = {
@@ -198,14 +199,120 @@ function UpgradeButton({ requiredPlan }: { requiredPlan: PlanId }) {
   );
 }
 
+export function AdminUpgradeButton({
+  label = "Enterprise Admin",
+  style,
+}: {
+  label?: string;
+  style?: React.CSSProperties;
+}) {
+  const [visible, setVisible] = useState(false);
+  const timerRef = useRef<any>(null);
+
+  const show = () => {
+    setVisible(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+  };
+
+  const hide = () => {
+    timerRef.current = setTimeout(() => {
+      setVisible(false);
+    }, 500);
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setVisible(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setVisible(false);
+    }, 3000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  return (
+    <div style={{ position: "relative", width: style?.width || "100%", display: "inline-block" }}>
+      <button
+        type="button"
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onClick={handleClick}
+        style={{
+          width: "100%",
+          padding: "10px 0",
+          background: "var(--surface2)",
+          border: "1px solid var(--border)",
+          color: "var(--text-muted)",
+          fontWeight: 600,
+          fontSize: 13,
+          borderRadius: 8,
+          cursor: "not-allowed",
+          opacity: 0.8,
+          transition: "background 0.15s, border-color 0.15s",
+          ...style,
+        }}
+      >
+        {label}
+      </button>
+      {visible && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "125%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#1e1b4b",
+            color: "#e0e7ff",
+            border: "1px solid #4338ca",
+            borderRadius: 6,
+            padding: "8px 12px",
+            fontSize: 12,
+            lineHeight: 1.4,
+            fontWeight: 500,
+            width: 220,
+            textAlign: "center",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+            zIndex: 999,
+            pointerEvents: "none",
+          }}
+        >
+          <div style={{ fontWeight: 700, color: "#a5b4fc", marginBottom: 3 }}>Enterprise Admin</div>
+          You are an Admin. This grants you full Enterprise features with infinity amounts.
+          <div
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: 0,
+              height: 0,
+              borderLeft: "6px solid transparent",
+              borderRight: "6px solid transparent",
+              borderTop: "6px solid #4338ca",
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PlanCard({
   plan,
   isCurrentPlan,
   onSelect,
+  isAdmin = false,
 }: {
   plan: typeof PLANS[PlanId];
   isCurrentPlan: boolean;
   onSelect?: () => void;
+  isAdmin?: boolean;
 }) {
   const featureList: Array<{ key: keyof PlanFeatures; included: boolean }> = [
     { key: "organizations", included: plan.features.organizations },
@@ -308,7 +415,9 @@ export function PlanCard({
 
       {!isCurrentPlan && (
         <div style={{ marginTop: 4 }}>
-          {plan.available ? (
+          {isAdmin ? (
+            <AdminUpgradeButton label={`Upgrade to ${plan.label}`} />
+          ) : plan.available ? (
             <button
               onClick={onSelect}
               style={{

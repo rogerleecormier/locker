@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { PLANS, PLAN_ORDER, resolvePlan, type PlanId } from "~/lib/plans";
-import { PlanCard, PlanBadge } from "~/components/PaywallGate";
+import { PlanCard, PlanBadge, AdminUpgradeButton } from "~/components/PaywallGate";
 import { getUserEffectivePlan, getUserUsageStats } from "~/server/planGate";
 import { requireSession } from "~/server/session";
 import { createCheckoutSession, createPortalSession } from "~/server/billing";
@@ -119,6 +119,7 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
       planId,
       orgId,
       userId: user.id,
+      isAdmin: user.id === env.ADMIN_USER_ID,
       hasBillingCustomer,
       managedOrgs,
       usage: {
@@ -366,23 +367,35 @@ function BillingPage() {
                     </div>
                     <div>
                       {org.plan === "free" ? (
-                        <button
-                          onClick={() => handleUpgrade(org.id)}
-                          disabled={upgradingId !== null}
-                          style={{
-                            padding: "8px 16px",
-                            background: "var(--accent)",
-                            border: "none",
-                            color: "#fff",
-                            fontWeight: 600,
-                            fontSize: 12,
-                            borderRadius: 6,
-                            cursor: "pointer",
-                            transition: "opacity 0.2s",
-                          }}
-                        >
-                          {upgradingId === org.id ? "Redirecting..." : "Upgrade to Business ($12/seat)"}
-                        </button>
+                        billing?.isAdmin ? (
+                          <AdminUpgradeButton
+                            label="Upgrade to Business ($12/seat)"
+                            style={{
+                              padding: "8px 16px",
+                              fontSize: 12,
+                              borderRadius: 6,
+                              width: "auto",
+                            }}
+                          />
+                        ) : (
+                          <button
+                            onClick={() => handleUpgrade(org.id)}
+                            disabled={upgradingId !== null}
+                            style={{
+                              padding: "8px 16px",
+                              background: "var(--accent)",
+                              border: "none",
+                              color: "#fff",
+                              fontWeight: 600,
+                              fontSize: 12,
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              transition: "opacity 0.2s",
+                            }}
+                          >
+                            {upgradingId === org.id ? "Redirecting..." : "Upgrade to Business ($12/seat)"}
+                          </button>
+                        )
                       ) : (
                         billing.hasBillingCustomer && (
                           <button
@@ -419,6 +432,7 @@ function BillingPage() {
                   plan={PLANS[planId]}
                   isCurrentPlan={planId === currentPlan}
                   onSelect={planId === "business" ? () => handleUpgrade() : undefined}
+                  isAdmin={billing?.isAdmin}
                 />
               ))}
             </div>
