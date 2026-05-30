@@ -49,7 +49,7 @@ export default {
 
 
     if (url.pathname.startsWith("/api/auth/")) {
-      const auth = createAuth(env);
+      const auth = await createAuth(env);
       const response = await auth.handler(request);
       if (url.pathname === "/api/auth/oauth2/token" || url.pathname === "/api/auth/oauth2/consent" || url.pathname === "/api/auth/oauth2/userinfo") {
         const text = await response.clone().text();
@@ -111,7 +111,7 @@ export default {
           body: body,
         },
       );
-      const auth = createAuth(env);
+      const auth = await createAuth(env);
       const response = await auth.handler(rewritten);
       const text = await response.clone().text();
       console.log(`[oauth/${segment}] response:`, response.status, text);
@@ -326,7 +326,7 @@ function createZip(files: { name: string; content: Uint8Array | string }[]): Uin
 
 async function handleExportRequest(request: Request, env: CloudflareEnv): Promise<Response> {
   try {
-    const auth = createAuth(env);
+    const auth = await createAuth(env);
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
