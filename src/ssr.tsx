@@ -11,6 +11,7 @@ import { memories, auditLogs, organizationMembers } from "./db/schema";
 import { archiveContradictingMemories } from "./server/memoryFunctions";
 import { isEncrypted, decrypt, deriveUserKey } from "./server/crypto";
 import { logAudit } from "./server/enterprise";
+import { handleStripeWebhook } from "./server/billing";
 
 const handler = createStartHandler(defaultStreamHandler);
 
@@ -37,6 +38,10 @@ export default {
 
     if (url.pathname === "/api/export" && request.method === "POST") {
       return handleExportRequest(request, env);
+    }
+
+    if (url.pathname === "/api/webhooks/stripe" && request.method === "POST") {
+      return handleStripeWebhook(request, env);
     }
 
 

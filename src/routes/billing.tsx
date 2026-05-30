@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
-import { PLANS, PLAN_ORDER, type PlanId } from "~/lib/plans";
+import { PLANS, PLAN_ORDER, resolvePlan, type PlanId } from "~/lib/plans";
 import { PlanCard, PlanBadge } from "~/components/PaywallGate";
 import { getUserEffectivePlan, getUserUsageStats } from "~/server/planGate";
 import { requireSession } from "~/server/session";
+import { createCheckoutSession, createPortalSession } from "~/server/billing";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import {
   memories,
@@ -78,10 +80,37 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
 
     const usageStats = planId !== "free" ? await getUserUsageStats(db, user.id) : [];
 
+    const userPlanRow = await db
+      .select({ billingCustomerId: userPlans.billingCustomerId })
+      .from(userPlans)
+      .where(eq(userPlans.userId, user.id))
+      .limit(1)
+      .all();
+    const hasBillingCustomer = !!userPlanRow[0]?.billingCustomerId;
+
+    const managedOrgs = await db
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        plan: organizations.plan,
+        role: organizationMembers.role,
+      })
+      .from(organizationMembers)
+      .innerJoin(organizations, eq(organizationMembers.orgId, organizations.id))
+      .where(
+        and(
+          eq(organizationMembers.userId, user.id),
+          sql`${organizationMembers.role} IN ('owner', 'admin')`
+        )
+      )
+      .all();
+
     return {
       planId,
       orgId,
       userId: user.id,
+      hasBillingCustomer,
+      managedOrgs,
       usage: {
         memories: Number(memoriesCount[0]?.count ?? 0),
         apiTokens: Number(tokensCount[0]?.count ?? 0),
@@ -168,24 +197,118 @@ function BillingPage() {
     queryFn: () => getBillingInfo(),
   });
 
+  const [upgradingId, setUpgradingId] = useState<string | null>(null);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [stripeError, setStripeError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [cancelMsg, setCancelMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("success") === "true") {
+      setSuccessMsg("Success! Your subscription is active/updated.");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (params.get("cancelled") === "true") {
+      setCancelMsg("Subscription checkout cancelled.");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  async function handleUpgrade(orgId?: string) {
+    const id = orgId || "personal";
+    setUpgradingId(id);
+    setStripeError(null);
+    try {
+      const res = await createCheckoutSession({ data: { orgId } });
+      if (res?.url) {
+        window.location.href = res.url;
+      } else {
+        throw new Error("Failed to generate checkout session url.");
+      }
+    } catch (err: any) {
+      setStripeError(err?.message || "An error occurred initiating checkout.");
+      setUpgradingId(null);
+    }
+  }
+
+  async function handlePortal() {
+    setPortalLoading(true);
+    setStripeError(null);
+    try {
+      const res = await createPortalSession({ data: {} });
+      if (res?.url) {
+        window.location.href = res.url;
+      } else {
+        throw new Error("Failed to generate portal session url.");
+      }
+    } catch (err: any) {
+      setStripeError(err?.message || "An error occurred opening the billing portal.");
+      setPortalLoading(false);
+    }
+  }
+
   const currentPlan: PlanId = billing?.planId ?? "free";
   const planObj = PLANS[currentPlan];
   const limits = planObj.limits;
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 20px" }}>
-      <header style={{ marginBottom: 32 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" />
-          </svg>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>Plan & Billing</h1>
-          {billing && <PlanBadge plan={currentPlan} />}
+      <header style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" />
+            </svg>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>Plan & Billing</h1>
+            {billing && <PlanBadge plan={currentPlan} />}
+          </div>
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+            Manage your plan, track usage, and view available features.
+          </p>
         </div>
-        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-          Manage your plan, track usage, and view available features.
-        </p>
+        {billing?.hasBillingCustomer && (
+          <button
+            onClick={handlePortal}
+            disabled={portalLoading}
+            style={{
+              padding: "8px 16px",
+              background: "transparent",
+              border: "1px solid var(--border)",
+              color: "var(--text)",
+              fontWeight: 600,
+              fontSize: 13,
+              borderRadius: 8,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            {portalLoading ? "Opening Stripe..." : "Manage Subscription"}
+          </button>
+        )}
       </header>
+
+      {successMsg && (
+        <div style={{ padding: "12px 16px", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500 }}>
+          {successMsg}
+        </div>
+      )}
+
+      {cancelMsg && (
+        <div style={{ padding: "12px 16px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", color: "#f59e0b", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500 }}>
+          {cancelMsg}
+        </div>
+      )}
+
+      {stripeError && (
+        <div style={{ padding: "12px 16px", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--error)", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500 }}>
+          {stripeError}
+        </div>
+      )}
 
       {isLoading ? (
         <div style={{ textAlign: "center", padding: "48px 0", color: "var(--text-muted)" }}>Loading…</div>
@@ -218,6 +341,65 @@ function BillingPage() {
             </section>
           )}
 
+          {billing?.managedOrgs && billing.managedOrgs.length > 0 && (
+            <section style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 22px", marginBottom: 24 }}>
+              <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>Organization Billing (Seat-based)</h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {billing.managedOrgs.map((org) => (
+                  <div key={org.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                        {org.name}
+                        <PlanBadge plan={resolvePlan(org.plan)} />
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Role: {org.role}</div>
+                    </div>
+                    <div>
+                      {org.plan === "free" ? (
+                        <button
+                          onClick={() => handleUpgrade(org.id)}
+                          disabled={upgradingId !== null}
+                          style={{
+                            padding: "8px 16px",
+                            background: "var(--accent)",
+                            border: "none",
+                            color: "#fff",
+                            fontWeight: 600,
+                            fontSize: 12,
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            transition: "opacity 0.2s",
+                          }}
+                        >
+                          {upgradingId === org.id ? "Redirecting..." : "Upgrade to Business ($12/seat)"}
+                        </button>
+                      ) : (
+                        billing.hasBillingCustomer && (
+                          <button
+                            onClick={handlePortal}
+                            disabled={portalLoading}
+                            style={{
+                              padding: "8px 16px",
+                              background: "transparent",
+                              border: "1px solid var(--border)",
+                              color: "var(--text)",
+                              fontWeight: 600,
+                              fontSize: 12,
+                              borderRadius: 6,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Manage Billing
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section style={{ marginBottom: 24 }}>
             <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>Available Plans</h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
@@ -226,6 +408,7 @@ function BillingPage() {
                   key={planId}
                   plan={PLANS[planId]}
                   isCurrentPlan={planId === currentPlan}
+                  onSelect={planId === "business" ? () => handleUpgrade() : undefined}
                 />
               ))}
             </div>

@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and, sql } from "drizzle-orm";
 import {
@@ -14,6 +15,7 @@ import {
   apiTokens,
   tokenUsages,
   userPlans,
+  invitations,
 } from "~/db/schema";
 import { requireSession } from "~/server/session";
 import { getAdminStatus } from "~/routes/admin";
@@ -205,7 +207,7 @@ export const addOrgMemberByEmail = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
-    const db = drizzle(env.DB, { schema: { organizationMembers, users } });
+    const db = drizzle(env.DB, { schema: { organizationMembers, users, invitations, organizations } });
 
     await requireFeature(db, user.id, "organizations", env.ADMIN_USER_ID);
 
@@ -214,16 +216,65 @@ export const addOrgMemberByEmail = createServerFn({ method: "POST" })
 
     await checkOrgMemberLimit(db, data.orgId, user.id, env.ADMIN_USER_ID);
 
-    const userRow = await db.select().from(users).where(eq(users.email, data.email)).limit(1).all();
-    if (userRow.length === 0) throw new Error(`User with email '${data.email}' not found. They must register for a Locker account first.`);
-    const targetUser = userRow[0];
+    const emailAddress = data.email.toLowerCase().trim();
 
-    const existingRow = await db.select().from(organizationMembers)
-      .where(and(eq(organizationMembers.orgId, data.orgId), eq(organizationMembers.userId, targetUser.id)))
+    // Check if user is already a member
+    const targetUserRows = await db.select().from(users).where(eq(users.email, emailAddress)).limit(1).all();
+    if (targetUserRows.length > 0) {
+      const targetUser = targetUserRows[0];
+      const existingRow = await db.select().from(organizationMembers)
+        .where(and(eq(organizationMembers.orgId, data.orgId), eq(organizationMembers.userId, targetUser.id)))
+        .limit(1).all();
+      if (existingRow.length > 0) throw new Error("User is already a member of this organization");
+    }
+
+    // Check if there is already an active pending invitation
+    const existingInvite = await db.select().from(invitations)
+      .where(and(eq(invitations.orgId, data.orgId), eq(invitations.email, emailAddress)))
       .limit(1).all();
-    if (existingRow.length > 0) throw new Error("User is already a member of this organization");
+    if (existingInvite.length > 0 && existingInvite[0].expiresAt > Date.now()) {
+      throw new Error("An active invitation already exists for this email address");
+    }
 
-    await db.insert(organizationMembers).values({ orgId: data.orgId, userId: targetUser.id, role: data.role, joinedAt: Date.now() });
+    const orgRow = await db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, data.orgId)).limit(1).all();
+    const orgName = orgRow[0]?.name ?? "an organization";
+
+    const token = crypto.randomUUID();
+    const inviteId = `invite_${crypto.randomUUID().replace(/-/g, "")}`;
+
+    await db.insert(invitations).values({
+      id: inviteId,
+      orgId: data.orgId,
+      email: emailAddress,
+      role: data.role,
+      invitedBy: user.id,
+      token,
+      expiresAt: Date.now() + 48 * 60 * 60 * 1000, // 48 hours
+      createdAt: Date.now(),
+    });
+
+    const request = getRequest();
+    const origin = new URL(request.url).origin;
+    const inviteUrl = `${origin}/invite?token=${token}`;
+    console.log(`[invite] Magic Link generated: ${inviteUrl}`);
+
+    if (env.SE_EMAIL) {
+      try {
+        // Cloudflare SendEmail supports raw message transmission or helper.
+        // We will construct a simple message. Standard cloudflare:email module can be imported or used.
+        // As a fallback to match multiple CF environments, we construct a basic message structure.
+        const rawMessage = `From: Locker <invites@locker.rcormier.dev>\nTo: ${emailAddress}\nSubject: You have been invited to join ${orgName} on Locker\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\n\nYou have been invited to join the organization "${orgName}" on Locker.\n\nClick the link below to accept the invitation and access the vault:\n${inviteUrl}\n\nThis invitation link expires in 48 hours.`;
+        
+        // Dynamic import cloudflare:email to prevent bundling crash on non-workers platforms
+        const { EmailMessage } = await import("cloudflare:email" as any) as any;
+        const message = new EmailMessage("invites@locker.rcormier.dev", emailAddress, rawMessage);
+        await env.SE_EMAIL.send(message);
+        console.log(`[invite] Invitation email sent to ${emailAddress}`);
+      } catch (err) {
+        console.error("[invite] Failed to send email via Cloudflare SendEmail:", err);
+      }
+    }
+
     return { success: true };
   });
 

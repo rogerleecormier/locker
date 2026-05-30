@@ -54,6 +54,8 @@ export const apiTokens = sqliteTable("api_tokens", {
   name: text("name").notNull(),
   tokenHash: text("tokenHash").notNull().unique(),
   permissions: integer("permissions").notNull().default(3), // 0b11 = all tools
+  scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
+  scopeId: text("scopeId"),
   createdAt: integer("createdAt").notNull(),
   lastUsedAt: integer("lastUsedAt"),
 });
@@ -67,6 +69,8 @@ export const memories = sqliteTable("memories", {
   timestamp: integer("timestamp").notNull(),
   isActive: integer("isActive", { mode: "boolean" }).notNull().default(true),
   projectKey: text("projectKey"),
+  scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
+  scopeId: text("scopeId"),
 });
 
 // ── better-auth jwt plugin ─────────────────────────────────────────────────────
@@ -274,6 +278,18 @@ export const waitlist = sqliteTable("waitlist", {
   createdAt: integer("createdAt").notNull(),
 });
 
+export const invitations = sqliteTable("invitations", {
+  id: text("id").primaryKey(),
+  orgId: text("orgId").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role", { enum: ["admin", "member"] }).notNull().default("member"),
+  invitedBy: text("invitedBy").notNull().references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  expiresAt: integer("expiresAt").notNull(),
+  createdAt: integer("createdAt").notNull(),
+});
+
 export type UserPlan = typeof userPlans.$inferSelect;
 export type PlanEvent = typeof planEvents.$inferSelect;
+export type Invitation = typeof invitations.$inferSelect;
 

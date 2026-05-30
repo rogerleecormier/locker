@@ -8,6 +8,7 @@ import {
   updateApiTokenPermissions,
   getProfile,
   saveProfile,
+  getUserWorkspaces,
   type ApiTokenPublic,
 } from "~/server/memoryFunctions";
 import { MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE } from "~/db/schema";
@@ -36,10 +37,12 @@ function formatDate(ts: number | null): string {
 
 function TokenRow({
   token,
+  workspaces,
   onRevoke,
   onUpdatePerms,
 }: {
   token: ApiTokenPublic;
+  workspaces: any[];
   onRevoke: (id: string) => void;
   onUpdatePerms: (id: string, perms: number) => void;
 }) {
@@ -52,11 +55,31 @@ function TokenRow({
     onUpdatePerms(token.id, next);
   }
 
+  const scopeKey = token.scopeType === "personal" ? "personal" : `${token.scopeType === "organization" ? "org" : "team"}:${token.scopeId}`;
+  const workspace = workspaces.find((w) => w.key === scopeKey);
+  const scopeLabel = workspace ? workspace.label : (token.scopeType === "personal" ? "Personal" : `${token.scopeType} (${token.scopeId})`);
+
   return (
     <div style={styles.tokenCard}>
       <div style={styles.tokenHeader}>
         <div style={styles.tokenMeta}>
-          <span style={styles.tokenName}>{token.name}</span>
+          <span style={styles.tokenName}>
+            {token.name}
+            <span style={{
+              fontSize: 10,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
+              padding: "2px 6px",
+              color: "var(--text-muted)",
+              marginLeft: 8,
+              fontWeight: 500,
+              display: "inline-block",
+              verticalAlign: "middle"
+            }}>
+              {scopeLabel}
+            </span>
+          </span>
           <span style={styles.tokenPerms}>{permLabel(token.permissions)}</span>
         </div>
         <div style={styles.tokenDates}>
@@ -108,14 +131,20 @@ function NewTokenModal({
   onCreate,
 }: {
   onClose: () => void;
-  onCreate: (name: string, permissions: number) => Promise<string>;
+  onCreate: (name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string) => Promise<string>;
 }) {
   const [name, setName] = useState("");
   const [perms, setPerms] = useState(MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE);
+  const [scopeKey, setScopeKey] = useState("personal");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const { data: workspaces = [] } = useQuery({
+    queryKey: ["workspaces"],
+    queryFn: () => getUserWorkspaces(),
+  });
 
   function toggleBit(bit: number) {
     setPerms((p) => p ^ bit);
@@ -125,8 +154,11 @@ function NewTokenModal({
     if (!name.trim()) return;
     setLoading(true);
     setError(null);
+    const [scopeType, scopeId] = scopeKey === "personal"
+      ? ["personal" as const, undefined]
+      : scopeKey.split(":") as ["organization" | "team", string];
     try {
-      const raw = await onCreate(name.trim(), perms);
+      const raw = await onCreate(name.trim(), perms, scopeType, scopeId);
       setToken(raw);
     } catch (err: any) {
       setError(err.message || "Failed to generate token.");
@@ -161,6 +193,20 @@ function NewTokenModal({
                 style={{ ...styles.input, width: "100%" }}
                 autoFocus
               />
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Scope Constraint</label>
+              <select
+                value={scopeKey}
+                onChange={(e) => setScopeKey(e.target.value)}
+                style={styles.input}
+              >
+                {workspaces.map((w: any) => (
+                  <option key={w.key} value={w.key}>
+                    {w.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div style={styles.field}>
               <label style={styles.label}>Permissions</label>
@@ -322,9 +368,14 @@ function SettingsPage() {
     queryFn: () => listApiTokens(),
   });
 
+  const { data: workspaces = [] } = useQuery({
+    queryKey: ["workspaces"],
+    queryFn: () => getUserWorkspaces(),
+  });
+
   const createMut = useMutation({
-    mutationFn: ({ name, permissions }: { name: string; permissions: number }) =>
-      createApiToken({ data: { name, permissions } }),
+    mutationFn: ({ name, permissions, scopeType, scopeId }: { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string }) =>
+      createApiToken({ data: { name, permissions, scopeType, scopeId } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["api-tokens"] }),
   });
 
@@ -339,8 +390,8 @@ function SettingsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["api-tokens"] }),
   });
 
-  async function handleCreate(name: string, permissions: number): Promise<string> {
-    const result = await createMut.mutateAsync({ name, permissions });
+  async function handleCreate(name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string): Promise<string> {
+    const result = await createMut.mutateAsync({ name, permissions, scopeType, scopeId });
     return result.token;
   }
 
@@ -391,6 +442,7 @@ function SettingsPage() {
                 <TokenRow
                   key={t.id}
                   token={t}
+                  workspaces={workspaces}
                   onRevoke={(id) => revokeMut.mutate(id)}
                   onUpdatePerms={(id, permissions) => permsMut.mutate({ id, permissions })}
                 />

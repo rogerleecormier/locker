@@ -17,6 +17,10 @@ export type CloudflareEnv = {
   CLAUDE_CLIENT_ID: string;
   CLAUDE_CLIENT_SECRET: string;
   ARCHIVE_QUEUE: Queue<ArchiveMessage>;
+  SE_EMAIL?: any;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_PUBLISHABLE_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
   RATE_LIMITER?: {
     limit: (options: { key: string }) => Promise<{ success: boolean }>;
   };

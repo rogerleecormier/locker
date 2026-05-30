@@ -563,6 +563,18 @@ export const addMemory = createServerFn({ method: "POST" })
       console.error("[addMemory] Failed to enqueue contradiction check:", err);
     }
 
+    let scopeType: "personal" | "organization" | "team" = "personal";
+    let scopeId: string | null = null;
+    if (data.projectKey) {
+      if (data.projectKey.startsWith("org:")) {
+        scopeType = "organization";
+        scopeId = data.projectKey.slice(4);
+      } else if (data.projectKey.startsWith("team:")) {
+        scopeType = "team";
+        scopeId = data.projectKey.slice(5);
+      }
+    }
+
     const newRow: NewMemory = {
       id,
       userId: user.id,
@@ -572,6 +584,8 @@ export const addMemory = createServerFn({ method: "POST" })
       timestamp,
       isActive: true,
       projectKey: data.projectKey || null,
+      scopeType,
+      scopeId,
     };
 
     await db.insert(memories).values(newRow);
@@ -609,7 +623,7 @@ export const addMemory = createServerFn({ method: "POST" })
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "commit_memory", memoryId: id, metadata: { category: data.category, projectKey: data.projectKey } });
     await logTokenUsage(db, "session", "commit", 0);
 
-    return { ...newRow, fact: data.fact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null };
+    return { ...newRow, fact: data.fact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null } as Memory;
   });
 
 type BatchImportItem = { fact: string; category?: string; tags?: string; projectKey?: string };
@@ -1549,52 +1563,65 @@ export type ApiTokenPublic = {
   id: string;
   name: string;
   permissions: number;
+  scopeType: "personal" | "organization" | "team";
+  scopeId: string | null;
   createdAt: number;
   lastUsedAt: number | null;
 };
-
+ 
 export const listApiTokens = createServerFn({ method: "GET" }).handler(
   async ({ context }): Promise<ApiTokenPublic[]> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
     const rows = await db
-      .select({ id: apiTokens.id, name: apiTokens.name, permissions: apiTokens.permissions, createdAt: apiTokens.createdAt, lastUsedAt: apiTokens.lastUsedAt })
+      .select({
+        id: apiTokens.id,
+        name: apiTokens.name,
+        permissions: apiTokens.permissions,
+        scopeType: apiTokens.scopeType,
+        scopeId: apiTokens.scopeId,
+        createdAt: apiTokens.createdAt,
+        lastUsedAt: apiTokens.lastUsedAt,
+      })
       .from(apiTokens)
       .where(eq(apiTokens.userId, user.id))
-      .all();
+      .all() as any;
     return rows;
   }
 );
-
+ 
 export const createApiToken = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { name: string; permissions: number } => {
-    const d = data as { name: string; permissions: number };
+  .inputValidator((data: unknown): { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string } => {
+    const d = data as { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string };
     if (!d.name || typeof d.name !== "string") throw new Error("name is required");
     const perms = typeof d.permissions === "number" ? d.permissions : 15;
-    return { name: d.name.trim().slice(0, 64), permissions: perms & 15 }; // mask to valid bits
+    const scope = d.scopeType === "organization" || d.scopeType === "team" ? d.scopeType : "personal";
+    return { name: d.name.trim().slice(0, 64), permissions: perms & 15, scopeType: scope, scopeId: d.scopeId };
   })
-  .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number }> => {
+  .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number; scopeType: string; scopeId: string | null }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
-
+ 
     await checkApiTokenLimit(db, user.id, env.ADMIN_USER_ID);
-
+ 
     const rawToken = `lkr_${crypto.randomUUID().replace(/-/g, "")}`;
     const tokenHash = await hashToken(rawToken);
     const id = crypto.randomUUID();
-
+ 
     await db.insert(apiTokens).values({
       id,
       userId: user.id,
       name: data.name,
       tokenHash,
       permissions: data.permissions,
+      scopeType: data.scopeType,
+      scopeId: data.scopeId || null,
       createdAt: Date.now(),
     });
-
-    return { token: rawToken, id, name: data.name, permissions: data.permissions };
+ 
+    return { token: rawToken, id, name: data.name, permissions: data.permissions, scopeType: data.scopeType, scopeId: data.scopeId || null };
   });
 
 export const revokeApiToken = createServerFn({ method: "POST" })

@@ -66,7 +66,7 @@ export const PLANS: Record<PlanId, Plan> = {
     label: "Business",
     price: "$12",
     priceNote: "per seat / month",
-    available: false,
+    available: true,
     limits: {
       maxMemories: 10000,
       maxMonthlyRecalls: 50000,

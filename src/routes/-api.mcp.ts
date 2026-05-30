@@ -1,12 +1,14 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
 import { encrypt } from "~/server/crypto";
 import { createAuth } from "~/server/auth";
 import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit } from "~/server/enterprise";
+import { PLANS } from "~/lib/plans";
+import { getUserEffectivePlan } from "~/server/planGate";
 
 type EmbeddingResponse = {
   shape: number[][];
@@ -153,6 +155,51 @@ const ALL_TOOLS = [
   },
 ];
 
+function isProjectKeyAllowedByToken(
+  tokenScopeType: "personal" | "organization" | "team",
+  tokenScopeId: string | null,
+  requestedProjectKey: string | undefined | null
+): boolean {
+  if (tokenScopeType === "personal") {
+    if (requestedProjectKey && (requestedProjectKey.startsWith("org:") || requestedProjectKey.startsWith("team:"))) {
+      return false;
+    }
+    return true;
+  }
+
+  if (tokenScopeType === "organization") {
+    if (requestedProjectKey === `org:${tokenScopeId}`) {
+      return true;
+    }
+    return false;
+  }
+
+  if (tokenScopeType === "team") {
+    if (requestedProjectKey === `team:${tokenScopeId}`) {
+      return true;
+    }
+    return false;
+  }
+
+  return false;
+}
+
+function resolveProjectKey(
+  claims: TokenClaims,
+  requestedProjectKey: string | undefined | null
+): string | undefined | null {
+  if (!requestedProjectKey) {
+    if (claims.scopeType === "organization" && claims.scopeId) {
+      return `org:${claims.scopeId}`;
+    }
+    if (claims.scopeType === "team" && claims.scopeId) {
+      return `team:${claims.scopeId}`;
+    }
+    return requestedProjectKey;
+  }
+  return requestedProjectKey;
+}
+
 function mcpError(id: unknown, code: number, message: string): Response {
   return Response.json({ jsonrpc: "2.0", id, error: { code, message } });
 }
@@ -173,6 +220,8 @@ type TokenClaims = {
   userId: string;
   tokenId: string;
   permissions: number;
+  scopeType: "personal" | "organization" | "team";
+  scopeId: string | null;
 };
 
 async function validateBearerToken(
@@ -208,6 +257,8 @@ async function validateBearerToken(
       userId: token.userId,
       tokenId: token.id,
       permissions: token.permissions,
+      scopeType: token.scopeType as any,
+      scopeId: token.scopeId,
     };
   }
 
@@ -228,7 +279,13 @@ async function validateBearerToken(
       const userId = info.sub;
       if (!userId) return null;
       console.log("[jwt] accepted via userinfo for userId:", userId);
-      return { userId, tokenId: userId, permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE };
+      return {
+        userId,
+        tokenId: userId,
+        permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE,
+        scopeType: "personal",
+        scopeId: null,
+      };
     } catch (e) {
       console.log("[jwt] userinfo exception:", String(e));
       return null;
@@ -253,6 +310,8 @@ async function validateBearerToken(
     userId: oauthToken.userId,
     tokenId: oauthToken.id,
     permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE,
+    scopeType: "personal",
+    scopeId: null,
   };
 }
 
@@ -385,9 +444,7 @@ export async function handleMcpRequest(
   }
 
   const toolName = params?.name;
-  const args = params?.arguments ?? {};
-
-  if (toolName === "recall_context") {
+  const args = params?.arguments ?? {};  if (toolName === "recall_context") {
     if (!(claims.permissions & MCP_PERM_RECALL)) {
       return mcpError(id, -32001, "Token does not have recall_context permission");
     }
@@ -400,17 +457,35 @@ export async function handleMcpRequest(
     const category = args.category as string | undefined;
     const tag = args.tag as string | undefined;
     const keyword = args.keyword as string | undefined;
-    const projectKey = args.projectKey as string | undefined;
+    const crossWorkspaceSearch = !!args.crossWorkspaceSearch;
+    const projectKey = crossWorkspaceSearch ? undefined : resolveProjectKey(claims, args.projectKey as string | undefined);
     const isActive = typeof args.isActive === "boolean" ? args.isActive : true;
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required for vector query");
     }
 
-    // Vault Scoping & Quota Check
-    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, projectKey);
-    if (!vaultAllowed) {
-      return mcpError(id, -32003, `Forbidden: no access to vault scope '${projectKey}'`);
+    let orgId: string | null = null;
+
+    if (crossWorkspaceSearch) {
+      const { planId, orgId: userOrgId } = await getUserEffectivePlan(db, claims.userId, env.ADMIN_USER_ID);
+      orgId = userOrgId;
+      if (!PLANS[planId].features.crossWorkspaceSearch) {
+        return mcpError(id, -32005, `Forbidden: cross-workspace search requires the Business plan or higher. Current plan: ${planId}`);
+      }
+      if (claims.scopeType !== "personal") {
+        return mcpError(id, -32005, `Forbidden: Scoped API tokens cannot perform cross-workspace searches.`);
+      }
+    } else {
+      if (!isProjectKeyAllowedByToken(claims.scopeType, claims.scopeId, projectKey)) {
+        return mcpError(id, -32003, `Forbidden: API token scope constraint '${claims.scopeType}' prevents access to vault scope '${projectKey ?? "personal"}'`);
+      }
+
+      const { allowed: vaultAllowed, orgId: vOrgId } = await verifyVaultAccess(db, claims.userId, projectKey);
+      if (!vaultAllowed) {
+        return mcpError(id, -32003, `Forbidden: no access to vault scope '${projectKey}'`);
+      }
+      orgId = vOrgId;
     }
 
     const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "recall", orgId);
@@ -423,47 +498,81 @@ export async function handleMcpRequest(
       ? Math.min(20, topK * 3)
       : Math.min(20, topK);
 
-    const filter: Record<string, any> = {};
-    if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
-      filter.projectKey = projectKey;
+    let matches: any[] = [];
+    if (crossWorkspaceSearch) {
+      const orgs = await db.select({ orgId: organizationMembers.orgId }).from(organizationMembers).where(eq(organizationMembers.userId, claims.userId)).all();
+      const teamsList = await db.select({ teamId: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, claims.userId)).all();
+      const orgAndTeamKeys = [
+        ...orgs.map((o) => `org:${o.orgId}`),
+        ...teamsList.map((t) => `team:${t.teamId}`),
+      ];
+
+      const [personalResults, orgResults] = await Promise.all([
+        env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: { userId: claims.userId }, returnMetadata: "none" }),
+        orgAndTeamKeys.length > 0
+          ? env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: { projectKey: { $in: orgAndTeamKeys } }, returnMetadata: "none" })
+          : Promise.resolve({ matches: [] })
+      ]);
+
+      matches = [...(personalResults.matches ?? []), ...(orgResults.matches ?? [])];
     } else {
-      filter.userId = claims.userId;
-      if (projectKey) {
-        filter.projectKey = { $in: [projectKey, ""] };
+      const filter: Record<string, any> = {};
+      if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
+        filter.projectKey = projectKey;
+      } else {
+        filter.userId = claims.userId;
+        if (projectKey) {
+          filter.projectKey = { $in: [projectKey, ""] };
+        }
       }
+
+      const vectorResults = await env.VECTOR_INDEX.query(embedding, {
+        topK: vectorTopK,
+        filter,
+        returnMetadata: "none",
+      });
+      matches = vectorResults.matches ?? [];
     }
 
-    const vectorResults = await env.VECTOR_INDEX.query(embedding, {
-      topK: vectorTopK,
-      filter,
-      returnMetadata: "none",
-    });
-
-    if (!vectorResults.matches?.length) {
+    if (!matches.length) {
       await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: 0 } });
       await logTokenUsage(db, claims.tokenId, "recall", 0);
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify([]) }] });
     }
 
-    const ids = vectorResults.matches.map((m) => m.id);
+    const ids = matches.map((m) => m.id);
     const conditions = [
       sql`${memories.id} IN (${sql.join(ids.map((dbId) => sql`${dbId}`), sql`, `)})`
     ];
     if (isActive !== undefined) {
       conditions.push(eq(memories.isActive, isActive));
     }
-    if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
-      conditions.push(eq(memories.projectKey, projectKey));
+    if (crossWorkspaceSearch) {
+      const orgs = await db.select({ orgId: organizationMembers.orgId }).from(organizationMembers).where(eq(organizationMembers.userId, claims.userId)).all();
+      const teamsList = await db.select({ teamId: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, claims.userId)).all();
+      const allowedScopeKeys = [
+        null,
+        "",
+        ...orgs.map((o) => `org:${o.orgId}`),
+        ...teamsList.map((t) => `team:${t.teamId}`),
+      ];
+      conditions.push(
+        sql`(${memories.userId} = ${claims.userId} OR ${memories.projectKey} IN (${sql.join(allowedScopeKeys.map((k) => sql`${k}`), sql`, `)}))`
+      );
     } else {
-      conditions.push(eq(memories.userId, claims.userId));
-      if (projectKey) {
-        conditions.push(
-          sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
-        );
+      if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
+        conditions.push(eq(memories.projectKey, projectKey));
       } else {
-        conditions.push(
-          sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
-        );
+        conditions.push(eq(memories.userId, claims.userId));
+        if (projectKey) {
+          conditions.push(
+            sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+          );
+        } else {
+          conditions.push(
+            sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+          );
+        }
       }
     }
 
@@ -473,11 +582,12 @@ export async function handleMcpRequest(
       .where(and(...conditions))
       .all();
 
-    // Decrypt facts using derived vault key
-    const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
     const decrypted = await Promise.all(
-      rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY) }))
+      rows.map(async (r) => {
+        const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : claims.userId;
+        const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+        return { ...r, fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY) };
+      })
     );
 
     // Filter decrypted facts
@@ -517,8 +627,12 @@ export async function handleMcpRequest(
     const keyword = args.keyword as string | undefined;
     const limit = typeof args.limit === "number" ? Math.min(200, Math.max(1, args.limit)) : 50;
     const offset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
-    const projectKey = args.projectKey as string | undefined;
+    const projectKey = resolveProjectKey(claims, args.projectKey as string | undefined);
     const isActive = typeof args.isActive === "boolean" ? args.isActive : true;
+
+    if (!isProjectKeyAllowedByToken(claims.scopeType, claims.scopeId, projectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope constraint '${claims.scopeType}' prevents access to vault scope '${projectKey ?? "personal"}'`);
+    }
 
     // Vault Scoping & Quota Check
     const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, projectKey);
@@ -594,7 +708,23 @@ export async function handleMcpRequest(
       return mcpError(id, -32001, "Token does not have recall_context permission");
     }
 
-    const orgId = await getUserOrg(db, claims.userId);
+    const projectKey = resolveProjectKey(claims, undefined);
+    let orgId: string | null = null;
+    const conditions = [];
+
+    if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
+      const { allowed: vaultAllowed, orgId: vOrgId } = await verifyVaultAccess(db, claims.userId, projectKey);
+      if (!vaultAllowed) {
+        return mcpError(id, -32003, `Forbidden: no access to vault scope '${projectKey}'`);
+      }
+      orgId = vOrgId;
+      conditions.push(eq(memories.projectKey, projectKey));
+    } else {
+      orgId = await getUserOrg(db, claims.userId);
+      conditions.push(eq(memories.userId, claims.userId));
+      conditions.push(sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`);
+    }
+
     const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "recall", orgId);
     if (!quotaCheck.allowed) {
       return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
@@ -603,7 +733,7 @@ export async function handleMcpRequest(
     const rows = await db
       .select({ category: memories.category, tags: memories.tags })
       .from(memories)
-      .where(eq(memories.userId, claims.userId))
+      .where(and(...conditions))
       .all();
 
     const summary = {
@@ -647,10 +777,14 @@ export async function handleMcpRequest(
     const category = normalizeCategory(args.category as string | undefined);
     const source = typeof args.source === "string" ? args.source.trim().toLowerCase() : "mcp";
     const rawTags = typeof args.tags === "string" ? args.tags.trim() : "";
-    const projectKey = args.projectKey as string | undefined;
+    const projectKey = resolveProjectKey(claims, args.projectKey as string | undefined);
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required for vector insert");
+    }
+
+    if (!isProjectKeyAllowedByToken(claims.scopeType, claims.scopeId, projectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope constraint '${claims.scopeType}' prevents access to vault scope '${projectKey ?? "personal"}'`);
     }
 
     // Vault Scoping & Quota Check
@@ -754,11 +888,11 @@ export async function handleMcpRequest(
       throw new Error("Unauthorized: userId is required for vector upsert");
     }
 
-    // Fetch existing memory to get defaults
+    // Fetch existing memory to check scoping
     const rows = await db
       .select()
       .from(memories)
-      .where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`)
+      .where(eq(memories.id, memId))
       .all();
 
     if (!rows.length) {
@@ -766,10 +900,37 @@ export async function handleMcpRequest(
     }
     const existing = rows[0];
 
+    if (!isProjectKeyAllowedByToken(claims.scopeType, claims.scopeId, existing.projectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope constraint '${claims.scopeType}' prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
+    }
+
     // Vault Scoping & Quota Check
     const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
     if (!vaultAllowed) {
       return mcpError(id, -32003, `Forbidden: no access to vault scope '${existing.projectKey}'`);
+    }
+
+    const isSharedVault = existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"));
+    if (!isSharedVault && existing.userId !== claims.userId) {
+      return mcpError(id, -32003, `Forbidden: You do not have permission to modify this memory.`);
+    }
+
+    if (isSharedVault && existing.userId !== claims.userId) {
+      const actualOrgId = existing.projectKey!.startsWith("org:") ? existing.projectKey!.slice(4) : orgId;
+      if (actualOrgId) {
+        const memberRow = await db
+          .select({ role: organizationMembers.role })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.orgId, actualOrgId), eq(organizationMembers.userId, claims.userId)))
+          .limit(1)
+          .all();
+        const role = memberRow[0]?.role;
+        if (role !== "owner" && role !== "admin") {
+          return mcpError(id, -32003, `Forbidden: Only organization owners/admins can modify other members' memories in a shared vault.`);
+        }
+      } else {
+        return mcpError(id, -32003, `Forbidden: You do not have permission to modify this memory.`);
+      }
     }
 
     const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "commit", orgId);
@@ -798,7 +959,7 @@ export async function handleMcpRequest(
         category,
         tags: rawTags,
       })
-      .where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`);
+      .where(eq(memories.id, memId));
 
     // Record Memory Version
     await db.insert(memoryVersions).values({
@@ -854,7 +1015,7 @@ export async function handleMcpRequest(
     const rows = await db
       .select()
       .from(memories)
-      .where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`)
+      .where(eq(memories.id, memId))
       .all();
 
     if (!rows.length) {
@@ -862,10 +1023,37 @@ export async function handleMcpRequest(
     }
     const existing = rows[0];
 
+    if (!isProjectKeyAllowedByToken(claims.scopeType, claims.scopeId, existing.projectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope constraint '${claims.scopeType}' prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
+    }
+
     // Vault Scoping & Quota Check
     const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
     if (!vaultAllowed) {
       return mcpError(id, -32003, `Forbidden: no access to vault scope '${existing.projectKey}'`);
+    }
+
+    const isSharedVault = existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"));
+    if (!isSharedVault && existing.userId !== claims.userId) {
+      return mcpError(id, -32003, `Forbidden: You do not have permission to delete this memory.`);
+    }
+
+    if (isSharedVault && existing.userId !== claims.userId) {
+      const actualOrgId = existing.projectKey!.startsWith("org:") ? existing.projectKey!.slice(4) : orgId;
+      if (actualOrgId) {
+        const memberRow = await db
+          .select({ role: organizationMembers.role })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.orgId, actualOrgId), eq(organizationMembers.userId, claims.userId)))
+          .limit(1)
+          .all();
+        const role = memberRow[0]?.role;
+        if (role !== "owner" && role !== "admin") {
+          return mcpError(id, -32003, `Forbidden: Only organization owners/admins can delete other members' memories in a shared vault.`);
+        }
+      } else {
+        return mcpError(id, -32003, `Forbidden: You do not have permission to delete this memory.`);
+      }
     }
 
     const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "commit", orgId);
@@ -874,7 +1062,7 @@ export async function handleMcpRequest(
     }
 
     // Delete from DB and Vectorize
-    await db.delete(memories).where(sql`${memories.id} = ${memId} AND ${memories.userId} = ${claims.userId}`);
+    await db.delete(memories).where(eq(memories.id, memId));
     await env.VECTOR_INDEX.deleteByIds([memId]);
 
     // Audit log & token usage
