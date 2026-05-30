@@ -102,6 +102,7 @@ export default {
       const segment = url.pathname === "/authorize" ? "authorize" : url.pathname === "/register" ? "register" : "token";
       const body = request.body ? await request.arrayBuffer() : null;
       const bodyText = body ? new TextDecoder().decode(body) : "(empty)";
+      console.log(`[oauth/${segment}] ${request.method} ${url.pathname}${url.search}`);
       console.log(`[oauth/${segment}] request body:`, bodyText);
       const rewritten = new Request(
         `${url.origin}/api/auth/oauth2/${segment}${url.search}`,
