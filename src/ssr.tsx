@@ -401,7 +401,7 @@ async function handleExportRequest(request: Request, env: CloudflareEnv): Promis
     const auditLogsJson = JSON.stringify(userAuditLogs, null, 2);
 
     const payloadToSign = memoriesJson + "\n---\n" + auditLogsJson;
-    const signatureHex = await signPayload(payloadToSign, env.BETTER_AUTH_SECRET);
+    const signatureHex = await signPayload(payloadToSign, env.EXPORT_SIGNING_KEY);
 
     const signatureInfo = JSON.stringify({
       userId: session.user.id,

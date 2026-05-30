@@ -13,6 +13,7 @@ export type CloudflareEnv = {
   ENCRYPTION_KEY: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
+  EXPORT_SIGNING_KEY: string;
   ADMIN_USER_ID: string;
   CLAUDE_CLIENT_ID: string;
   CLAUDE_CLIENT_SECRET: string;
