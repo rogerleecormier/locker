@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { AdminLayout, type AdminSection } from "~/components/AdminLayout";
 import { SiteAdminSection, OrgAdminSection, StatBox, AdminCard } from "~/components/AdminSections";
 import {
@@ -34,6 +33,7 @@ import {
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
 import { getBillingInfo } from "~/routes/billing";
+import { ProfileSection, ApiTokensSection, McpEndpointSection } from "~/routes/settings";
 
 const modalOverlay: React.CSSProperties = {
   position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
@@ -238,40 +238,11 @@ function AdminPage() {
 
       {/* ── PERSONAL ACCOUNT ────────────────────────────────────────────── */}
       {activeSection === "personal-account" && (
-        <AdminCard>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <h2 style={{ margin: "0 0 4px 0", fontSize: "16px", fontWeight: "bold" }}>My Account</h2>
-              <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)" }}>
-                Manage your profile, API tokens, and security settings
-              </p>
-            </div>
-            <Link
-              to="/settings"
-              style={{ padding: "8px 16px", background: "var(--accent)", color: "white", borderRadius: "var(--radius)", textDecoration: "none", fontWeight: "bold", fontSize: "13px" }}
-            >
-              Open Settings →
-            </Link>
-          </div>
-          <div style={{ marginTop: "20px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
-            {[
-              { label: "Profile & Email", desc: "Update your name and email address", icon: "👤" },
-              { label: "API Tokens", desc: "Create and manage personal API tokens", icon: "🔑" },
-              { label: "Connected Apps", desc: "Manage OAuth integrations", icon: "🔗" },
-              { label: "Security", desc: "Password and session management", icon: "🔒" },
-            ].map(({ label, desc, icon }) => (
-              <Link
-                key={label}
-                to="/settings"
-                style={{ display: "block", padding: "14px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "8px", textDecoration: "none", color: "var(--text)" }}
-              >
-                <div style={{ fontSize: "20px", marginBottom: "8px" }}>{icon}</div>
-                <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>{label}</div>
-                <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{desc}</div>
-              </Link>
-            ))}
-          </div>
-        </AdminCard>
+        <>
+          <ProfileSection />
+          <ApiTokensSection />
+          <McpEndpointSection />
+        </>
       )}
 
       {/* ── PERSONAL BILLING ────────────────────────────────────────────── */}
