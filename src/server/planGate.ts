@@ -285,7 +285,7 @@ export async function getUserUsageStats(
   const allTokens = [
     ...tokenRows,
     ...oauthRows.map((o: any) => ({ id: o.id, name: `OAuth Integration (${o.id.slice(0, 8)})` })),
-    { id: userId, name: "Claude Desktop OAuth" }
+    { id: userId, name: "Claude Integration" }
   ];
 
   if (allTokens.length === 0) return [];
