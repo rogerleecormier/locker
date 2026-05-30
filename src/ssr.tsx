@@ -105,21 +105,6 @@ export default {
       console.log(`[oauth/${segment}] ${request.method} ${url.pathname}${url.search}`);
       console.log(`[oauth/${segment}] request body:`, bodyText);
 
-      const auth = createAuth(env);
-
-      // For /authorize, check if user has a valid session first
-      if (segment === "authorize") {
-        const session = await auth.api.getSession({ headers: request.headers });
-        if (!session?.user) {
-          console.log(`[oauth/authorize] No valid session, user must log in first`);
-          return Response.json(
-            { error: "login_required", error_description: "User must be logged into Locker before granting Claude access" },
-            { status: 403, headers: { "Content-Type": "application/json" } }
-          );
-        }
-        console.log(`[oauth/authorize] User ${session.user.id} has valid session`);
-      }
-
       const rewritten = new Request(
         `${url.origin}/api/auth/oauth2/${segment}${url.search}`,
         {
@@ -128,6 +113,7 @@ export default {
           body: body,
         },
       );
+      const auth = createAuth(env);
       try {
         const response = await auth.handler(rewritten);
         const text = await response.clone().text();
