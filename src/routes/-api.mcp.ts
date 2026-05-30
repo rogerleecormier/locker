@@ -823,6 +823,18 @@ export async function handleMcpRequest(
       console.error("[mcp] Failed to enqueue contradiction check:", err);
     }
 
+    let scopeType: "personal" | "organization" | "team" = "personal";
+    let scopeId: string | null = null;
+    if (projectKey) {
+      if (projectKey.startsWith("org:")) {
+        scopeType = "organization";
+        scopeId = projectKey.slice(4);
+      } else if (projectKey.startsWith("team:")) {
+        scopeType = "team";
+        scopeId = projectKey.slice(5);
+      }
+    }
+
     await db.insert(memories).values({
       id: memId,
       userId: claims.userId,
@@ -832,6 +844,8 @@ export async function handleMcpRequest(
       timestamp,
       isActive: true,
       projectKey: projectKey || null,
+      scopeType,
+      scopeId,
     });
 
     // Record Memory Version

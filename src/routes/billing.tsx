@@ -19,6 +19,7 @@ import {
   teams,
   teamMembers,
   userPlans,
+  oauthAccessTokensV2,
 } from "~/db/schema";
 import { eq, sql, and } from "drizzle-orm";
 
@@ -28,7 +29,7 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
   async ({ context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
-    const db = drizzle(env.DB, { schema: { memories, apiTokens, organizations, organizationMembers, orgQuotas, tokenUsages, teams, teamMembers, userPlans } });
+    const db = drizzle(env.DB, { schema: { memories, apiTokens, organizations, organizationMembers, orgQuotas, tokenUsages, teams, teamMembers, userPlans, oauthAccessTokensV2 } });
 
     const { planId, orgId } = await getUserEffectivePlan(db, user.id, env.ADMIN_USER_ID);
 
@@ -58,9 +59,18 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
       .all()
     ).map((r) => r.id);
 
+    const oauthTokenIds = (await db
+      .select({ id: oauthAccessTokensV2.id })
+      .from(oauthAccessTokensV2)
+      .where(eq(oauthAccessTokensV2.userId, user.id))
+      .all()
+    ).map((r: any) => r.id);
+
+    const allTokenIds = [...tokenIds, ...oauthTokenIds, user.id];
+
     let monthlyRecalls = 0;
     let monthlyCommits = 0;
-    if (tokenIds.length > 0) {
+    if (allTokenIds.length > 0) {
       const usageRows = await db
         .select({
           recalls: sql<number>`SUM(${tokenUsages.recallCount})`,
@@ -69,7 +79,7 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
         .from(tokenUsages)
         .where(
           and(
-            sql`${tokenUsages.tokenId} IN (${sql.join(tokenIds.map((id) => sql`${id}`), sql`, `)})`,
+            sql`${tokenUsages.tokenId} IN (${sql.join(allTokenIds.map((id) => sql`${id}`), sql`, `)})`,
             sql`${tokenUsages.date} LIKE ${monthPrefix + "%"}`
           )
         )

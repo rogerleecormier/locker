@@ -8,6 +8,7 @@ import {
   teams,
   teamMembers,
   userPlans,
+  oauthAccessTokensV2,
 } from "~/db/schema";
 import {
   PLANS,
@@ -275,9 +276,21 @@ export async function getUserUsageStats(
     .where(eq(apiTokens.userId, userId))
     .all();
 
-  if (tokenRows.length === 0) return [];
+  const oauthRows = await db
+    .select({ id: oauthAccessTokensV2.id, name: sql<string>`'OAuth Connection'` })
+    .from(oauthAccessTokensV2)
+    .where(eq(oauthAccessTokensV2.userId, userId))
+    .all();
 
-  const tokenIds = tokenRows.map((t: any) => t.id);
+  const allTokens = [
+    ...tokenRows,
+    ...oauthRows.map((o: any) => ({ id: o.id, name: `OAuth Integration (${o.id.slice(0, 8)})` })),
+    { id: userId, name: "Claude Desktop OAuth" }
+  ];
+
+  if (allTokens.length === 0) return [];
+
+  const tokenIds = allTokens.map((t: any) => t.id);
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -304,13 +317,15 @@ export async function getUserUsageStats(
     byToken.set(row.tokenId, existing);
   }
 
-  return tokenRows.map((token: any) => {
-    const rows = byToken.get(token.id) ?? [];
-    const totalRecalls = rows.reduce((acc: number, r: any) => acc + (r.recallCount ?? 0), 0);
-    const totalCommits = rows.reduce((acc: number, r: any) => acc + (r.commitCount ?? 0), 0);
-    const dailyBreakdown = rows
-      .map((r: any) => ({ date: r.date, recalls: r.recallCount ?? 0, commits: r.commitCount ?? 0 }))
-      .sort((a: any, b: any) => a.date.localeCompare(b.date));
-    return { tokenId: token.id, tokenName: token.name, totalRecalls, totalCommits, dailyBreakdown };
-  });
+  return allTokens
+    .map((token: any) => {
+      const rows = byToken.get(token.id) ?? [];
+      const totalRecalls = rows.reduce((acc: number, r: any) => acc + (r.recallCount ?? 0), 0);
+      const totalCommits = rows.reduce((acc: number, r: any) => acc + (r.commitCount ?? 0), 0);
+      const dailyBreakdown = rows
+        .map((r: any) => ({ date: r.date, recalls: r.recallCount ?? 0, commits: r.commitCount ?? 0 }))
+        .sort((a: any, b: any) => a.date.localeCompare(b.date));
+      return { tokenId: token.id, tokenName: token.name, totalRecalls, totalCommits, dailyBreakdown };
+    })
+    .filter((token: any) => token.totalRecalls > 0 || token.totalCommits > 0 || token.dailyBreakdown.length > 0);
 }
