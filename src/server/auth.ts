@@ -33,6 +33,7 @@ export async function createAuth(env: CloudflareEnv) {
         tokenEndpointAuthMethod: "client_secret_basic",
         grantTypes: JSON.stringify(["authorization_code", "refresh_token"]),
         responseTypes: JSON.stringify(["code"]),
+        icon: `${env.BETTER_AUTH_URL}/logo.png`,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
