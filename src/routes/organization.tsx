@@ -449,30 +449,52 @@ function OrganizationPage() {
 
   if (isLoading) return <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>;
 
+  const orgPageHeader = (
+    <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
+      <div style={{ maxWidth: 960, margin: "0 auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Organization Vault</h1>
+          <span style={{ fontSize: 11, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
+            Team
+          </span>
+        </div>
+        <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
+          Shared memory vaults for your organization and teams.
+        </p>
+      </div>
+    </div>
+  );
+
   if (planId === "free") {
     return (
-      <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 20px" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 24 }}>Organization Vault</h1>
-        <PaywallGate feature="organizations" currentPlan="free" requiredPlan="business"><></></PaywallGate>
-        <div style={{ marginTop: 40 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>What you get with Business</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {[
-              { icon: "🏢", title: "Organizations", desc: "Shared workspace with role-based access" },
-              { icon: "👥", title: "Teams", desc: "Sub-teams with scoped memory vaults" },
-              { icon: "📚", title: "Shared Vaults", desc: "AI sessions access shared context automatically" },
-              { icon: "📊", title: "Usage Analytics", desc: "Track MCP usage per API token" },
-            ].map(({ icon, title, desc }) => (
-              <div key={title} style={{ padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
-                <div style={{ fontSize: 16, marginBottom: 6 }}>{icon} <span style={{ fontWeight: 600 }}>{title}</span></div>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>{desc}</p>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 20, textAlign: "center" }}>
-            <Link to="/admin" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 24px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 14, borderRadius: 10, textDecoration: "none" }}>
-              View Plans & Pricing →
-            </Link>
+      <div>
+        {orgPageHeader}
+        <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
+          <PaywallGate feature="organizations" currentPlan="free" requiredPlan="business"><></></PaywallGate>
+          <div style={{ marginTop: 32 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>What you get with Business</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {[
+                { icon: "🏢", title: "Organizations", desc: "Shared workspace with role-based access" },
+                { icon: "👥", title: "Teams", desc: "Sub-teams with scoped memory vaults" },
+                { icon: "📚", title: "Shared Vaults", desc: "AI sessions access shared context automatically" },
+                { icon: "📊", title: "Usage Analytics", desc: "Track MCP usage per API token" },
+              ].map(({ icon, title, desc }) => (
+                <div key={title} style={{ padding: "16px", background: "linear-gradient(135deg, rgba(34,197,94,0.03) 0%, rgba(16,185,129,0.01) 100%)", border: "1px solid rgba(34,197,94,0.12)", borderRadius: 12 }}>
+                  <div style={{ fontSize: 16, marginBottom: 6 }}>{icon} <span style={{ fontWeight: 600 }}>{title}</span></div>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>{desc}</p>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 20, textAlign: "center" }}>
+              <Link to="/admin" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 24px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 14, borderRadius: 10, textDecoration: "none" }}>
+                View Plans & Pricing →
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -481,26 +503,28 @@ function OrganizationPage() {
 
   if (orgs.length === 0) {
     return (
-      <div style={{ padding: "40px 20px", maxWidth: "680px", margin: "40px auto", textAlign: "center" }}>
-        <h2 style={{ fontSize: "24px", fontWeight: "800", letterSpacing: "-0.03em", marginBottom: "8px" }}>No organizations yet</h2>
-        <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "24px", lineHeight: "1.6" }}>
-          Ask your site administrator to create an organization and add you as a member.
-        </p>
-        <Link to="/admin" style={{ padding: "10px 24px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, borderRadius: "var(--radius)", textDecoration: "none" }}>
-          Go to Admin →
-        </Link>
+      <div>
+        {orgPageHeader}
+        <div style={{ maxWidth: 960, margin: "0 auto", padding: "60px 24px", textAlign: "center" }}>
+          <h2 style={{ fontSize: "24px", fontWeight: "800", letterSpacing: "-0.03em", marginBottom: "8px" }}>No organizations yet</h2>
+          <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "24px", lineHeight: "1.6" }}>
+            Ask your site administrator to create an organization and add you as a member.
+          </p>
+          <Link to="/admin" style={{ padding: "10px 24px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, borderRadius: "var(--radius)", textDecoration: "none" }}>
+            Go to Admin →
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "20px", maxWidth: "1000px", margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-        <h1 style={{ fontSize: "24px", fontWeight: "bold", letterSpacing: "-0.02em" }}>Organization Vault</h1>
-      </div>
+    <div>
+      {orgPageHeader}
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
 
       {orgs.length > 1 && (
-        <div style={{ display: "flex", gap: "12px", alignItems: "center", padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", marginBottom: "24px" }}>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center", padding: "14px 16px", background: "linear-gradient(135deg, rgba(34,197,94,0.03) 0%, rgba(16,185,129,0.01) 100%)", border: "1px solid rgba(34,197,94,0.15)", borderRadius: "12px", marginBottom: "24px" }}>
           <label style={{ fontSize: "12px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>Organization:</label>
           <select value={currentOrgId} onChange={(e) => setSelectedOrgId(e.target.value)}
             style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", flex: 1, fontWeight: 600 }}>
@@ -724,6 +748,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
