@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks } from "~/db/schema";
+import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
@@ -279,48 +280,60 @@ async function validateBearerToken(
     };
   }
 
-  // OAuth JWT path — decode JWT directly to extract claims
+  // OAuth JWT path — verify signature against stored JWKS then do a live membership lookup
   if (rawToken.startsWith("eyJ")) {
     try {
-      // Decode JWT payload (without verification for now; better-auth validated it)
-      const parts = rawToken.split(".");
-      if (parts.length !== 3) {
-        console.log("[jwt] invalid JWT structure");
-        return null;
+      const jwtDb = drizzle(env.DB);
+
+      // Load all non-expired public keys and try each until one verifies
+      const keyRows = await jwtDb
+        .select({ id: jwks.id, publicKey: jwks.publicKey })
+        .from(jwks)
+        .all();
+
+      let payload: Record<string, unknown> | null = null;
+      for (const row of keyRows) {
+        try {
+          const jwk = JSON.parse(row.publicKey) as Record<string, unknown>;
+          const alg = (jwk.alg as string | undefined) ?? "RS256";
+          const publicKey = await importJWK(jwk, alg);
+          const result = await jwtVerify(rawToken, publicKey, {
+            issuer: env.BETTER_AUTH_URL,
+            audience: env.BETTER_AUTH_URL,
+          });
+          payload = result.payload as Record<string, unknown>;
+          break;
+        } catch {
+          // try next key
+        }
       }
 
-      const payload = JSON.parse(
-        new TextDecoder().decode(
-          Uint8Array.from(
-            atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")),
-            (c) => c.charCodeAt(0)
-          )
-        )
-      ) as Record<string, unknown>;
+      if (!payload) {
+        console.log("[jwt] signature verification failed against all JWKS keys");
+        return null;
+      }
 
       const userId = payload.sub as string | undefined;
       if (!userId) {
-        console.log("[jwt] no sub in JWT");
+        console.log("[jwt] no sub in verified JWT");
         return null;
       }
 
-      const orgIds = Array.isArray(payload.orgIds) ? (payload.orgIds as string[]) : [];
-      const teamIds = Array.isArray(payload.teamIds) ? (payload.teamIds as string[]) : [];
+      // Always do a live membership lookup — JWT claims go stale when memberships change
+      const [orgRows, teamRows] = await Promise.all([
+        jwtDb.select({ orgId: organizationMembers.orgId }).from(organizationMembers).where(eq(organizationMembers.userId, userId)).all(),
+        jwtDb.select({ teamId: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, userId)).all(),
+      ]);
+      const orgIds = orgRows.map((r) => r.orgId);
+      const teamIds = teamRows.map((r) => r.teamId);
 
-      console.log("[jwt] decoded userId:", userId, "orgIds:", orgIds, "teamIds:", teamIds);
+      console.log("[jwt] verified userId:", userId, "orgIds:", orgIds, "teamIds:", teamIds);
 
-      // Build accessible scopes from JWT claims
       const accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [
         { type: "personal", id: null },
       ];
-
-      orgIds.forEach((orgId) => {
-        accessibleScopes.push({ type: "organization", id: orgId });
-      });
-
-      teamIds.forEach((teamId) => {
-        accessibleScopes.push({ type: "team", id: teamId });
-      });
+      orgIds.forEach((orgId) => accessibleScopes.push({ type: "organization", id: orgId }));
+      teamIds.forEach((teamId) => accessibleScopes.push({ type: "team", id: teamId }));
 
       return {
         userId,
@@ -331,7 +344,7 @@ async function validateBearerToken(
         accessibleScopes,
       };
     } catch (e) {
-      console.log("[jwt] decode exception:", String(e));
+      console.log("[jwt] verification exception:", String(e));
       return null;
     }
   }
