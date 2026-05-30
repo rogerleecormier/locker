@@ -6,6 +6,7 @@ export type AdminSection =
   | "personal-account"
   | "personal-tokens"
   | "personal-mcp"
+  | "personal-usage"
   | "personal-billing"
   // Org
   | "orgs"
@@ -26,10 +27,11 @@ interface MenuItem {
 
 const MENU_ITEMS: MenuItem[] = [
   // Personal
-  { id: "personal-account",  label: "My Account",     icon: "👤", category: "personal" },
-  { id: "personal-tokens",   label: "API Tokens",      icon: "🔑", category: "personal" },
-  { id: "personal-mcp",      label: "MCP Endpoint",    icon: "🔌", category: "personal" },
-  { id: "personal-billing",  label: "My Plan & Billing", icon: "💳", category: "personal" },
+  { id: "personal-account",  label: "My Account",      icon: "👤", category: "personal" },
+  { id: "personal-tokens",   label: "API Tokens",       icon: "🔑", category: "personal" },
+  { id: "personal-mcp",      label: "MCP Endpoint",     icon: "🔌", category: "personal" },
+  { id: "personal-usage",    label: "My Usage",         icon: "📈", category: "personal" },
+  { id: "personal-billing",  label: "My Billing",       icon: "💳", category: "personal" },
   // Org
   { id: "orgs", label: "Organizations", icon: "🏢", category: "org" },
   { id: "org-billing", label: "Org Billing", icon: "💰", category: "org" },
@@ -42,20 +44,30 @@ const MENU_ITEMS: MenuItem[] = [
 ];
 
 const SECTIONS = [
-  { key: "personal" as const, label: "Personal", icon: "👤", accentVar: "--accent" },
-  { key: "org" as const,      label: "Organization & Team Admin", icon: "🏢", accentVar: "--success" },
-  { key: "site" as const,     label: "Site Administration", icon: "🌐", accentVar: "--accent" },
+  { key: "personal" as const, label: "Personal",                  icon: "👤" },
+  { key: "org" as const,      label: "Organization & Team Admin", icon: "🏢" },
+  { key: "site" as const,     label: "Site Administration",       icon: "🌐" },
 ];
 
 interface AdminLayoutProps {
   activeSection: AdminSection;
   onSectionChange: (section: AdminSection) => void;
   children: ReactNode;
+  /** User is admin/owner of at least one org — shows Org section */
+  isOrgAdmin?: boolean;
+  /** User is the site superadmin — shows Site section */
+  isSiteAdmin?: boolean;
 }
 
-export function AdminLayout({ activeSection, onSectionChange, children }: AdminLayoutProps) {
+export function AdminLayout({ activeSection, onSectionChange, children, isOrgAdmin, isSiteAdmin }: AdminLayoutProps) {
   const activeMeta = MENU_ITEMS.find((m) => m.id === activeSection);
   const activeCategory = activeMeta?.category ?? "personal";
+
+  const sectionVisible = (key: "personal" | "org" | "site") => {
+    if (key === "org") return !!isOrgAdmin;
+    if (key === "site") return !!isSiteAdmin;
+    return true; // personal always visible
+  };
 
   return (
     <div style={styles.container}>
@@ -71,7 +83,7 @@ export function AdminLayout({ activeSection, onSectionChange, children }: AdminL
 
       <div style={styles.layout}>
         <aside style={styles.sidebar}>
-          {SECTIONS.map((section, sectionIdx) => {
+          {SECTIONS.filter((s) => sectionVisible(s.key)).map((section, sectionIdx) => {
             const items = MENU_ITEMS.filter((m) => m.category === section.key);
             const isActive = activeCategory === section.key;
             return (

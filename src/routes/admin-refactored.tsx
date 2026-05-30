@@ -32,7 +32,7 @@ import {
   rebuildVectorizeIndex,
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
-import { getBillingInfo, PersonalBillingSection } from "~/routes/billing";
+import { MyUsageSection, MyBillingSection, OrgBillingSection, useBillingData } from "~/routes/billing";
 import { ProfileSection, ApiTokensSection, McpEndpointSection } from "~/routes/settings";
 
 const modalOverlay: React.CSSProperties = {
@@ -103,7 +103,7 @@ function AdminPage() {
   const orgsQuery = useQuery({
     queryKey: ["admin-orgs"],
     queryFn: () => listAllOrgsAndQuotas(),
-    enabled: activeSection === "orgs" || activeSection === "users" || activeSection === "org-billing",
+    enabled: activeSection === "orgs" || activeSection === "users",
   });
   const usersQuery = useQuery({
     queryKey: ["admin-users"],
@@ -114,11 +114,11 @@ function AdminPage() {
     queryKey: ["admin-status"],
     queryFn: () => getAdminStatus(),
   });
-  const billingQuery = useQuery({
-    queryKey: ["admin-billing"],
-    queryFn: () => getBillingInfo(),
-    enabled: activeSection === "org-billing",
-  });
+  // Billing data used for role gating (isOrgAdmin) — loaded eagerly since it
+  // determines which sidebar sections are visible.
+  const { data: billingData } = useBillingData();
+  const isOrgAdmin = (billingData?.managedOrgs?.length ?? 0) > 0;
+  const isSiteAdmin = adminStatus?.isAdmin ?? false;
 
   // ── mutations ──────────────────────────────────────────────────────────────
   const clearDbMutation = useMutation({
@@ -234,7 +234,12 @@ function AdminPage() {
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
-    <AdminLayout activeSection={activeSection} onSectionChange={setActiveSection}>
+    <AdminLayout
+      activeSection={activeSection}
+      onSectionChange={setActiveSection}
+      isOrgAdmin={isOrgAdmin}
+      isSiteAdmin={isSiteAdmin}
+    >
 
       {/* ── PERSONAL ACCOUNT ────────────────────────────────────────────── */}
       {activeSection === "personal-account" && <ProfileSection />}
@@ -245,8 +250,11 @@ function AdminPage() {
       {/* ── MCP ENDPOINT ────────────────────────────────────────────────── */}
       {activeSection === "personal-mcp" && <McpEndpointSection />}
 
-      {/* ── PERSONAL BILLING ────────────────────────────────────────────── */}
-      {activeSection === "personal-billing" && <PersonalBillingSection />}
+      {/* ── MY USAGE ────────────────────────────────────────────────────── */}
+      {activeSection === "personal-usage" && <MyUsageSection />}
+
+      {/* ── MY BILLING ──────────────────────────────────────────────────── */}
+      {activeSection === "personal-billing" && <MyBillingSection />}
 
       {/* ── SYSTEM OVERVIEW ─────────────────────────────────────────────── */}
       {activeSection === "system" && (
@@ -569,133 +577,7 @@ function AdminPage() {
       )}
 
       {/* ── ORG BILLING ─────────────────────────────────────────────────────── */}
-      {activeSection === "org-billing" && (
-        <OrgAdminSection title="Organization Billing" description="Subscription status and plan management for all orgs" icon="💰">
-          {billingQuery.isPending && <p>Loading billing data...</p>}
-          {billingQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load billing data: {String(billingQuery.error)}</p>}
-
-          {/* Usage summary for the admin's own context */}
-          {billingQuery.data && (
-            <>
-              <AdminCard>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "var(--text)" }}>Your Current Plan</p>
-                    <p style={{ margin: "4px 0 0 0", fontSize: "11px", color: "var(--text-muted)" }}>Admin account billing context</p>
-                  </div>
-                  <span style={{
-                    fontSize: "11px", fontWeight: "bold", textTransform: "uppercase",
-                    background: billingQuery.data.planId === "enterprise" ? "rgba(16,185,129,0.15)" : billingQuery.data.planId === "business" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
-                    color: billingQuery.data.planId === "enterprise" ? "#10b981" : billingQuery.data.planId === "business" ? "var(--accent)" : "var(--text-muted)",
-                    padding: "3px 10px", borderRadius: "20px",
-                  }}>
-                    {billingQuery.data.planId}
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "12px" }}>
-                  <StatBox label="Memories" value={billingQuery.data.usage.memories} />
-                  <StatBox label="Recalls (month)" value={billingQuery.data.usage.monthlyRecalls} />
-                  <StatBox label="Commits (month)" value={billingQuery.data.usage.monthlyCommits} />
-                  <StatBox label="Tokens (month)" value={billingQuery.data.usage.monthlyTokens} />
-                </div>
-              </AdminCard>
-
-              {/* Orgs where admin is owner/admin */}
-              <div style={{ marginTop: "20px" }}>
-                <h3 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Managed Organizations ({billingQuery.data.managedOrgs.length})
-                </h3>
-                {billingQuery.data.managedOrgs.length === 0 ? (
-                  <AdminCard>
-                    <p style={{ color: "var(--text-muted)", margin: 0, textAlign: "center" }}>No organizations with admin/owner access found.</p>
-                  </AdminCard>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                    {billingQuery.data.managedOrgs.map((org) => (
-                      <AdminCard key={org.id}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                          <div>
-                            <h4 style={{ margin: "0 0 4px 0", fontSize: "14px", fontWeight: "bold" }}>{org.name}</h4>
-                            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                              <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>ID: {org.id}</span>
-                              <span style={{
-                                fontSize: "10px", fontWeight: "bold", textTransform: "uppercase",
-                                background: org.plan === "enterprise" ? "rgba(16,185,129,0.15)" : org.plan === "business" || org.plan === "pro" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
-                                color: org.plan === "enterprise" ? "#10b981" : org.plan === "business" || org.plan === "pro" ? "var(--accent)" : "var(--text-muted)",
-                                padding: "1px 6px", borderRadius: "10px",
-                              }}>
-                                {org.plan}
-                              </span>
-                              <span style={{
-                                fontSize: "10px", fontWeight: "bold", textTransform: "uppercase",
-                                background: org.role === "owner" ? "rgba(239,68,68,0.1)" : "rgba(168,85,247,0.1)",
-                                color: org.role === "owner" ? "var(--error)" : "var(--accent)",
-                                padding: "1px 6px", borderRadius: "10px",
-                              }}>
-                                {org.role}
-                              </span>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => { setActiveSection("orgs"); }}
-                            style={{ padding: "4px 10px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", cursor: "pointer", color: "var(--text-muted)", fontWeight: 600 }}
-                          >
-                            Manage Quotas →
-                          </button>
-                        </div>
-                      </AdminCard>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* All orgs from the global list with plan info */}
-              {orgsQuery.data && orgsQuery.data.length > 0 && (
-                <div style={{ marginTop: "24px" }}>
-                  <h3 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    All Organization Plans
-                  </h3>
-                  <div style={{ width: "100%", overflowX: "auto", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                          {["Organization", "Plan", "Members", "Mem Quota", "Recall Quota", "Commit Quota"].map((h, i) => (
-                            <th key={h} style={{ padding: "10px 14px", color: "var(--text-muted)", fontSize: "11px", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: i > 1 ? "center" : "left" }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {orgsQuery.data.map((org) => (
-                          <tr key={org.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                            <td style={{ padding: "12px 14px" }}>
-                              <div style={{ fontWeight: 600, fontSize: "13px" }}>{org.name}</div>
-                              <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{org.id}</div>
-                            </td>
-                            <td style={{ padding: "12px 14px" }}>
-                              <span style={{
-                                fontSize: "10px", fontWeight: "bold", textTransform: "uppercase",
-                                background: org.plan === "enterprise" ? "rgba(16,185,129,0.15)" : org.plan === "pro" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
-                                color: org.plan === "enterprise" ? "#10b981" : org.plan === "pro" ? "var(--accent)" : "var(--text-muted)",
-                                padding: "2px 8px", borderRadius: "20px",
-                              }}>
-                                {org.plan}
-                              </span>
-                            </td>
-                            <td style={{ padding: "12px 14px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>{org.memberCount}</td>
-                            <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, fontSize: "13px" }}>{org.monthlyMemories.toLocaleString()}</td>
-                            <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, fontSize: "13px" }}>{org.monthlyRecalls.toLocaleString()}</td>
-                            <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, fontSize: "13px" }}>{org.monthlyCommits.toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </OrgAdminSection>
-      )}
+      {activeSection === "org-billing" && <OrgBillingSection />}
 
       {/* ── USERS ───────────────────────────────────────────────────────────── */}
       {activeSection === "users" && (

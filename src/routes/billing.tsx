@@ -101,6 +101,7 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
       .all();
     const hasBillingCustomer = !!userPlanRow[0]?.billingCustomerId;
 
+    // Orgs where the user is owner or admin — these can be billed
     const managedOrgs = await db
       .select({
         id: organizations.id,
@@ -140,12 +141,13 @@ export const Route = createFileRoute("/billing")({
   component: BillingPage,
 });
 
+// ── shared primitives ──────────────────────────────────────────────────────
+
 export function UsageBar({ label, current, max }: { label: string; current: number; max: number }) {
   const pct = max === Infinity ? 0 : Math.min(100, (current / max) * 100);
   const isNearLimit = pct >= 80;
   const isAtLimit = pct >= 100;
   const color = isAtLimit ? "var(--error)" : isNearLimit ? "#f59e0b" : "var(--accent)";
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
@@ -171,9 +173,7 @@ function TokenUsageChart({ tokenName, dailyBreakdown }: {
 }) {
   if (dailyBreakdown.length === 0) return null;
   const last14 = dailyBreakdown.slice(-14);
-
   const totalTokens = dailyBreakdown.reduce((sum, d) => sum + d.tokens, 0);
-
   return (
     <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "14px 16px" }}>
       <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -197,24 +197,71 @@ function TokenUsageChart({ tokenName, dailyBreakdown }: {
       </div>
       <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--text-muted)" }}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: "var(--accent)" }} />
-          Recalls
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: "var(--accent)" }} /> Recalls
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--text-muted)" }}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#34d399" }} />
-          Commits
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#34d399" }} /> Commits
         </div>
       </div>
     </div>
   );
 }
 
-export function PersonalBillingSection() {
-  const { data: billing, isLoading } = useQuery({
-    queryKey: ["billing"],
-    queryFn: () => getBillingInfo(),
-  });
+// ── hook: shared billing data ──────────────────────────────────────────────
 
+export function useBillingData() {
+  return useQuery({ queryKey: ["billing"], queryFn: () => getBillingInfo() });
+}
+
+// ── exported section: My Usage ─────────────────────────────────────────────
+
+export function MyUsageSection() {
+  const { data: billing, isLoading } = useBillingData();
+  const currentPlan: PlanId = billing?.planId ?? "free";
+  const limits = PLANS[currentPlan].limits;
+
+  if (isLoading) return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>;
+
+  return (
+    <>
+      <section style={card}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <h2 style={sectionTitle}>Current Usage</h2>
+            <p style={sectionDesc}>Your personal resource consumption this billing period.</p>
+          </div>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Resets monthly</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <UsageBar label="Personal Memories" current={billing?.usage.memories ?? 0} max={limits.maxMemories} />
+          <UsageBar label="API Tokens" current={billing?.usage.apiTokens ?? 0} max={limits.maxApiTokens} />
+          <UsageBar label="Monthly Recalls (MCP)" current={billing?.usage.monthlyRecalls ?? 0} max={limits.maxMonthlyRecalls} />
+          <UsageBar label="Monthly Commits (MCP)" current={billing?.usage.monthlyCommits ?? 0} max={limits.maxMonthlyCommits} />
+          <UsageBar label="Monthly Embedding Tokens" current={billing?.usage.monthlyTokens ?? 0} max={limits.maxMonthlyTokens} />
+        </div>
+      </section>
+
+      {currentPlan !== "free" && billing?.usageStats && billing.usageStats.length > 0 && (
+        <section style={card}>
+          <h2 style={{ ...sectionTitle, marginBottom: 16 }}>
+            Token Usage Analytics{" "}
+            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>(Last 30 days)</span>
+          </h2>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {billing.usageStats.map((s) => (
+              <TokenUsageChart key={s.tokenId} tokenName={s.tokenName} dailyBreakdown={s.dailyBreakdown} />
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+// ── exported section: My Billing (personal plan management) ────────────────
+
+export function MyBillingSection() {
+  const { data: billing, isLoading } = useBillingData();
   const [upgradingId, setUpgradingId] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
   const [stripeError, setStripeError] = useState<string | null>(null);
@@ -232,241 +279,279 @@ export function PersonalBillingSection() {
     }
   }, []);
 
-  async function handleUpgrade(orgId?: string) {
-    const id = orgId || "personal";
-    setUpgradingId(id);
+  async function handleUpgrade() {
+    setUpgradingId("personal");
     setStripeError(null);
     try {
-      const res = await createCheckoutSession({ data: { orgId } });
-      if (res?.url) {
-        window.location.href = res.url;
-      } else {
-        throw new Error("Failed to generate checkout session url.");
-      }
+      const res = await createCheckoutSession({ data: { orgId: undefined } });
+      if (res?.url) window.location.href = res.url;
+      else throw new Error("No checkout URL returned.");
     } catch (err: any) {
       setStripeError(err?.message || "An error occurred initiating checkout.");
       setUpgradingId(null);
     }
   }
 
-  async function handlePortal(orgId?: string) {
+  async function handlePortal() {
     setPortalLoading(true);
     setStripeError(null);
     try {
-      const res = await createPortalSession({ data: { orgId } });
-      if (res?.url) {
-        window.location.href = res.url;
-      } else {
-        throw new Error("Failed to generate portal session url.");
-      }
+      const res = await createPortalSession({ data: { orgId: undefined } });
+      if (res?.url) window.location.href = res.url;
+      else throw new Error("No portal URL returned.");
     } catch (err: any) {
       setStripeError(err?.message || "An error occurred opening the billing portal.");
       setPortalLoading(false);
     }
   }
 
+  if (isLoading) return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>;
+
   const currentPlan: PlanId = billing?.planId ?? "free";
-  const planObj = PLANS[currentPlan];
-  const limits = planObj.limits;
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 24 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Plan & Billing</h2>
-            {billing && <PlanBadge plan={currentPlan} />}
+      {successMsg && <div style={alertSuccess}>{successMsg}</div>}
+      {cancelMsg && <div style={alertWarn}>{cancelMsg}</div>}
+      {stripeError && <div style={alertError}>{stripeError}</div>}
+
+      {/* Current plan + portal */}
+      <section style={card}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <h2 style={{ ...sectionTitle, margin: 0 }}>My Plan</h2>
+              <PlanBadge plan={currentPlan} />
+            </div>
+            <p style={sectionDesc}>Your current personal subscription tier.</p>
           </div>
-          <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-            Manage your plan, track usage, and view available features.
-          </p>
-        </div>
-        {billing?.hasBillingCustomer && (
-          <button
-            onClick={() => handlePortal()}
-            disabled={portalLoading}
-            style={{ padding: "8px 16px", background: "transparent", border: "1px solid var(--border)", color: "var(--text)", fontWeight: 600, fontSize: 13, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-            {portalLoading ? "Opening Stripe..." : "Manage Subscription"}
-          </button>
-        )}
-      </div>
-
-      {successMsg && (
-        <div style={{ padding: "12px 16px", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500 }}>
-          {successMsg}
-        </div>
-      )}
-
-      {cancelMsg && (
-        <div style={{ padding: "12px 16px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", color: "#f59e0b", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500 }}>
-          {cancelMsg}
-        </div>
-      )}
-
-      {stripeError && (
-        <div style={{ padding: "12px 16px", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--error)", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500 }}>
-          {stripeError}
-        </div>
-      )}
-
-      {isLoading ? (
-        <div style={{ textAlign: "center", padding: "48px 0", color: "var(--text-muted)" }}>Loading…</div>
-      ) : (
-        <>
-          <section style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 22px", marginBottom: 24 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Current Usage</h2>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Resets monthly for recall/commit/token counts</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <UsageBar label="Personal Memories" current={billing?.usage.memories ?? 0} max={limits.maxMemories} />
-              <UsageBar label="API Tokens" current={billing?.usage.apiTokens ?? 0} max={limits.maxApiTokens} />
-              <UsageBar label="Monthly Recalls (MCP)" current={billing?.usage.monthlyRecalls ?? 0} max={limits.maxMonthlyRecalls} />
-              <UsageBar label="Monthly Commits (MCP)" current={billing?.usage.monthlyCommits ?? 0} max={limits.maxMonthlyCommits} />
-              <UsageBar label="Monthly Embedding Tokens" current={billing?.usage.monthlyTokens ?? 0} max={limits.maxMonthlyTokens} />
-            </div>
-          </section>
-
-          {currentPlan !== "free" && billing?.usageStats && billing.usageStats.length > 0 && (
-            <section style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 22px", marginBottom: 24 }}>
-              <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>
-                Token Usage Analytics{" "}
-                <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>(Last 30 days)</span>
-              </h2>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                {billing.usageStats.map((s) => (
-                  <TokenUsageChart key={s.tokenId} tokenName={s.tokenName} dailyBreakdown={s.dailyBreakdown} />
-                ))}
-              </div>
-            </section>
+          {billing?.hasBillingCustomer && (
+            <button onClick={handlePortal} disabled={portalLoading} style={btnOutline}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              {portalLoading ? "Opening…" : "Manage Subscription"}
+            </button>
           )}
+        </div>
 
-          {billing?.managedOrgs && billing.managedOrgs.length > 0 && (
-            <section style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 22px", marginBottom: 24 }}>
-              <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>Organization Billing (Seat-based)</h2>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {billing.managedOrgs.map((org) => (
-                  <div key={org.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8 }}>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
-                        {org.name}
-                        <PlanBadge plan={resolvePlan(org.plan)} />
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Role: {org.role}</div>
+        {/* Upgrade/downgrade actions for personal account */}
+        {currentPlan === "free" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+              You're on the free plan. Upgrade to unlock more memories, recalls, and advanced analytics.
+            </p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={handleUpgrade}
+                disabled={upgradingId !== null}
+                style={btnPrimary}
+              >
+                {upgradingId === "personal" ? "Redirecting to Checkout…" : "Upgrade to Business"}
+              </button>
+              <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>
+                Contact Sales for Enterprise
+              </a>
+            </div>
+          </div>
+        )}
+
+        {currentPlan === "business" && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>
+              Upgrade to Enterprise
+            </a>
+            {billing?.hasBillingCustomer && (
+              <button onClick={handlePortal} disabled={portalLoading} style={{ ...btnOutline, fontSize: 12 }}>
+                {portalLoading ? "Opening…" : "Downgrade / Cancel"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {currentPlan === "enterprise" && (
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+            You're on the Enterprise plan. Contact{" "}
+            <a href="mailto:enterprise@locker.rcormier.dev" style={{ color: "var(--accent)" }}>enterprise@locker.rcormier.dev</a>
+            {" "}to make changes to your contract.
+          </p>
+        )}
+      </section>
+
+      {/* Available plans grid */}
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ ...sectionTitle, marginBottom: 16 }}>Available Plans</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          {PLAN_ORDER.map((planId) => (
+            <PlanCard
+              key={planId}
+              plan={PLANS[planId]}
+              isCurrentPlan={planId === currentPlan}
+              onSelect={planId === "business" && currentPlan === "free" ? handleUpgrade : undefined}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* Enterprise CTA */}
+      <div style={enterpriseCta}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 3 }}>Need Enterprise?</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Unlimited memories, SAML SSO, custom contracts, dedicated support.</div>
+        </div>
+        <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Contact Sales</a>
+      </div>
+    </>
+  );
+}
+
+// ── exported section: Org Billing (org admin view) ─────────────────────────
+// Security note: upgrade/downgrade actions call createCheckoutSession /
+// createPortalSession which both call verifyOrgAdmin server-side before
+// creating any Stripe session. UI gating here is UX only.
+
+export function OrgBillingSection() {
+  const { data: billing, isLoading } = useBillingData();
+  const [upgradingId, setUpgradingId] = useState<string | null>(null);
+  const [portalLoadingId, setPortalLoadingId] = useState<string | null>(null);
+  const [stripeError, setStripeError] = useState<string | null>(null);
+
+  async function handleOrgUpgrade(orgId: string) {
+    setUpgradingId(orgId);
+    setStripeError(null);
+    try {
+      const res = await createCheckoutSession({ data: { orgId } });
+      if (res?.url) window.location.href = res.url;
+      else throw new Error("No checkout URL returned.");
+    } catch (err: any) {
+      setStripeError(err?.message || "An error occurred initiating checkout.");
+      setUpgradingId(null);
+    }
+  }
+
+  async function handleOrgPortal(orgId: string) {
+    setPortalLoadingId(orgId);
+    setStripeError(null);
+    try {
+      const res = await createPortalSession({ data: { orgId } });
+      if (res?.url) window.location.href = res.url;
+      else throw new Error("No portal URL returned.");
+    } catch (err: any) {
+      setStripeError(err?.message || "An error occurred opening the billing portal.");
+      setPortalLoadingId(null);
+    }
+  }
+
+  if (isLoading) return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>;
+
+  if (!billing?.managedOrgs?.length) {
+    return (
+      <section style={card}>
+        <h2 style={sectionTitle}>Organization Billing</h2>
+        <p style={{ ...sectionDesc, margin: 0 }}>
+          You are not an owner or admin of any organization. Join or create an organization to manage its billing.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <>
+      {stripeError && <div style={{ ...alertError, marginBottom: 16 }}>{stripeError}</div>}
+
+      <section style={card}>
+        <h2 style={{ ...sectionTitle, marginBottom: 4 }}>Organization Billing</h2>
+        <p style={{ ...sectionDesc, marginBottom: 20 }}>
+          Seat-based billing for organizations you manage. Only owners and admins can make billing changes.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {billing.managedOrgs.map((org) => {
+            const orgPlan = resolvePlan(org.plan);
+            const isUpgrading = upgradingId === org.id;
+            const isPortaling = portalLoadingId === org.id;
+            const canManage = org.role === "owner" || org.role === "admin";
+
+            return (
+              <div key={org.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "16px 18px", background: "var(--surface2)" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{org.name}</span>
+                      <PlanBadge plan={orgPlan} />
+                      <span style={{
+                        fontSize: 10, fontWeight: 600, textTransform: "uppercase",
+                        padding: "1px 6px", borderRadius: 10,
+                        background: org.role === "owner" ? "rgba(239,68,68,0.1)" : "rgba(168,85,247,0.1)",
+                        color: org.role === "owner" ? "var(--error)" : "var(--accent)",
+                      }}>
+                        {org.role}
+                      </span>
                     </div>
-                    <div>
-                      {org.plan === "free" ? (
-                        billing?.isAdmin ? (
-                          <AdminUpgradeButton
-                            label="Upgrade to Business ($12/seat)"
-                            style={{
-                              padding: "8px 16px",
-                              fontSize: 12,
-                              borderRadius: 6,
-                              width: "auto",
-                            }}
-                          />
-                        ) : (
-                          <button
-                            onClick={() => handleUpgrade(org.id)}
-                            disabled={upgradingId !== null}
-                            style={{
-                              padding: "8px 16px",
-                              background: "var(--accent)",
-                              border: "none",
-                              color: "#fff",
-                              fontWeight: 600,
-                              fontSize: 12,
-                              borderRadius: 6,
-                              cursor: "pointer",
-                              transition: "opacity 0.2s",
-                            }}
-                          >
-                            {upgradingId === org.id ? "Redirecting..." : "Upgrade to Business ($12/seat)"}
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>ID: {org.id}</p>
+                  </div>
+
+                  {canManage && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      {orgPlan === "free" && (
+                        <>
+                          <button onClick={() => handleOrgUpgrade(org.id)} disabled={isUpgrading || upgradingId !== null} style={btnPrimary}>
+                            {isUpgrading ? "Redirecting…" : "Upgrade to Business"}
                           </button>
-                        )
-                      ) : (
-                        billing.hasBillingCustomer && (
-                          <button
-                            onClick={() => handlePortal(org.id)}
-                            disabled={portalLoading}
-                            style={{
-                              padding: "8px 16px",
-                              background: "transparent",
-                              border: "1px solid var(--border)",
-                              color: "var(--text)",
-                              fontWeight: 600,
-                              fontSize: 12,
-                              borderRadius: 6,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Manage Billing
+                          <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Enterprise</a>
+                        </>
+                      )}
+                      {orgPlan === "business" && (
+                        <>
+                          <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Upgrade to Enterprise</a>
+                          <button onClick={() => handleOrgPortal(org.id)} disabled={isPortaling} style={{ ...btnOutline, fontSize: 12 }}>
+                            {isPortaling ? "Opening…" : "Manage / Downgrade"}
                           </button>
-                        )
+                        </>
+                      )}
+                      {orgPlan === "enterprise" && (
+                        <a href="mailto:enterprise@locker.rcormier.dev" style={btnOutline}>
+                          Contact Sales to Change Plan
+                        </a>
                       )}
                     </div>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
-            </section>
-          )}
+            );
+          })}
+        </div>
+      </section>
 
-          <section style={{ marginBottom: 24 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>Available Plans</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-              {PLAN_ORDER.map((planId) => (
-                <PlanCard
-                  key={planId}
-                  plan={PLANS[planId]}
-                  isCurrentPlan={planId === currentPlan}
-                  onSelect={planId === "business" ? () => handleUpgrade() : undefined}
-                  isAdmin={billing?.isAdmin}
-                />
-              ))}
-            </div>
-          </section>
+      {/* Available plans for context */}
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ ...sectionTitle, marginBottom: 16 }}>Available Organization Plans</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          {PLAN_ORDER.map((planId) => (
+            <PlanCard key={planId} plan={PLANS[planId]} isCurrentPlan={false} />
+          ))}
+        </div>
+      </section>
 
-          <div style={{
-            padding: "16px 20px",
-            background: "rgba(245,158,11,0.06)",
-            border: "1px solid rgba(245,158,11,0.2)",
-            borderRadius: 10,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-          }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 3 }}>Need Enterprise?</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Unlimited memories, SAML SSO, custom contracts, dedicated support.
-              </div>
-            </div>
-            <a
-              href="mailto:enterprise@locker.rcormier.dev"
-              style={{
-                padding: "8px 18px",
-                background: "transparent",
-                border: "1px solid rgba(245,158,11,0.4)",
-                color: "#f59e0b",
-                fontWeight: 600,
-                fontSize: 13,
-                borderRadius: 8,
-                textDecoration: "none",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              Contact Sales
-            </a>
-          </div>
-        </>
-      )}
+      <div style={enterpriseCta}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 3 }}>Need Enterprise for your org?</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Unlimited seats, SAML SSO, custom contracts, SLA support.</div>
+        </div>
+        <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Contact Sales</a>
+      </div>
+    </>
+  );
+}
+
+// ── legacy combined section (used by standalone /billing route) ────────────
+
+export function PersonalBillingSection() {
+  return (
+    <>
+      <MyBillingSection />
+      <div style={{ marginTop: 32 }}>
+        <h2 style={{ ...sectionTitle, marginBottom: 20 }}>Organization Billing</h2>
+        <OrgBillingSection />
+      </div>
     </>
   );
 }
@@ -474,7 +559,50 @@ export function PersonalBillingSection() {
 function BillingPage() {
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 20px" }}>
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Plan & Billing</h1>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Manage your plan, track usage, and view available features.</p>
+      </div>
       <PersonalBillingSection />
     </div>
   );
 }
+
+// ── shared styles ──────────────────────────────────────────────────────────
+
+const card: React.CSSProperties = {
+  background: "var(--surface)", border: "1px solid var(--border)",
+  borderRadius: 12, padding: "20px 22px", marginBottom: 24,
+};
+const sectionTitle: React.CSSProperties = { fontSize: 15, fontWeight: 600, color: "var(--text)", margin: "0 0 6px 0" };
+const sectionDesc: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px 0" };
+const btnPrimary: React.CSSProperties = {
+  padding: "8px 16px", background: "var(--accent)", color: "#fff",
+  fontWeight: 600, fontSize: 13, borderRadius: 7, border: "none", cursor: "pointer",
+};
+const btnOutline: React.CSSProperties = {
+  padding: "8px 16px", background: "transparent", border: "1px solid var(--border)",
+  color: "var(--text)", fontWeight: 600, fontSize: 13, borderRadius: 7, cursor: "pointer",
+  display: "flex", alignItems: "center", gap: 6, textDecoration: "none",
+};
+const btnEnterprise: React.CSSProperties = {
+  padding: "8px 16px", background: "transparent", border: "1px solid rgba(245,158,11,0.4)",
+  color: "#f59e0b", fontWeight: 600, fontSize: 13, borderRadius: 7, cursor: "pointer",
+  textDecoration: "none", display: "inline-block",
+};
+const enterpriseCta: React.CSSProperties = {
+  padding: "16px 20px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)",
+  borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+};
+const alertSuccess: React.CSSProperties = {
+  padding: "12px 16px", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)",
+  color: "#10b981", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500,
+};
+const alertWarn: React.CSSProperties = {
+  padding: "12px 16px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)",
+  color: "#f59e0b", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500,
+};
+const alertError: React.CSSProperties = {
+  padding: "12px 16px", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)",
+  color: "var(--error)", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500,
+};
