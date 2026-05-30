@@ -103,6 +103,32 @@ export default {
       const body = request.body ? await request.arrayBuffer() : null;
       const bodyText = body ? new TextDecoder().decode(body) : "(empty)";
       console.log(`[oauth/${segment}] request body:`, bodyText);
+
+      // Intercept dynamic client registration (RFC 7591) for known clients.
+      // Claude always tries to register dynamically, but we keep allowDynamicClientRegistration=false
+      // for security. Instead, we detect Claude's known redirect URI and return the pre-registered
+      // client credentials so Claude can proceed without actually creating a new DB entry.
+      if (segment === "register" && env.CLAUDE_CLIENT_ID && request.method === "POST") {
+        try {
+          const parsed = JSON.parse(bodyText || "{}") as { redirect_uris?: string[] };
+          const redirectUris: string[] = parsed.redirect_uris ?? [];
+          if (redirectUris.includes("https://claude.ai/api/mcp/auth_callback")) {
+            console.log(`[oauth/register] returning pre-registered Claude client`);
+            return Response.json({
+              client_id: env.CLAUDE_CLIENT_ID,
+              redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
+              grant_types: ["authorization_code", "refresh_token"],
+              response_types: ["code"],
+              token_endpoint_auth_method: "none",
+              client_name: "Claude",
+              scope: "openid profile email offline_access",
+            }, { status: 201 });
+          }
+        } catch {
+          // malformed body — fall through to better-auth which will 403
+        }
+      }
+
       const rewritten = new Request(
         `${url.origin}/api/auth/oauth2/${segment}${url.search}`,
         {
