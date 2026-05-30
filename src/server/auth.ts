@@ -79,6 +79,28 @@ export async function createAuth(env: CloudflareEnv) {
             alg: "RS256",
           },
         },
+        callbacks: {
+          jwt: async ({ token, user }) => {
+            if (user?.id) {
+              // Fetch org and team memberships
+              const [orgRows, teamRows] = await Promise.all([
+                db.query.organizationMembers.findMany({
+                  where: (members, { eq }) => eq(members.userId, user.id),
+                  columns: { orgId: true },
+                }),
+                db.query.teamMembers.findMany({
+                  where: (members, { eq }) => eq(members.userId, user.id),
+                  columns: { teamId: true },
+                }),
+              ]);
+
+              // Add org and team IDs to JWT claims
+              token.orgIds = orgRows.map((o) => o.orgId);
+              token.teamIds = teamRows.map((t) => t.teamId);
+            }
+            return token;
+          },
+        },
       }),
       oauthProvider({
         loginPage: "/login",

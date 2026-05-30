@@ -293,37 +293,29 @@ async function validateBearerToken(
         console.log("[jwt] userinfo rejected:", res.status);
         return null;
       }
-      const info = await res.json() as { sub?: string };
+      const info = await res.json() as { sub?: string; orgIds?: string[]; teamIds?: string[] };
       const userId = info.sub;
       if (!userId) return null;
       console.log("[jwt] accepted via userinfo for userId:", userId);
 
-      // Check for org and team memberships
-      const db = drizzle(env.DB, { schema: { organizationMembers, teamMembers } });
-      const [orgMemberships, teamMemberships] = await Promise.all([
-        db
-          .select({ orgId: organizationMembers.orgId })
-          .from(organizationMembers)
-          .where(eq(organizationMembers.userId, userId))
-          .all(),
-        db
-          .select({ teamId: teamMembers.teamId })
-          .from(teamMembers)
-          .where(eq(teamMembers.userId, userId))
-          .all(),
-      ]);
-
+      // Build accessible scopes from JWT claims
       const accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [
         { type: "personal", id: null },
       ];
 
-      orgMemberships.forEach((m) => {
-        accessibleScopes.push({ type: "organization", id: m.orgId });
-      });
+      // Add org scopes from JWT claims
+      if (Array.isArray(info.orgIds)) {
+        info.orgIds.forEach((orgId) => {
+          accessibleScopes.push({ type: "organization", id: orgId });
+        });
+      }
 
-      teamMemberships.forEach((m) => {
-        accessibleScopes.push({ type: "team", id: m.teamId });
-      });
+      // Add team scopes from JWT claims
+      if (Array.isArray(info.teamIds)) {
+        info.teamIds.forEach((teamId) => {
+          accessibleScopes.push({ type: "team", id: teamId });
+        });
+      }
 
       return {
         userId,
