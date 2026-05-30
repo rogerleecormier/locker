@@ -230,7 +230,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
           Connect
         </Link>
         <Link to="/organization" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
-          Organization
+          Vault
         </Link>
         <Link to="/admin" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Admin

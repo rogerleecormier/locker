@@ -34,6 +34,21 @@ import {
 } from "~/server/memoryFunctions";
 import { MyUsageSection, MyBillingSection, OrgBillingSection, useBillingData } from "~/routes/billing";
 import { ProfileSection, ApiTokensSection, McpEndpointSection } from "~/routes/settings";
+import {
+  getUserOrgsAndTeams,
+  createOrganizationSelfServe,
+  addOrgMemberByEmail,
+  updateOrgMemberRole,
+  removeOrgMember,
+  createTeam,
+  deleteTeam,
+  addTeamMemberByEmail,
+  updateTeamMemberRole,
+  removeTeamMember,
+  MemberRow,
+  InviteForm,
+  CreateOrgModal,
+} from "~/routes/organization";
 
 const modalOverlay: React.CSSProperties = {
   position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
@@ -105,6 +120,24 @@ function AdminPage() {
     queryFn: () => listAllOrgsAndQuotas(),
     enabled: activeSection === "orgs" || activeSection === "users",
   });
+
+  // Full org+team data for the org/team management sections
+  const orgTeamQuery = useQuery({
+    queryKey: ["admin-orgs-teams"],
+    queryFn: () => getUserOrgsAndTeams(),
+    enabled: activeSection === "orgs" || activeSection === "teams",
+  });
+
+  // Org/team UI state
+  const [selectedOrgKey, setSelectedOrgKey] = useState<string>("");
+  const [selectedTeamKey, setSelectedTeamKey] = useState<string>("");
+  const [orgInviteEmail, setOrgInviteEmail] = useState("");
+  const [orgInviteRole, setOrgInviteRole] = useState<"admin" | "member">("member");
+  const [teamInviteEmail, setTeamInviteEmail] = useState("");
+  const [teamInviteRole, setTeamInviteRole] = useState("member");
+  const [newTeamName, setNewTeamName] = useState("");
+  const [showCreateOrg, setShowCreateOrg] = useState(false);
+  const [newOrgName, setNewOrgName] = useState("");
   const usersQuery = useQuery({
     queryKey: ["admin-users"],
     queryFn: () => listAllUsersAndDetails(),
@@ -231,6 +264,58 @@ function AdminPage() {
       u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
+
+  // Org/team mutations (self-serve operations for org admins)
+  const refetchOrgTeams = () => orgTeamQuery.refetch();
+  const mutOpts = { onSuccess: refetchOrgTeams, onError: (err: Error) => alert(err.message) };
+
+  const createOrgMut = useMutation({
+    mutationFn: (name: string) => createOrganizationSelfServe({ data: { name } }),
+    onSuccess: (res) => { setShowCreateOrg(false); setNewOrgName(""); setSelectedOrgKey(`org:${res.orgId}`); refetchOrgTeams(); },
+    onError: (err: Error) => alert(err.message),
+  });
+  const addOrgMemberMut = useMutation({
+    mutationFn: (data: { orgId: string; email: string; role: "admin" | "member" }) => addOrgMemberByEmail({ data }),
+    onSuccess: () => { setOrgInviteEmail(""); refetchOrgTeams(); },
+    onError: (err: Error) => alert(err.message),
+  });
+  const updateOrgRoleMut = useMutation({
+    mutationFn: (data: { orgId: string; userId: string; role: "owner" | "admin" | "member" }) => updateOrgMemberRole({ data }),
+    ...mutOpts,
+  });
+  const removeOrgMemberMut = useMutation({
+    mutationFn: (data: { orgId: string; userId: string }) => removeOrgMember({ data }),
+    ...mutOpts,
+  });
+  const createTeamMut = useMutation({
+    mutationFn: (data: { orgId: string; name: string }) => createTeam({ data }),
+    onSuccess: () => { setNewTeamName(""); refetchOrgTeams(); },
+    onError: (err: Error) => alert(err.message),
+  });
+  const deleteTeamMut = useMutation({
+    mutationFn: (teamId: string) => deleteTeam({ data: { teamId } }),
+    onSuccess: () => { setSelectedTeamKey(""); refetchOrgTeams(); },
+    onError: (err: Error) => alert(err.message),
+  });
+  const addTeamMemberMut = useMutation({
+    mutationFn: (data: { teamId: string; email: string; role: string }) => addTeamMemberByEmail({ data }),
+    onSuccess: () => { setTeamInviteEmail(""); refetchOrgTeams(); },
+    onError: (err: Error) => alert(err.message),
+  });
+  const updateTeamRoleMut = useMutation({
+    mutationFn: (data: { teamId: string; userId: string; role: string }) => updateTeamMemberRole({ data }),
+    ...mutOpts,
+  });
+  const removeTeamMemberMut = useMutation({
+    mutationFn: (data: { teamId: string; userId: string }) => removeTeamMember({ data }),
+    ...mutOpts,
+  });
+
+  // Derived org/team data
+  const allOrgs = orgTeamQuery.data?.organizations ?? [];
+  const allTeams = orgTeamQuery.data?.teams ?? [];
+  const activeOrg = allOrgs.find((o) => o.id === selectedOrgKey) ?? allOrgs[0];
+  const activeTeam = allTeams.find((t) => t.id === selectedTeamKey);
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
@@ -485,93 +570,116 @@ function AdminPage() {
 
       {/* ── ORGANIZATIONS ───────────────────────────────────────────────────── */}
       {activeSection === "orgs" && (
-        <OrgAdminSection title="Global Organizations" description="Manage all organizations and their quotas" icon="🏢">
-          {orgsQuery.isPending && <p>Loading organizations...</p>}
-          {orgsQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load organizations: {String(orgsQuery.error)}</p>}
-          {orgsQuery.data && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {orgsQuery.data.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "40px", border: "1px dashed var(--border)", borderRadius: "var(--radius)", color: "var(--text-muted)" }}>
-                  No organizations created yet. Organizations can be registered directly by users from the Organization Console.
-                </div>
-              ) : (
-                orgsQuery.data.map((org) => {
-                  const isEditing = editingOrgQuotaId === org.id;
-                  return (
-                    <div key={org.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "bold" }}>{org.name}</h3>
-                            <span style={{
-                              fontSize: "10px",
-                              background: org.plan === "enterprise" ? "rgba(16,185,129,0.15)" : org.plan === "pro" ? "rgba(168,85,247,0.15)" : "var(--surface2)",
-                              color: org.plan === "enterprise" ? "#10b981" : org.plan === "pro" ? "var(--accent)" : "var(--text-muted)",
-                              padding: "2px 8px", borderRadius: "20px", fontWeight: "bold", textTransform: "uppercase",
-                            }}>
-                              {org.plan}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-                            ID: <code style={{ color: "var(--accent)" }}>{org.id}</code> · Joined {new Date(org.createdAt).toLocaleDateString()} · {org.memberCount} member(s)
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => { if (confirm(`Delete org ${org.name}? This will delete all its teams, members, and quotas!`)) deleteOrgMut.mutate(org.id); }}
-                          style={{ padding: "4px 8px", background: "transparent", color: "var(--error)", border: "1px solid transparent", borderRadius: "var(--radius)", cursor: "pointer", fontSize: "12px" }}
-                          onMouseEnter={(e) => { (e.target as HTMLElement).style.background = "rgba(239,68,68,0.1)"; (e.target as HTMLElement).style.borderColor = "rgba(239,68,68,0.2)"; }}
-                          onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "transparent"; (e.target as HTMLElement).style.borderColor = "transparent"; }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                      <div style={{ background: "var(--surface2)", borderRadius: "8px", padding: "14px", border: "1px solid var(--border)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                          <span style={{ fontSize: "12px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Monthly Quotas</span>
-                          {!isEditing ? (
-                            <button onClick={() => { setEditingOrgQuotaId(org.id); setEditMemories(org.monthlyMemories); setEditRecalls(org.monthlyRecalls); setEditCommits(org.monthlyCommits); }}
-                              style={{ padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", cursor: "pointer", color: "var(--text-muted)" }}>
-                              Edit Quotas
-                            </button>
-                          ) : (
-                            <div style={{ display: "flex", gap: "5px" }}>
-                              <button onClick={() => updateQuotaMut.mutate({ orgId: org.id, monthlyMemories: editMemories, monthlyRecalls: editRecalls, monthlyCommits: editCommits })}
-                                disabled={updateQuotaMut.isPending}
-                                style={{ padding: "4px 8px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontSize: "11px", cursor: "pointer", fontWeight: "bold" }}>
-                                {updateQuotaMut.isPending ? "Saving..." : "Save"}
-                              </button>
-                              <button onClick={() => setEditingOrgQuotaId(null)}
-                                style={{ padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "11px", cursor: "pointer", color: "var(--text-muted)" }}>
-                                Cancel
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        {!isEditing ? (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
-                            {[["Memories Max", org.monthlyMemories], ["Recalls Max", org.monthlyRecalls], ["Commits Max", org.monthlyCommits]].map(([label, val]) => (
-                              <div key={label as string} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{label}</span>
-                                <span style={{ fontSize: "14px", fontWeight: "bold" }}>{val}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
-                            {([["Memories Max", editMemories, setEditMemories], ["Recalls Max", editRecalls, setEditRecalls], ["Commits Max", editCommits, setEditCommits]] as [string, number, (v: number) => void][]).map(([label, val, setter]) => (
-                              <div key={label}>
-                                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>{label}</span>
-                                <input type="number" value={val} onChange={(e) => setter(Number(e.target.value))} style={{ width: "100%", padding: "5px 8px", fontSize: "12px", borderRadius: "4px" }} />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+        <OrgAdminSection title="Organizations" description="Create organizations and manage members" icon="🏢">
+          {/* Header: org picker + create */}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 20 }}>
+            {allOrgs.length > 0 && (
+              <select value={activeOrg?.id ?? ""} onChange={(e) => setSelectedOrgKey(e.target.value)}
+                style={{ flex: 1, padding: "8px 12px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontWeight: 600 }}>
+                {allOrgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            )}
+            <button onClick={() => setShowCreateOrg(true)}
+              style={{ padding: "8px 16px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+              + Create Org
+            </button>
+          </div>
+
+          {orgTeamQuery.isPending && <p style={{ color: "var(--text-muted)" }}>Loading...</p>}
+          {orgTeamQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load organizations.</p>}
+
+          {allOrgs.length === 0 && !orgTeamQuery.isPending && (
+            <div style={{ textAlign: "center", padding: "40px", border: "1px dashed var(--border)", borderRadius: "var(--radius)", color: "var(--text-muted)" }}>
+              No organizations yet. Create one to get started.
             </div>
+          )}
+
+          {activeOrg && (() => {
+            const isEditing = editingOrgQuotaId === activeOrg.id;
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {/* Org header + delete */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "16px 18px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <h3 style={{ margin: 0, fontSize: 16, fontWeight: "bold" }}>{activeOrg.name}</h3>
+                      <span style={{ fontSize: 10, background: activeOrg.plan === "enterprise" ? "rgba(16,185,129,0.15)" : activeOrg.plan === "business" ? "rgba(168,85,247,0.15)" : "var(--surface2)", color: activeOrg.plan === "enterprise" ? "#10b981" : activeOrg.plan === "business" ? "var(--accent)" : "var(--text-muted)", padding: "2px 8px", borderRadius: 20, fontWeight: "bold", textTransform: "uppercase" }}>
+                        {activeOrg.plan}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      ID: <code style={{ color: "var(--accent)" }}>{activeOrg.id}</code> · {activeOrg.members.length} member(s) · {activeOrg.teams.length} team(s)
+                    </div>
+                  </div>
+                  <button onClick={() => { if (confirm(`Delete ${activeOrg.name}? This removes all members, teams and quotas.`)) deleteOrgMut.mutate(activeOrg.id); }}
+                    style={{ padding: "4px 10px", background: "transparent", color: "var(--error)", border: "1px solid transparent", borderRadius: "var(--radius)", cursor: "pointer", fontSize: 12 }}
+                    onMouseEnter={(e) => { (e.target as HTMLElement).style.background = "rgba(239,68,68,0.1)"; (e.target as HTMLElement).style.borderColor = "rgba(239,68,68,0.2)"; }}
+                    onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "transparent"; (e.target as HTMLElement).style.borderColor = "transparent"; }}>
+                    Delete
+                  </button>
+                </div>
+
+                {/* Members + invite */}
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "18px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: "bold" }}>Members</h4>
+                  <InviteForm label="Add Member by Email" email={orgInviteEmail} setEmail={setOrgInviteEmail} role={orgInviteRole} setRole={(v) => setOrgInviteRole(v as "admin" | "member")} roles={["member", "admin"]}
+                    onSubmit={() => addOrgMemberMut.mutate({ orgId: activeOrg.id, email: orgInviteEmail, role: orgInviteRole })} loading={addOrgMemberMut.isPending} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {activeOrg.members.map((m: any) => (
+                      <MemberRow key={m.userId} member={m} roles={["member", "admin", "owner"]}
+                        onUpdateRole={(uid, role) => updateOrgRoleMut.mutate({ orgId: activeOrg.id, userId: uid, role: role as any })}
+                        onRemove={(uid) => removeOrgMemberMut.mutate({ orgId: activeOrg.id, userId: uid })}
+                        isUpdating={updateOrgRoleMut.isPending} isRemoving={removeOrgMemberMut.isPending} currentUserRole={activeOrg.role} />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quotas */}
+                <div style={{ background: "var(--surface2)", borderRadius: 10, padding: "14px 16px", border: "1px solid var(--border)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Monthly Quotas</span>
+                    {!isEditing ? (
+                      <button onClick={() => { setEditingOrgQuotaId(activeOrg.id); setEditMemories(activeOrg.monthlyMemories ?? 100); setEditRecalls(activeOrg.monthlyRecalls ?? 1000); setEditCommits(activeOrg.monthlyCommits ?? 500); }}
+                        style={{ padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: 11, cursor: "pointer", color: "var(--text-muted)" }}>
+                        Edit Quotas
+                      </button>
+                    ) : (
+                      <div style={{ display: "flex", gap: 5 }}>
+                        <button onClick={() => updateQuotaMut.mutate({ orgId: activeOrg.id, monthlyMemories: editMemories, monthlyRecalls: editRecalls, monthlyCommits: editCommits })} disabled={updateQuotaMut.isPending}
+                          style={{ padding: "4px 8px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontSize: 11, cursor: "pointer", fontWeight: "bold" }}>
+                          {updateQuotaMut.isPending ? "Saving..." : "Save"}
+                        </button>
+                        <button onClick={() => setEditingOrgQuotaId(null)} style={{ padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: 11, cursor: "pointer", color: "var(--text-muted)" }}>Cancel</button>
+                      </div>
+                    )}
+                  </div>
+                  {!isEditing ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                      {[["Memories", activeOrg.monthlyMemories], ["Recalls", activeOrg.monthlyRecalls], ["Commits", activeOrg.monthlyCommits]].map(([label, val]: any) => (
+                        <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{label} Max</span>
+                          <span style={{ fontSize: 14, fontWeight: "bold" }}>{val}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                      {([["Memories Max", editMemories, setEditMemories], ["Recalls Max", editRecalls, setEditRecalls], ["Commits Max", editCommits, setEditCommits]] as [string, number, (v: number) => void][]).map(([label, val, setter]) => (
+                        <div key={label}>
+                          <span style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>{label}</span>
+                          <input type="number" value={val} onChange={(e) => setter(Number(e.target.value))} style={{ width: "100%", padding: "5px 8px", fontSize: 12, borderRadius: 4 }} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {showCreateOrg && (
+            <CreateOrgModal onClose={() => setShowCreateOrg(false)} onSubmit={(name) => createOrgMut.mutate(name)}
+              loading={createOrgMut.isPending} nameValue={newOrgName} onNameChange={setNewOrgName} />
           )}
         </OrgAdminSection>
       )}
@@ -690,10 +798,84 @@ function AdminPage() {
 
       {/* ── TEAMS ───────────────────────────────────────────────────────────── */}
       {activeSection === "teams" && (
-        <OrgAdminSection title="Teams Management" description="Manage team structure and permissions" icon="👤">
-          <AdminCard>
-            <p style={{ color: "var(--text-muted)", margin: 0 }}>Teams management coming soon...</p>
-          </AdminCard>
+        <OrgAdminSection title="Teams" description="Create teams within organizations and manage members" icon="👤">
+          {orgTeamQuery.isPending && <p style={{ color: "var(--text-muted)" }}>Loading...</p>}
+          {orgTeamQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load teams.</p>}
+
+          {/* Create team — pick org first */}
+          {allOrgs.length > 0 && (
+            <AdminCard>
+              <h4 style={{ margin: "0 0 12px 0", fontSize: 14, fontWeight: "bold" }}>Create New Team</h4>
+              <div style={{ display: "flex", gap: 8 }}>
+                <select value={selectedOrgKey || allOrgs[0]?.id} onChange={(e) => setSelectedOrgKey(e.target.value)}
+                  style={{ padding: "7px 10px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: 13 }}>
+                  {allOrgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+                <input type="text" placeholder="Team name" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)}
+                  style={{ flex: 1, padding: "7px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: 13 }} />
+                <button onClick={() => { const orgId = selectedOrgKey || allOrgs[0]?.id; if (orgId && newTeamName.trim()) createTeamMut.mutate({ orgId, name: newTeamName }); }}
+                  disabled={createTeamMut.isPending || !newTeamName.trim()}
+                  style={{ padding: "7px 16px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {createTeamMut.isPending ? "Creating..." : "+ Create Team"}
+                </button>
+              </div>
+            </AdminCard>
+          )}
+
+          {/* Team list — pick team to manage */}
+          {allTeams.length === 0 && !orgTeamQuery.isPending && (
+            <div style={{ textAlign: "center", padding: "40px", border: "1px dashed var(--border)", borderRadius: "var(--radius)", color: "var(--text-muted)" }}>
+              No teams yet. Create one above.
+            </div>
+          )}
+
+          {allTeams.length > 0 && (
+            <>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
+                <select value={activeTeam?.id ?? allTeams[0]?.id} onChange={(e) => setSelectedTeamKey(e.target.value)}
+                  style={{ flex: 1, padding: "8px 12px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontWeight: 600 }}>
+                  {allTeams.map((t) => <option key={t.id} value={t.id}>{t.orgName} › {t.name}</option>)}
+                </select>
+              </div>
+
+              {(() => {
+                const team = activeTeam ?? allTeams[0];
+                if (!team) return null;
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12 }}>
+                      <div>
+                        <div style={{ fontWeight: "bold", fontSize: 15 }}>{team.name}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{team.orgName} · {team.members.length} members · Role: <strong>{team.role}</strong></div>
+                      </div>
+                      {team.role !== "member" && (
+                        <button onClick={() => { if (confirm(`Delete team "${team.name}"?`)) deleteTeamMut.mutate(team.id); }} disabled={deleteTeamMut.isPending}
+                          style={{ padding: "5px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--error)", fontSize: 12, cursor: "pointer", borderRadius: "var(--radius)" }}>
+                          Delete Team
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+                      <h4 style={{ margin: 0, fontSize: 14, fontWeight: "bold" }}>Members</h4>
+                      {team.role !== "member" && (
+                        <InviteForm label="Add Member by Email" email={teamInviteEmail} setEmail={setTeamInviteEmail} role={teamInviteRole} setRole={setTeamInviteRole} roles={["member", "admin"]}
+                          onSubmit={() => addTeamMemberMut.mutate({ teamId: team.id, email: teamInviteEmail, role: teamInviteRole })} loading={addTeamMemberMut.isPending} />
+                      )}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {team.members.map((m: any) => (
+                          <MemberRow key={m.userId} member={m} roles={["member", "admin"]}
+                            onUpdateRole={(uid, role) => updateTeamRoleMut.mutate({ teamId: team.id, userId: uid, role })}
+                            onRemove={(uid) => removeTeamMemberMut.mutate({ teamId: team.id, userId: uid })}
+                            isUpdating={updateTeamRoleMut.isPending} isRemoving={removeTeamMemberMut.isPending} currentUserRole={team.role} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          )}
         </OrgAdminSection>
       )}
 
