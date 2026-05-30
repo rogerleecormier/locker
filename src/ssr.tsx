@@ -105,9 +105,10 @@ export default {
       console.log(`[oauth/${segment}] ${request.method} ${url.pathname}${url.search}`);
       console.log(`[oauth/${segment}] request body:`, bodyText);
 
+      const auth = createAuth(env);
+
       // For /authorize, check if user has a valid session first
       if (segment === "authorize") {
-        const auth = createAuth(env);
         const session = await auth.api.getSession({ headers: request.headers });
         if (!session?.user) {
           console.log(`[oauth/authorize] No valid session, user must log in first`);
@@ -127,7 +128,6 @@ export default {
           body: body,
         },
       );
-      const auth = createAuth(env);
       try {
         const response = await auth.handler(rewritten);
         const text = await response.clone().text();
