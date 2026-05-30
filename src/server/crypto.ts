@@ -60,9 +60,12 @@ export async function decrypt(encrypted: string, hexKey: string): Promise<string
 
 // Returns true if the string looks like our encrypted format (iv:ciphertext)
 export function isEncrypted(value: string): boolean {
+  // Check if value starts with a hex prefix expected from encrypt() to avoid false positives
+  // (e.g., a plain fact that happens to be 24 lowercase hex chars + colon + more hex)
   const colon = value.indexOf(":");
   if (colon !== 24) return false; // IV is 12 bytes = 24 hex chars
-  return /^[0-9a-f]+:[0-9a-f]+$/.test(value);
+  if (!value.startsWith("0") && !/^[1-9a-f]/.test(value)) return false; // Should start with hex
+  return /^[0-9a-f]{24}:[0-9a-f]+$/.test(value);
 }
 
 // Hash a token with SHA-256, returns hex. Used for storing API tokens.

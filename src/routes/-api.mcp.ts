@@ -617,6 +617,9 @@ export async function handleMcpRequest(
     if (!query || typeof query !== "string") {
       return mcpError(id, -32602, "Invalid params: query is required");
     }
+    if (query.length > 10000) {
+      return mcpError(id, -32602, "Invalid params: query exceeds max length of 10000 characters");
+    }
     const topK = typeof args.topK === "number" ? args.topK : 5;
     const category = args.category as string | undefined;
     const tag = args.tag as string | undefined;
@@ -763,8 +766,8 @@ export async function handleMcpRequest(
     }
     if (tag) {
       const lowerTag = tag.toLowerCase().trim();
-      filtered = filtered.filter((r) => 
-        r.tags.split(",").map((t) => t.trim().toLowerCase()).includes(lowerTag)
+      filtered = filtered.filter((r) =>
+        (r.tags || "").split(",").map((t) => t.trim().toLowerCase()).includes(lowerTag)
       );
     }
     if (keyword) {
@@ -855,8 +858,8 @@ export async function handleMcpRequest(
     let filtered = decrypted;
     if (tag) {
       const lowerTag = tag.toLowerCase().trim();
-      filtered = filtered.filter((r) => 
-        r.tags.split(",").map((t) => t.trim().toLowerCase()).includes(lowerTag)
+      filtered = filtered.filter((r) =>
+        (r.tags || "").split(",").map((t) => t.trim().toLowerCase()).includes(lowerTag)
       );
     }
     if (keyword) {
@@ -921,7 +924,7 @@ export async function handleMcpRequest(
         summary.categories[row.category as "rules" | "projects" | "references"]++;
       }
       if (row.tags) {
-        const tagsList = row.tags.split(",").map((t) => t.trim()).filter(Boolean);
+        const tagsList = (row.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
         for (const t of tagsList) {
           summary.tags[t] = (summary.tags[t] ?? 0) + 1;
         }
@@ -943,6 +946,9 @@ export async function handleMcpRequest(
     const fact = args.fact as string | undefined;
     if (!fact || typeof fact !== "string") {
       return mcpError(id, -32602, "Invalid params: fact is required");
+    }
+    if (fact.length > 10000) {
+      return mcpError(id, -32602, "Invalid params: fact exceeds max length of 10000 characters");
     }
     const category = normalizeCategory(args.category as string | undefined);
     const source = typeof args.source === "string" ? args.source.trim().toLowerCase() : "mcp";
@@ -1068,6 +1074,9 @@ export async function handleMcpRequest(
     }
     if (!fact || typeof fact !== "string") {
       return mcpError(id, -32602, "Invalid params: fact is required");
+    }
+    if (fact.length > 10000) {
+      return mcpError(id, -32602, "Invalid params: fact exceeds max length of 10000 characters");
     }
 
     if (!claims.userId) {

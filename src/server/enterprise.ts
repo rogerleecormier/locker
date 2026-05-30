@@ -203,40 +203,31 @@ export async function logTokenUsage(
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   const id = `${tokenId}:${today}`;
 
-  // Use D1 upsert/ON CONFLICT logic or select-then-update
-  const rows = await db
-    .select()
-    .from(tokenUsages)
-    .where(eq(tokenUsages.id, id))
-    .limit(1)
-    .all();
-
-  if (rows.length === 0) {
-    await db
-      .insert(tokenUsages)
-      .values({
-        id,
-        tokenId,
-        date: today,
-        recallCount: type === "recall" ? count : 0,
-        commitCount: type === "commit" ? count : 0,
-        tokensConsumed
-      })
-      .run()
-      .catch(() => {});
-  } else {
-    const existing = rows[0];
-    await db
-      .update(tokenUsages)
-      .set({
-        recallCount: type === "recall" ? existing.recallCount + count : existing.recallCount,
-        commitCount: type === "commit" ? existing.commitCount + count : existing.commitCount,
-        tokensConsumed: existing.tokensConsumed + tokensConsumed
-      })
-      .where(eq(tokenUsages.id, id))
-      .run()
-      .catch(() => {});
-  }
+  // Atomic upsert using INSERT ... ON CONFLICT
+  await db
+    .insert(tokenUsages)
+    .values({
+      id,
+      tokenId,
+      date: today,
+      recallCount: type === "recall" ? count : 0,
+      commitCount: type === "commit" ? count : 0,
+      tokensConsumed
+    })
+    .onConflictDoUpdate({
+      target: tokenUsages.id,
+      set: {
+        recallCount: type === "recall"
+          ? sql`${tokenUsages.recallCount} + ${count}`
+          : sql`${tokenUsages.recallCount}`,
+        commitCount: type === "commit"
+          ? sql`${tokenUsages.commitCount} + ${count}`
+          : sql`${tokenUsages.commitCount}`,
+        tokensConsumed: sql`${tokenUsages.tokensConsumed} + ${tokensConsumed}`
+      }
+    })
+    .run()
+    .catch(() => {});
 }
 
 // Write a tamper-evident audit log entry
