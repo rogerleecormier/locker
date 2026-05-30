@@ -17,13 +17,6 @@ const handler = createStartHandler(defaultStreamHandler);
 
 export default {
   async fetch(request: Request, env: CloudflareEnv, ctx: ExecutionContext) {
-    if (env) {
-      for (const key of Object.keys(env)) {
-        if (typeof (env as any)[key] === "string") {
-          (env as any)[key] = (env as any)[key].replace(/^['"]|['"]$/g, "");
-        }
-      }
-    }
     const url = new URL(request.url);
     const ip = request.headers.get("cf-connecting-ip") ?? "";
     // Log all requests from Anthropic's IP range (160.79.104.0/21)
@@ -51,10 +44,6 @@ export default {
     if (url.pathname.startsWith("/api/auth/")) {
       const auth = await createAuth(env);
       const response = await auth.handler(request);
-      if (url.pathname === "/api/auth/oauth2/token" || url.pathname === "/api/auth/oauth2/consent" || url.pathname === "/api/auth/oauth2/userinfo") {
-        const text = await response.clone().text();
-        console.log(`[${url.pathname}] response:`, response.status, text);
-      }
       return response;
     }
 
@@ -102,7 +91,6 @@ export default {
       const segment = url.pathname === "/authorize" ? "authorize" : url.pathname === "/register" ? "register" : "token";
       const body = request.body ? await request.arrayBuffer() : null;
       const bodyText = body ? new TextDecoder().decode(body) : "(empty)";
-      console.log(`[oauth/${segment}] request body:`, bodyText);
 
       // Intercept dynamic client registration (RFC 7591) for known clients.
       // Claude always tries to register dynamically, but we keep allowDynamicClientRegistration=false
@@ -140,7 +128,6 @@ export default {
       const auth = await createAuth(env);
       const response = await auth.handler(rewritten);
       const text = await response.clone().text();
-      console.log(`[oauth/${segment}] response:`, response.status, text);
 
       // For token responses, normalize to strict RFC 6749 shape
       if (segment === "token" && response.ok) {
@@ -175,13 +162,6 @@ export default {
     });
   },
   async queue(batch: MessageBatch<unknown>, env: CloudflareEnv, ctx: ExecutionContext) {
-    if (env) {
-      for (const key of Object.keys(env)) {
-        if (typeof (env as any)[key] === "string") {
-          (env as any)[key] = (env as any)[key].replace(/^['"]|['"]$/g, "");
-        }
-      }
-    }
     const db = drizzle(env.DB, { schema: { memories } });
     for (const message of batch.messages) {
       try {
