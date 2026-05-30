@@ -1151,113 +1151,55 @@ function Dashboard() {
   }, [memories]);
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 20px" }}>
-      <header style={{ marginBottom: 32 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="3" />
-            <path d="M3 9h18M9 21V9" />
-          </svg>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>Locker</h1>
-          <span
-            style={{
-              fontSize: 11,
-              background: "var(--accent-dim)",
-              color: "var(--accent)",
-              border: "1px solid rgba(168,85,247,0.3)",
-              borderRadius: 20,
-              padding: "2px 8px",
-              fontWeight: 600,
-            }}
-          >
-            Memory Manager
-          </span>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+    <div>
+      {/* Page header bar */}
+      <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
+        <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <path d="M3 9h18M9 21V9" />
+              </svg>
+              <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Memory Vault</h1>
+              <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
+                {memories.length} entries
+              </span>
+            </div>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
+              Long-term technical context. Semantic retrieval via{" "}
+              <code style={{ color: "var(--accent)", fontSize: 12 }}>/api/mcp</code> MCP endpoint.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <select
               value={projectKey}
               onChange={(e) => setProjectKey(e.target.value)}
-              style={{
-                padding: "6px 12px",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                color: "var(--text)",
-                fontSize: 12,
-                borderRadius: "var(--radius)",
-                cursor: "pointer",
-                marginRight: 4,
-              }}
+              style={{ padding: "6px 12px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12, borderRadius: "var(--radius)", cursor: "pointer" }}
             >
               {workspaces.map((w) => (
-                <option key={w.key} value={w.key}>
-                  {w.label}
-                </option>
+                <option key={w.key} value={w.key}>{w.label}</option>
               ))}
             </select>
             {workspaces.some((w) => w.type !== "personal" && (w.role === "owner" || w.role === "admin")) && (
-              <Link
-                to="/organization"
-                style={{
-                  padding: "6px 12px",
-                  background: "var(--surface2)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-muted)",
-                  fontSize: 12,
-                  borderRadius: "var(--radius)",
-                  textDecoration: "none",
-                  transition: "all 0.15s",
-                  marginRight: 4,
-                }}
-                onMouseEnter={(e) => {
-                  (e.target as HTMLElement).style.borderColor = "var(--text-muted)";
-                  (e.target as HTMLElement).style.color = "var(--text)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.target as HTMLElement).style.borderColor = "var(--border)";
-                  (e.target as HTMLElement).style.color = "var(--text-muted)";
-                }}
+              <Link to="/organization" style={{ padding: "6px 12px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12, borderRadius: "var(--radius)", textDecoration: "none", transition: "all 0.15s" }}
+                onMouseEnter={(e) => { (e.target as HTMLElement).style.borderColor = "var(--text-muted)"; (e.target as HTMLElement).style.color = "var(--text)"; }}
+                onMouseLeave={(e) => { (e.target as HTMLElement).style.borderColor = "var(--border)"; (e.target as HTMLElement).style.color = "var(--text-muted)"; }}
               >
                 Manage Org
               </Link>
             )}
             {adminQuery.data?.isAdmin && (
-              <Link
-                to="/admin"
-                style={{
-                  padding: "6px 12px",
-                  background: "var(--surface2)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-muted)",
-                  fontSize: 12,
-                  borderRadius: "var(--radius)",
-                  textDecoration: "none",
-                  transition: "all 0.15s",
-                  marginRight: 4,
-                }}
-                onMouseEnter={(e) => {
-                  (e.target as HTMLElement).style.borderColor = "var(--text-muted)";
-                  (e.target as HTMLElement).style.color = "var(--text)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.target as HTMLElement).style.borderColor = "var(--border)";
-                  (e.target as HTMLElement).style.color = "var(--text-muted)";
-                }}
+              <Link to="/admin" style={{ padding: "6px 12px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12, borderRadius: "var(--radius)", textDecoration: "none", transition: "all 0.15s" }}
+                onMouseEnter={(e) => { (e.target as HTMLElement).style.borderColor = "var(--text-muted)"; (e.target as HTMLElement).style.color = "var(--text)"; }}
+                onMouseLeave={(e) => { (e.target as HTMLElement).style.borderColor = "var(--border)"; (e.target as HTMLElement).style.color = "var(--text-muted)"; }}
               >
                 Site Admin
               </Link>
             )}
             <button
               onClick={() => setShowNewMemory(true)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "7px 16px",
-                background: "var(--accent)",
-                color: "#fff",
-                fontWeight: 600,
-                fontSize: 13,
-                borderRadius: "var(--radius)",
-              }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 16px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, borderRadius: "var(--radius)" }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -1266,11 +1208,9 @@ function Dashboard() {
             </button>
           </div>
         </div>
-        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-          Long-term technical context. Semantic retrieval via{" "}
-          <code style={{ color: "var(--accent)", fontSize: 12 }}>/api/mcp</code> MCP endpoint.
-        </p>
-      </header>
+      </div>
+
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 28 }}>
         {[
@@ -1282,16 +1222,20 @@ function Dashboard() {
           <div
             key={label}
             style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius)",
-              padding: "14px 18px",
+              background: "linear-gradient(135deg, rgba(168,85,247,0.03) 0%, rgba(139,92,246,0.01) 100%)",
+              border: "1px solid rgba(168,85,247,0.12)",
+              borderRadius: 12,
+              padding: "16px 18px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
             }}
           >
-            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
               {label}
             </div>
-            <div style={{ fontSize: 28, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
           </div>
         ))}
       </div>
@@ -1429,6 +1373,7 @@ function Dashboard() {
           }}
         />
       )}
+      </div>
     </div>
   );
 }
