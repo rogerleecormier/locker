@@ -84,9 +84,8 @@ export async function verifyVaultAccess(
     return { allowed: rows.length > 0, orgId: rows.length > 0 ? orgId : null };
   }
 
-  // Default fallback (arbitrary projectKey behaves as personal)
-  const orgId = await getUserOrg(db, userId);
-  return { allowed: true, orgId };
+  // Reject arbitrary free-text projectKeys: only allow explicit scopes (org:, team:, personal, null/undefined)
+  return { allowed: false, orgId: null };
 }
 
 // Quota verification
