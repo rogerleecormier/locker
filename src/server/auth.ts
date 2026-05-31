@@ -19,7 +19,7 @@ export async function createAuth(env: CloudflareEnv) {
       clientSecret: env.CLAUDE_CLIENT_SECRET ?? null,
       name: "Claude",
       redirectUris: JSON.stringify(["https://claude.ai/api/mcp/auth_callback"]),
-      scopes: JSON.stringify(["openid", "profile", "email", "offline_access"]),
+      scopes: JSON.stringify(["openid", "profile", "email", "offline_access", "openid:mcp:recall", "openid:mcp:commit", "openid:mcp:update", "openid:mcp:delete"]),
       public: true,
       requirePKCE: true,
       tokenEndpointAuthMethod: "none",
@@ -105,7 +105,7 @@ export async function createAuth(env: CloudflareEnv) {
       oauthProvider({
         loginPage: "/login",
         consentPage: "/oauth/consent",
-        scopes: ["openid", "profile", "email", "offline_access"],
+        scopes: ["openid", "profile", "email", "offline_access", "openid:mcp:recall", "openid:mcp:commit", "openid:mcp:update", "openid:mcp:delete"],
         allowDynamicClientRegistration: false,
         allowUnauthenticatedClientRegistration: false,
         validAudiences: [env.BETTER_AUTH_URL, `${env.BETTER_AUTH_URL}/api/mcp`],
