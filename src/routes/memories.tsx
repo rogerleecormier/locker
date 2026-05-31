@@ -12,6 +12,9 @@ import {
   getUserWorkspaces,
   moveMemories,
   getMemoryUsageStats,
+  getArchivedMemories,
+  restoreMemory,
+  permanentlyDeleteArchivedMemory,
 } from "~/server/memoryFunctions";
 import { getAdminStatus } from "~/routes/admin";
 import type { Memory } from "~/db/schema";
@@ -258,7 +261,27 @@ function MemoryRow({
         )}
       </div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, minWidth: 110 }}>
-        <CategoryBadge category={memory.category} />
+        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <CategoryBadge category={memory.category} />
+          {(() => {
+            const STALE_MS = 90 * 24 * 60 * 60 * 1000;
+            const lastAccessed = memory.lastAccessedAt ? Date.now() - memory.lastAccessedAt : Date.now() - memory.timestamp;
+            const isStale = lastAccessed > STALE_MS;
+            return isStale ? (
+              <span style={{
+                fontSize: 10,
+                fontWeight: 600,
+                padding: "2px 8px",
+                background: "rgba(245, 158, 11, 0.15)",
+                color: "rgb(245, 158, 11)",
+                borderRadius: 3,
+                whiteSpace: "nowrap"
+              }}>
+                Stale
+              </span>
+            ) : null;
+          })()}
+        </div>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {new Date(memory.timestamp).toLocaleDateString("en-US", {
             month: "short",
@@ -1147,6 +1170,7 @@ function Dashboard() {
   });
 
   const [projectKey, setProjectKey] = useState<string>("personal");
+  const [memoryTab, setMemoryTab] = useState<"active" | "archived">("active");
 
   const { data: workspaces = [] } = useQuery({
     queryKey: ["workspaces"],
@@ -1161,6 +1185,13 @@ function Dashboard() {
   const { data: memories = [], isLoading, isError } = useQuery({
     queryKey: ["memories", projectKey],
     queryFn: () => getMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
+    enabled: memoryTab === "active",
+  });
+
+  const { data: archivedData } = useQuery({
+    queryKey: ["memories-archived", projectKey],
+    queryFn: () => getArchivedMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
+    enabled: memoryTab === "archived",
   });
 
   const { data: usageStats } = useQuery({
@@ -1381,88 +1412,227 @@ function Dashboard() {
         ))}
       </div>
 
-      <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>
-        <div style={{ position: "relative", flex: 1 }}>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--text-muted)"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="text"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter by keyword or tag…"
-            style={{ width: "100%", padding: "8px 12px 8px 32px" }}
-          />
-        </div>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          style={{ padding: "8px 12px", minWidth: 140 }}
+      {/* Memory tabs */}
+      <div style={{ marginBottom: 20, display: "flex", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+        <button
+          onClick={() => setMemoryTab("active")}
+          style={{
+            padding: "8px 14px",
+            background: memoryTab === "active" ? "transparent" : "transparent",
+            border: "none",
+            borderBottom: memoryTab === "active" ? "2px solid var(--accent)" : "2px solid transparent",
+            color: memoryTab === "active" ? "var(--text)" : "var(--text-muted)",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            transition: "all 0.15s",
+          }}
         >
-          <option value="">All categories</option>
-          <option value="rules">Rules</option>
-          <option value="projects">Projects</option>
-          <option value="references">References</option>
-        </select>
-
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as 'newest' | 'oldest' | 'alphabetical')}
-          style={{ padding: "8px 12px", minWidth: 120 }}
+          Active {memoryTab === "active" && memories.length > 0 && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)" }}>({memories.length})</span>}
+        </button>
+        <button
+          onClick={() => setMemoryTab("archived")}
+          style={{
+            padding: "8px 14px",
+            background: "transparent",
+            border: "none",
+            borderBottom: memoryTab === "archived" ? "2px solid var(--accent)" : "2px solid transparent",
+            color: memoryTab === "archived" ? "var(--text)" : "var(--text-muted)",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            transition: "all 0.15s",
+          }}
         >
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
-          <option value="alphabetical">Alphabetical</option>
-        </select>
-
-        <input
-          type="date"
-          value={dateStart}
-          onChange={(e) => setDateStart(e.target.value)}
-          title="Filter from date"
-          style={{ padding: "8px 12px", minWidth: 120 }}
-        />
-        <input
-          type="date"
-          value={dateEnd}
-          onChange={(e) => setDateEnd(e.target.value)}
-          title="Filter to date"
-          style={{ padding: "8px 12px", minWidth: 120 }}
-        />
-
-        {(filter || categoryFilter || sortBy !== 'newest' || dateStart || dateEnd) && (
-          <button
-            onClick={() => { setFilter(""); setCategoryFilter(""); setSortBy('newest'); setDateStart(""); setDateEnd(""); }}
-            style={{
-              padding: "8px 12px",
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              color: "var(--text-muted)",
-              fontSize: 12,
-            }}
-          >
-            Clear all
-          </button>
-        )}
+          Archived {memoryTab === "archived" && archivedData?.total && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)" }}>({archivedData.total})</span>}
+        </button>
       </div>
 
-      {isLoading && (
+      {memoryTab === "active" && (
+        <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{ position: "relative", flex: 1 }}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--text-muted)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter by keyword or tag…"
+              style={{ width: "100%", padding: "8px 12px 8px 32px" }}
+            />
+          </div>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            style={{ padding: "8px 12px", minWidth: 140 }}
+          >
+            <option value="">All categories</option>
+            <option value="rules">Rules</option>
+            <option value="projects">Projects</option>
+            <option value="references">References</option>
+          </select>
+
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'newest' | 'oldest' | 'alphabetical')}
+            style={{ padding: "8px 12px", minWidth: 120 }}
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="alphabetical">Alphabetical</option>
+          </select>
+
+          <input
+            type="date"
+            value={dateStart}
+            onChange={(e) => setDateStart(e.target.value)}
+            title="Filter from date"
+            style={{ padding: "8px 12px", minWidth: 120 }}
+          />
+          <input
+            type="date"
+            value={dateEnd}
+            onChange={(e) => setDateEnd(e.target.value)}
+            title="Filter to date"
+            style={{ padding: "8px 12px", minWidth: 120 }}
+          />
+
+          {(filter || categoryFilter || sortBy !== 'newest' || dateStart || dateEnd) && (
+            <button
+              onClick={() => { setFilter(""); setCategoryFilter(""); setSortBy('newest'); setDateStart(""); setDateEnd(""); }}
+              style={{
+                padding: "8px 12px",
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                fontSize: 12,
+              }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+      )}
+
+      {memoryTab === "archived" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {archivedData?.archived && archivedData.archived.length > 0 ? (
+            archivedData.archived.map((memory) => {
+              const restoreMut = useMutation({
+                mutationFn: () => restoreMemory({ data: { id: memory.id } }),
+                onSuccess: () => {
+                  queryClient.invalidateQueries({ queryKey: ["memories-archived"] });
+                  queryClient.invalidateQueries({ queryKey: ["memories"] });
+                },
+              });
+
+              const deleteMut = useMutation({
+                mutationFn: () => permanentlyDeleteArchivedMemory({ data: { id: memory.id } }),
+                onSuccess: () => {
+                  queryClient.invalidateQueries({ queryKey: ["memories-archived"] });
+                },
+              });
+
+              return (
+                <div
+                  key={memory.id}
+                  style={{
+                    padding: "14px 18px",
+                    borderBottom: "1px solid var(--border)",
+                    background: "rgba(168,85,247,0.02)",
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: "16px",
+                    alignItems: "start",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ marginBottom: 6, lineHeight: 1.5, wordBreak: "break-word", color: "var(--text-muted)" }}>
+                      {memory.fact}
+                    </p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: "2px 8px",
+                        background: `${CATEGORY_COLORS[memory.category]}18`,
+                        color: CATEGORY_COLORS[memory.category],
+                        borderRadius: 3,
+                      }}>
+                        {CATEGORY_LABELS[memory.category]}
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {new Date(memory.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      onClick={() => restoreMut.mutate()}
+                      disabled={restoreMut.isPending}
+                      style={{
+                        padding: "4px 10px",
+                        background: "rgba(76,175,80,0.15)",
+                        border: "1px solid rgba(76,175,80,0.4)",
+                        color: "rgb(76,175,80)",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        borderRadius: "var(--radius)",
+                        cursor: restoreMut.isPending ? "default" : "pointer",
+                      }}
+                    >
+                      {restoreMut.isPending ? "Restoring…" : "Restore"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm("Permanently delete this archived memory?")) {
+                          deleteMut.mutate();
+                        }
+                      }}
+                      disabled={deleteMut.isPending}
+                      style={{
+                        padding: "4px 10px",
+                        background: "rgba(239,68,68,0.15)",
+                        border: "1px solid rgba(239,68,68,0.4)",
+                        color: "var(--error)",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        borderRadius: "var(--radius)",
+                        cursor: deleteMut.isPending ? "default" : "pointer",
+                      }}
+                    >
+                      {deleteMut.isPending ? "Deleting…" : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <p style={{ color: "var(--text-muted)", fontSize: 13, textAlign: "center", padding: "48px 24px" }}>
+              No archived memories
+            </p>
+          )}
+        </div>
+      )}
+
+      {memoryTab === "active" && isLoading && (
         <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--text-muted)" }}>
           Loading memories…
         </div>
       )}
-      {isError && (
+      {memoryTab === "active" && isError && (
         <div
           style={{
             textAlign: "center",
@@ -1510,7 +1680,7 @@ function Dashboard() {
           </p>
         </div>
       )}
-      {!isLoading && !isError && memories.length > 0 && (
+      {memoryTab === "active" && !isLoading && !isError && memories.length > 0 && (
         <MemoryTable
           memories={memories}
           filter={filter}

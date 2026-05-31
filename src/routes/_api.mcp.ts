@@ -849,6 +849,16 @@ export async function handleMcpRequest(
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: finalResults.length } });
     await logTokenUsage(db, claims.tokenId, "recall", tokensConsumed);
 
+    // Update lastAccessedAt for recalled memories
+    if (finalResults.length > 0) {
+      const recalledIds = finalResults.map((r) => r.id);
+      ctx.waitUntil(
+        db.update(memories).set({ lastAccessedAt: Date.now() })
+          .where(inArray(memories.id, recalledIds))
+          .run()
+      );
+    }
+
     return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(finalResults) }] });
   }
 

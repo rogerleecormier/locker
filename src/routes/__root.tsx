@@ -254,6 +254,9 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
         <Link to="/admin" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Admin
         </Link>
+        <Link to="/docs" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+          Docs
+        </Link>
       </div>
 
       <div style={navStyles.right}>

@@ -1257,6 +1257,151 @@ export const updateMemory = createServerFn({ method: "POST" })
     return { ...rows[0], fact: data.fact };
   });
 
+export const getArchivedMemories = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { projectKey?: string; limit?: number; offset?: number } => {
+    const d = data as { projectKey?: string; limit?: number; offset?: number };
+    return {
+      projectKey: typeof d?.projectKey === "string" ? d.projectKey : undefined,
+      limit: typeof d?.limit === "number" ? d.limit : 50,
+      offset: typeof d?.offset === "number" ? d.offset : 0,
+    };
+  })
+  .handler(async ({ data, context }): Promise<any> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required");
+    }
+
+    const projectKey = data.projectKey || null;
+    const conditions = [eq(memories.isActive, false), eq(memories.userId, user.id)];
+    if (projectKey) {
+      conditions.push(eq(memories.projectKey, projectKey));
+    } else {
+      conditions.push(sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`);
+    }
+
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(and(...conditions))
+      .orderBy(desc(memories.timestamp))
+      .limit(data.limit)
+      .offset(data.offset)
+      .all();
+
+    const total = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(memories)
+      .where(and(...conditions))
+      .all();
+
+    return {
+      archived: rows,
+      total: total[0]?.count ?? 0,
+      limit: data.limit,
+      offset: data.offset,
+    };
+  });
+
+export const restoreMemory = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { id: string } => {
+    const d = data as { id: string };
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    return { id: d.id };
+  })
+  .handler(async ({ data, context }): Promise<{ restored: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required");
+    }
+
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(eq(memories.id, data.id))
+      .all();
+
+    if (!rows.length) {
+      throw new Error("Memory not found");
+    }
+
+    const memory = rows[0];
+    if (memory.isActive) {
+      throw new Error("Memory is already active");
+    }
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, memory.projectKey);
+    if (!vaultAllowed) {
+      throw new Error(`Forbidden: no access to vault scope '${memory.projectKey}'`);
+    }
+
+    await db.update(memories).set({ isActive: true }).where(eq(memories.id, data.id));
+
+    // Re-insert into Vectorize
+    const vaultId = (memory.projectKey && (memory.projectKey.startsWith("team:") || memory.projectKey.startsWith("org:"))) ? memory.projectKey : user.id;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const decryptedFact = await decryptFact(memory.fact, vaultKey, env.ENCRYPTION_KEY);
+    const embedding = await generateEmbedding(env.AI, decryptedFact);
+    await env.VECTOR_INDEX.upsert([{
+      id: memory.id,
+      values: embedding,
+      metadata: { userId: memory.userId, projectKey: memory.projectKey || "" }
+    }]);
+
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: data.id, metadata: { restored: true } });
+
+    return { restored: true };
+  });
+
+export const permanentlyDeleteArchivedMemory = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { id: string } => {
+    const d = data as { id: string };
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    return { id: d.id };
+  })
+  .handler(async ({ data, context }): Promise<{ deleted: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    if (!user.id) {
+      throw new Error("Unauthorized: userId is required");
+    }
+
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(eq(memories.id, data.id))
+      .all();
+
+    if (!rows.length) {
+      throw new Error("Memory not found");
+    }
+
+    const memory = rows[0];
+    if (memory.isActive) {
+      throw new Error("Cannot permanently delete active memories");
+    }
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, memory.projectKey);
+    if (!vaultAllowed) {
+      throw new Error(`Forbidden: no access to vault scope '${memory.projectKey}'`);
+    }
+
+    await db.delete(memories).where(eq(memories.id, data.id));
+    await env.VECTOR_INDEX.deleteByIds([data.id]);
+
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "delete_memory", memoryId: data.id, metadata: { archived: true } });
+
+    return { deleted: true };
+  });
+
 export const moveMemories = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): { ids: string[]; targetProjectKey: string } => {
     const d = data as { ids: string[]; targetProjectKey: string };
@@ -2854,12 +2999,14 @@ export const revokeAllSessions = createServerFn({ method: "POST" }).handler(
 // ── Audit Log Viewer (SEC-12) ──────────────────────────────────────────────
 
 export const getOrgAuditLogs = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { limit?: number; offset?: number; memoryId?: string } => {
-    const d = data as { limit?: number; offset?: number; memoryId?: string };
+  .inputValidator((data: unknown): { limit?: number; offset?: number; memoryId?: string; action?: string; userId?: string } => {
+    const d = data as { limit?: number; offset?: number; memoryId?: string; action?: string; userId?: string };
     return {
       limit: typeof d?.limit === "number" ? d.limit : undefined,
       offset: typeof d?.offset === "number" ? d.offset : undefined,
       memoryId: typeof d?.memoryId === "string" ? d.memoryId : undefined,
+      action: typeof d?.action === "string" ? d.action : undefined,
+      userId: typeof d?.userId === "string" ? d.userId : undefined,
     };
   })
   .handler(async ({ data, context }) => {
@@ -2892,6 +3039,12 @@ export const getOrgAuditLogs = createServerFn({ method: "POST" })
     if (data.memoryId) {
       conditions.push(eq(auditLogs.memoryId, data.memoryId));
     }
+    if (data.action) {
+      conditions.push(eq(auditLogs.action, data.action));
+    }
+    if (data.userId) {
+      conditions.push(eq(auditLogs.userId, data.userId));
+    }
 
     const logs = await db
       .select()
@@ -2902,10 +3055,18 @@ export const getOrgAuditLogs = createServerFn({ method: "POST" })
       .offset(offset)
       .all();
 
+    const countConditions = [eq(auditLogs.orgId, orgId)];
+    if (data.action) {
+      countConditions.push(eq(auditLogs.action, data.action));
+    }
+    if (data.userId) {
+      countConditions.push(eq(auditLogs.userId, data.userId));
+    }
+
     const total = await db
       .select({ count: sql<number>`count(*)` })
       .from(auditLogs)
-      .where(eq(auditLogs.orgId, orgId))
+      .where(and(...countConditions))
       .all();
 
     return {
@@ -2914,4 +3075,73 @@ export const getOrgAuditLogs = createServerFn({ method: "POST" })
       limit,
       offset,
     };
+  });
+
+export const exportAuditLogsCsv = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { action?: string; userId?: string } => {
+    const d = data as { action?: string; userId?: string };
+    return {
+      action: typeof d?.action === "string" ? d.action : undefined,
+      userId: typeof d?.userId === "string" ? d.userId : undefined,
+    };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB, { schema: { auditLogs, organizationMembers } });
+
+    // Only org admins can export audit logs
+    const orgMember = await db
+      .select()
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, user.id))
+      .limit(1)
+      .all();
+
+    if (!orgMember.length) {
+      throw new Response(JSON.stringify({ error: "No organization access" }), { status: 403 });
+    }
+
+    const orgId = orgMember[0].orgId;
+    const isAdmin = orgMember[0].role === "admin" || orgMember[0].role === "owner";
+    if (!isAdmin) {
+      throw new Response(JSON.stringify({ error: "Admin access required" }), { status: 403 });
+    }
+
+    const conditions = [eq(auditLogs.orgId, orgId)];
+    if (data.action) {
+      conditions.push(eq(auditLogs.action, data.action));
+    }
+    if (data.userId) {
+      conditions.push(eq(auditLogs.userId, data.userId));
+    }
+
+    // Fetch up to 5000 rows
+    const logs = await db
+      .select()
+      .from(auditLogs)
+      .where(and(...conditions))
+      .orderBy(desc(auditLogs.timestamp))
+      .limit(5000)
+      .all();
+
+    // Build CSV manually
+    const headers = ["Timestamp", "Action", "User ID", "Token ID", "Memory ID", "IP Address", "User Agent", "Metadata"];
+    const rows = logs.map((log) => [
+      new Date(log.timestamp).toISOString(),
+      log.action,
+      log.userId,
+      log.tokenId || "",
+      log.memoryId || "",
+      log.ipAddress || "",
+      log.userAgent || "",
+      log.metadata ? JSON.stringify(log.metadata) : "",
+    ]);
+
+    const csv = [
+      headers.map((h) => `"${h}"`).join(","),
+      ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")),
+    ].join("\n");
+
+    return { csv };
   });

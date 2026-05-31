@@ -31,6 +31,7 @@ import {
   encryptAllMemories,
   rebuildVectorizeIndex,
   getOrgAuditLogs,
+  exportAuditLogsCsv,
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
 import { MyUsageSection, MyBillingSection, OrgBillingSection, useBillingData } from "~/routes/billing";
@@ -65,11 +66,34 @@ const modalBox: React.CSSProperties = {
 function AuditLogsSection() {
   const [limit, setLimit] = useState(50);
   const [offset, setOffset] = useState(0);
+  const [actionFilter, setActionFilter] = useState("");
+  const [userIdFilter, setUserIdFilter] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const { data: logs, isLoading } = useQuery({
-    queryKey: ["audit-logs", limit, offset],
-    queryFn: () => getOrgAuditLogs({ data: { limit, offset } }),
+    queryKey: ["audit-logs", limit, offset, actionFilter, userIdFilter],
+    queryFn: () => getOrgAuditLogs({ data: { limit, offset, action: actionFilter || undefined, userId: userIdFilter || undefined } }),
   });
+
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      const result = await exportAuditLogsCsv({ data: { action: actionFilter || undefined, userId: userIdFilter || undefined } });
+      const blob = new Blob([result.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-logs-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleFilterChange = () => {
+    setOffset(0); // Reset to first page when filters change
+  };
 
   return (
     <OrgAdminSection title="Audit Logs" description="Track all actions taken in your organization" icon="📋">
@@ -77,9 +101,71 @@ function AuditLogsSection() {
         <p>Loading audit logs...</p>
       ) : (
         <>
+          {/* Filters */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            <select
+              value={actionFilter}
+              onChange={(e) => {
+                setActionFilter(e.target.value);
+                handleFilterChange();
+              }}
+              style={{
+                padding: "6px 10px",
+                fontSize: 12,
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                color: "var(--text)",
+              }}
+            >
+              <option value="">All actions</option>
+              <option value="commit_memory">commit_memory</option>
+              <option value="update_memory">update_memory</option>
+              <option value="delete_memory">delete_memory</option>
+              <option value="recall_context">recall_context</option>
+              <option value="search_memories">search_memories</option>
+            </select>
+
+            <input
+              type="text"
+              placeholder="Filter by user ID"
+              value={userIdFilter}
+              onChange={(e) => {
+                setUserIdFilter(e.target.value);
+                handleFilterChange();
+              }}
+              style={{
+                padding: "6px 10px",
+                fontSize: 12,
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                color: "var(--text)",
+                width: 200,
+              }}
+            />
+
+            <button
+              onClick={handleExportCsv}
+              disabled={exporting}
+              style={{
+                padding: "6px 12px",
+                fontSize: 12,
+                background: "var(--accent)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "var(--radius)",
+                cursor: exporting ? "default" : "pointer",
+                fontWeight: 600,
+              }}
+            >
+              {exporting ? "Exporting…" : "Export CSV"}
+            </button>
+          </div>
+
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {!logs?.logs || logs.logs.length === 0 ? (
-              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No audit logs yet</p>
+              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No audit logs matching filters</p>
             ) : (
               logs.logs.map((log: any) => (
                 <div key={log.id} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontSize: 12 }}>

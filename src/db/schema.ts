@@ -86,6 +86,7 @@ export const memories = sqliteTable("memories", {
   scopeId: text("scopeId"),
   isLocked: integer("isLocked", { mode: "boolean" }).notNull().default(false),
   authorityType: text("authorityType", { enum: ["authoritative", "contributed"] }).notNull().default("contributed"),
+  lastAccessedAt: integer("lastAccessedAt"),
 });
 
 // ── better-auth jwt plugin ─────────────────────────────────────────────────────
