@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ALL_TOOLS } from "./_api.mcp";
 
-export const Route = createFileRoute("/docs" as any)({
+export const Route = createFileRoute("/docs")({
   component: DocsPage,
 });
 
