@@ -421,6 +421,23 @@ export function PlanCard({
         <div style={{ marginTop: 4 }}>
           {isAdmin ? (
             <AdminUpgradeButton label={`Upgrade to ${plan.label}`} />
+          ) : plan.id === "free" && !isLoggedIn ? (
+            <button
+              onClick={onSelect}
+              style={{
+                width: "100%",
+                padding: "10px 0",
+                background: "var(--accent)",
+                border: "none",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: 13,
+                borderRadius: 8,
+                cursor: "pointer",
+              }}
+            >
+              Sign Up
+            </button>
           ) : plan.available ? (
             <button
               onClick={onSelect}
@@ -440,22 +457,21 @@ export function PlanCard({
             </button>
           ) : (
             <button
-              onClick={plan.id === "free" && !isLoggedIn ? onSelect : undefined}
-              disabled={!(plan.id === "free" && !isLoggedIn)}
+              disabled
               style={{
                 width: "100%",
                 padding: "10px 0",
-                background: plan.id === "free" && !isLoggedIn ? "var(--accent)" : "var(--surface2)",
-                border: plan.id === "free" && !isLoggedIn ? "none" : "1px solid var(--border)",
-                color: plan.id === "free" && !isLoggedIn ? "#fff" : "var(--text-muted)",
-                fontWeight: plan.id === "free" && !isLoggedIn ? 600 : 500,
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                fontWeight: 500,
                 fontSize: 13,
                 borderRadius: 8,
-                cursor: plan.id === "free" && !isLoggedIn ? "pointer" : "not-allowed",
-                opacity: plan.id === "free" && !isLoggedIn ? 1 : 0.6,
+                cursor: "not-allowed",
+                opacity: 0.6,
               }}
             >
-              {plan.id === "free" && !isLoggedIn ? "Sign Up" : "Coming Soon"}
+              Coming Soon
             </button>
           )}
         </div>
