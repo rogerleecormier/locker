@@ -455,7 +455,7 @@ function OrganizationPage() {
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <polyline points="9 22 9 12 15 12 15 22" />
           </svg>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Organization Vault</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Org Vault</h1>
           <span style={{ fontSize: 11, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
             Team
           </span>
@@ -610,7 +610,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
       </div>
 
       <div style={{ display: "flex", borderBottom: "1px solid var(--border)", gap: 16 }}>
-        {tabBtn("vault", "Authoritative Vault")}
+        {tabBtn("vault", "Vault")}
         {tabBtn("recommendations", isAdmin ? "Review Recommendations" : "Recommendations")}
         {isAdmin && tabBtn("members", "Members")}
       </div>
@@ -659,7 +659,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
             )}
           </div>
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Vault Memories</h3>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Vault Entries</h3>
             {memoriesLoading ? <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>Loading...</div>
               : orgMemories.length === 0 ? <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0", fontSize: 12 }}>No memories in vault.</div>
               : (
@@ -687,7 +687,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
         <div style={{ display: "grid", gridTemplateColumns: isAdmin ? "1fr" : "1fr 1fr", gap: "24px" }}>
           {!isAdmin && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-              <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Recommend Memory to Org Vault</h3>
+              <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Recommend Entry for Org Vault</h3>
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>FACT</label>

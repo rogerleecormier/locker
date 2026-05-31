@@ -1253,7 +1253,7 @@ function Dashboard() {
                 <rect x="3" y="3" width="18" height="18" rx="3" />
                 <path d="M3 9h18M9 21V9" />
               </svg>
-              <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Memory Vault</h1>
+              <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Personal Vault</h1>
               <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
                 {memories.length} entries
               </span>

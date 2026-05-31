@@ -26,7 +26,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Locker — Memory Vault" },
+      { title: "Locker — Personal Vault" },
     ],
     links: [
       { rel: "icon", type: "image/png", href: "/favicon.png" },
@@ -249,7 +249,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
           Connect
         </Link>
         <Link to="/organization" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
-          Vault
+          Org Vault
         </Link>
         <Link to="/admin" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Admin
