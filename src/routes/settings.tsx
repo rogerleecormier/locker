@@ -583,21 +583,25 @@ function SettingsPage() {
       </div>
 
       <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
-        <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24 }}>
+        <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--border)", marginBottom: 24, alignItems: "flex-end" }}>
           {tabs.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               style={{
                 padding: "8px 16px",
-                background: "transparent",
+                background: tab === t.id ? "var(--surface)" : "transparent",
                 border: "none",
-                borderBottom: tab === t.id ? "2px solid var(--accent)" : "2px solid transparent",
-                color: tab === t.id ? "var(--accent)" : "var(--text-muted)",
+                borderTop: tab === t.id ? "3px solid var(--accent)" : "3px solid transparent",
+                borderLeft: tab === t.id ? "1px solid var(--border)" : "1px solid transparent",
+                borderRight: tab === t.id ? "1px solid var(--border)" : "1px solid transparent",
+                borderBottom: tab === t.id ? "1px solid var(--surface)" : "none",
+                color: tab === t.id ? "var(--text)" : "var(--text-muted)",
                 fontWeight: tab === t.id ? 600 : 400,
                 fontSize: 14,
                 cursor: "pointer",
                 marginBottom: -1,
+                borderRadius: "4px 4px 0 0",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 5,

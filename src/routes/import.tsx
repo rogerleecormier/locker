@@ -384,23 +384,28 @@ function IngestPanel() {
       </div>
 
       <div style={{ padding: 18 }}>
-        <div style={{ display: "flex", gap: 4, marginBottom: 12, borderBottom: "1px solid var(--border)" }}>
+        <div style={{ display: "flex", gap: 2, marginBottom: 12, borderBottom: "1px solid var(--border)", alignItems: "flex-end" }}>
           {(["paste", "file", "templates"] as const).map((mode) => {
             const labels = { paste: "Paste Text", file: "Upload File", templates: "Templates" };
+            const active = inputMode === mode;
             return (
               <button
                 key={mode}
                 onClick={() => setInputMode(mode)}
                 style={{
                   padding: "8px 16px",
-                  background: "transparent",
+                  background: active ? "var(--surface)" : "transparent",
                   border: "none",
-                  borderBottom: inputMode === mode ? "2px solid var(--accent)" : "2px solid transparent",
-                  color: inputMode === mode ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: inputMode === mode ? 600 : 400,
+                  borderTop: active ? "3px solid var(--accent)" : "3px solid transparent",
+                  borderLeft: active ? "1px solid var(--border)" : "1px solid transparent",
+                  borderRight: active ? "1px solid var(--border)" : "1px solid transparent",
+                  borderBottom: active ? "1px solid var(--surface)" : "none",
+                  color: active ? "var(--text)" : "var(--text-muted)",
+                  fontWeight: active ? 600 : 400,
                   fontSize: 13,
                   cursor: "pointer",
                   marginBottom: -1,
+                  borderRadius: "4px 4px 0 0",
                 }}
               >
                 {labels[mode]}

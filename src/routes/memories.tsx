@@ -1443,20 +1443,24 @@ function Dashboard() {
       </div>
 
       {/* Memory tabs */}
-      <div style={{ marginBottom: 20, display: "flex", gap: 4, borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+      <div style={{ marginBottom: 20, display: "flex", gap: 2, borderBottom: "1px solid var(--border)", alignItems: "flex-end" }}>
         <InfoTooltip text="Active memories are injected into AI sessions. Archived memories are retained but not retrieved unless restored." />
         <button
           onClick={() => setMemoryTab("active")}
           style={{
             padding: "8px 16px",
-            background: "transparent",
+            background: memoryTab === "active" ? "var(--surface)" : "transparent",
             border: "none",
-            borderBottom: memoryTab === "active" ? "2px solid var(--accent)" : "2px solid transparent",
-            color: memoryTab === "active" ? "var(--accent)" : "var(--text-muted)",
+            borderTop: memoryTab === "active" ? "3px solid var(--accent)" : "3px solid transparent",
+            borderLeft: memoryTab === "active" ? "1px solid var(--border)" : "1px solid transparent",
+            borderRight: memoryTab === "active" ? "1px solid var(--border)" : "1px solid transparent",
+            borderBottom: memoryTab === "active" ? "1px solid var(--surface)" : "none",
+            color: memoryTab === "active" ? "var(--text)" : "var(--text-muted)",
             fontSize: 13,
             fontWeight: memoryTab === "active" ? 600 : 400,
             cursor: "pointer",
             marginBottom: -1,
+            borderRadius: "4px 4px 0 0",
           }}
         >
           Active {memories.length > 0 && <span style={{ marginLeft: 4, fontSize: 11, opacity: 0.7 }}>({memories.length})</span>}
@@ -1465,14 +1469,18 @@ function Dashboard() {
           onClick={() => setMemoryTab("archived")}
           style={{
             padding: "8px 16px",
-            background: "transparent",
+            background: memoryTab === "archived" ? "var(--surface)" : "transparent",
             border: "none",
-            borderBottom: memoryTab === "archived" ? "2px solid var(--accent)" : "2px solid transparent",
-            color: memoryTab === "archived" ? "var(--accent)" : "var(--text-muted)",
+            borderTop: memoryTab === "archived" ? "3px solid var(--accent)" : "3px solid transparent",
+            borderLeft: memoryTab === "archived" ? "1px solid var(--border)" : "1px solid transparent",
+            borderRight: memoryTab === "archived" ? "1px solid var(--border)" : "1px solid transparent",
+            borderBottom: memoryTab === "archived" ? "1px solid var(--surface)" : "none",
+            color: memoryTab === "archived" ? "var(--text)" : "var(--text-muted)",
             fontSize: 13,
             fontWeight: memoryTab === "archived" ? 600 : 400,
             cursor: "pointer",
             marginBottom: -1,
+            borderRadius: "4px 4px 0 0",
           }}
         >
           Archived {archivedData?.total ? <span style={{ marginLeft: 4, fontSize: 11, opacity: 0.7 }}>({archivedData.total})</span> : null}

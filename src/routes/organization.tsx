@@ -598,12 +598,35 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
     onError: (err: Error) => alert(err.message),
   });
 
-  const tabBtn = (id: "vault" | "recommendations" | "members", label: string, tooltip?: string) => (
-    <button onClick={() => setActiveTab(id)} style={{ padding: "8px 16px", background: "transparent", color: activeTab === id ? "var(--accent)" : "var(--text-muted)", borderBottom: activeTab === id ? "2px solid var(--accent)" : "2px solid transparent", fontWeight: activeTab === id ? 600 : 400, cursor: "pointer", fontSize: 13, border: "none", marginBottom: -1, display: "inline-flex", alignItems: "center", gap: 5 }}>
-      {label}
-      {tooltip && <InfoTooltip text={tooltip} size={12} />}
-    </button>
-  );
+  const tabBtn = (id: "vault" | "recommendations" | "members", label: string, tooltip?: string) => {
+    const active = activeTab === id;
+    return (
+      <button
+        onClick={() => setActiveTab(id)}
+        style={{
+          padding: "8px 16px",
+          background: active ? "var(--surface)" : "transparent",
+          border: "none",
+          borderTop: active ? "3px solid var(--accent)" : "3px solid transparent",
+          borderLeft: active ? "1px solid var(--border)" : "1px solid transparent",
+          borderRight: active ? "1px solid var(--border)" : "1px solid transparent",
+          borderBottom: active ? "1px solid var(--surface)" : "none",
+          color: active ? "var(--text)" : "var(--text-muted)",
+          fontWeight: active ? 600 : 400,
+          fontSize: 13,
+          cursor: "pointer",
+          marginBottom: -1,
+          borderRadius: "4px 4px 0 0",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+        }}
+      >
+        {label}
+        {tooltip && <InfoTooltip text={tooltip} size={12} />}
+      </button>
+    );
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -612,7 +635,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
         <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>{org.members.length} members · {org.teams.length} teams · Role: <strong>{org.role}</strong></p>
       </div>
 
-      <div style={{ display: "flex", borderBottom: "1px solid var(--border)", gap: 4 }}>
+      <div style={{ display: "flex", borderBottom: "1px solid var(--border)", gap: 2, alignItems: "flex-end" }}>
         {tabBtn("vault", "Vault", "Org-approved memories that are automatically included in every member's AI sessions. Only admins can add entries directly.")}
         {tabBtn("recommendations", isAdmin ? "Review Recommendations" : "Recommendations", isAdmin ? "Member-submitted memory suggestions pending your approval. Approved entries are promoted to the Vault." : "Submit memories for org admin review. Approved entries will be promoted to the Vault and shared with all members.")}
         {isAdmin && tabBtn("members", "Members", "View current org members and pending invitations. To invite someone new, use Admin → Organizations.")}
