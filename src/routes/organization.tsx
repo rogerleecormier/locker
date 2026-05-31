@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { InfoTooltip } from "~/components/InfoTooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
@@ -455,13 +456,14 @@ function OrganizationPage() {
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <polyline points="9 22 9 12 15 12 15 22" />
           </svg>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Org Vault</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Org Hub</h1>
+              <InfoTooltip text="Org Hub is the shared workspace for your organization — add authoritative memories all members' AI sessions will inherit, review member-submitted recommendations, and manage who has access." />
           <span style={{ fontSize: 11, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
             Team
           </span>
         </div>
         <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-          Shared memory vaults for your organization and teams.
+          Authoritative knowledge, team recommendations, and member management for your organization.
         </p>
       </div>
     </div>
@@ -596,9 +598,10 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
     onError: (err: Error) => alert(err.message),
   });
 
-  const tabBtn = (id: "vault" | "recommendations" | "members", label: string) => (
-    <button onClick={() => setActiveTab(id)} style={{ padding: "8px 16px", background: "transparent", color: activeTab === id ? "var(--accent)" : "var(--text-muted)", borderBottom: activeTab === id ? "2px solid var(--accent)" : "2px solid transparent", fontWeight: "bold", borderRadius: 0, cursor: "pointer", fontSize: 13, border: "none" }}>
+  const tabBtn = (id: "vault" | "recommendations" | "members", label: string, tooltip?: string) => (
+    <button onClick={() => setActiveTab(id)} style={{ padding: "8px 16px", background: "transparent", color: activeTab === id ? "var(--accent)" : "var(--text-muted)", borderBottom: activeTab === id ? "2px solid var(--accent)" : "2px solid transparent", fontWeight: activeTab === id ? 600 : 400, cursor: "pointer", fontSize: 13, border: "none", marginBottom: -1, display: "inline-flex", alignItems: "center", gap: 5 }}>
       {label}
+      {tooltip && <InfoTooltip text={tooltip} size={12} />}
     </button>
   );
 
@@ -609,16 +612,19 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
         <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>{org.members.length} members · {org.teams.length} teams · Role: <strong>{org.role}</strong></p>
       </div>
 
-      <div style={{ display: "flex", borderBottom: "1px solid var(--border)", gap: 16 }}>
-        {tabBtn("vault", "Vault")}
-        {tabBtn("recommendations", isAdmin ? "Review Recommendations" : "Recommendations")}
-        {isAdmin && tabBtn("members", "Members")}
+      <div style={{ display: "flex", borderBottom: "1px solid var(--border)", gap: 4 }}>
+        {tabBtn("vault", "Vault", "Org-approved memories that are automatically included in every member's AI sessions. Only admins can add entries directly.")}
+        {tabBtn("recommendations", isAdmin ? "Review Recommendations" : "Recommendations", isAdmin ? "Member-submitted memory suggestions pending your approval. Approved entries are promoted to the Vault." : "Submit memories for org admin review. Approved entries will be promoted to the Vault and shared with all members.")}
+        {isAdmin && tabBtn("members", "Members", "View current org members and pending invitations. To invite someone new, use Admin → Organizations.")}
       </div>
 
       {activeTab === "vault" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Add Authoritative Memory</h3>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0, display: "flex", alignItems: "center", gap: 6 }}>
+              Add Authoritative Memory
+              <InfoTooltip text="Authoritative memories are locked org facts — coding standards, architectural decisions, team norms — that override individual member memories during AI sessions." size={13} />
+            </h3>
             {isAdmin ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div>
@@ -759,6 +765,20 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
 
       {activeTab === "members" && isAdmin && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          {/* Invite callout */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 16px", background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 10 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+              <strong style={{ color: "var(--text)" }}>To invite new members,</strong> go to{" "}
+              <a href="/admin" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 600 }}>Admin → Organizations</a>{" "}
+              and use the <em>Add Member by Email</em> form. Invitations are sent by email with a 48-hour acceptance window, and will appear as Pending here once sent.
+            </div>
+          </div>
+
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
             <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Current Members</h3>
             {org.members.length === 0 ? (
@@ -816,7 +836,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
               </div>
             )}
             <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "12px 0 0 0", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-              Invitations are sent to the email address with a 48-hour acceptance window. Members can accept invitations on the invite link in their email.
+              Pending invitations expire after 48 hours. Use <a href="/admin" style={{ color: "var(--accent)", textDecoration: "none" }}>Admin → Organizations</a> to resend or cancel invitations.
             </p>
           </div>
         </div>

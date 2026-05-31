@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { InfoTooltip } from "~/components/InfoTooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import {
@@ -559,11 +560,11 @@ function SettingsPage() {
   const [tab, setTab] = useState<"profile" | "tokens" | "mcp" | "security" | "sessions">("profile");
 
   const tabs = [
-    { id: "profile" as const, label: "Profile" },
-    { id: "security" as const, label: "Security" },
-    { id: "sessions" as const, label: "Sessions" },
-    { id: "tokens" as const, label: "API Tokens" },
-    { id: "mcp" as const, label: "MCP Endpoint" },
+    { id: "profile" as const, label: "Profile", tooltip: "Update your display name and email address." },
+    { id: "security" as const, label: "Security", tooltip: "Manage two-factor authentication and change your password." },
+    { id: "sessions" as const, label: "Sessions", tooltip: "View and revoke active login sessions across devices." },
+    { id: "tokens" as const, label: "API Tokens", tooltip: "Create tokens that let AI clients authenticate with your Memory Locker via the MCP endpoint." },
+    { id: "mcp" as const, label: "MCP Endpoint", tooltip: "Your personal MCP server URL — paste this into your AI client (e.g. Claude, Cursor) to enable memory retrieval." },
   ];
 
   return (
@@ -597,9 +598,13 @@ function SettingsPage() {
                 fontSize: 14,
                 cursor: "pointer",
                 marginBottom: -1,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
               }}
             >
               {t.label}
+              <InfoTooltip text={t.tooltip} size={12} />
             </button>
           ))}
         </div>

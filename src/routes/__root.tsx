@@ -240,7 +240,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
 
       <div style={navStyles.links}>
         <Link to="/memories" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
-          Memories
+          Memory Locker
         </Link>
         <Link to="/import" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Import
@@ -249,7 +249,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
           Connect
         </Link>
         <Link to="/organization" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
-          Org Vault
+          Org Hub
         </Link>
         <Link to="/admin" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Admin

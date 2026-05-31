@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
+import { InfoTooltip } from "~/components/InfoTooltip";
 import {
   getMemories,
   addMemory,
@@ -535,7 +536,10 @@ function NewMemoryModal({
         </div>
         <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
           <div>
-            <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Fact</label>
+            <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+              Fact
+              <InfoTooltip text="A discrete piece of information your AI assistant should remember — a preference, rule, project detail, or reference." size={12} />
+            </label>
             <textarea
               autoFocus
               value={fact}
@@ -547,7 +551,10 @@ function NewMemoryModal({
           </div>
           <div style={{ display: "flex", gap: 12 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Category</label>
+              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                Category
+                <InfoTooltip text="Rules: coding conventions and preferences. Projects: context about specific projects. References: links, contacts, or factual lookups." size={12} />
+              </label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as "rules" | "projects" | "references")}
@@ -559,7 +566,10 @@ function NewMemoryModal({
               </select>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Tags</label>
+              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                Tags
+                <InfoTooltip text="Comma-separated keywords used to group and filter memories. Tags help you find related entries quickly." size={12} />
+              </label>
               <input
                 type="text"
                 value={tags}
@@ -1253,7 +1263,8 @@ function Dashboard() {
                 <rect x="3" y="3" width="18" height="18" rx="3" />
                 <path d="M3 9h18M9 21V9" />
               </svg>
-              <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Personal Vault</h1>
+              <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Memory Locker</h1>
+              <InfoTooltip text="Your personal memory store. Facts saved here are retrieved automatically by your AI assistant during sessions via the MCP endpoint." />
               <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
                 {memories.length} entries
               </span>
@@ -1284,6 +1295,7 @@ function Dashboard() {
             )}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <InfoTooltip text="Switch between your personal vault and any org/team vaults you belong to. Each vault is retrieved separately during AI sessions." />
             <select
               value={projectKey}
               onChange={(e) => setProjectKey(e.target.value)}
@@ -1413,38 +1425,39 @@ function Dashboard() {
       </div>
 
       {/* Memory tabs */}
-      <div style={{ marginBottom: 20, display: "flex", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+      <div style={{ marginBottom: 20, display: "flex", gap: 4, borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+        <InfoTooltip text="Active memories are injected into AI sessions. Archived memories are retained but not retrieved unless restored." />
         <button
           onClick={() => setMemoryTab("active")}
           style={{
-            padding: "8px 14px",
-            background: memoryTab === "active" ? "transparent" : "transparent",
+            padding: "8px 16px",
+            background: "transparent",
             border: "none",
             borderBottom: memoryTab === "active" ? "2px solid var(--accent)" : "2px solid transparent",
-            color: memoryTab === "active" ? "var(--text)" : "var(--text-muted)",
+            color: memoryTab === "active" ? "var(--accent)" : "var(--text-muted)",
             fontSize: 13,
-            fontWeight: 600,
+            fontWeight: memoryTab === "active" ? 600 : 400,
             cursor: "pointer",
-            transition: "all 0.15s",
+            marginBottom: -1,
           }}
         >
-          Active {memoryTab === "active" && memories.length > 0 && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)" }}>({memories.length})</span>}
+          Active {memories.length > 0 && <span style={{ marginLeft: 4, fontSize: 11, opacity: 0.7 }}>({memories.length})</span>}
         </button>
         <button
           onClick={() => setMemoryTab("archived")}
           style={{
-            padding: "8px 14px",
+            padding: "8px 16px",
             background: "transparent",
             border: "none",
             borderBottom: memoryTab === "archived" ? "2px solid var(--accent)" : "2px solid transparent",
-            color: memoryTab === "archived" ? "var(--text)" : "var(--text-muted)",
+            color: memoryTab === "archived" ? "var(--accent)" : "var(--text-muted)",
             fontSize: 13,
-            fontWeight: 600,
+            fontWeight: memoryTab === "archived" ? 600 : 400,
             cursor: "pointer",
-            transition: "all 0.15s",
+            marginBottom: -1,
           }}
         >
-          Archived {memoryTab === "archived" && archivedData?.total && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)" }}>({archivedData.total})</span>}
+          Archived {archivedData?.total ? <span style={{ marginLeft: 4, fontSize: 11, opacity: 0.7 }}>({archivedData.total})</span> : null}
         </button>
       </div>
 
