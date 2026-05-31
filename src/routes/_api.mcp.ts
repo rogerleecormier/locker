@@ -569,6 +569,7 @@ export async function handleMcpRequest(
 
   if (request.method === "GET") {
     const allowedTools = ALL_TOOLS.filter((t) => {
+      if (t.name === "list_accessible_scopes") return true;
       if (t.name === "recall_context" || t.name === "search_memories" || t.name === "get_memory_summary") return !!(claims.permissions & MCP_PERM_RECALL);
       if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);

@@ -662,7 +662,7 @@ function MemoryTable({
       const matchesText =
         !q ||
         m.fact.toLowerCase().includes(q) ||
-        m.tags.toLowerCase().includes(q);
+        (m.tags?.toLowerCase().includes(q) ?? false);
       const mTime = new Date(m.timestamp).getTime();
       const matchesDate =
         (!startDate || mTime >= startDate) &&
