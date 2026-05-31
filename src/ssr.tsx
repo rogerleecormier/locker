@@ -174,8 +174,8 @@ export default {
       }
     }
   },
-  async scheduled(event: ScheduledEvent, env: CloudflareEnv, ctx: ExecutionContext) {
-    console.log(`[scheduled] Running scheduled event at ${new Date(event.scheduledTime).toISOString()}`);
+  async scheduled(controller: ScheduledController, env: CloudflareEnv, ctx: ExecutionContext) {
+    console.log(`[scheduled] Running scheduled event at ${new Date(controller.scheduledTime).toISOString()}`);
     try {
       await handleMemoryVersionCleanup(env, ctx);
     } catch (err) {

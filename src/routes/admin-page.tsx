@@ -30,7 +30,7 @@ import {
   bulkDeleteMemories,
   encryptAllMemories,
   rebuildVectorizeIndex,
-  getAuditLogs,
+  getOrgAuditLogs,
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
 import { MyUsageSection, MyBillingSection, OrgBillingSection, useBillingData } from "~/routes/billing";
@@ -62,6 +62,60 @@ const modalBox: React.CSSProperties = {
   borderRadius: "12px", width: "100%", maxWidth: "450px",
   boxShadow: "0 20px 25px -5px rgba(0,0,0,0.3)", padding: "24px",
 };
+function AuditLogsSection() {
+  const [limit, setLimit] = useState(50);
+  const [offset, setOffset] = useState(0);
+
+  const { data: logs, isLoading } = useQuery({
+    queryKey: ["audit-logs", limit, offset],
+    queryFn: () => getOrgAuditLogs({ data: { limit, offset } }),
+  });
+
+  return (
+    <OrgAdminSection title="Audit Logs" description="Track all actions taken in your organization" icon="📋">
+      {isLoading ? (
+        <p>Loading audit logs...</p>
+      ) : (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {!logs?.logs || logs.logs.length === 0 ? (
+              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No audit logs yet</p>
+            ) : (
+              logs.logs.map((log: any) => (
+                <div key={log.id} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontSize: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, color: "var(--text)" }}>{log.action}</span>
+                    <span style={{ color: "var(--text-muted)" }}>{new Date(log.timestamp).toLocaleString()}</span>
+                  </div>
+                  <div style={{ color: "var(--text-muted)", fontSize: 11, display: "flex", gap: 12 }}>
+                    <span>User: {log.userId}</span>
+                    {log.tokenId && <span>Token: {log.tokenId}</span>}
+                    {log.memoryId && <span>Memory: {log.memoryId}</span>}
+                    {log.ipAddress && <span>IP: {log.ipAddress}</span>}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {logs && logs.total > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)" }}>
+              <span>Showing {offset + 1}-{Math.min(offset + limit, logs.total)} of {logs.total} logs</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0} style={{ padding: "4px 10px", background: offset === 0 ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset === 0 ? "default" : "pointer", fontSize: 11 }}>
+                  Previous
+                </button>
+                <button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= logs.total} style={{ padding: "4px 10px", background: offset + limit >= logs.total ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset + limit >= logs.total ? "default" : "pointer", fontSize: 11 }}>
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </OrgAdminSection>
+  );
+}
 
 function AdminPage() {
   const [activeSection, setActiveSection] = useState<AdminSection>("personal-account");
@@ -317,6 +371,7 @@ function AdminPage() {
   const allTeams = orgTeamQuery.data?.teams ?? [];
   const activeOrg = allOrgs.find((o) => o.id === selectedOrgKey) ?? allOrgs[0];
   const activeTeam = allTeams.find((t) => t.id === selectedTeamKey);
+  const orgQuotaData = orgsQuery.data?.find((o) => o.id === activeOrg?.id);
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
@@ -640,7 +695,7 @@ function AdminPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                     <span style={{ fontSize: 12, fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Monthly Quotas</span>
                     {!isEditing ? (
-                      <button onClick={() => { setEditingOrgQuotaId(activeOrg.id); setEditMemories(activeOrg.monthlyMemories ?? 100); setEditRecalls(activeOrg.monthlyRecalls ?? 1000); setEditCommits(activeOrg.monthlyCommits ?? 500); }}
+                      <button onClick={() => { setEditingOrgQuotaId(activeOrg.id); setEditMemories(orgQuotaData?.monthlyMemories ?? 100); setEditRecalls(orgQuotaData?.monthlyRecalls ?? 1000); setEditCommits(orgQuotaData?.monthlyCommits ?? 500); }}
                         style={{ padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: 11, cursor: "pointer", color: "var(--text-muted)" }}>
                         Edit Quotas
                       </button>
@@ -656,7 +711,7 @@ function AdminPage() {
                   </div>
                   {!isEditing ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                      {[["Memories", activeOrg.monthlyMemories], ["Recalls", activeOrg.monthlyRecalls], ["Commits", activeOrg.monthlyCommits]].map(([label, val]: any) => (
+                      {[["Memories", orgQuotaData?.monthlyMemories], ["Recalls", orgQuotaData?.monthlyRecalls], ["Commits", orgQuotaData?.monthlyCommits]].map(([label, val]: any) => (
                         <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{label} Max</span>
                           <span style={{ fontSize: 14, fontWeight: "bold" }}>{val}</span>
@@ -1084,60 +1139,7 @@ function AdminPage() {
   );
 }
 
-function AuditLogsSection() {
-  const [limit, setLimit] = useState(50);
-  const [offset, setOffset] = useState(0);
 
-  const { data: logs, isLoading } = useQuery({
-    queryKey: ["audit-logs", limit, offset],
-    queryFn: () => getAuditLogs({ limit, offset }),
-  });
-
-  return (
-    <OrgAdminSection title="Audit Logs" description="Track all actions taken in your organization" icon="📋">
-      {isLoading ? (
-        <p>Loading audit logs...</p>
-      ) : (
-        <>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {!logs?.logs || logs.logs.length === 0 ? (
-              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No audit logs yet</p>
-            ) : (
-              logs.logs.map((log: any) => (
-                <div key={log.id} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontSize: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontWeight: 600, color: "var(--text)" }}>{log.action}</span>
-                    <span style={{ color: "var(--text-muted)" }}>{new Date(log.timestamp).toLocaleString()}</span>
-                  </div>
-                  <div style={{ color: "var(--text-muted)", fontSize: 11, display: "flex", gap: 12 }}>
-                    <span>User: {log.userId}</span>
-                    {log.tokenId && <span>Token: {log.tokenId}</span>}
-                    {log.memoryId && <span>Memory: {log.memoryId}</span>}
-                    {log.ipAddress && <span>IP: {log.ipAddress}</span>}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {logs && logs.total > 0 && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)" }}>
-              <span>Showing {offset + 1}-{Math.min(offset + limit, logs.total)} of {logs.total} logs</span>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0} style={{ padding: "4px 10px", background: offset === 0 ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset === 0 ? "default" : "pointer", fontSize: 11 }}>
-                  Previous
-                </button>
-                <button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= logs.total} style={{ padding: "4px 10px", background: offset + limit >= logs.total ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset + limit >= logs.total ? "default" : "pointer", fontSize: 11 }}>
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </OrgAdminSection>
-  );
-}
 
 export function AdminGuard() {
   const { data: adminStatus, isLoading } = useQuery({
