@@ -80,7 +80,7 @@ export async function createAuth(env: CloudflareEnv) {
           },
         },
         callbacks: {
-          jwt: async ({ token, user }) => {
+          jwt: async ({ token, user }: { token: any; user: any }) => {
             if (user?.id) {
               // Fetch org and team memberships
               const [orgRows, teamRows] = await Promise.all([

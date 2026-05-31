@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
-import { desc, eq, sql, and } from "drizzle-orm";
+import { desc, eq, sql, and, isNull } from "drizzle-orm";
 import {
   memories,
   apiTokens,
@@ -15,6 +15,10 @@ import {
   userPlans,
   memoryRecommendations,
   notifications,
+  users,
+  verifications,
+  sessions,
+  accounts,
   type Memory,
   type NewMemory,
 } from "~/db/schema";
@@ -312,7 +316,7 @@ export const getUserWorkspaces = createServerFn({ method: "GET" }).handler(
     const user = await requireSession(env);
     const db = getDb(env);
 
-    const { planId } = await getUserEffectivePlan(db, user.id, env.ADMIN_USER_ID);
+    const { planId } = await getUserEffectivePlan(db, user.id);
     const canAccessSharedWorkspaces = planId !== "free";
 
     const workspaces: WorkspaceItem[] = [
@@ -535,7 +539,7 @@ export const addMemory = createServerFn({ method: "POST" })
       throw new Error(`Forbidden: no access to vault scope '${data.projectKey}'`);
     }
 
-    await checkMemoryLimit(db, user.id, env.ADMIN_USER_ID);
+    await checkMemoryLimit(db, user.id);
 
     const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
     if (!quotaCheck.allowed) {
@@ -1784,7 +1788,7 @@ export const getUserPlan = createServerFn({ method: "GET" }).handler(
     const user = await requireSession(env);
     const db = getDb(env);
 
-    const { planId } = await getUserEffectivePlan(db, user.id, env.ADMIN_USER_ID);
+    const { planId } = await getUserEffectivePlan(db, user.id);
 
     const personalRow = await db
       .select({ plan: userPlans.plan })
@@ -1901,24 +1905,27 @@ export const listApiTokens = createServerFn({ method: "GET" }).handler(
 );
  
 export const createApiToken = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string } => {
-    const d = data as { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string };
+  .inputValidator((data: unknown): { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; ttlDays: number } => {
+    const d = data as { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; ttlDays?: number };
     if (!d.name || typeof d.name !== "string") throw new Error("name is required");
     const perms = typeof d.permissions === "number" ? d.permissions : 15;
     const scope = d.scopeType === "organization" || d.scopeType === "team" ? d.scopeType : "personal";
-    return { name: d.name.trim().slice(0, 64), permissions: perms & 15, scopeType: scope, scopeId: d.scopeId };
+    const ttl = typeof d.ttlDays === "number" ? Math.max(1, d.ttlDays) : 365;
+    return { name: d.name.trim().slice(0, 64), permissions: perms & 15, scopeType: scope, scopeId: d.scopeId, ttlDays: ttl };
   })
-  .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number; scopeType: string; scopeId: string | null }> => {
+  .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number; scopeType: string; scopeId: string | null; expiresAt: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
- 
-    await checkApiTokenLimit(db, user.id, env.ADMIN_USER_ID);
- 
+
+    await checkApiTokenLimit(db, user.id);
+
     const rawToken = `lkr_${crypto.randomUUID().replace(/-/g, "")}`;
     const tokenHash = await hashToken(rawToken);
     const id = crypto.randomUUID();
- 
+    const now = Date.now();
+    const expiresAt = now + (data.ttlDays * 24 * 60 * 60 * 1000);
+
     await db.insert(apiTokens).values({
       id,
       userId: user.id,
@@ -1927,10 +1934,11 @@ export const createApiToken = createServerFn({ method: "POST" })
       permissions: data.permissions,
       scopeType: data.scopeType,
       scopeId: data.scopeId || null,
-      createdAt: Date.now(),
+      createdAt: now,
+      expiresAt,
     });
- 
-    return { token: rawToken, id, name: data.name, permissions: data.permissions, scopeType: data.scopeType, scopeId: data.scopeId || null };
+
+    return { token: rawToken, id, name: data.name, permissions: data.permissions, scopeType: data.scopeType, scopeId: data.scopeId || null, expiresAt };
   });
 
 export const revokeApiToken = createServerFn({ method: "POST" })
@@ -2526,4 +2534,360 @@ export const markNotificationRead = createServerFn({ method: "POST" })
     }
 
     return { success: true };
+  });
+
+export const sendPasswordResetEmail = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { email: string } => {
+    const d = data as { email: string };
+    if (!d.email || typeof d.email !== "string") throw new Error("email is required");
+    return { email: d.email.toLowerCase().trim() };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = drizzle(env.DB, { schema: { users, verifications } });
+
+    const userRows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, data.email))
+      .limit(1)
+      .all();
+
+    if (!userRows.length) {
+      return { success: true };
+    }
+
+    const userId = userRows[0].id;
+    const resetToken = crypto.randomUUID();
+    const expiresAt = Date.now() + 60 * 60 * 1000;
+
+    await db
+      .insert(verifications)
+      .values({
+        id: crypto.randomUUID(),
+        identifier: `password_reset:${userId}`,
+        value: resetToken,
+        expiresAt: new Date(expiresAt),
+        createdAt: new Date(),
+      });
+
+    if (env.SE_EMAIL) {
+      const resetLink = `${env.BETTER_AUTH_URL}/reset-password/${resetToken}`;
+      try {
+        await env.SE_EMAIL.send({
+          to: data.email,
+          from: "noreply@locker.dev",
+          subject: "Reset your Locker password",
+          text: `Click this link to reset your password:\n\n${resetLink}\n\nThis link expires in 1 hour.`,
+          html: `<p>Click <a href="${resetLink}">here to reset your password</a>.</p><p>This link expires in 1 hour.</p>`,
+        });
+      } catch (err) {
+        console.error("[password-reset] Email send failed:", err);
+      }
+    }
+
+    return { success: true };
+  });
+
+export const resetPassword = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { token: string; password: string } => {
+    const d = data as { token: string; password: string };
+    if (!d.token || typeof d.token !== "string") throw new Error("token is required");
+    if (!d.password || typeof d.password !== "string") throw new Error("password is required");
+    if (d.password.length < 8) throw new Error("Password must be at least 8 characters");
+    return { token: d.token, password: d.password };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = drizzle(env.DB, { schema: { users, verifications, accounts } });
+
+    const verRows = await db
+      .select()
+      .from(verifications)
+      .where(sql`${verifications.value} = ${data.token} AND ${verifications.expiresAt} > ${Date.now()}`)
+      .limit(1)
+      .all();
+
+    if (!verRows.length || !verRows[0].identifier.startsWith("password_reset:")) {
+      throw new Error("Invalid or expired reset token");
+    }
+
+    const userId = verRows[0].identifier.split(":")[1];
+    const { hashPassword } = await import("better-auth/crypto");
+    const hash = await hashPassword(data.password);
+
+    await db
+      .update(accounts)
+      .set({
+        password: hash,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(accounts.userId, userId), eq(accounts.providerId, "credential")));
+
+    await db.delete(verifications).where(eq(verifications.id, verRows[0].id));
+
+    return { success: true };
+  });
+
+export const sendVerificationEmail = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { userId: string; email: string } => {
+    const d = data as { userId: string; email: string };
+    if (!d.userId || typeof d.userId !== "string") throw new Error("userId is required");
+    if (!d.email || typeof d.email !== "string") throw new Error("email is required");
+    return { userId: d.userId, email: d.email };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = drizzle(env.DB, { schema: { verifications } });
+
+    const verifyToken = crypto.randomUUID();
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
+    await db
+      .insert(verifications)
+      .values({
+        id: crypto.randomUUID(),
+        identifier: `email_verify:${data.userId}`,
+        value: verifyToken,
+        expiresAt: new Date(expiresAt),
+        createdAt: new Date(),
+      });
+
+    if (env.SE_EMAIL) {
+      const verifyLink = `${env.BETTER_AUTH_URL}/verify-email/${verifyToken}`;
+      try {
+        await env.SE_EMAIL.send({
+          to: data.email,
+          from: "noreply@locker.dev",
+          subject: "Verify your Locker email address",
+          text: `Click this link to verify your email:\n\n${verifyLink}\n\nThis link expires in 24 hours.`,
+          html: `<p>Click <a href="${verifyLink}">here to verify your email</a>.</p><p>This link expires in 24 hours.</p>`,
+        });
+      } catch (err) {
+        console.error("[email-verify] Email send failed:", err);
+      }
+    }
+
+    return { success: true };
+  });
+
+export const verifyEmail = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { token: string } => {
+    const d = data as { token: string };
+    if (!d.token || typeof d.token !== "string") throw new Error("token is required");
+    return { token: d.token };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = drizzle(env.DB, { schema: { users, verifications } });
+
+    const verRows = await db
+      .select()
+      .from(verifications)
+      .where(sql`${verifications.value} = ${data.token} AND ${verifications.expiresAt} > ${Date.now()}`)
+      .limit(1)
+      .all();
+
+    if (!verRows.length || !verRows[0].identifier.startsWith("email_verify:")) {
+      throw new Error("Invalid or expired verification token");
+    }
+
+    const userId = verRows[0].identifier.split(":")[1];
+
+    await db.update(users).set({ emailVerified: true }).where(eq(users.id, userId));
+
+    await db.delete(verifications).where(eq(verifications.id, verRows[0].id));
+
+    return { success: true };
+  });
+
+export const getMemoryUsageStats = createServerFn({ method: "GET" })
+  .handler(async ({ context }): Promise<{ used: number; limit: number | null }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB, { schema: { memories, userPlans } });
+
+    const { planId } = await getUserEffectivePlan(db, user.id);
+
+    const countRows = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(memories)
+      .where(
+        and(
+          eq(memories.userId, user.id),
+          eq(memories.isActive, true),
+          sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+        )
+      )
+      .all();
+
+    const used = Number(countRows[0]?.count ?? 0);
+    const { PLANS } = await import("~/lib/plans");
+    const limit = PLANS[planId].limits.maxMemories === Infinity ? null : PLANS[planId].limits.maxMemories;
+
+    return { used, limit };
+  });
+
+export const getPendingOrgInvitations = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { orgId: string } => {
+    const d = data as { orgId: string };
+    if (!d.orgId) throw new Error("orgId is required");
+    return { orgId: d.orgId };
+  })
+  .handler(async ({ data, context }): Promise<Array<{ id: string; email: string; role: string; expiresAt: number; createdAt: number }>> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const { invitations } = await import("~/db/schema");
+    const db = drizzle(env.DB, { schema: { invitations } });
+
+    const invRows = await db
+      .select({
+        id: invitations.id,
+        email: invitations.email,
+        role: invitations.role,
+        expiresAt: invitations.expiresAt,
+        createdAt: invitations.createdAt,
+      })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.orgId, data.orgId),
+          sql`${invitations.expiresAt} > ${Date.now()}`
+        )
+      )
+      .all();
+
+    return invRows;
+  });
+
+// ── Session Management (SEC-13) ────────────────────────────────────────────
+
+export const listActiveSessions = createServerFn({ method: "GET" }).handler(
+  async ({ context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB, { schema: { sessions } });
+
+    const userSessions = await db
+      .select({
+        id: sessions.id,
+        createdAt: sessions.createdAt,
+        expiresAt: sessions.expiresAt,
+        ipAddress: sessions.ipAddress,
+        userAgent: sessions.userAgent,
+      })
+      .from(sessions)
+      .where(and(eq(sessions.userId, user.id), isNull(sessions.revokedAt)))
+      .orderBy(desc(sessions.createdAt))
+      .all();
+
+    return userSessions;
+  }
+);
+
+export const revokeSession = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { sessionId: string } => {
+    const d = data as { sessionId: string };
+    if (!d.sessionId || typeof d.sessionId !== "string") throw new Error("sessionId is required");
+    return { sessionId: d.sessionId };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB, { schema: { sessions } });
+
+    // Verify session belongs to user
+    const session = await db.select().from(sessions).where(eq(sessions.id, data.sessionId)).limit(1).all();
+    if (!session.length || session[0].userId !== user.id) {
+      throw new Response(JSON.stringify({ error: "Session not found" }), { status: 404 });
+    }
+
+    await db
+      .update(sessions)
+      .set({ revokedAt: new Date() })
+      .where(eq(sessions.id, data.sessionId))
+      .run();
+
+    return { success: true };
+  });
+
+export const revokeAllSessions = createServerFn({ method: "POST" }).handler(
+  async ({ context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB, { schema: { sessions } });
+
+    await db
+      .update(sessions)
+      .set({ revokedAt: new Date() })
+      .where(eq(sessions.userId, user.id))
+      .run();
+
+    return { success: true };
+  }
+);
+
+// ── Audit Log Viewer (SEC-12) ──────────────────────────────────────────────
+
+export const getOrgAuditLogs = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { limit?: number; offset?: number; memoryId?: string } => {
+    const d = data as { limit?: number; offset?: number; memoryId?: string };
+    return {
+      limit: typeof d?.limit === "number" ? d.limit : undefined,
+      offset: typeof d?.offset === "number" ? d.offset : undefined,
+      memoryId: typeof d?.memoryId === "string" ? d.memoryId : undefined,
+    };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB, { schema: { auditLogs, organizations, organizationMembers } });
+
+    // Only org admins can view audit logs
+    const orgMember = await db
+      .select()
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, user.id))
+      .limit(1)
+      .all();
+
+    if (!orgMember.length) {
+      throw new Response(JSON.stringify({ error: "No organization access" }), { status: 403 });
+    }
+
+    const orgId = orgMember[0].orgId;
+    const isAdmin = orgMember[0].role === "admin" || orgMember[0].role === "owner";
+    if (!isAdmin) {
+      throw new Response(JSON.stringify({ error: "Admin access required" }), { status: 403 });
+    }
+
+    const limit = Math.min(data.limit ?? 50, 100);
+    const offset = data.offset ?? 0;
+
+    const conditions = [eq(auditLogs.orgId, orgId)];
+    if (data.memoryId) {
+      conditions.push(eq(auditLogs.memoryId, data.memoryId));
+    }
+
+    const logs = await db
+      .select()
+      .from(auditLogs)
+      .where(and(...conditions))
+      .orderBy(desc(auditLogs.timestamp))
+      .limit(limit)
+      .offset(offset)
+      .all();
+
+    const total = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(auditLogs)
+      .where(eq(auditLogs.orgId, orgId))
+      .all();
+
+    return {
+      logs,
+      total: total[0]?.count ?? 0,
+      limit,
+      offset,
+    };
   });

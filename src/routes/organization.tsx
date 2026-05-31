@@ -19,7 +19,7 @@ import {
 } from "~/db/schema";
 import { requireSession } from "~/server/session";
 import { updateSubscriptionSeats } from "~/server/billing";
-import { addMemory, deleteMemory, getMemories, submitMemoryRecommendation, listMemoryRecommendations, reviewMemoryRecommendation } from "~/server/memoryFunctions";
+import { addMemory, deleteMemory, getMemories, submitMemoryRecommendation, listMemoryRecommendations, reviewMemoryRecommendation, getPendingOrgInvitations } from "~/server/memoryFunctions";
 import {
   requireFeature,
   getUserEffectivePlan,
@@ -541,7 +541,7 @@ function OrganizationPage() {
 
 function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"vault" | "recommendations">("vault");
+  const [activeTab, setActiveTab] = useState<"vault" | "recommendations" | "members">("vault");
   const [recFact, setRecFact] = useState("");
   const [recCategory, setRecCategory] = useState<"rules" | "projects" | "references">("references");
   const [recTags, setRecTags] = useState("");
@@ -564,6 +564,12 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
     queryKey: ["org-memories", org.id],
     queryFn: () => getMemories({ data: { projectKey: `org:${org.id}` } }),
     enabled: activeTab === "vault",
+  });
+
+  const { data: pendingInvitations = [], isLoading: invitationsLoading } = useQuery({
+    queryKey: ["pending-org-invitations", org.id],
+    queryFn: () => getPendingOrgInvitations({ data: { orgId: org.id } }),
+    enabled: activeTab === "members" && isAdmin,
   });
 
   const submitRecMut = useMutation({
@@ -590,7 +596,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
     onError: (err: Error) => alert(err.message),
   });
 
-  const tabBtn = (id: "vault" | "recommendations", label: string) => (
+  const tabBtn = (id: "vault" | "recommendations" | "members", label: string) => (
     <button onClick={() => setActiveTab(id)} style={{ padding: "8px 16px", background: "transparent", color: activeTab === id ? "var(--accent)" : "var(--text-muted)", borderBottom: activeTab === id ? "2px solid var(--accent)" : "2px solid transparent", fontWeight: "bold", borderRadius: 0, cursor: "pointer", fontSize: 13, border: "none" }}>
       {label}
     </button>
@@ -606,6 +612,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
       <div style={{ display: "flex", borderBottom: "1px solid var(--border)", gap: 16 }}>
         {tabBtn("vault", "Authoritative Vault")}
         {tabBtn("recommendations", isAdmin ? "Review Recommendations" : "Recommendations")}
+        {isAdmin && tabBtn("members", "Members")}
       </div>
 
       {activeTab === "vault" && (
@@ -746,6 +753,71 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
                   })}
                 </div>
               )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "members" && isAdmin && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Current Members</h3>
+            {org.members.length === 0 ? (
+              <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>No members yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {org.members.map((m: any) => (
+                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px", background: "var(--surface2)", borderRadius: "var(--radius)", fontSize: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{m.name || m.email}</div>
+                      <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{m.email}</div>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 600, background: "rgba(168,85,247,0.1)", color: "var(--accent)", padding: "2px 8px", borderRadius: 4 }}>{m.role}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Pending Invitations {pendingInvitations.length > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)" }}>({pendingInvitations.length})</span>}</h3>
+            {invitationsLoading ? (
+              <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>Loading...</p>
+            ) : pendingInvitations.length === 0 ? (
+              <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>No pending invitations.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {pendingInvitations.map((inv: any) => (
+                  <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px", background: "var(--surface2)", borderRadius: "var(--radius)", fontSize: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{inv.email}</div>
+                      <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                        Expires {new Date(inv.expiresAt).toLocaleDateString()} · Role: {inv.role}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        disabled
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: "4px 10px",
+                          background: "rgba(168,85,247,0.1)",
+                          color: "var(--accent)",
+                          border: "1px solid rgba(168,85,247,0.3)",
+                          borderRadius: "var(--radius)",
+                          cursor: "default",
+                        }}
+                      >
+                        Pending
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "12px 0 0 0", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+              Invitations are sent to the email address with a 48-hour acceptance window. Members can accept invitations on the invite link in their email.
+            </p>
           </div>
         </div>
       )}

@@ -106,15 +106,18 @@ function TokenRow({
 
 export function NewTokenModal({ onClose, onCreate }: {
   onClose: () => void;
-  onCreate: (name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string) => Promise<string>;
+  onCreate: (name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string, ttlDays?: number) => Promise<string>;
 }) {
   const [name, setName] = useState("");
   const [perms, setPerms] = useState(MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE);
   const [scopeKey, setScopeKey] = useState("personal");
+  const [ttlDays, setTtlDays] = useState(365);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(300);
 
   const { data: workspaces = [] } = useQuery({ queryKey: ["workspaces"], queryFn: () => getUserWorkspaces() });
 
@@ -126,7 +129,7 @@ export function NewTokenModal({ onClose, onCreate }: {
       ? ["personal" as const, undefined]
       : scopeKey.split(":") as ["organization" | "team", string];
     try {
-      setToken(await onCreate(name.trim(), perms, scopeType, scopeId));
+      setToken(await onCreate(name.trim(), perms, scopeType, scopeId, ttlDays));
     } catch (err: any) {
       setError(err.message || "Failed to generate token.");
     } finally {
@@ -134,11 +137,32 @@ export function NewTokenModal({ onClose, onCreate }: {
     }
   }
 
+  useEffect(() => {
+    if (!token || confirmed) return;
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setToken(null);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [token, confirmed]);
+
   async function copyToken() {
     if (!token) return;
     await navigator.clipboard.writeText(token);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleConfirmCopied() {
+    setConfirmed(true);
+    setToken(null);
+    onClose();
   }
 
   return (
@@ -156,6 +180,16 @@ export function NewTokenModal({ onClose, onCreate }: {
               <label style={s.label}>Scope Constraint</label>
               <select value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} style={s.input}>
                 {workspaces.map((w: any) => <option key={w.key} value={w.key}>{w.label}</option>)}
+              </select>
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Token Expiry</label>
+              <select value={ttlDays} onChange={(e) => setTtlDays(parseInt(e.target.value))} style={s.input}>
+                <option value={7}>7 days</option>
+                <option value={30}>30 days</option>
+                <option value={90}>90 days</option>
+                <option value={180}>6 months</option>
+                <option value={365}>1 year (default)</option>
               </select>
             </div>
             <div style={s.field}>
@@ -180,18 +214,25 @@ export function NewTokenModal({ onClose, onCreate }: {
           </>
         ) : (
           <>
-            <h2 style={s.modalTitle}>Token created</h2>
-            <p style={s.modalSubtitle}>Copy your token now — it won't be shown again.</p>
+            <div style={{ background: "rgba(168,85,247,0.08)", border: "2px solid var(--accent)", borderRadius: 8, padding: "14px 12px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>⚠ Shown once only • Disappears in {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}</span>
+            </div>
+            <h2 style={s.modalTitle}>API Token Created</h2>
+            <p style={s.modalSubtitle}>Copy and save this token immediately — it will not be shown again.</p>
             <div style={s.tokenReveal}>
               <code style={s.tokenCode}>{token}</code>
-              <button style={s.copyBtn} onClick={copyToken}>{copied ? "Copied!" : "Copy"}</button>
+              <button style={s.copyBtn} onClick={copyToken}>{copied ? "✓ Copied to clipboard" : "Copy token"}</button>
             </div>
             <div style={s.tokenNote}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               Add this token to your MCP client as a Bearer token in the Authorization header.
             </div>
             <div style={s.modalFooter}>
-              <button style={s.btnPrimary} onClick={onClose}>Done</button>
+              <button style={s.btnGhost} onClick={onClose}>Back</button>
+              <button style={copied ? s.btnPrimary : { ...s.btnPrimary, opacity: 0.5, cursor: "not-allowed" }} onClick={handleConfirmCopied} disabled={!copied}>
+                I've copied my token
+              </button>
             </div>
           </>
         )}
@@ -270,8 +311,8 @@ export function ApiTokensSection() {
   const { data: workspaces = [] } = useQuery({ queryKey: ["workspaces"], queryFn: () => getUserWorkspaces() });
 
   const createMut = useMutation({
-    mutationFn: ({ name, permissions, scopeType, scopeId }: { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string }) =>
-      createApiToken({ data: { name, permissions, scopeType, scopeId } }),
+    mutationFn: ({ name, permissions, scopeType, scopeId, ttlDays }: { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; ttlDays?: number }) =>
+      createApiToken({ data: { name, permissions, scopeType, scopeId, ttlDays } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["api-tokens"] }),
   });
   const revokeMut = useMutation({
@@ -283,8 +324,8 @@ export function ApiTokensSection() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["api-tokens"] }),
   });
 
-  async function handleCreate(name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string): Promise<string> {
-    const result = await createMut.mutateAsync({ name, permissions, scopeType, scopeId });
+  async function handleCreate(name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string, ttlDays?: number): Promise<string> {
+    const result = await createMut.mutateAsync({ name, permissions, scopeType, scopeId, ttlDays });
     return result.token;
   }
 
@@ -341,13 +382,131 @@ export function McpEndpointSection() {
   );
 }
 
+export function TwoFactorSection() {
+  const { data: totpStatus } = useQuery({ queryKey: ["totp-status"], queryFn: async () => {
+    const response = await fetch("/api/2fa/status");
+    return response.json() as Promise<{ enabled: boolean }>;
+  }});
+
+  const setupMut = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/2fa/setup", { method: "POST" });
+      return response.json();
+    },
+  });
+
+  const disableMut = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/2fa/disable", { method: "POST" });
+      return response.json();
+    },
+  });
+
+  return (
+    <div style={s.card}>
+      <h2 style={s.cardTitle}>Two-Factor Authentication</h2>
+      <p style={s.cardDesc}>Add an extra layer of security to your account</p>
+
+      {totpStatus?.enabled ? (
+        <>
+          <div style={{ ...s.infoBox, background: "rgba(34,197,94,0.07)", borderColor: "rgba(34,197,94,0.2)" }}>
+            <span>✓ Two-factor authentication is enabled on your account</span>
+          </div>
+          <button style={{ ...s.btnPrimary, background: "var(--error)", marginTop: 12 }} onClick={() => disableMut.mutate()}>
+            Disable 2FA
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={s.infoBox}>
+            Enable TOTP-based 2FA using an authenticator app like Authy, Google Authenticator, or Microsoft Authenticator.
+          </div>
+          <button style={s.btnPrimary} onClick={() => setupMut.mutate()}>
+            Set Up 2FA
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function SessionsSection() {
+  const { data: sessions = [], isLoading } = useQuery({
+    queryKey: ["active-sessions"],
+    queryFn: async () => {
+      const response = await fetch("/api/sessions");
+      return response.json() as Promise<any[]>;
+    },
+  });
+
+  const revokeOneMut = useMutation({
+    mutationFn: async (sessionId: string) => {
+      await fetch(`/api/sessions/${sessionId}/revoke`, { method: "POST" });
+    },
+    onSuccess: () => { useQueryClient().invalidateQueries({ queryKey: ["active-sessions"] }); },
+  });
+
+  const revokeAllMut = useMutation({
+    mutationFn: async () => {
+      await fetch("/api/sessions/revoke-all", { method: "POST" });
+    },
+    onSuccess: () => { useQueryClient().invalidateQueries({ queryKey: ["active-sessions"] }); },
+  });
+
+  const queryClient = useQueryClient();
+
+  if (isLoading) {
+    return <div style={s.card}><p style={s.cardDesc}>Loading sessions...</p></div>;
+  }
+
+  return (
+    <div style={s.card}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div>
+          <h2 style={s.cardTitle}>Active Sessions</h2>
+          <p style={s.cardDesc}>Sessions on other devices and browsers</p>
+        </div>
+        {sessions.length > 1 && (
+          <button style={{ ...s.btnGhost, color: "var(--error)", borderColor: "rgba(239,68,68,0.3)" }} onClick={() => revokeAllMut.mutate()}>
+            Sign Out All
+          </button>
+        )}
+      </div>
+
+      {sessions.length === 0 ? (
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Only this session</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {sessions.map((session: any) => (
+            <div key={session.id} style={{ ...s.sessionRow, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "var(--surface2)", borderRadius: 7, border: "1px solid var(--border)" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", marginBottom: 2 }}>
+                  {session.userAgent?.includes("Chrome") ? "Chrome" : session.userAgent?.includes("Firefox") ? "Firefox" : "Browser"}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  {session.ipAddress || "Unknown IP"} · {new Date(session.createdAt).toLocaleDateString()}
+                </div>
+              </div>
+              <button style={{ ...s.btnGhost, color: "var(--error)", borderColor: "rgba(239,68,68,0.3)", padding: "4px 10px", fontSize: 12 }} onClick={() => revokeOneMut.mutate(session.id)}>
+                Revoke
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── standalone /settings page ──────────────────────────────────────────────
 
 function SettingsPage() {
-  const [tab, setTab] = useState<"profile" | "tokens" | "mcp">("profile");
+  const [tab, setTab] = useState<"profile" | "tokens" | "mcp" | "security" | "sessions">("profile");
 
   const tabs = [
     { id: "profile" as const, label: "Profile" },
+    { id: "security" as const, label: "Security" },
+    { id: "sessions" as const, label: "Sessions" },
     { id: "tokens" as const, label: "API Tokens" },
     { id: "mcp" as const, label: "MCP Endpoint" },
   ];
@@ -391,6 +550,8 @@ function SettingsPage() {
         </div>
 
         {tab === "profile" && <ProfileSection />}
+        {tab === "security" && <TwoFactorSection />}
+        {tab === "sessions" && <SessionsSection />}
         {tab === "tokens" && <ApiTokensSection />}
         {tab === "mcp" && <McpEndpointSection />}
       </div>
@@ -450,4 +611,5 @@ const s: Record<string, React.CSSProperties> = {
   tokenCode: { flex: 1, fontFamily: "monospace", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" },
   copyBtn: { padding: "4px 10px", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 600, borderRadius: 5, flexShrink: 0, border: "none", cursor: "pointer" },
   tokenNote: { display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "var(--text-muted)", background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 7, padding: "9px 12px" },
+  sessionRow: {},
 };

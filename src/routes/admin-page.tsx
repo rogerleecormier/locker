@@ -30,6 +30,7 @@ import {
   bulkDeleteMemories,
   encryptAllMemories,
   rebuildVectorizeIndex,
+  getAuditLogs,
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
 import { MyUsageSection, MyBillingSection, OrgBillingSection, useBillingData } from "~/routes/billing";
@@ -687,6 +688,9 @@ function AdminPage() {
       {/* ── ORG BILLING ─────────────────────────────────────────────────────── */}
       {activeSection === "org-billing" && <OrgBillingSection />}
 
+      {/* ── AUDIT LOGS ───────────────────────────────────────────────────────── */}
+      {activeSection === "org-audit-logs" && <AuditLogsSection />}
+
       {/* ── USERS ───────────────────────────────────────────────────────────── */}
       {activeSection === "users" && (
         <OrgAdminSection title="Users Directory" description="Manage all users and their plans" icon="👥">
@@ -1077,6 +1081,61 @@ function AdminPage() {
       )}
 
     </AdminLayout>
+  );
+}
+
+function AuditLogsSection() {
+  const [limit, setLimit] = useState(50);
+  const [offset, setOffset] = useState(0);
+
+  const { data: logs, isLoading } = useQuery({
+    queryKey: ["audit-logs", limit, offset],
+    queryFn: () => getAuditLogs({ limit, offset }),
+  });
+
+  return (
+    <OrgAdminSection title="Audit Logs" description="Track all actions taken in your organization" icon="📋">
+      {isLoading ? (
+        <p>Loading audit logs...</p>
+      ) : (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {!logs?.logs || logs.logs.length === 0 ? (
+              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No audit logs yet</p>
+            ) : (
+              logs.logs.map((log: any) => (
+                <div key={log.id} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontSize: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, color: "var(--text)" }}>{log.action}</span>
+                    <span style={{ color: "var(--text-muted)" }}>{new Date(log.timestamp).toLocaleString()}</span>
+                  </div>
+                  <div style={{ color: "var(--text-muted)", fontSize: 11, display: "flex", gap: 12 }}>
+                    <span>User: {log.userId}</span>
+                    {log.tokenId && <span>Token: {log.tokenId}</span>}
+                    {log.memoryId && <span>Memory: {log.memoryId}</span>}
+                    {log.ipAddress && <span>IP: {log.ipAddress}</span>}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {logs && logs.total > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)" }}>
+              <span>Showing {offset + 1}-{Math.min(offset + limit, logs.total)} of {logs.total} logs</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0} style={{ padding: "4px 10px", background: offset === 0 ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset === 0 ? "default" : "pointer", fontSize: 11 }}>
+                  Previous
+                </button>
+                <button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= logs.total} style={{ padding: "4px 10px", background: offset + limit >= logs.total ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset + limit >= logs.total ? "default" : "pointer", fontSize: 11 }}>
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </OrgAdminSection>
   );
 }
 

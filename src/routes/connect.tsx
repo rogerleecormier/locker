@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
+import { useSession } from "~/lib/authClient";
 import { PLATFORM_GROUPS } from "../lib/platforms";
 
 export const Route = createFileRoute("/connect")({
@@ -37,6 +38,9 @@ type SetupService = {
 function ConnectPage() {
   const [selectedService, setSelectedService] = useState<string>("claudedesktop");
   const [copied, setCopied] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{status: 'success' | 'error'; message: string} | null>(null);
+  const { data: session } = useSession();
 
   const SERVICES: SetupService[] = [
     {
@@ -794,6 +798,46 @@ enabled = true`,
     setTimeout(() => setCopied(false), 2000);
   }, [service.copyText]);
 
+  const handleTestConnection = useCallback(async () => {
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      const response = await fetch('/api/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/list',
+          params: {},
+        }),
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as any;
+        const toolCount = data.result?.tools?.length || 0;
+        setTestResult({
+          status: 'success',
+          message: `✓ Connected! Found ${toolCount} MCP tool${toolCount !== 1 ? 's' : ''} available.`
+        });
+      } else {
+        setTestResult({
+          status: 'error',
+          message: `Connection failed (HTTP ${response.status}). Check your token and endpoint.`
+        });
+      }
+    } catch (err: any) {
+      setTestResult({
+        status: 'error',
+        message: `Connection error: ${err?.message || 'Unable to reach endpoint'}`
+      });
+    } finally {
+      setTestLoading(false);
+    }
+  }, []);
+
   return (
     <div>
       <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
@@ -919,7 +963,29 @@ enabled = true`,
               }}>
                 {service.copyText}
               </pre>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button
+                  onClick={handleTestConnection}
+                  disabled={testLoading}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 16px",
+                    background: "var(--surface2)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-muted)",
+                    fontWeight: 500,
+                    fontSize: 13,
+                    transition: "all 0.2s",
+                    cursor: testLoading ? "not-allowed" : "pointer",
+                    opacity: testLoading ? 0.6 : 1,
+                  }}
+                  title="Test your MCP endpoint connection"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M20.84 4.61a2.5 2.5 0 0 0-3.54 0l-5.66 5.66m6.07-1.41l-2.83-2.83a2.5 2.5 0 0 0-3.54 3.54l2.83 2.83M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>
+                  {testLoading ? "Testing..." : "Test connection"}
+                </button>
                 <button
                   onClick={handleCopy}
                   style={{
@@ -939,6 +1005,20 @@ enabled = true`,
                   {copied ? "Copied!" : "Copy configuration"}
                 </button>
               </div>
+              {testResult && (
+                <div style={{
+                  marginTop: 12,
+                  padding: "10px 12px",
+                  background: testResult.status === 'success' ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)",
+                  border: testResult.status === 'success' ? "1px solid rgba(34,197,94,0.3)" : "1px solid rgba(239,68,68,0.3)",
+                  borderRadius: 6,
+                  color: testResult.status === 'success' ? "#22c55e" : "var(--error)",
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                }}>
+                  {testResult.message}
+                </div>
+              )}
             </>
           )}
         </div>

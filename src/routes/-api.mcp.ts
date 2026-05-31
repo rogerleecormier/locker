@@ -219,7 +219,31 @@ function mcpResult(id: unknown, result: unknown): Response {
   return Response.json({ jsonrpc: "2.0", id, result });
 }
 
-function corsHeaders(origin: string) {
+function corsHeaders(origin: string, authHeader: string | null): Record<string, string> {
+  // If using opaque OAuth token (cookie-based session), restrict to known origins
+  // Bearer tokens (eyJ=JWT, lkr_=API key) are fine since they're explicitly provided
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+  const isExplicitToken = token?.startsWith("eyJ") || token?.startsWith("lkr_");
+
+  // For opaque tokens or unauthenticated requests from browsers, restrict CORS
+  if (!isExplicitToken) {
+    // Only allow CORS for requests from the same origin or explicitly whitelisted origins
+    // This prevents malicious web pages from making write requests using stored OAuth sessions
+    const knownOrigins = [
+      "http://localhost:5173",
+      "http://localhost:3000",
+      ...(typeof process !== "undefined" && process.env.ALLOWED_ORIGINS?.split(",") || []),
+    ];
+
+    const allowedOrigin = knownOrigins.includes(origin) ? origin : "null";
+    return {
+      "Access-Control-Allow-Origin": allowedOrigin,
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+  }
+
+  // For Bearer tokens (JWT and API keys), allow any origin
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -248,7 +272,7 @@ async function validateBearerToken(
   // API token path (lkr_ prefix)
   if (rawToken.startsWith("lkr_")) {
     const tokenHash = await hashToken(rawToken);
-    const db = drizzle(env.DB, { schema: { apiTokens } });
+    const db = drizzle(env.DB, { schema: { apiTokens, organizationMembers, teamMembers } });
 
     const rows = await db
       .select()
@@ -258,6 +282,33 @@ async function validateBearerToken(
 
     if (!rows.length) return null;
     const token = rows[0];
+
+    if (token.expiresAt && token.expiresAt < Date.now()) return null;
+
+    // Verify live membership for scoped tokens
+    if (token.scopeType === "organization" && token.scopeId) {
+      const membershipRows = await db
+        .select({ userId: organizationMembers.userId })
+        .from(organizationMembers)
+        .where(and(eq(organizationMembers.orgId, token.scopeId), eq(organizationMembers.userId, token.userId)))
+        .limit(1)
+        .all();
+      if (!membershipRows.length) {
+        console.log("[api-token] user no longer member of scoped organization");
+        return null;
+      }
+    } else if (token.scopeType === "team" && token.scopeId) {
+      const membershipRows = await db
+        .select({ userId: teamMembers.userId })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, token.scopeId), eq(teamMembers.userId, token.userId)))
+        .limit(1)
+        .all();
+      if (!membershipRows.length) {
+        console.log("[api-token] user no longer member of scoped team");
+        return null;
+      }
+    }
 
     db.update(apiTokens)
       .set({ lastUsedAt: Date.now() })
@@ -326,6 +377,16 @@ async function validateBearerToken(
         return null;
       }
 
+      // Parse scopes claim and map to permission bitmask
+      let permissions = 0;
+      const scopes = (payload.scope as string)?.split(" ") ?? [];
+      for (const scope of scopes) {
+        if (scope === "openid:mcp:recall") permissions |= MCP_PERM_RECALL;
+        if (scope === "openid:mcp:commit") permissions |= MCP_PERM_COMMIT;
+        if (scope === "openid:mcp:update") permissions |= MCP_PERM_UPDATE;
+        if (scope === "openid:mcp:delete") permissions |= MCP_PERM_DELETE;
+      }
+
       // Always do a live membership lookup — JWT claims go stale when memberships change
       const [orgRows, teamRows] = await Promise.all([
         jwtDb.select({ orgId: organizationMembers.orgId }).from(organizationMembers).where(eq(organizationMembers.userId, userId)).all(),
@@ -334,7 +395,7 @@ async function validateBearerToken(
       const orgIds = orgRows.map((r) => r.orgId);
       const teamIds = teamRows.map((r) => r.teamId);
 
-      console.log("[jwt] verified userId:", userId, "orgIds:", orgIds, "teamIds:", teamIds);
+      console.log("[jwt] verified userId:", userId, "orgIds:", orgIds, "teamIds:", teamIds, "permissions:", permissions);
 
       const accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [
         { type: "personal", id: null },
@@ -345,7 +406,7 @@ async function validateBearerToken(
       return {
         userId,
         tokenId: userId,
-        permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE,
+        permissions,
         scopeType: "personal",
         scopeId: null,
         accessibleScopes,
@@ -419,12 +480,13 @@ async function checkFallbackRateLimit(db: any, key: string): Promise<boolean> {
     .get();
 
   if (existing && existing.minuteStart === minuteStart) {
-    if (existing.count >= MCP_RATE_LIMIT_PER_MINUTE) return false;
-    await db
+    const updated = await db
       .update(rateLimitCounters)
-      .set({ count: existing.count + 1 })
-      .where(eq(rateLimitCounters.key, key));
-    return true;
+      .set({ count: sql`${rateLimitCounters.count} + 1` })
+      .where(eq(rateLimitCounters.key, key))
+      .returning({ count: rateLimitCounters.count })
+      .get();
+    return updated && updated.count <= MCP_RATE_LIMIT_PER_MINUTE;
   }
 
   await db
@@ -443,13 +505,12 @@ export async function handleMcpRequest(
   env: CloudflareEnv
 ): Promise<Response> {
   const origin = request.headers.get("origin") ?? "*";
-  const headers = corsHeaders(origin);
+  const authHeader = request.headers.get("Authorization");
+  const headers = corsHeaders(origin, authHeader);
 
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers });
   }
-
-  const authHeader = request.headers.get("Authorization");
   let authType = "NONE";
   let tokenLength = 0;
   if (authHeader) {
@@ -635,7 +696,7 @@ export async function handleMcpRequest(
     let orgId: string | null = null;
 
     if (crossWorkspaceSearch) {
-      const { planId, orgId: userOrgId } = await getUserEffectivePlan(db, claims.userId, env.ADMIN_USER_ID);
+      const { planId, orgId: userOrgId } = await getUserEffectivePlan(db, claims.userId);
       orgId = userOrgId;
       if (!PLANS[planId].features.crossWorkspaceSearch) {
         return mcpError(id, -32005, `Forbidden: cross-workspace search requires the Business plan or higher. Current plan: ${planId}`);

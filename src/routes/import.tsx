@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { batchImportMemories, parseMemoriesWithAI } from "~/server/memoryFunctions";
 
 export const Route = createFileRoute("/import")({
@@ -284,6 +284,7 @@ function IngestPanel() {
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
+  const [editingPreview, setEditingPreview] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
   const [source, setSource] = useState<string>("manual");
 
@@ -303,6 +304,7 @@ function IngestPanel() {
   async function handleProcess() {
     setParseError(null);
     setPreview(null);
+    setEditingPreview(null);
     setImportResult(null);
     if (!pasteText.trim()) return;
     setParsing(true);
@@ -312,6 +314,7 @@ function IngestPanel() {
         setParseError("No memories could be extracted. Try adding more content.");
       } else {
         setPreview(items);
+        setEditingPreview([...items]);
       }
     } catch (e) {
       setParseError((e as Error).message);
@@ -321,8 +324,8 @@ function IngestPanel() {
   }
 
   function handleImport() {
-    if (!preview) return;
-    batchMutation.mutate({ items: preview, source });
+    if (!editingPreview) return;
+    batchMutation.mutate({ items: editingPreview, source });
   }
 
   return (
@@ -358,16 +361,121 @@ function IngestPanel() {
           </div>
         )}
 
-        {preview && (
-          <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.25)", borderRadius: "var(--radius)", fontSize: 12, color: "var(--text-muted)" }}>
-            <strong style={{ color: "var(--accent)" }}>Preview:</strong> {preview.length} memor{preview.length !== 1 ? "ies" : "y"} extracted.{" "}
-            {preview.slice(0, 2).map((p, i) => (
-              <span key={i} style={{ color: "var(--text)" }}>
-                &ldquo;{p.fact.slice(0, 60)}{p.fact.length > 60 ? "…" : ""}&rdquo;
-                {i < Math.min(1, preview.length - 1) ? ", " : ""}
-              </span>
-            ))}
-            {preview.length > 2 && <span> and {preview.length - 2} more.</span>}
+        {preview && editingPreview && (
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <strong style={{ color: "var(--accent)", fontSize: 13 }}>Review & Edit</strong>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{editingPreview.length} memor{editingPreview.length !== 1 ? "ies" : "y"}</span>
+            </div>
+            <div style={{
+              background: "rgba(168,85,247,0.04)",
+              border: "1px solid rgba(168,85,247,0.15)",
+              borderRadius: "var(--radius)",
+              maxHeight: 320,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: 0
+            }}>
+              {editingPreview.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "10px 12px",
+                    borderBottom: idx < editingPreview.length - 1 ? "1px solid rgba(168,85,247,0.08)" : "none",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", justifyContent: "space-between" }}>
+                    <div style={{ flex: 1 }}>
+                      <input
+                        type="text"
+                        value={item.fact}
+                        onChange={(e) => {
+                          const updated = [...editingPreview];
+                          updated[idx] = { ...updated[idx], fact: e.target.value };
+                          setEditingPreview(updated);
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "6px 8px",
+                          background: "var(--surface1)",
+                          border: "1px solid rgba(168,85,247,0.2)",
+                          borderRadius: 4,
+                          color: "var(--text)",
+                          fontFamily: "inherit",
+                          fontSize: 12,
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        const updated = editingPreview.filter((_, i) => i !== idx);
+                        setEditingPreview(updated);
+                      }}
+                      style={{
+                        padding: "4px 6px",
+                        background: "rgba(239,68,68,0.1)",
+                        border: "1px solid rgba(239,68,68,0.2)",
+                        color: "var(--error)",
+                        fontSize: 11,
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="Category (optional)"
+                      value={item.category || ""}
+                      onChange={(e) => {
+                        const updated = [...editingPreview];
+                        updated[idx] = { ...updated[idx], category: e.target.value || undefined };
+                        setEditingPreview(updated);
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: "4px 8px",
+                        background: "var(--surface1)",
+                        border: "1px solid rgba(168,85,247,0.15)",
+                        borderRadius: 4,
+                        color: "var(--text-muted)",
+                        fontSize: 11,
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Tags (optional, comma-separated)"
+                      value={item.tags || ""}
+                      onChange={(e) => {
+                        const updated = [...editingPreview];
+                        updated[idx] = { ...updated[idx], tags: e.target.value || undefined };
+                        setEditingPreview(updated);
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: "4px 8px",
+                        background: "var(--surface1)",
+                        border: "1px solid rgba(168,85,247,0.15)",
+                        borderRadius: 4,
+                        color: "var(--text-muted)",
+                        fontSize: 11,
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

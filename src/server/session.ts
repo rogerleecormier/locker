@@ -4,6 +4,7 @@ import type { CloudflareEnv } from "~/types/cloudflare";
 
 // Returns the authenticated user from the current request's session cookie.
 // Throws a 401 Response if no valid session exists.
+// Throws a 403 Response if email is not verified.
 export async function requireSession(env: CloudflareEnv) {
   const request = getRequest();
   const auth = await createAuth(env);
@@ -11,6 +12,12 @@ export async function requireSession(env: CloudflareEnv) {
   if (!session?.user) {
     throw new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (!session.user.emailVerified) {
+    throw new Response(JSON.stringify({ error: "Please verify your email before accessing this feature" }), {
+      status: 403,
       headers: { "Content-Type": "application/json" },
     });
   }

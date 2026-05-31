@@ -1,31 +1,29 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { signIn } from "~/lib/authClient";
+import { sendPasswordResetEmail } from "~/server/memoryFunctions";
 
-export const Route = createFileRoute("/login")({
-  component: LoginPage,
+export const Route = createFileRoute("/forgot-password")({
+  component: ForgotPasswordPage,
 });
 
-function LoginPage() {
+function ForgotPasswordPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setMessage("");
     setLoading(true);
     try {
-      const result = await signIn.email({ email, password });
-      if (result.error) {
-        setError(result.error.message ?? "Invalid email or password");
-      } else {
-        navigate({ to: "/" });
-      }
-    } catch {
-      setError("Something went wrong. Please try again.");
+      await sendPasswordResetEmail({ data: { email: email.toLowerCase().trim() } });
+      setMessage("Check your email for a password reset link. The link expires in 1 hour.");
+      setEmail("");
+    } catch (err: any) {
+      setError(err.message || "Failed to send reset email. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -35,9 +33,9 @@ function LoginPage() {
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.logo}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-login)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-reset)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <defs>
-              <linearGradient id="logo-grad-login" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id="logo-grad-reset" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="var(--accent)" />
                 <stop offset="100%" stopColor="#a855f7" />
               </linearGradient>
@@ -45,11 +43,11 @@ function LoginPage() {
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" strokeWidth="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" strokeWidth="2" />
             <path d="M9 14.5h6M9 16.5h6M9 18.5h6M11 11v11M13 11v11" strokeWidth="1" opacity="0.6" />
-            <rect x="9.5" y="14" width="5" height="5" rx="0.5" fill="var(--accent)" stroke="url(#logo-grad-login)" strokeWidth="1" />
+            <rect x="9.5" y="14" width="5" height="5" rx="0.5" fill="var(--accent)" stroke="url(#logo-grad-reset)" strokeWidth="1" />
           </svg>
         </div>
-        <h1 style={styles.title}>Locker</h1>
-        <p style={styles.subtitle}>Sign in to your vault</p>
+        <h1 style={styles.title}>Reset Password</h1>
+        <p style={styles.subtitle}>Enter your email address to receive a password reset link</p>
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
@@ -60,39 +58,24 @@ function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               required
-              style={styles.input}
-            />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
+              disabled={!!message}
               style={styles.input}
             />
           </div>
 
+          {message && <p style={{ ...styles.message, color: "var(--accent)" }}>{message}</p>}
           {error && <p style={styles.error}>{error}</p>}
 
-          <button type="submit" disabled={loading} style={styles.btn}>
-            {loading ? "Signing in…" : "Sign in"}
+          <button type="submit" disabled={loading || !!message} style={styles.btn}>
+            {loading ? "Sending…" : "Send Reset Link"}
           </button>
         </form>
 
-        <div style={{ width: "100%", display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}>
-          <Link to="/forgot-password" style={{ color: "var(--accent)", textDecoration: "none" }}>
-            Forgot password?
+        <p style={styles.footer}>
+          <Link to="/login" style={{ color: "var(--accent)", textDecoration: "none" }}>
+            Back to login
           </Link>
-          <span>
-            Don't have an account?{" "}
-            <Link to="/signup" style={{ color: "var(--accent)", textDecoration: "none" }}>
-              Create one
-            </Link>
-          </span>
-        </div>
+        </p>
       </div>
     </div>
   );
@@ -141,6 +124,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: "var(--text-muted)",
     marginBottom: 16,
+    textAlign: "center" as const,
   },
   form: {
     width: "100%",
@@ -154,41 +138,50 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 5,
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 600,
-    color: "var(--text-muted)",
-    textTransform: "uppercase",
-    letterSpacing: "0.06em",
+    color: "var(--text)",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.5px",
   },
   input: {
-    padding: "9px 12px",
-    width: "100%",
+    padding: "10px 12px",
+    fontSize: 14,
+    background: "var(--surface2)",
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    color: "var(--text)",
+    fontFamily: "inherit",
+  },
+  btn: {
+    padding: "10px 16px",
+    fontSize: 14,
+    fontWeight: 600,
+    background: "var(--accent)",
+    color: "white",
+    border: "none",
+    borderRadius: 8,
+    cursor: "pointer",
+    marginTop: 4,
+  },
+  message: {
+    fontSize: 12,
+    padding: "10px 12px",
+    background: "rgba(168,85,247,0.07)",
+    border: "1px solid rgba(168,85,247,0.2)",
+    borderRadius: 6,
   },
   error: {
     fontSize: 12,
     color: "var(--error)",
-    background: "rgba(239,68,68,0.08)",
+    padding: "10px 12px",
+    background: "rgba(239,68,68,0.07)",
     border: "1px solid rgba(239,68,68,0.2)",
     borderRadius: 6,
-    padding: "8px 10px",
-    width: "100%",
-    textAlign: "center",
-  },
-  btn: {
-    marginTop: 4,
-    padding: "11px 0",
-    background: "var(--accent)",
-    color: "#fff",
-    fontWeight: 600,
-    fontSize: 14,
-    borderRadius: 8,
-    width: "100%",
-    border: "none",
-    cursor: "pointer",
   },
   footer: {
-    marginTop: 8,
     fontSize: 12,
     color: "var(--text-muted)",
+    marginTop: 12,
   },
 };

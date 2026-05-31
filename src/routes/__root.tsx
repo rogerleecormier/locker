@@ -38,6 +38,25 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 function RootLayout() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleKeydown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl+K for search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        router.navigate({ to: '/memories' });
+      }
+      // Shift+? for keyboard shortcuts
+      if (e.shiftKey && e.key === '?') {
+        e.preventDefault();
+        alert('Keyboard Shortcuts\n\nCmd+K or Ctrl+K: Go to Memories\nShift+?: Show this help');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
+  }, [router]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -340,16 +359,16 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
                     <div
                       key={n.id}
                       onClick={() => {
-                        markReadMut.mutate({ id: n.id });
-                        setShowNotifications(false);
                         if (n.linkUrl) {
+                          markReadMut.mutate({ id: n.id });
+                          setShowNotifications(false);
                           window.location.href = n.linkUrl;
                         }
                       }}
                       style={{
                         padding: "10px 12px",
                         borderBottom: "1px solid var(--border)",
-                        cursor: "pointer",
+                        cursor: n.linkUrl ? "pointer" : "default",
                         background: n.status === "unread" ? "var(--accent-dim)" : "transparent",
                         display: "flex",
                         gap: 8,
@@ -373,16 +392,37 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
                           {new Date(n.createdAt).toLocaleDateString()} {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
-                      {n.status === "unread" && (
+                      <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
+                        {n.status === "unread" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markReadMut.mutate({ id: n.id });
+                            }}
+                            disabled={markReadMut.isPending}
+                            style={{
+                              background: "transparent",
+                              border: "1px solid var(--accent)",
+                              color: "var(--accent)",
+                              fontSize: 10,
+                              padding: "2px 6px",
+                              cursor: "pointer",
+                              borderRadius: 4
+                            }}
+                            title="Mark as read"
+                          >
+                            ✓
+                          </button>
+                        )}
                         <div style={{
                           width: 6,
                           height: 6,
                           background: "var(--accent)",
                           borderRadius: "50%",
-                          marginTop: 4,
+                          display: n.status === "unread" ? "block" : "none",
                           flexShrink: 0
                         }} />
-                      )}
+                      </div>
                     </div>
                   ))
                 )}
@@ -577,6 +617,30 @@ function RootDocument({ children }: { children: ReactNode }) {
           @keyframes slideIn {
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
+          }
+          @media (max-width: 768px) {
+            body { font-size: 13px; }
+            button { font-size: 12px; }
+            input, textarea, select { font-size: 12px; }
+            nav {
+              padding: 0 12px !important;
+              gap: 0 !important;
+            }
+            nav > div:nth-child(2) {
+              display: none;
+            }
+            nav > span {
+              display: none;
+            }
+            nav > button:last-of-type {
+              display: none;
+            }
+          }
+          @media (max-width: 640px) {
+            body { font-size: 12px; }
+            main {
+              padding: 12px 8px !important;
+            }
           }
         `}</style>
       </head>

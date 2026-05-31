@@ -19,6 +19,7 @@ export const sessions = sqliteTable("session", {
   ipAddress: text("ipAddress"),
   userAgent: text("userAgent"),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  revokedAt: integer("revokedAt", { mode: "timestamp_ms" }), // null = active, set to revoke
 });
 
 export const accounts = sqliteTable("account", {
@@ -46,6 +47,17 @@ export const verifications = sqliteTable("verification", {
   updatedAt: integer("updatedAt", { mode: "timestamp_ms" }),
 });
 
+// ── TOTP / Two-Factor Authentication ───────────────────────────────────────
+export const totpSecrets = sqliteTable("totp_secrets", {
+  id: text("id").primaryKey(),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  secret: text("secret").notNull(), // encrypted base32-encoded secret
+  verified: integer("verified", { mode: "boolean" }).notNull().default(false),
+  backupCodes: text("backupCodes").notNull(), // JSON array of hashed backup codes
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+  verifiedAt: integer("verifiedAt", { mode: "timestamp_ms" }),
+});
+
 // api_tokens: MCP access tokens with per-tool permission bitmask
 // permissions bitmask: bit 0 = recall_context, bit 1 = commit_memory, bit 2 = update_memory, bit 3 = delete_memory
 export const apiTokens = sqliteTable("api_tokens", {
@@ -57,6 +69,7 @@ export const apiTokens = sqliteTable("api_tokens", {
   scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
   scopeId: text("scopeId"),
   createdAt: integer("createdAt").notNull(),
+  expiresAt: integer("expiresAt"),
   lastUsedAt: integer("lastUsedAt"),
 });
 
@@ -162,6 +175,7 @@ export type Session = typeof sessions.$inferSelect;
 export type ApiToken = typeof apiTokens.$inferSelect;
 export type Memory = typeof memories.$inferSelect;
 export type NewMemory = typeof memories.$inferInsert;
+export type TotpSecret = typeof totpSecrets.$inferSelect;
 
 export const MCP_PERM_RECALL = 1 << 0;   // bit 0
 export const MCP_PERM_COMMIT = 1 << 1;   // bit 1
@@ -178,6 +192,8 @@ export const organizations = sqliteTable("organizations", {
   billingSubscriptionId: text("billingSubscriptionId"),
   planActivatedAt: integer("planActivatedAt"),
   planExpiresAt: integer("planExpiresAt"),
+  memoryVersionRetentionDays: integer("memoryVersionRetentionDays").notNull().default(365), // days to keep versions
+  memoryVersionRetentionCount: integer("memoryVersionRetentionCount").notNull().default(50), // max versions per memory
   createdAt: integer("createdAt").notNull(),
 });
 
@@ -243,6 +259,7 @@ export const memoryVersions = sqliteTable("memory_versions", {
   changedBy: text("changedBy").notNull(), // userId or 'system'
   changeReason: text("changeReason"), // 'created', 'updated', 'contradiction (archived)', etc.
   timestamp: integer("timestamp").notNull(),
+  expiresAt: integer("expiresAt", { mode: "timestamp_ms" }), // null = keep forever, set for auto-cleanup
 });
 
 export type Organization = typeof organizations.$inferSelect;
@@ -336,6 +353,12 @@ export const featureOverrides = sqliteTable("feature_overrides", {
   grantedAt: integer("grantedAt").notNull(),
   expiresAt: integer("expiresAt"), // null = permanent
   createdAt: integer("createdAt").notNull(),
+});
+
+export const stripeEvents = sqliteTable("stripe_events", {
+  id: text("id").primaryKey(), // Stripe event.id
+  type: text("type").notNull(), // e.g., 'checkout.session.completed', 'customer.subscription.updated'
+  processedAt: integer("processedAt").notNull(),
 });
 
 export type UserPlan = typeof userPlans.$inferSelect;

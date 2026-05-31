@@ -112,7 +112,7 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
     const hasBillingCustomer = !!userPlanRow[0]?.billingCustomerId;
 
     // Orgs where the user is owner or admin — these can be billed
-    const managedOrgs = await db
+    const managedOrgsRaw = await db
       .select({
         id: organizations.id,
         name: organizations.name,
@@ -128,6 +128,24 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
         )
       )
       .all();
+
+    // Get seat count for each org
+    const managedOrgs = await Promise.all(
+      managedOrgsRaw.map(async (org) => {
+        const activeMembers = await db
+          .select({ count: sql<number>`COUNT(DISTINCT ${organizationMembers.userId})` })
+          .from(organizationMembers)
+          .where(eq(organizationMembers.orgId, org.id))
+          .all();
+        const activeSeatCount = Number(activeMembers[0]?.count ?? 0);
+        const billedSeats = (PLANS[resolvePlan(org.plan)].limits as any).seatsPerOrg ?? 10;
+        return {
+          ...org,
+          activeSeatCount,
+          billedSeats,
+        };
+      })
+    );
 
     return {
       planId,        // effective plan (highest of personal + orgs)
@@ -252,17 +270,24 @@ export function MyUsageSection() {
         </div>
       </section>
 
-      {currentPlan !== "free" && billing?.usageStats && billing.usageStats.length > 0 && (
+      {currentPlan !== "free" && billing?.usageStats && (
         <section style={card}>
           <h2 style={{ ...sectionTitle, marginBottom: 16 }}>
             Token Usage Analytics{" "}
             <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>(Last 30 days)</span>
           </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {billing.usageStats.map((s) => (
-              <TokenUsageChart key={s.tokenId} tokenName={s.tokenName} dailyBreakdown={s.dailyBreakdown} />
-            ))}
-          </div>
+          {billing.usageStats.length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {billing.usageStats.map((s) => (
+                <TokenUsageChart key={s.tokenId} tokenName={s.tokenName} dailyBreakdown={s.dailyBreakdown} />
+              ))}
+            </div>
+          ) : (
+            <div style={{ padding: "32px 24px", textAlign: "center", background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.15)", borderRadius: 8 }}>
+              <div style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 4 }}>No usage recorded yet</div>
+              <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Make your first MCP call to see token usage data here.</div>
+            </div>
+          )}
         </section>
       )}
     </>
@@ -495,16 +520,19 @@ export function OrgBillingSection() {
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {billing.managedOrgs.map((org) => {
+          {billing.managedOrgs.map((org: any) => {
             const orgPlan = resolvePlan(org.plan);
             const isUpgrading = upgradingId === org.id;
             const isPortaling = portalLoadingId === org.id;
             const canManage = org.role === "owner" || org.role === "admin";
+            const activeSeatCount = org.activeSeatCount || 0;
+            const billedSeats = org.billedSeats || 10;
+            const seatsAvailable = billedSeats - activeSeatCount;
 
             return (
               <div key={org.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "16px 18px", background: "var(--surface2)" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                       <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{org.name}</span>
                       <PlanBadge plan={orgPlan} />
@@ -517,7 +545,19 @@ export function OrgBillingSection() {
                         {org.role}
                       </span>
                     </div>
-                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>ID: {org.id}</p>
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "6px 0 0 0" }}>ID: {org.id}</p>
+                    <div style={{ fontSize: 12, color: "var(--text)", marginTop: 8, padding: "8px 12px", background: "rgba(168,85,247,0.08)", borderRadius: 6, border: "1px solid rgba(168,85,247,0.15)" }}>
+                      <div style={{ fontWeight: 600, marginBottom: 2 }}>Seat Usage</div>
+                      <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                        {activeSeatCount} active / {billedSeats} billed
+                        {seatsAvailable > 0 && (
+                          <span style={{ color: "var(--success)", fontWeight: 500 }}> • {seatsAvailable} available</span>
+                        )}
+                        {seatsAvailable <= 0 && (
+                          <span style={{ color: "var(--error)", fontWeight: 500 }}> • No seats available</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {canManage && (

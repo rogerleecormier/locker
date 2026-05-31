@@ -4,6 +4,7 @@ import {
 } from "@tanstack/react-start/server";
 import { handleMcpRequest } from "./routes/-api.mcp";
 import { createAuth } from "./server/auth";
+import { handleMemoryVersionCleanup } from "./scheduled/cleanup-versions";
 import type { CloudflareEnv, ArchiveMessage } from "./types/cloudflare";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
@@ -171,6 +172,14 @@ export default {
       } catch (err) {
         console.error("[queue] Failed to process message:", err);
       }
+    }
+  },
+  async scheduled(event: ScheduledEvent, env: CloudflareEnv, ctx: ExecutionContext) {
+    console.log(`[scheduled] Running scheduled event at ${new Date(event.scheduledTime).toISOString()}`);
+    try {
+      await handleMemoryVersionCleanup(env, ctx);
+    } catch (err) {
+      console.error("[scheduled] Memory version cleanup failed:", err);
     }
   }
 } satisfies ExportedHandler<CloudflareEnv>;

@@ -11,6 +11,7 @@ import {
   revertMemoryVersion,
   getUserWorkspaces,
   moveMemories,
+  getMemoryUsageStats,
 } from "~/server/memoryFunctions";
 import { getAdminStatus } from "~/routes/admin";
 import type { Memory } from "~/db/schema";
@@ -616,6 +617,9 @@ function MemoryTable({
   memories,
   filter,
   categoryFilter,
+  sortBy,
+  dateStart,
+  dateEnd,
   onShowHistory,
   onExportZip,
   workspaces = [],
@@ -624,6 +628,9 @@ function MemoryTable({
   memories: Memory[];
   filter: string;
   categoryFilter: string;
+  sortBy: 'newest' | 'oldest' | 'alphabetical';
+  dateStart: string;
+  dateEnd: string;
   onShowHistory: (id: string) => void;
   onExportZip: () => void;
   workspaces?: any[];
@@ -647,15 +654,33 @@ function MemoryTable({
 
   const filtered = useMemo(() => {
     const q = filter.toLowerCase();
-    return memories.filter((m) => {
+    const startDate = dateStart ? new Date(dateStart).getTime() : null;
+    const endDate = dateEnd ? new Date(dateEnd).getTime() : null;
+
+    let results = memories.filter((m) => {
       const matchesCat = !categoryFilter || m.category === categoryFilter;
       const matchesText =
         !q ||
         m.fact.toLowerCase().includes(q) ||
         m.tags.toLowerCase().includes(q);
-      return matchesCat && matchesText;
+      const mTime = new Date(m.timestamp).getTime();
+      const matchesDate =
+        (!startDate || mTime >= startDate) &&
+        (!endDate || mTime <= endDate + 86400000); // +1 day to include end date fully
+      return matchesCat && matchesText && matchesDate;
     });
-  }, [memories, filter, categoryFilter]);
+
+    // Apply sorting
+    if (sortBy === 'newest') {
+      results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    } else if (sortBy === 'oldest') {
+      results.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    } else if (sortBy === 'alphabetical') {
+      results.sort((a, b) => a.fact.localeCompare(b.fact));
+    }
+
+    return results;
+  }, [memories, filter, categoryFilter, sortBy, dateStart, dateEnd]);
 
   const filteredIds = useMemo(() => new Set(filtered.map((m) => m.id)), [filtered]);
   const allSelected = filtered.length > 0 && filtered.every((m) => selected.has(m.id));
@@ -1099,8 +1124,27 @@ function Dashboard() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'alphabetical'>('newest');
+  const [dateStart, setDateStart] = useState("");
+  const [dateEnd, setDateEnd] = useState("");
   const [showNewMemory, setShowNewMemory] = useState(false);
   const [activeTimelineId, setActiveTimelineId] = useState<string | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("onboarding-dismissed") !== "true";
+    }
+    return true;
+  });
+  const [onboardingSteps, setOnboardingSteps] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return JSON.parse(localStorage.getItem("onboarding-steps") || "{}");
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  });
 
   const [projectKey, setProjectKey] = useState<string>("personal");
 
@@ -1117,6 +1161,12 @@ function Dashboard() {
   const { data: memories = [], isLoading, isError } = useQuery({
     queryKey: ["memories", projectKey],
     queryFn: () => getMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
+  });
+
+  const { data: usageStats } = useQuery({
+    queryKey: ["memory-usage"],
+    queryFn: () => getMemoryUsageStats(),
+    enabled: projectKey === "personal",
   });
 
   async function triggerExport() {
@@ -1150,12 +1200,23 @@ function Dashboard() {
     return counts;
   }, [memories]);
 
+  function dismissOnboarding() {
+    setShowOnboarding(false);
+    localStorage.setItem("onboarding-dismissed", "true");
+  }
+
+  function updateOnboardingStep(step: string, completed: boolean) {
+    const updated = { ...onboardingSteps, [step]: completed };
+    setOnboardingSteps(updated);
+    localStorage.setItem("onboarding-steps", JSON.stringify(updated));
+  }
+
   return (
     <div>
       {/* Page header bar */}
       <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
         <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="3" />
@@ -1170,6 +1231,26 @@ function Dashboard() {
               Long-term technical context. Semantic retrieval via{" "}
               <code style={{ color: "var(--accent)", fontSize: 12 }}>/api/mcp</code> MCP endpoint.
             </p>
+            {usageStats && usageStats.limit && usageStats.used / usageStats.limit > 0.8 && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>Memory usage</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: usageStats.used >= usageStats.limit ? "var(--error)" : "var(--accent)" }}>
+                    {usageStats.used} / {usageStats.limit}
+                  </span>
+                </div>
+                <div style={{ width: "100%", maxWidth: 300, height: 6, background: "var(--surface)", borderRadius: 3, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${Math.min(100, (usageStats.used / usageStats.limit) * 100)}%`,
+                      background: usageStats.used >= usageStats.limit ? "var(--error)" : "var(--accent)",
+                      transition: "width 0.3s ease",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <select
@@ -1211,6 +1292,66 @@ function Dashboard() {
       </div>
 
       <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
+
+      {memories.length === 0 && showOnboarding && (
+        <div style={{
+          background: "linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(139,92,246,0.04) 100%)",
+          border: "1px solid rgba(168,85,247,0.25)",
+          borderRadius: 12,
+          padding: "20px 22px",
+          marginBottom: 24,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 16,
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+                <path d="M10 16.5l-3-3 1.41-1.41L10 13.68l5.59-5.59L17 9.5l-7 7z"/>
+              </svg>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", margin: 0 }}>Get started with Locker</h3>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {[
+                { id: "connect", label: "Connect an AI client", desc: "Link Claude Desktop, VS Code, or Claude Web", href: "/connect" },
+                { id: "first-memory", label: "Add your first memory", desc: "Create a rule, project note, or reference" },
+                { id: "import", label: "Import from ChatGPT", desc: "Bulk import existing conversation history", href: "/import" },
+              ].map(item => (
+                <label key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={onboardingSteps[item.id] || false}
+                    onChange={(e) => updateOnboardingStep(item.id, e.target.checked)}
+                    style={{ marginTop: 4, accentColor: "var(--accent)", cursor: "pointer", flex: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: onboardingSteps[item.id] ? "var(--text-muted)" : "var(--text)", textDecoration: onboardingSteps[item.id] ? "line-through" : "none" }}>
+                      {item.href ? <a href={item.href} style={{ color: "inherit", textDecoration: "none" }}>{item.label}</a> : item.label}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{item.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          <button
+            onClick={dismissOnboarding}
+            style={{
+              flex: 0,
+              background: "none",
+              border: "none",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              padding: 0,
+              fontSize: 18,
+              lineHeight: 1,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 28 }}>
         {[
@@ -1274,9 +1415,35 @@ function Dashboard() {
           <option value="projects">Projects</option>
           <option value="references">References</option>
         </select>
-        {(filter || categoryFilter) && (
+
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'newest' | 'oldest' | 'alphabetical')}
+          style={{ padding: "8px 12px", minWidth: 120 }}
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="alphabetical">Alphabetical</option>
+        </select>
+
+        <input
+          type="date"
+          value={dateStart}
+          onChange={(e) => setDateStart(e.target.value)}
+          title="Filter from date"
+          style={{ padding: "8px 12px", minWidth: 120 }}
+        />
+        <input
+          type="date"
+          value={dateEnd}
+          onChange={(e) => setDateEnd(e.target.value)}
+          title="Filter to date"
+          style={{ padding: "8px 12px", minWidth: 120 }}
+        />
+
+        {(filter || categoryFilter || sortBy !== 'newest' || dateStart || dateEnd) && (
           <button
-            onClick={() => { setFilter(""); setCategoryFilter(""); }}
+            onClick={() => { setFilter(""); setCategoryFilter(""); setSortBy('newest'); setDateStart(""); setDateEnd(""); }}
             style={{
               padding: "8px 12px",
               background: "var(--surface2)",
@@ -1285,7 +1452,7 @@ function Dashboard() {
               fontSize: 12,
             }}
           >
-            Clear
+            Clear all
           </button>
         )}
       </div>
@@ -1348,6 +1515,9 @@ function Dashboard() {
           memories={memories}
           filter={filter}
           categoryFilter={categoryFilter}
+          sortBy={sortBy}
+          dateStart={dateStart}
+          dateEnd={dateEnd}
           onShowHistory={setActiveTimelineId}
           onExportZip={triggerExport}
           workspaces={workspaces}

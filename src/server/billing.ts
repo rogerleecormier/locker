@@ -9,6 +9,7 @@ import {
   organizationMembers,
   orgQuotas,
   users,
+  stripeEvents,
 } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
@@ -231,9 +232,22 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
     return new Response(`Webhook Error: ${err.message}`, { status: 400 });
   }
 
-  const db = drizzle(env.DB, { schema: { userPlans, organizations, orgQuotas, users } });
+  const db = drizzle(env.DB, { schema: { userPlans, organizations, orgQuotas, users, stripeEvents } });
 
-  console.log(`[stripe-webhook] received event: ${event.type}`);
+  console.log(`[stripe-webhook] received event: ${event.type} id: ${event.id}`);
+
+  // Idempotency guard: check if we've already processed this event
+  const existingEvent = await db
+    .select({ id: stripeEvents.id })
+    .from(stripeEvents)
+    .where(eq(stripeEvents.id, event.id))
+    .limit(1)
+    .all();
+
+  if (existingEvent.length > 0) {
+    console.log(`[stripe-webhook] event already processed: ${event.id}`);
+    return new Response("OK", { status: 200 });
+  }
 
   try {
     switch (event.type) {
@@ -494,6 +508,16 @@ export async function handleStripeWebhook(request: Request, env: CloudflareEnv):
     console.error(`[stripe-webhook] processing error: ${err.message}`);
     return new Response(`Webhook Error: ${err.message}`, { status: 500 });
   }
+
+  // Record event as processed
+  await db
+    .insert(stripeEvents)
+    .values({
+      id: event.id,
+      type: event.type,
+      processedAt: Date.now(),
+    })
+    .catch((err) => console.error(`[stripe-webhook] failed to record event: ${err.message}`));
 
   return new Response("OK", { status: 200 });
 }
