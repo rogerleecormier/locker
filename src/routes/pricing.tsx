@@ -1,35 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { createServerFn } from "@tanstack/react-start";
-import { drizzle } from "drizzle-orm/d1";
 import { PLANS, PLAN_ORDER } from "~/lib/plans";
 import { PlanCard } from "~/components/PaywallGate";
-import type { CloudflareEnv } from "~/types/cloudflare";
-
-type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
-
-export const joinWaitlist = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { email: string; plan: string } => {
-    const d = data as { email: string; plan: string };
-    if (!d.email || !d.email.includes("@")) throw new Error("Valid email required");
-    return { email: d.email.trim().toLowerCase(), plan: d.plan ?? "business" };
-  })
-  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
-    const { env } = (context as unknown as CFContext).cloudflare;
-    const db = drizzle(env.DB);
-
-    try {
-      await db.run({
-        sql: `INSERT OR IGNORE INTO waitlist (id, email, plan, createdAt) VALUES (?, ?, ?, ?)`,
-        args: [crypto.randomUUID(), data.email, data.plan, Date.now()],
-      } as any);
-    } catch (err) {
-      console.error("[waitlist] insert error:", err);
-    }
-
-    return { success: true };
-  });
 
 export const Route = createFileRoute("/pricing")({
   component: PricingPage,
@@ -37,14 +8,6 @@ export const Route = createFileRoute("/pricing")({
 
 function PricingPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-
-  const waitlistMut = useMutation({
-    mutationFn: (data: { email: string; plan: string }) => joinWaitlist({ data }),
-    onSuccess: () => setSubmitted(true),
-    onError: (err) => alert(String(err)),
-  });
 
   return (
     <div>
@@ -85,70 +48,6 @@ function PricingPage() {
             onSelect={() => planId === "free" ? navigate({ to: "/signup" }) : null}
           />
         ))}
-      </div>
-
-      <div style={{
-        background: "var(--surface)",
-        border: "1px solid rgba(168,85,247,0.3)",
-        borderRadius: 16,
-        padding: "32px 28px",
-        textAlign: "center",
-        marginBottom: 32,
-      }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>
-          Business plan – launching soon
-        </div>
-        <p style={{ fontSize: 14, color: "var(--text-muted)", maxWidth: 420, margin: "0 auto 24px", lineHeight: 1.6 }}>
-          Join the waitlist and be first to know when team collaboration features go live. Early access pricing available.
-        </p>
-
-        {submitted ? (
-          <div style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "12px 24px",
-            background: "rgba(34,197,94,0.1)",
-            border: "1px solid rgba(34,197,94,0.3)",
-            borderRadius: 10,
-            color: "var(--success)",
-            fontWeight: 600,
-            fontSize: 14,
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            You're on the list!
-          </div>
-        ) : (
-          <div style={{ display: "flex", gap: 8, justifyContent: "center", maxWidth: 400, margin: "0 auto" }}>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com"
-              onKeyDown={(e) => e.key === "Enter" && !waitlistMut.isPending && email && waitlistMut.mutate({ email, plan: "business" })}
-              style={{ flex: 1, padding: "10px 14px", fontSize: 13 }}
-            />
-            <button
-              onClick={() => waitlistMut.mutate({ email, plan: "business" })}
-              disabled={waitlistMut.isPending || !email}
-              style={{
-                padding: "10px 20px",
-                background: "var(--accent)",
-                color: "#fff",
-                fontWeight: 600,
-                fontSize: 13,
-                borderRadius: 8,
-                border: "none",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {waitlistMut.isPending ? "Joining…" : "Join Waitlist"}
-            </button>
-          </div>
-        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>

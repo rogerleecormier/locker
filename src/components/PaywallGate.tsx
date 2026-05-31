@@ -436,25 +436,26 @@ export function PlanCard({
                 cursor: "pointer",
               }}
             >
-              {plan.id === "free" && !isLoggedIn ? "Sign Up" : `Upgrade to ${plan.label}`}
+              Upgrade to {plan.label}
             </button>
           ) : (
             <button
-              disabled
+              onClick={plan.id === "free" && !isLoggedIn ? onSelect : undefined}
+              disabled={!(plan.id === "free" && !isLoggedIn)}
               style={{
                 width: "100%",
                 padding: "10px 0",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                color: "var(--text-muted)",
-                fontWeight: 500,
+                background: plan.id === "free" && !isLoggedIn ? "var(--accent)" : "var(--surface2)",
+                border: plan.id === "free" && !isLoggedIn ? "none" : "1px solid var(--border)",
+                color: plan.id === "free" && !isLoggedIn ? "#fff" : "var(--text-muted)",
+                fontWeight: plan.id === "free" && !isLoggedIn ? 600 : 500,
                 fontSize: 13,
                 borderRadius: 8,
-                cursor: "not-allowed",
-                opacity: 0.6,
+                cursor: plan.id === "free" && !isLoggedIn ? "pointer" : "not-allowed",
+                opacity: plan.id === "free" && !isLoggedIn ? 1 : 0.6,
               }}
             >
-              Coming Soon
+              {plan.id === "free" && !isLoggedIn ? "Sign Up" : "Coming Soon"}
             </button>
           )}
         </div>
