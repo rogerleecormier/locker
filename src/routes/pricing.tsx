@@ -80,6 +80,7 @@ function PricingPage() {
             key={planId}
             plan={PLANS[planId]}
             isCurrentPlan={false}
+            isLoggedIn={false}
           />
         ))}
       </div>

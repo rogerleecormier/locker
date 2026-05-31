@@ -19,7 +19,7 @@ interface RouterContext {
   queryClient: QueryClient;
 }
 
-const PUBLIC_PATHS = ["/", "/login", "/signup"];
+const PUBLIC_PATHS = ["/", "/login", "/signup", "/pricing"];
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({

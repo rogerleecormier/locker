@@ -308,11 +308,13 @@ export function PlanCard({
   isCurrentPlan,
   onSelect,
   isAdmin = false,
+  isLoggedIn = true,
 }: {
   plan: typeof PLANS[PlanId];
   isCurrentPlan: boolean;
   onSelect?: () => void;
   isAdmin?: boolean;
+  isLoggedIn?: boolean;
 }) {
   const featureList: Array<{ key: keyof PlanFeatures; included: boolean }> = [
     { key: "organizations", included: plan.features.organizations },
@@ -434,7 +436,7 @@ export function PlanCard({
                 cursor: "pointer",
               }}
             >
-              Upgrade to {plan.label}
+              {plan.id === "free" && !isLoggedIn ? "Sign Up" : `Upgrade to ${plan.label}`}
             </button>
           ) : (
             <button
