@@ -685,6 +685,23 @@ function LandingPage() {
           </FadeIn>
         </div>
       </div>
+
+      {/* ── FOOTER ── */}
+      <footer style={{ background: "var(--surface)", borderTop: "1px solid var(--border)", padding: "40px 24px", textAlign: "center" }}>
+        <div style={{ maxWidth: 960, margin: "0 auto", fontSize: 12, color: "var(--text-muted)" }}>
+          <div style={{ marginBottom: 16 }}>
+            <a href="/docs" style={{ color: "var(--accent)", textDecoration: "none", marginRight: 24, fontSize: 13 }}>
+              API Docs
+            </a>
+            <a href="https://modelcontextprotocol.io" target="_blank" rel="noreferrer" style={{ color: "var(--accent)", textDecoration: "none", marginRight: 24 }}>
+              MCP Spec
+            </a>
+          </div>
+          <p style={{ margin: "8px 0 0 0" }}>
+            End-to-end encrypted context for AI. Built on Cloudflare Workers.
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

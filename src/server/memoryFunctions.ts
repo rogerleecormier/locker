@@ -1880,6 +1880,7 @@ export type ApiTokenPublic = {
   scopeId: string | null;
   createdAt: number;
   lastUsedAt: number | null;
+  expiresAt: number | null;
 };
  
 export const listApiTokens = createServerFn({ method: "GET" }).handler(
@@ -1896,6 +1897,7 @@ export const listApiTokens = createServerFn({ method: "GET" }).handler(
         scopeId: apiTokens.scopeId,
         createdAt: apiTokens.createdAt,
         lastUsedAt: apiTokens.lastUsedAt,
+        expiresAt: apiTokens.expiresAt,
       })
       .from(apiTokens)
       .where(eq(apiTokens.userId, user.id))
@@ -1971,6 +1973,25 @@ export const updateApiTokenPermissions = createServerFn({ method: "POST" })
       .set({ permissions: data.permissions })
       .where(sql`${apiTokens.id} = ${data.id} AND ${apiTokens.userId} = ${user.id}`);
     return { updated: true };
+  });
+
+export const renewApiToken = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { id: string; ttlDays: number } => {
+    const d = data as { id: string; ttlDays?: number };
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    const ttl = typeof d.ttlDays === "number" ? Math.max(1, d.ttlDays) : 30;
+    return { id: d.id, ttlDays: ttl };
+  })
+  .handler(async ({ data, context }): Promise<{ expiresAt: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+    const now = Date.now();
+    const expiresAt = now + (data.ttlDays * 24 * 60 * 60 * 1000);
+    await db.update(apiTokens)
+      .set({ expiresAt })
+      .where(sql`${apiTokens.id} = ${data.id} AND ${apiTokens.userId} = ${user.id}`);
+    return { expiresAt };
   });
 
 export const encryptAllMemories = createServerFn({ method: "POST" }).handler(
@@ -2571,19 +2592,22 @@ export const sendPasswordResetEmail = createServerFn({ method: "POST" })
         createdAt: new Date(),
       });
 
-    if (env.SE_EMAIL) {
-      const resetLink = `${env.BETTER_AUTH_URL}/reset-password/${resetToken}`;
-      try {
-        await env.SE_EMAIL.send({
-          to: data.email,
-          from: "noreply@locker.dev",
-          subject: "Reset your Locker password",
-          text: `Click this link to reset your password:\n\n${resetLink}\n\nThis link expires in 1 hour.`,
-          html: `<p>Click <a href="${resetLink}">here to reset your password</a>.</p><p>This link expires in 1 hour.</p>`,
-        });
-      } catch (err) {
-        console.error("[password-reset] Email send failed:", err);
-      }
+    if (!env.SE_EMAIL) {
+      throw new Error("Email sending is not configured. Contact support.");
+    }
+
+    const resetLink = `${env.BETTER_AUTH_URL}/reset-password/${resetToken}`;
+    try {
+      await env.SE_EMAIL.send({
+        to: data.email,
+        from: "noreply@locker.dev",
+        subject: "Reset your Locker password",
+        text: `Click this link to reset your password:\n\n${resetLink}\n\nThis link expires in 1 hour.`,
+        html: `<p>Click <a href="${resetLink}">here to reset your password</a>.</p><p>This link expires in 1 hour.</p>`,
+      });
+    } catch (err) {
+      console.error("[password-reset] Email send failed:", err);
+      throw new Error("Failed to send reset email. Please try again or contact support.");
     }
 
     return { success: true };

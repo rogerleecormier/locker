@@ -69,7 +69,7 @@ const MCP_MANIFEST = {
   },
 };
 
-const ALL_TOOLS = [
+export const ALL_TOOLS = [
   {
     name: "list_accessible_scopes",
     description:

@@ -6,6 +6,7 @@ import {
   createApiToken,
   revokeApiToken,
   updateApiTokenPermissions,
+  renewApiToken,
   getProfile,
   saveProfile,
   getUserWorkspaces,
@@ -51,6 +52,12 @@ function TokenRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [perms, setPerms] = useState(token.permissions);
+  const [renewTtl, setRenewTtl] = useState<number | null>(null);
+  const [renewing, setRenewing] = useState(false);
+
+  const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+  const isExpiringSoon = token.expiresAt ? (token.expiresAt - Date.now()) < TWO_WEEKS_MS : false;
+  const daysUntilExpiry = token.expiresAt ? Math.ceil((token.expiresAt - Date.now()) / (24 * 60 * 60 * 1000)) : null;
 
   function toggleBit(bit: number) {
     const next = perms ^ bit;
@@ -73,15 +80,63 @@ function TokenRow({
             </span>
           </span>
           <span style={s.tokenPerms}>{permLabel(token.permissions)}</span>
+          {isExpiringSoon && daysUntilExpiry !== null && (
+            <span style={{ fontSize: 11, background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 4, padding: "2px 6px", marginLeft: 8, fontWeight: 500, display: "inline-block", verticalAlign: "middle" }}>
+              Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? "s" : ""}
+            </span>
+          )}
         </div>
         <div style={s.tokenDates}>
           <span>Created {formatDate(token.createdAt)}</span>
           {token.lastUsedAt && <span> · Last used {formatDate(token.lastUsedAt)}</span>}
+          {token.expiresAt && <span> · Expires {formatDate(token.expiresAt)}</span>}
         </div>
         <div style={s.tokenActions}>
           <button style={s.btnGhost} onClick={() => setExpanded((x) => !x)}>
             {expanded ? "Collapse" : "Permissions"}
           </button>
+          {token.expiresAt && (
+            renewTtl === null ? (
+              <button style={s.btnGhost} onClick={() => setRenewTtl(30)}>
+                Renew
+              </button>
+            ) : (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <select
+                  value={renewTtl}
+                  onChange={(e) => setRenewTtl(parseInt(e.target.value))}
+                  style={{ padding: "4px 8px", fontSize: 12, background: "var(--surface2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}
+                >
+                  <option value={7}>7 days</option>
+                  <option value={30}>30 days</option>
+                  <option value={90}>90 days</option>
+                  <option value={365}>1 year</option>
+                </select>
+                <button
+                  style={{ ...s.btnGhost, fontSize: 12 }}
+                  onClick={() => {
+                    if (renewTtl !== null) {
+                      setRenewing(true);
+                      renewApiToken({ data: { id: token.id, ttlDays: renewTtl } })
+                        .then(() => {
+                          // Refresh token list
+                          location.reload();
+                          setRenewTtl(null);
+                        })
+                        .catch((err) => {
+                          alert("Failed to renew token: " + (err.message || "Unknown error"));
+                          setRenewTtl(null);
+                        })
+                        .finally(() => setRenewing(false));
+                    }
+                  }}
+                  disabled={renewing}
+                >
+                  {renewing ? "Renewing..." : "Renew"}
+                </button>
+              </div>
+            )
+          )}
           <button style={{ ...s.btnGhost, color: "var(--error)", borderColor: "rgba(239,68,68,0.3)" }} onClick={() => onRevoke(token.id)}>
             Revoke
           </button>

@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { batchImportMemories, parseMemoriesWithAI } from "~/server/memoryFunctions";
+import { TEMPLATES } from "~/lib/templates";
 
 export const Route = createFileRoute("/import")({
   component: ImportPage,
@@ -280,6 +281,9 @@ function PromptPanel() {
 function IngestPanel() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [inputMode, setInputMode] = useState<"paste" | "file" | "templates">("paste");
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [templateSelection, setTemplateSelection] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
   const [pasteText, setPasteText] = useState("");
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -287,6 +291,45 @@ function IngestPanel() {
   const [editingPreview, setEditingPreview] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
   const [source, setSource] = useState<string>("manual");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileRead(file: File) {
+    setParseError(null);
+    setPreview(null);
+    setEditingPreview(null);
+    setImportResult(null);
+
+    const text = await file.text();
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+
+    let contentToProcess = text;
+
+    if (ext === "json") {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          if (typeof parsed[0] === "string") {
+            contentToProcess = parsed.join("\n");
+          } else if (parsed[0] && typeof parsed[0] === "object") {
+            const items = parsed.map((item: any) => item.fact || item.content || JSON.stringify(item)).join("\n");
+            contentToProcess = items;
+          }
+        }
+      } catch {
+        contentToProcess = text;
+      }
+    }
+
+    setPasteText(contentToProcess);
+    setInputMode("paste");
+  }
+
+  function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.currentTarget.files?.[0];
+    if (file) {
+      handleFileRead(file);
+    }
+  }
 
   const batchMutation = useMutation({
     mutationFn: ({ items, source }: { items: Array<{ fact: string; category?: string; tags?: string }>; source: string }) =>
@@ -341,19 +384,224 @@ function IngestPanel() {
       </div>
 
       <div style={{ padding: 18 }}>
-        <textarea
-          value={pasteText}
-          onChange={(e) => { setPasteText(e.target.value); setParseError(null); setPreview(null); setImportResult(null); }}
-          placeholder="Paste anything — chatbot memory exports, free-form text, structured or unstructured output. AI will extract the discrete facts."
-          rows={8}
-          maxLength={16000}
-          style={{ width: "100%", padding: "10px 12px", resize: "vertical", fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}
-        />
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4, marginBottom: 8 }}>
-          <span style={{ fontSize: 11, color: pasteText.length >= 16000 ? "var(--error)" : "var(--text-muted)" }}>
-            {pasteText.length.toLocaleString()} / 16,000 characters
-          </span>
+        <div style={{ display: "flex", gap: 0, marginBottom: 12, borderBottom: "1px solid var(--border)" }}>
+          <button
+            onClick={() => setInputMode("paste")}
+            style={{
+              padding: "10px 16px",
+              background: inputMode === "paste" ? "var(--surface)" : "transparent",
+              border: inputMode === "paste" ? "1px solid var(--border)" : "none",
+              borderBottom: inputMode === "paste" ? "none" : "1px solid transparent",
+              color: inputMode === "paste" ? "var(--accent)" : "var(--text-muted)",
+              fontWeight: inputMode === "paste" ? 600 : 500,
+              fontSize: 13,
+              cursor: "pointer",
+              borderRadius: "var(--radius) var(--radius) 0 0",
+              transition: "all 0.2s",
+            }}
+          >
+            Paste Text
+          </button>
+          <button
+            onClick={() => setInputMode("file")}
+            style={{
+              padding: "10px 16px",
+              background: inputMode === "file" ? "var(--surface)" : "transparent",
+              border: inputMode === "file" ? "1px solid var(--border)" : "none",
+              borderBottom: inputMode === "file" ? "none" : "1px solid transparent",
+              color: inputMode === "file" ? "var(--accent)" : "var(--text-muted)",
+              fontWeight: inputMode === "file" ? 600 : 500,
+              fontSize: 13,
+              cursor: "pointer",
+              borderRadius: "var(--radius) var(--radius) 0 0",
+              transition: "all 0.2s",
+            }}
+          >
+            Upload File
+          </button>
+          <button
+            onClick={() => setInputMode("templates")}
+            style={{
+              padding: "10px 16px",
+              background: inputMode === "templates" ? "var(--surface)" : "transparent",
+              border: inputMode === "templates" ? "1px solid var(--border)" : "none",
+              borderBottom: inputMode === "templates" ? "none" : "1px solid transparent",
+              color: inputMode === "templates" ? "var(--accent)" : "var(--text-muted)",
+              fontWeight: inputMode === "templates" ? 600 : 500,
+              fontSize: 13,
+              cursor: "pointer",
+              borderRadius: "var(--radius) var(--radius) 0 0",
+              transition: "all 0.2s",
+            }}
+          >
+            Templates
+          </button>
         </div>
+
+        {inputMode === "paste" && (
+          <textarea
+            value={pasteText}
+            onChange={(e) => { setPasteText(e.target.value); setParseError(null); setPreview(null); setImportResult(null); }}
+            placeholder="Paste anything — chatbot memory exports, free-form text, structured or unstructured output. AI will extract the discrete facts."
+            rows={8}
+            maxLength={16000}
+            style={{ width: "100%", padding: "10px 12px", resize: "vertical", fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}
+          />
+        )}
+
+        {inputMode === "file" && (
+          <div style={{
+            padding: "40px 20px",
+            textAlign: "center",
+            border: "2px dashed var(--border)",
+            borderRadius: "var(--radius)",
+            background: "rgba(168,85,247,0.02)",
+            cursor: "pointer",
+            transition: "all 0.2s",
+          }}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 12, opacity: 0.7 }}>
+              <path d="M12 5v14M5 12l7 7 7-7" />
+            </svg>
+            <p style={{ margin: "8px 0 0 0", fontSize: 13, color: "var(--text-muted)" }}>
+              Click to upload or drag a <strong style={{ color: "var(--text)" }}>.json, .txt, or .md</strong> file
+            </p>
+            <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+              Supports ChatGPT/Claude export formats
+            </p>
+          </div>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,.txt,.md"
+          onChange={handleFileInputChange}
+          style={{ display: "none" }}
+        />
+        {inputMode === "paste" && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4, marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: pasteText.length >= 16000 ? "var(--error)" : "var(--text-muted)" }}>
+              {pasteText.length.toLocaleString()} / 16,000 characters
+            </span>
+          </div>
+        )}
+
+        {inputMode === "templates" && !selectedTemplate && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginTop: 8 }}>
+            {TEMPLATES.map((template) => (
+              <div
+                key={template.id}
+                onClick={() => {
+                  setSelectedTemplate(template.id);
+                  setTemplateSelection([...template.items]);
+                }}
+                style={{
+                  padding: 16,
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius)",
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)";
+                  (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                  (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: "var(--text)" }}>
+                  {template.title}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.4 }}>
+                  {template.description}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--accent)", fontWeight: 500 }}>
+                  {template.items.length} item{template.items.length !== 1 ? "s" : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {inputMode === "templates" && selectedTemplate && templateSelection && (
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <button
+                onClick={() => {
+                  setSelectedTemplate(null);
+                  setTemplateSelection(null);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-muted)",
+                  padding: "4px 12px",
+                  fontSize: 12,
+                  borderRadius: "var(--radius)",
+                  cursor: "pointer",
+                }}
+              >
+                ← Back
+              </button>
+              <strong style={{ color: "var(--accent)", fontSize: 13 }}>Review & Import</strong>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{templateSelection.length} memor{templateSelection.length !== 1 ? "ies" : "y"}</span>
+            </div>
+            <div style={{
+              background: "rgba(168,85,247,0.04)",
+              border: "1px solid rgba(168,85,247,0.15)",
+              borderRadius: "var(--radius)",
+              maxHeight: 320,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: 0
+            }}>
+              {templateSelection.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "10px 12px",
+                    borderBottom: idx < templateSelection.length - 1 ? "1px solid rgba(168,85,247,0.08)" : "none",
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ color: "var(--text)", marginBottom: 4 }}>{item.fact}</div>
+                  {item.category && (
+                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                      {item.category}
+                      {item.tags && ` · ${item.tags}`}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                if (templateSelection.length > 0) {
+                  batchMutation.mutate({ items: templateSelection, source: "template" });
+                }
+              }}
+              style={{
+                padding: "10px 16px",
+                background: "var(--accent)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "var(--radius)",
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: "pointer",
+                marginTop: 8,
+              }}
+            >
+              Import {templateSelection.length} Item{templateSelection.length !== 1 ? "s" : ""}
+            </button>
+          </div>
+        )}
 
         {parseError && (
           <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
