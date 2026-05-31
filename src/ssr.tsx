@@ -79,7 +79,7 @@ export default {
         grant_types_supported: ["authorization_code", "refresh_token"],
         code_challenge_methods_supported: ["S256"],
         token_endpoint_auth_methods_supported: ["none"],
-        scopes_supported: ["openid", "profile", "email", "offline_access"],
+        scopes_supported: ["openid", "profile", "email", "offline_access", "openid:mcp:recall", "openid:mcp:commit", "openid:mcp:update", "openid:mcp:delete"],
         subject_types_supported: ["public"],
         id_token_signing_alg_values_supported: ["RS256"],
         resource_indicators_supported: true,
@@ -110,7 +110,7 @@ export default {
               response_types: ["code"],
               token_endpoint_auth_method: "none",
               client_name: "Claude",
-              scope: "openid profile email offline_access",
+              scope: "openid profile email offline_access openid:mcp:recall openid:mcp:commit openid:mcp:update openid:mcp:delete",
             }, { status: 201 });
           }
         } catch {
