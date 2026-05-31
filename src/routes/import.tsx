@@ -384,58 +384,29 @@ function IngestPanel() {
       </div>
 
       <div style={{ padding: 18 }}>
-        <div style={{ display: "flex", gap: 0, marginBottom: 12, borderBottom: "1px solid var(--border)" }}>
-          <button
-            onClick={() => setInputMode("paste")}
-            style={{
-              padding: "10px 16px",
-              background: inputMode === "paste" ? "var(--surface)" : "transparent",
-              border: inputMode === "paste" ? "1px solid var(--border)" : "none",
-              borderBottom: inputMode === "paste" ? "none" : "1px solid transparent",
-              color: inputMode === "paste" ? "var(--accent)" : "var(--text-muted)",
-              fontWeight: inputMode === "paste" ? 600 : 500,
-              fontSize: 13,
-              cursor: "pointer",
-              borderRadius: "var(--radius) var(--radius) 0 0",
-              transition: "all 0.2s",
-            }}
-          >
-            Paste Text
-          </button>
-          <button
-            onClick={() => setInputMode("file")}
-            style={{
-              padding: "10px 16px",
-              background: inputMode === "file" ? "var(--surface)" : "transparent",
-              border: inputMode === "file" ? "1px solid var(--border)" : "none",
-              borderBottom: inputMode === "file" ? "none" : "1px solid transparent",
-              color: inputMode === "file" ? "var(--accent)" : "var(--text-muted)",
-              fontWeight: inputMode === "file" ? 600 : 500,
-              fontSize: 13,
-              cursor: "pointer",
-              borderRadius: "var(--radius) var(--radius) 0 0",
-              transition: "all 0.2s",
-            }}
-          >
-            Upload File
-          </button>
-          <button
-            onClick={() => setInputMode("templates")}
-            style={{
-              padding: "10px 16px",
-              background: inputMode === "templates" ? "var(--surface)" : "transparent",
-              border: inputMode === "templates" ? "1px solid var(--border)" : "none",
-              borderBottom: inputMode === "templates" ? "none" : "1px solid transparent",
-              color: inputMode === "templates" ? "var(--accent)" : "var(--text-muted)",
-              fontWeight: inputMode === "templates" ? 600 : 500,
-              fontSize: 13,
-              cursor: "pointer",
-              borderRadius: "var(--radius) var(--radius) 0 0",
-              transition: "all 0.2s",
-            }}
-          >
-            Templates
-          </button>
+        <div style={{ display: "flex", gap: 4, marginBottom: 12, borderBottom: "1px solid var(--border)" }}>
+          {(["paste", "file", "templates"] as const).map((mode) => {
+            const labels = { paste: "Paste Text", file: "Upload File", templates: "Templates" };
+            return (
+              <button
+                key={mode}
+                onClick={() => setInputMode(mode)}
+                style={{
+                  padding: "8px 16px",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: inputMode === mode ? "2px solid var(--accent)" : "2px solid transparent",
+                  color: inputMode === mode ? "var(--accent)" : "var(--text-muted)",
+                  fontWeight: inputMode === mode ? 600 : 400,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  marginBottom: -1,
+                }}
+              >
+                {labels[mode]}
+              </button>
+            );
+          })}
         </div>
 
         {inputMode === "paste" && (
