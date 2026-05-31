@@ -542,7 +542,7 @@ export async function handleMcpRequest(
         status: 401,
         headers: {
           ...headers,
-          "WWW-Authenticate": `Bearer resource_metadata="${env.BETTER_AUTH_URL}/.well-known/oauth-protected-resource", scope="openid profile email offline_access"`,
+          "WWW-Authenticate": `Bearer resource_metadata="${env.BETTER_AUTH_URL}/.well-known/oauth-protected-resource", scope="openid profile email offline_access openid:mcp:recall openid:mcp:commit openid:mcp:update openid:mcp:delete"`,
         },
       }
     );
