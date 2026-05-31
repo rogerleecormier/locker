@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
@@ -36,6 +36,7 @@ export const Route = createFileRoute("/pricing")({
 });
 
 function PricingPage() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -81,6 +82,7 @@ function PricingPage() {
             plan={PLANS[planId]}
             isCurrentPlan={false}
             isLoggedIn={false}
+            onSelect={() => planId === "free" ? navigate({ to: "/signup" }) : null}
           />
         ))}
       </div>
