@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { PLATFORMS, PLATFORM_GROUPS } from "../lib/platforms";
 import { PLANS, PLAN_ORDER } from "~/lib/plans";
@@ -297,6 +297,7 @@ function Step({ num, title, desc, delay }: { num: string; title: string; desc: s
 
 // ── Main landing page ─────────────────────────────────────────────────────────
 function LandingPage() {
+  const navigate = useNavigate();
   const [heroVisible, setHeroVisible] = useState(false);
   useEffect(() => { const t = setTimeout(() => setHeroVisible(true), 60); return () => clearTimeout(t); }, []);
 
@@ -635,6 +636,8 @@ function LandingPage() {
               <PlanCard
                 plan={PLANS[planId]}
                 isCurrentPlan={false}
+                isLoggedIn={false}
+                onSelect={() => planId === "free" ? navigate({ to: "/signup" }) : null}
               />
             </FadeIn>
           ))}
