@@ -14,10 +14,10 @@ import {
   moveMemories,
   getMemoryUsageStats,
   getArchivedMemories,
+  archiveMemory,
   restoreMemory,
   permanentlyDeleteArchivedMemory,
 } from "~/server/memoryFunctions";
-import { getAdminStatus } from "~/routes/admin";
 import type { Memory } from "~/db/schema";
 
 export const Route = createFileRoute("/memories")({
@@ -137,6 +137,17 @@ function MemoryRow({
     },
     onError: (err: Error) => {
       alert("Failed to move memory: " + err.message);
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: () => archiveMemory({ data: { id: memory.id } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      queryClient.invalidateQueries({ queryKey: ["memories-archived"] });
+    },
+    onError: (err: Error) => {
+      alert("Failed to archive memory: " + err.message);
     },
   });
 
@@ -454,6 +465,34 @@ function MemoryRow({
                   Move
                 </button>
               )}
+              <button
+                onClick={() => archiveMutation.mutate()}
+                disabled={archiveMutation.isPending}
+                style={{
+                  padding: "3px 8px",
+                  background: "transparent",
+                  border: "1px solid transparent",
+                  color: "var(--text-muted)",
+                  fontSize: 11,
+                  borderRadius: "var(--radius)",
+                  opacity: 0.5,
+                  transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  const b = e.currentTarget as HTMLButtonElement;
+                  b.style.opacity = "1";
+                  b.style.borderColor = "rgba(168,85,247,0.4)";
+                  b.style.color = "var(--accent)";
+                }}
+                onMouseLeave={(e) => {
+                  const b = e.currentTarget as HTMLButtonElement;
+                  b.style.opacity = "0.5";
+                  b.style.borderColor = "transparent";
+                  b.style.color = "var(--text-muted)";
+                }}
+              >
+                {archiveMutation.isPending ? "…" : "Archive"}
+              </button>
               <button
                 onClick={() => setConfirming(true)}
                 style={{
@@ -1187,11 +1226,6 @@ function Dashboard() {
     queryFn: () => getUserWorkspaces(),
   });
 
-  const adminQuery = useQuery({
-    queryKey: ["admin-status"],
-    queryFn: () => getAdminStatus(),
-  });
-
   const { data: memories = [], isLoading, isError } = useQuery({
     queryKey: ["memories", projectKey],
     queryFn: () => getMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
@@ -1305,22 +1339,6 @@ function Dashboard() {
                 <option key={w.key} value={w.key}>{w.label}</option>
               ))}
             </select>
-            {workspaces.some((w) => w.type !== "personal" && (w.role === "owner" || w.role === "admin")) && (
-              <Link to="/organization" style={{ padding: "6px 12px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12, borderRadius: "var(--radius)", textDecoration: "none", transition: "all 0.15s" }}
-                onMouseEnter={(e) => { (e.target as HTMLElement).style.borderColor = "var(--text-muted)"; (e.target as HTMLElement).style.color = "var(--text)"; }}
-                onMouseLeave={(e) => { (e.target as HTMLElement).style.borderColor = "var(--border)"; (e.target as HTMLElement).style.color = "var(--text-muted)"; }}
-              >
-                Manage Org
-              </Link>
-            )}
-            {adminQuery.data?.isAdmin && (
-              <Link to="/admin" style={{ padding: "6px 12px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12, borderRadius: "var(--radius)", textDecoration: "none", transition: "all 0.15s" }}
-                onMouseEnter={(e) => { (e.target as HTMLElement).style.borderColor = "var(--text-muted)"; (e.target as HTMLElement).style.color = "var(--text)"; }}
-                onMouseLeave={(e) => { (e.target as HTMLElement).style.borderColor = "var(--border)"; (e.target as HTMLElement).style.color = "var(--text-muted)"; }}
-              >
-                Site Admin
-              </Link>
-            )}
             <button
               onClick={() => setShowNewMemory(true)}
               style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 16px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, borderRadius: "var(--radius)" }}

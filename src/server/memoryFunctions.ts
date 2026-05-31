@@ -1257,6 +1257,42 @@ export const updateMemory = createServerFn({ method: "POST" })
     return { ...rows[0], fact: data.fact };
   });
 
+export const archiveMemory = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { id: string } => {
+    const d = data as { id: string };
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    return { id: d.id };
+  })
+  .handler(async ({ data, context }): Promise<{ archived: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    if (!user.id) throw new Error("Unauthorized: userId is required");
+
+    const rows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
+    if (!rows.length) throw new Error("Memory not found");
+
+    const memory = rows[0];
+    if (!memory.isActive) throw new Error("Memory is already archived");
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, memory.projectKey);
+    if (!vaultAllowed) throw new Error(`Forbidden: no access to vault scope '${memory.projectKey}'`);
+
+    if (memory.isLocked) throw new Error("Locked memories cannot be archived — remove the lock first.");
+
+    if ((!memory.projectKey || memory.projectKey === "personal") && memory.userId !== user.id) {
+      throw new Error("Unauthorized");
+    }
+
+    await db.update(memories).set({ isActive: false }).where(eq(memories.id, data.id));
+    await env.VECTOR_INDEX.deleteByIds([data.id]);
+
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: data.id, metadata: { archived: true } });
+
+    return { archived: true };
+  });
+
 export const getArchivedMemories = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): { projectKey?: string; limit?: number; offset?: number } => {
     const d = data as { projectKey?: string; limit?: number; offset?: number };
