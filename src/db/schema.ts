@@ -68,6 +68,7 @@ export const apiTokens = sqliteTable("api_tokens", {
   permissions: integer("permissions").notNull().default(3), // 0b11 = all tools
   scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
   scopeId: text("scopeId"),
+  scopes: text("scopes"), // JSON array of allowed scopes, e.g. [{"type":"personal","id":null}]
   createdAt: integer("createdAt").notNull(),
   expiresAt: integer("expiresAt"),
   lastUsedAt: integer("lastUsedAt"),

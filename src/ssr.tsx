@@ -27,7 +27,7 @@ export default {
     }
 
     if (url.pathname === "/api/mcp") {
-      return handleMcpRequest(request, env);
+      return handleMcpRequest(request, env, ctx);
     }
 
     if (url.pathname === "/api/export" && request.method === "POST") {

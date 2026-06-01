@@ -1568,7 +1568,7 @@ function Dashboard() {
       {memoryTab === "archived" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {archivedData?.archived && archivedData.archived.length > 0 ? (
-            archivedData.archived.map((memory) => {
+            archivedData.archived.map((memory: any) => {
               const restoreMut = useMutation({
                 mutationFn: () => restoreMemory({ data: { id: memory.id } }),
                 onSuccess: () => {

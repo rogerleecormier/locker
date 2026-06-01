@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { eq, sql, and, desc } from "drizzle-orm";
+import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
@@ -316,10 +316,21 @@ async function validateBearerToken(
       .run()
       .catch(() => {});
 
-    // For scoped tokens, only allow the specified scope
-    const accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [
-      { type: token.scopeType as any, id: token.scopeId },
-    ];
+    // For scoped tokens, parse multiple scopes if available, otherwise fallback to single scope
+    let accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [];
+    if (token.scopes) {
+      try {
+        accessibleScopes = JSON.parse(token.scopes);
+      } catch (e) {
+        console.error("[api-token] Failed to parse token.scopes:", e);
+      }
+    }
+
+    if (!accessibleScopes || accessibleScopes.length === 0) {
+      accessibleScopes = [
+        { type: token.scopeType as any, id: token.scopeId },
+      ];
+    }
 
     return {
       userId: token.userId,
@@ -502,7 +513,8 @@ async function checkFallbackRateLimit(db: any, key: string): Promise<boolean> {
 
 export async function handleMcpRequest(
   request: Request,
-  env: CloudflareEnv
+  env: CloudflareEnv,
+  ctx?: ExecutionContext
 ): Promise<Response> {
   const origin = request.headers.get("origin") ?? "*";
   const authHeader = request.headers.get("Authorization");
@@ -852,11 +864,17 @@ export async function handleMcpRequest(
     // Update lastAccessedAt for recalled memories
     if (finalResults.length > 0) {
       const recalledIds = finalResults.map((r) => r.id);
-      ctx.waitUntil(
-        db.update(memories).set({ lastAccessedAt: Date.now() })
+      if (ctx?.waitUntil) {
+        ctx.waitUntil(
+          db.update(memories).set({ lastAccessedAt: Date.now() })
+            .where(inArray(memories.id, recalledIds))
+            .run()
+        );
+      } else {
+        await db.update(memories).set({ lastAccessedAt: Date.now() })
           .where(inArray(memories.id, recalledIds))
-          .run()
-      );
+          .run();
+      }
     }
 
     return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(finalResults) }] });
@@ -1259,6 +1277,7 @@ export async function handleMcpRequest(
         fact: encryptedFact,
         category,
         tags: rawTags,
+        timestamp: Date.now(),
       })
       .where(eq(memories.id, memId));
 

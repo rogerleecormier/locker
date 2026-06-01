@@ -66,9 +66,24 @@ function TokenRow({
     onUpdatePerms(token.id, next);
   }
 
-  const scopeKey = token.scopeType === "personal" ? "personal" : `${token.scopeType === "organization" ? "org" : "team"}:${token.scopeId}`;
-  const workspace = workspaces.find((w) => w.key === scopeKey);
-  const scopeLabel = workspace ? workspace.label : (token.scopeType === "personal" ? "Personal" : `${token.scopeType} (${token.scopeId})`);
+    let scopeLabel = "";
+    if (token.scopes) {
+      try {
+        const parsedScopes = JSON.parse(token.scopes) as Array<{ type: string; id: string | null }>;
+        const labels = parsedScopes.map((s) => {
+          const key = s.type === "personal" ? "personal" : `${s.type === "organization" ? "org" : "team"}:${s.id}`;
+          const w = workspaces.find((work: any) => work.key === key);
+          return w ? w.label.replace(/\s*\(Org\)|\s*\(Team\)/i, "") : (s.type === "personal" ? "Personal" : `${s.type} (${s.id})`);
+        });
+        scopeLabel = labels.join(", ");
+      } catch {
+        scopeLabel = "Legacy Scope";
+      }
+    } else {
+      const scopeKey = token.scopeType === "personal" ? "personal" : `${token.scopeType === "organization" ? "org" : "team"}:${token.scopeId}`;
+      const workspace = workspaces.find((w) => w.key === scopeKey);
+      scopeLabel = workspace ? workspace.label : (token.scopeType === "personal" ? "Personal" : `${token.scopeType} (${token.scopeId})`);
+    }
 
   return (
     <div style={s.tokenCard}>
@@ -162,11 +177,11 @@ function TokenRow({
 
 export function NewTokenModal({ onClose, onCreate }: {
   onClose: () => void;
-  onCreate: (name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string, ttlDays?: number) => Promise<string>;
+  onCreate: (name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string, scopes?: Array<{ type: "personal" | "organization" | "team"; id: string | null }>, ttlDays?: number) => Promise<string>;
 }) {
   const [name, setName] = useState("");
   const [perms, setPerms] = useState(MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE);
-  const [scopeKey, setScopeKey] = useState("personal");
+  const [selectedScopes, setSelectedScopes] = useState<string[]>(["personal"]);
   const [ttlDays, setTtlDays] = useState(365);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,13 +194,28 @@ export function NewTokenModal({ onClose, onCreate }: {
 
   async function handleCreate() {
     if (!name.trim()) return;
+    if (selectedScopes.length === 0) {
+      setError("At least one scope must be selected.");
+      return;
+    }
     setLoading(true);
     setError(null);
-    const [scopeType, scopeId] = scopeKey === "personal"
+    
+    const scopes = selectedScopes.map((key) => {
+      if (key === "personal") {
+        return { type: "personal" as const, id: null };
+      }
+      const [type, id] = key.split(":") as ["organization" | "team", string];
+      return { type, id };
+    });
+
+    const primaryKey = selectedScopes[0] || "personal";
+    const [scopeType, scopeId] = primaryKey === "personal"
       ? ["personal" as const, undefined]
-      : scopeKey.split(":") as ["organization" | "team", string];
+      : primaryKey.split(":") as ["organization" | "team", string];
+
     try {
-      setToken(await onCreate(name.trim(), perms, scopeType, scopeId, ttlDays));
+      setToken(await onCreate(name.trim(), perms, scopeType, scopeId, scopes, ttlDays));
     } catch (err: any) {
       setError(err.message || "Failed to generate token.");
     } finally {
@@ -233,10 +263,41 @@ export function NewTokenModal({ onClose, onCreate }: {
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Claude Desktop" style={{ ...s.input, width: "100%" }} autoFocus />
             </div>
             <div style={s.field}>
-              <label style={s.label}>Scope Constraint</label>
-              <select value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} style={s.input}>
-                {workspaces.map((w: any) => <option key={w.key} value={w.key}>{w.label}</option>)}
-              </select>
+              <label style={s.label}>Scope Constraints (Select one or more)</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", background: "var(--surface2)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", fontWeight: 600, borderBottom: "1px solid var(--border)", paddingBottom: 6, marginBottom: 4 }}>
+                  <input
+                    type="checkbox"
+                    checked={workspaces.length > 0 && selectedScopes.length === workspaces.length}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedScopes(workspaces.map((w: any) => w.key));
+                      } else {
+                        setSelectedScopes([]);
+                      }
+                    }}
+                    style={{ accentColor: "var(--accent)" }}
+                  />
+                  <span>All Workspaces</span>
+                </label>
+                {workspaces.map((w: any) => (
+                  <label key={w.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", padding: "2px 0" }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedScopes.includes(w.key)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedScopes([...selectedScopes, w.key]);
+                        } else {
+                          setSelectedScopes(selectedScopes.filter((k) => k !== w.key));
+                        }
+                      }}
+                      style={{ accentColor: "var(--accent)" }}
+                    />
+                    <span>{w.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
             <div style={s.field}>
               <label style={s.label}>Token Expiry</label>
@@ -367,8 +428,8 @@ export function ApiTokensSection() {
   const { data: workspaces = [] } = useQuery({ queryKey: ["workspaces"], queryFn: () => getUserWorkspaces() });
 
   const createMut = useMutation({
-    mutationFn: ({ name, permissions, scopeType, scopeId, ttlDays }: { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; ttlDays?: number }) =>
-      createApiToken({ data: { name, permissions, scopeType, scopeId, ttlDays } }),
+    mutationFn: ({ name, permissions, scopeType, scopeId, scopes, ttlDays }: { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; scopes?: any; ttlDays?: number }) =>
+      createApiToken({ data: { name, permissions, scopeType, scopeId, scopes, ttlDays } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["api-tokens"] }),
   });
   const revokeMut = useMutation({
@@ -380,8 +441,8 @@ export function ApiTokensSection() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["api-tokens"] }),
   });
 
-  async function handleCreate(name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string, ttlDays?: number): Promise<string> {
-    const result = await createMut.mutateAsync({ name, permissions, scopeType, scopeId, ttlDays });
+  async function handleCreate(name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string, scopes?: any, ttlDays?: number): Promise<string> {
+    const result = await createMut.mutateAsync({ name, permissions, scopeType, scopeId, scopes, ttlDays });
     return result.token;
   }
 

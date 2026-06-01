@@ -959,7 +959,7 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
           if (!tagsList.includes(source)) {
             tagsList.push(source);
             const newTags = tagsList.join(", ");
-            await db.update(memories).set({ tags: newTags }).where(eq(memories.id, matchedDbId));
+            await db.update(memories).set({ tags: newTags, timestamp: Date.now() }).where(eq(memories.id, matchedDbId));
             try {
               await env.VECTOR_INDEX.upsert([
                 {
@@ -1226,7 +1226,7 @@ export const updateMemory = createServerFn({ method: "POST" })
     const encryptedFact = await encryptFact(data.fact, vaultKey);
 
     await db.update(memories)
-      .set({ fact: encryptedFact, category: data.category, tags: data.tags })
+      .set({ fact: encryptedFact, category: data.category, tags: data.tags, timestamp: Date.now() })
       .where(eq(memories.id, data.id));
 
     // Record Memory Version
@@ -1294,7 +1294,7 @@ export const archiveMemory = createServerFn({ method: "POST" })
   });
 
 export const getArchivedMemories = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { projectKey?: string; limit?: number; offset?: number } => {
+  .inputValidator((data: unknown): { projectKey?: string; limit: number; offset: number } => {
     const d = data as { projectKey?: string; limit?: number; offset?: number };
     return {
       projectKey: typeof d?.projectKey === "string" ? d.projectKey : undefined,
@@ -2059,6 +2059,7 @@ export type ApiTokenPublic = {
   permissions: number;
   scopeType: "personal" | "organization" | "team";
   scopeId: string | null;
+  scopes: string | null;
   createdAt: number;
   lastUsedAt: number | null;
   expiresAt: number | null;
@@ -2076,6 +2077,7 @@ export const listApiTokens = createServerFn({ method: "GET" }).handler(
         permissions: apiTokens.permissions,
         scopeType: apiTokens.scopeType,
         scopeId: apiTokens.scopeId,
+        scopes: apiTokens.scopes,
         createdAt: apiTokens.createdAt,
         lastUsedAt: apiTokens.lastUsedAt,
         expiresAt: apiTokens.expiresAt,
@@ -2088,15 +2090,15 @@ export const listApiTokens = createServerFn({ method: "GET" }).handler(
 );
  
 export const createApiToken = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; ttlDays: number } => {
-    const d = data as { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; ttlDays?: number };
+  .inputValidator((data: unknown): { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; scopes?: any; ttlDays: number } => {
+    const d = data as { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; scopes?: any; ttlDays?: number };
     if (!d.name || typeof d.name !== "string") throw new Error("name is required");
     const perms = typeof d.permissions === "number" ? d.permissions : 15;
     const scope = d.scopeType === "organization" || d.scopeType === "team" ? d.scopeType : "personal";
     const ttl = typeof d.ttlDays === "number" ? Math.max(1, d.ttlDays) : 365;
-    return { name: d.name.trim().slice(0, 64), permissions: perms & 15, scopeType: scope, scopeId: d.scopeId, ttlDays: ttl };
+    return { name: d.name.trim().slice(0, 64), permissions: perms & 15, scopeType: scope, scopeId: d.scopeId, scopes: d.scopes, ttlDays: ttl };
   })
-  .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number; scopeType: string; scopeId: string | null; expiresAt: number }> => {
+  .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number; scopeType: string; scopeId: string | null; scopes: string | null; expiresAt: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
@@ -2108,6 +2110,7 @@ export const createApiToken = createServerFn({ method: "POST" })
     const id = crypto.randomUUID();
     const now = Date.now();
     const expiresAt = now + (data.ttlDays * 24 * 60 * 60 * 1000);
+    const scopesJson = data.scopes ? (typeof data.scopes === "string" ? data.scopes : JSON.stringify(data.scopes)) : null;
 
     await db.insert(apiTokens).values({
       id,
@@ -2117,11 +2120,12 @@ export const createApiToken = createServerFn({ method: "POST" })
       permissions: data.permissions,
       scopeType: data.scopeType,
       scopeId: data.scopeId || null,
+      scopes: scopesJson,
       createdAt: now,
       expiresAt,
     });
 
-    return { token: rawToken, id, name: data.name, permissions: data.permissions, scopeType: data.scopeType, scopeId: data.scopeId || null, expiresAt };
+    return { token: rawToken, id, name: data.name, permissions: data.permissions, scopeType: data.scopeType, scopeId: data.scopeId || null, scopes: scopesJson, expiresAt };
   });
 
 export const revokeApiToken = createServerFn({ method: "POST" })
