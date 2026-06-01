@@ -59,7 +59,7 @@ Output ONLY the two sections. No intro, no sign-off, no commentary. After both s
     label: "Claude",
     color: "#d4956a",
     url: "https://claude.ai/new",
-    prompt: `Export all of my stored memories and any context you've learned about me from past conversations. Preserve my words verbatim where possible, especially for instructions and preferences.
+    prompt: `Export everything from your stored memory (the entries visible in your Settings > Capabilities > Memory settings panel) and any context you've learned about me from past conversations. Preserve my words verbatim where possible, especially for instructions and preferences.
 
 ## Categories (output in this order):
 
@@ -91,9 +91,7 @@ If no date is known, use [unknown] instead.
     color: "#20b2aa",
     url: "https://www.perplexity.ai/",
     deeplinkUrl: (p: string) => `https://www.perplexity.ai/search?q=${encodeURIComponent(p)}`,
-    prompt: `Tell me everything you know about me: preferences, personal details, interests, recurring context, etc.
-
-List every discrete memory entry. One entry per line. Do not paraphrase, summarize, group, or omit anything.
+    prompt: `Export everything stored in your memory about me — specifically the entries visible in your Settings > Personalization > Memory settings panel. List every discrete memory entry verbatim, exactly as stored, one per line. Do not paraphrase, summarize, group, or omit anything.
 
 Format each line as:
 [YYYY-MM-DD] - Entry content here.
@@ -127,7 +125,7 @@ Divide the content into the labeled section using the categories above. Try to i
 Output:
 - Output ONLY the requested information. Do not include any conversational filler, intro text, or sign-offs.
 
-Finally, complete the sentence "Imported from: <name>", where name is ChatGPT, Claude, Grok, etc. This must be the absolute final text in your response.`,
+Finally, complete the sentence "Imported from: Gemini". This must be the absolute final text in your response.`,
   },
   {
     id: "grok",
