@@ -66,50 +66,41 @@ function TokenRow({
     onUpdatePerms(token.id, next);
   }
 
-    let scopeLabel = "";
+    let scopeBadges: Array<{ type: string; name: string; id: string | null }> = [];
     if (token.scopes) {
       try {
         const parsedScopes = JSON.parse(token.scopes) as Array<{ type: string; id: string | null }>;
-        const labels = parsedScopes.map((s) => {
+        scopeBadges = parsedScopes.map((s) => {
           const key = s.type === "personal" ? "personal" : `${s.type === "organization" ? "org" : "team"}:${s.id}`;
           const w = workspaces.find((work: any) => work.key === key);
-          return w ? w.label.replace(/\s*\(Org\)|\s*\(Team\)/i, "") : (s.type === "personal" ? "Personal" : `${s.type} (${s.id})`);
+          const name = w ? w.label.replace(/\s*\(Org\)|\s*\(Team\)/i, "") : (s.type === "personal" ? "Personal" : `${s.type} (${s.id})`);
+          return { type: s.type, name, id: s.id };
         });
-        scopeLabel = labels.join(", ");
       } catch {
-        scopeLabel = "Legacy Scope";
+        scopeBadges = [{ type: "legacy", name: "Legacy Scope", id: null }];
       }
     } else {
       const scopeKey = token.scopeType === "personal" ? "personal" : `${token.scopeType === "organization" ? "org" : "team"}:${token.scopeId}`;
       const workspace = workspaces.find((w) => w.key === scopeKey);
-      scopeLabel = workspace ? workspace.label : (token.scopeType === "personal" ? "Personal" : `${token.scopeType} (${token.scopeId})`);
+      const name = workspace ? workspace.label : (token.scopeType === "personal" ? "Personal" : `${token.scopeType} (${token.scopeId})`);
+      scopeBadges = [{ type: token.scopeType, name, id: token.scopeId || null }];
     }
 
   return (
     <div style={s.tokenCard}>
-      <div style={s.tokenHeader}>
-        <div style={s.tokenMeta}>
-          <span style={s.tokenName}>
-            {token.name}
-            <span style={{ fontSize: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "2px 6px", color: "var(--text-muted)", marginLeft: 8, fontWeight: 500, display: "inline-block", verticalAlign: "middle" }}>
-              {scopeLabel}
-            </span>
-          </span>
-          <span style={s.tokenPerms}>{permLabel(token.permissions)}</span>
+      {/* Top Row: Name, Expiring Warning, Actions */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{token.name}</span>
           {isExpiringSoon && daysUntilExpiry !== null && (
-            <span style={{ fontSize: 11, background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 4, padding: "2px 6px", marginLeft: 8, fontWeight: 500, display: "inline-block", verticalAlign: "middle" }}>
+            <span style={{ fontSize: 11, background: "rgba(245,158,11,0.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 6, padding: "2px 8px", fontWeight: 500 }}>
               Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? "s" : ""}
             </span>
           )}
         </div>
-        <div style={s.tokenDates}>
-          <span>Created {formatDate(token.createdAt)}</span>
-          {token.lastUsedAt && <span> · Last used {formatDate(token.lastUsedAt)}</span>}
-          {token.expiresAt && <span> · Expires {formatDate(token.expiresAt)}</span>}
-        </div>
         <div style={s.tokenActions}>
           <button style={s.btnGhost} onClick={() => setExpanded((x) => !x)}>
-            {expanded ? "Collapse" : "Permissions"}
+            {expanded ? "Hide Details" : "Permissions"}
           </button>
           {token.expiresAt && (
             renewTtl === null ? (
@@ -135,7 +126,6 @@ function TokenRow({
                       setRenewing(true);
                       renewApiToken({ data: { id: token.id, ttlDays: renewTtl } })
                         .then(() => {
-                          // Refresh token list
                           location.reload();
                           setRenewTtl(null);
                         })
@@ -158,6 +148,86 @@ function TokenRow({
           </button>
         </div>
       </div>
+
+      {/* Middle Row: Scopes & Allowed Tools/Permissions */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+        {/* Scopes Badges */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", width: 75, flexShrink: 0 }}>Workspaces:</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {scopeBadges.map((badge, idx) => (
+              <span key={idx} style={{ 
+                fontSize: 11, 
+                background: "var(--surface)", 
+                border: "1px solid var(--border)", 
+                borderRadius: 6, 
+                padding: "3px 8px", 
+                color: "var(--text)", 
+                fontWeight: 500,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5
+              }}>
+                {badge.type === "personal" ? (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.7 }}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                ) : badge.type === "organization" ? (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.7 }}><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                ) : badge.type === "team" ? (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.7 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                ) : (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.7 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
+                )}
+                {badge.name}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Permissions Badges */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", width: 75, flexShrink: 0 }}>MCP Tools:</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {TOOL_DEFS.filter((t) => token.permissions & t.bit).map((t) => (
+              <span key={t.bit} style={{
+                fontSize: 11,
+                fontFamily: "monospace",
+                background: "rgba(168,85,247,0.06)",
+                border: "1px solid rgba(168,85,247,0.15)",
+                color: "var(--accent)",
+                borderRadius: 6,
+                padding: "2px 6px",
+              }}>
+                {t.label}
+              </span>
+            ))}
+            {(token.permissions === 0) && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>No tools enabled</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Row: Metadata Dates */}
+      <div style={{ 
+        borderTop: "1px solid var(--border)", 
+        paddingTop: 10, 
+        marginTop: 12, 
+        display: "flex", 
+        justifyContent: "space-between", 
+        flexWrap: "wrap", 
+        gap: 8,
+        fontSize: 11, 
+        color: "var(--text-muted)" 
+      }}>
+        <div>
+          <span>Created {formatDate(token.createdAt)}</span>
+          {token.lastUsedAt && <span style={{ marginLeft: 12 }}>Last used {formatDate(token.lastUsedAt)}</span>}
+        </div>
+        {token.expiresAt && (
+          <span>Expires {formatDate(token.expiresAt)}</span>
+        )}
+      </div>
+
       {expanded && (
         <div style={s.permGrid}>
           {TOOL_DEFS.map((tool) => (
