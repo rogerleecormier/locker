@@ -40,19 +40,22 @@ const CHATBOTS: Chatbot[] = [
     label: "ChatGPT",
     color: "#10a37f",
     url: "https://chatgpt.com/",
-    prompt: `Export everything stored in your Memory about me. I want two sections:
+    prompt: `Export everything stored in your Memory about me, as well as any Custom Instructions. I want three sections:
 
 **Section 1 — Saved Memories (explicit entries)**
 List every discrete entry from your saved memory store — the entries visible in Settings > Personalization > Manage Memories. Output each one verbatim, exactly as stored, one per line. Do not paraphrase, merge, or omit any entry.
 
-**Section 2 — Chat History Inferences (implicit layer)**
-List any additional facts, preferences, or context you have inferred about me from past conversations that are NOT in your saved memory entries — things you know about me but haven't saved as a discrete memory. One fact per line.
+**Section 2 — Custom Instructions**
+List any text or rules currently stored in your Custom Instructions ("What would you like ChatGPT to know about you to provide better responses?" and "How would you like ChatGPT to respond?").
+
+**Section 3 — Chat History Inferences (implicit layer)**
+List any additional facts, preferences, or context you have inferred about me from past conversations that are NOT in your saved memories or custom instructions. One fact per line.
 
 Format each line as:
 [YYYY-MM-DD] - Entry content here.
 Use [unknown] if no date is available.
 
-Output ONLY the two sections. No intro, no sign-off, no commentary. After both sections, state how many saved memory entries were listed and whether the list is complete.`,
+Output ONLY the three sections. No intro, no sign-off, no commentary. After the sections, state how many saved memory entries were listed and whether the list is complete.`,
   },
   {
     id: "claude",
@@ -91,7 +94,9 @@ If no date is known, use [unknown] instead.
     color: "#20b2aa",
     url: "https://www.perplexity.ai/",
     deeplinkUrl: (p: string) => `https://www.perplexity.ai/search?q=${encodeURIComponent(p)}`,
-    prompt: `Export everything stored in your memory about me — specifically the entries visible in your Settings > Personalization > Memory settings panel. List every discrete memory entry verbatim, exactly as stored, one per line. Do not paraphrase, summarize, group, or omit anything.
+    prompt: `Export everything stored in your memory about me (specifically the entries visible in Settings > Personalization > Manage saved memories) and any custom context from your "Introduce yourself" personalization settings.
+
+List every discrete entry verbatim, exactly as stored, one per line. Do not paraphrase, summarize, group, or omit anything.
 
 Format each line as:
 [YYYY-MM-DD] - Entry content here.
@@ -104,41 +109,50 @@ End with a count of how many entries were listed and confirm whether the list is
     label: "Gemini",
     color: "#4285f4",
     url: "https://gemini.google.com/app",
-    prompt: `You are helping me import context from one AI assistant to another. Your job is to go through our past conversations and sum up what you know about me.
+    prompt: `Export everything from your stored memory/saved info (the entries visible in your Settings > Saved info settings panel) and any context you have learned about me from past conversations.
 
-In the output, please avoid using any first-person pronouns (I, my, me, mine) and any second-person pronouns (you, your, yours). Instead, refer to the individual you have learned about as "the user" or use neutral phrasing.
+## Categories (output in this order):
 
-Preserve the user's words verbatim where possible, especially for instructions and preferences.
+1. **Instructions**: Rules I've explicitly asked you to follow going forward — tone, format, style, "always do X", "never do Y", and behavior corrections.
+2. **Identity & Demographics**: Preferred names, location, education, relationships, and personal interests.
+3. **Career**: Current and past roles, companies, and general skill areas.
+4. **Projects**: Projects I build or work on. Include what it does, current status, and any key details.
+5. **Preferences**: Opinions, tastes, and working-style preferences.
 
-Categories (output in this order):
-1. Demographics Information: Preferred names, profession, education, and general residence.
-2. Interests & Preferences: Sustained, active engagements (not just owning an object or a one-time purchase).
-3. Relationships: Confirmed, sustained relationships.
-4. Dated Events, Projects & Plans: A log of significant, recent activities.
-5. Instructions: Rules I've explicitly asked you to follow going forward, "always do X", "never do Y", and corrections to your behavior. Only include rules from stored memories, not from conversations.
+## Format:
+Use section headers for each category. Within each category, list one entry per line. Format each line as:
+[YYYY-MM-DD] - Entry content here.
+If no date is known, use [unknown] instead.
 
-Format:
-Divide the content into the labeled section using the categories above. Try to include verbatim quotes from my prompts that justify each entry. Structure each entry using this format:
-* The user's name is <name>.
-    * Evidence: User said "call me <name>". Date: [YYYY-MM-DD].
-
-Output:
-- Output ONLY the requested information. Do not include any conversational filler, intro text, or sign-offs.
-
-Finally, complete the sentence "Imported from: Gemini". This must be the absolute final text in your response.`,
+## Output:
+- Wrap the entire export in a single code block for easy copying.
+- After the code block, complete the sentence "Imported from: Gemini". This must be the absolute final text in your response.`,
   },
   {
     id: "grok",
     label: "Grok",
     color: "#e7e7e7",
-    url: "https://x.com/i/grok",
-    prompt: `Export everything stored in your persistent memory about me. List every discrete memory entry exactly as stored — the entries visible in Settings > Data Controls. One entry per line, verbatim. Do not paraphrase, summarize, merge, or omit any entry.
+    url: "https://grok.com/",
+    prompt: `Export everything stored in your persistent memory about me. List every discrete memory entry exactly as stored — the entries visible in Settings > Data Controls (on grok.com) or Settings > Privacy & Safety > Grok (on x.com). One entry per line, verbatim. Do not paraphrase, summarize, merge, or omit any entry.
 
 Format each line as:
 [YYYY-MM-DD] - Entry content here.
 Use [unknown] if no date is available.
 
 Output ONLY the memory entries. No intro, no sign-off, no commentary. End with a count of entries listed and confirm whether this is the complete set.`,
+  },
+  {
+    id: "copilot",
+    label: "Copilot",
+    color: "#00a1f1",
+    url: "https://copilot.microsoft.com/",
+    prompt: `Export everything stored in your Memory about me, as well as any Custom Instructions. List every discrete entry from your saved memory store — the entries visible in Settings > Privacy > Personalization and memory (or click on your profile picture and select Memory). Output each one verbatim, exactly as stored, one per line. Do not paraphrase, merge, or omit any entry.
+
+Format each line as:
+[YYYY-MM-DD] - Entry content here.
+Use [unknown] if no date is available.
+
+Output ONLY the memory entries and instructions. No intro, no sign-off, no commentary. End with a count of how many entries were listed and whether the list is complete.`,
   },
 ];
 
@@ -759,6 +773,7 @@ function IngestPanel() {
               <option value="perplexity">Perplexity</option>
               <option value="gemini">Gemini</option>
               <option value="grok">Grok</option>
+              <option value="copilot">Copilot</option>
               <option value="manual">Manual</option>
             </select>
           </div>
@@ -783,7 +798,7 @@ function ImportPage() {
             </span>
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-            Pull your memories out of ChatGPT, Claude, Gemini, Grok, or Perplexity — then paste the output to import them into Locker.
+            Pull your memories out of ChatGPT, Claude, Gemini, Grok, Perplexity, or Copilot — then paste the output to import them into Locker.
           </p>
         </div>
       </div>

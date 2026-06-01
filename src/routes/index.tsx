@@ -510,7 +510,7 @@ function LandingPage() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-            <Step num="1" title="Export memories from any chatbot" desc="Use the built-in prompts on the Import page to pull your existing memories out of ChatGPT, Claude, Gemini, Grok, or Perplexity." delay={0} />
+            <Step num="1" title="Export memories from any chatbot" desc="Use the built-in prompts on the Import page to pull your existing memories out of ChatGPT, Claude, Gemini, Grok, Perplexity, or Copilot." delay={0} />
             <Step num="2" title="Paste & AI-extract" desc="Paste the raw chatbot output. Locker's AI parser extracts discrete facts, categorises them, and tags them automatically." delay={100} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
