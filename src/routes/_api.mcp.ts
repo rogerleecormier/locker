@@ -222,7 +222,15 @@ function mcpResult(id: unknown, result: unknown): Response {
 function corsHeaders(origin: string, authHeader: string | null): Record<string, string> {
   // If using opaque OAuth token (cookie-based session), restrict to known origins
   // Bearer tokens (eyJ=JWT, lkr_=API key) are fine since they're explicitly provided
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+  let token: string | null = null;
+  if (authHeader) {
+    const authHeaderLower = authHeader.toLowerCase();
+    if (authHeaderLower.startsWith("bearer ")) {
+      token = authHeader.slice(7).trim();
+    } else if (authHeader.trim().startsWith("lkr_")) {
+      token = authHeader.trim();
+    }
+  }
   const isExplicitToken = token?.startsWith("eyJ") || token?.startsWith("lkr_");
 
   // For opaque tokens or unauthenticated requests from browsers, restrict CORS
@@ -265,9 +273,17 @@ async function validateBearerToken(
   env: CloudflareEnv
 ): Promise<TokenClaims | null> {
   const authHeader = request.headers.get("Authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  if (!authHeader) return null;
 
-  const rawToken = authHeader.slice(7).trim();
+  let rawToken = "";
+  const authHeaderLower = authHeader.toLowerCase();
+  if (authHeaderLower.startsWith("bearer ")) {
+    rawToken = authHeader.slice(7).trim();
+  } else if (authHeader.trim().startsWith("lkr_")) {
+    rawToken = authHeader.trim();
+  } else {
+    return null;
+  }
 
   // API token path (lkr_ prefix)
   if (rawToken.startsWith("lkr_")) {
@@ -526,16 +542,21 @@ export async function handleMcpRequest(
   let authType = "NONE";
   let tokenLength = 0;
   if (authHeader) {
-    if (authHeader.startsWith("Bearer ")) {
+    const authHeaderLower = authHeader.toLowerCase();
+    if (authHeaderLower.startsWith("bearer ")) {
       const token = authHeader.slice(7).trim();
       tokenLength = token.length;
       if (token.startsWith("lkr_")) {
-        authType = "lkr_ API Key";
+        authType = "lkr_ API Key (Bearer)";
       } else if (token.startsWith("eyJ")) {
         authType = "OAuth JWT (eyJ)";
       } else {
         authType = "Opaque OAuth";
       }
+    } else if (authHeader.trim().startsWith("lkr_")) {
+      const token = authHeader.trim();
+      tokenLength = token.length;
+      authType = "lkr_ API Key (Direct)";
     } else {
       authType = "Invalid Scheme";
     }
