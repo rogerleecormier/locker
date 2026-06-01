@@ -273,7 +273,52 @@ async function validateBearerToken(
   env: CloudflareEnv
 ): Promise<TokenClaims | null> {
   const authHeader = request.headers.get("Authorization");
-  if (!authHeader) return null;
+  if (!authHeader) {
+    try {
+      const { createAuth } = await import("~/server/auth");
+      const auth = await createAuth(env);
+      const session = await auth.api.getSession({ headers: request.headers });
+      if (session) {
+        const db = drizzle(env.DB);
+        const [orgMemberships, teamMemberships] = await Promise.all([
+          db
+            .select({ orgId: organizationMembers.orgId })
+            .from(organizationMembers)
+            .where(eq(organizationMembers.userId, session.user.id))
+            .all(),
+          db
+            .select({ teamId: teamMembers.teamId })
+            .from(teamMembers)
+            .where(eq(teamMembers.userId, session.user.id))
+            .all(),
+        ]);
+
+        const accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [
+          { type: "personal", id: null },
+        ];
+
+        orgMemberships.forEach((m) => {
+          accessibleScopes.push({ type: "organization", id: m.orgId });
+        });
+
+        teamMemberships.forEach((m) => {
+          accessibleScopes.push({ type: "team", id: m.teamId });
+        });
+
+        return {
+          userId: session.user.id,
+          tokenId: session.session.token,
+          permissions: MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE,
+          scopeType: "personal",
+          scopeId: null,
+          accessibleScopes,
+        };
+      }
+    } catch (e) {
+      console.error("[api-mcp] Failed to validate cookie session:", e);
+    }
+    return null;
+  }
 
   let rawToken = "";
   const authHeaderLower = authHeader.toLowerCase();

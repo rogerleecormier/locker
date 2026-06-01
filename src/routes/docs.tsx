@@ -191,25 +191,20 @@ function DocsPage() {
       ),
     },
     {
-      id: "roocode",
-      label: "Roo Code",
-      color: "#ff8787",
+      id: "kilocode",
+      label: "Kilo Code",
+      color: "#f59e0b",
       group: "VS Code",
-      description: "Add Locker memory context directly to Roo Code inside VS Code.",
+      description: "Connect Kilo Code to Locker using Kilo Code's native remote (HTTP) MCP transport.",
       copyText: `{
-  "mcpServers": {
+  "mcp": {
     "locker": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "${origin}/api/mcp",
-        "--header",
-        "Authorization: Bearer \${LOCKER_TOKEN}"
-      ],
-      "env": {
-        "LOCKER_TOKEN": "lkr_your_token_here"
-      }
+      "type": "remote",
+      "url": "${origin}/api/mcp",
+      "headers": {
+        "Authorization": "Bearer lkr_your_token_here"
+      },
+      "enabled": true
     }
   }
 }`,
@@ -217,9 +212,9 @@ function DocsPage() {
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Admin → API Tokens</strong> and generate a new token.</li>
-            <li>Open the Roo Code MCP settings file (under globalStorage for the extension).</li>
-            <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>Save — Roo Code detects the server immediately.</li>
+            <li><strong>Option A (UI):</strong> Open the settings panel in the Kilo Code sidebar → <strong>Agent Behaviour → MCP Servers</strong>. Add a new server with type <code>remote</code>, name <code>locker</code>, URL <code>{origin}/api/mcp</code>, and add the header <code>Authorization: Bearer lkr_your_token_here</code>.</li>
+            <li><strong>Option B (Manual):</strong> Create or edit <code>.kilocode/mcp.json</code> at your project root, or globally at <code>~/.config/kilo/kilo.json</code>. Add the JSON configuration snippet below, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Save the file or click the refresh button in the settings panel to activate the server.</li>
           </ol>
         </div>
       ),
@@ -809,6 +804,7 @@ enabled = true`,
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
