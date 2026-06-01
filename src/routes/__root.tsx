@@ -245,9 +245,6 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
         <Link to="/import" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Import
         </Link>
-        <Link to="/connect" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
-          Connect
-        </Link>
         <Link to="/organization" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Org Hub
         </Link>

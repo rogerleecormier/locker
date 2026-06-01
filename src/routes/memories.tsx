@@ -1375,7 +1375,7 @@ function Dashboard() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {[
-                { id: "connect", label: "Connect an AI client", desc: "Link Claude Desktop, VS Code, or Claude Web", href: "/connect" },
+                { id: "connect", label: "Connect an AI client", desc: "Link Claude Desktop, VS Code, or Claude Web", href: "/docs" },
                 { id: "first-memory", label: "Add your first memory", desc: "Create a rule, project note, or reference" },
                 { id: "import", label: "Import from ChatGPT", desc: "Bulk import existing conversation history", href: "/import" },
               ].map(item => (
