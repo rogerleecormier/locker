@@ -21,6 +21,8 @@ import {
   accounts,
   type Memory,
   type NewMemory,
+  memoryTemplates,
+  type MemoryTemplate,
 } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { encrypt, decrypt, isEncrypted, hashToken, deriveUserKey } from "./crypto";
@@ -514,8 +516,8 @@ export const addMemory = createServerFn({ method: "POST" })
   .inputValidator((data: unknown): AddMemoryInput => {
     const d = data as AddMemoryInput;
     if (!d.fact || typeof d.fact !== "string") throw new Error("fact is required");
-    if (!["rules", "projects", "references"].includes(d.category))
-      throw new Error("category must be rules, projects, or references");
+    if (!["rules", "projects", "references", "stack"].includes(d.category))
+      throw new Error("category must be rules, projects, references, or stack");
     return {
       fact: d.fact.trim(),
       category: d.category,
@@ -3387,3 +3389,103 @@ Please return your response in raw JSON format (no markdown code blocks, no expl
       ]
     };
   });
+
+export const listMemoryTemplates = createServerFn({ method: "GET" })
+  .handler(async ({ context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireSession(env);
+    const db = drizzle(env.DB);
+    return db.select().from(memoryTemplates).all();
+  });
+
+export const createMemoryTemplate = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): {
+    name: string;
+    description: string;
+    category: "stack" | "governance" | "devops" | "compliance" | "documentation";
+    configPayload: string;
+  } => {
+    const d = data as any;
+    if (!d.name || typeof d.name !== "string") throw new Error("name is required");
+    if (!d.description || typeof d.description !== "string") throw new Error("description is required");
+    if (!["stack", "governance", "devops", "compliance", "documentation"].includes(d.category)) {
+      throw new Error("Invalid category");
+    }
+    if (!d.configPayload || typeof d.configPayload !== "string") throw new Error("configPayload is required");
+    return {
+      name: d.name.trim(),
+      description: d.description.trim(),
+      category: d.category,
+      configPayload: d.configPayload,
+    };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireSession(env);
+    const db = drizzle(env.DB);
+    const id = crypto.randomUUID();
+    const result = await db.insert(memoryTemplates).values({
+      id,
+      name: data.name,
+      description: data.description,
+      category: data.category,
+      configPayload: data.configPayload,
+      createdAt: Math.floor(Date.now() / 1000),
+    }).returning();
+    return result[0];
+  });
+
+export const updateMemoryTemplate = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): {
+    id: string;
+    name: string;
+    description: string;
+    category: "stack" | "governance" | "devops" | "compliance" | "documentation";
+    configPayload: string;
+  } => {
+    const d = data as any;
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    if (!d.name || typeof d.name !== "string") throw new Error("name is required");
+    if (!d.description || typeof d.description !== "string") throw new Error("description is required");
+    if (!["stack", "governance", "devops", "compliance", "documentation"].includes(d.category)) {
+      throw new Error("Invalid category");
+    }
+    if (!d.configPayload || typeof d.configPayload !== "string") throw new Error("configPayload is required");
+    return {
+      id: d.id,
+      name: d.name.trim(),
+      description: d.description.trim(),
+      category: d.category,
+      configPayload: d.configPayload,
+    };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireSession(env);
+    const db = drizzle(env.DB);
+    const result = await db.update(memoryTemplates)
+      .set({
+        name: data.name,
+        description: data.description,
+        category: data.category,
+        configPayload: data.configPayload,
+      })
+      .where(eq(memoryTemplates.id, data.id))
+      .returning();
+    return result[0];
+  });
+
+export const deleteMemoryTemplate = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { id: string } => {
+    const d = data as any;
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    return { id: d.id };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireSession(env);
+    const db = drizzle(env.DB);
+    await db.delete(memoryTemplates).where(eq(memoryTemplates.id, data.id)).run();
+    return { success: true };
+  });
+

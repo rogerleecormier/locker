@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, technicalBaselines, projectBaselines } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
@@ -164,26 +164,13 @@ export const ALL_TOOLS = [
     },
   },
   {
-    name: "apply_technical_baseline",
-    description: "Applies a technical baseline to a project workspace. Verifies the baseline, links it, and automatically injects authoritative architecture memories tagged with #architecture and #baseline into the database.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        projectKey: { type: "string", description: "The target project workspace key." },
-        baselineId: { type: "string", description: "The ID of the technical baseline to apply (e.g., cf-edge-tanstack-v8)." },
-      },
-      required: ["projectKey", "baselineId"],
-      additionalProperties: false,
-    },
-  },
-  {
     name: "sync_workspace_agent_configs",
-    description: "Syncs workspace agent configuration instructions. Compiles all authoritative architectural baseline memories for the project into a polished Markdown manifesto (.claudemd or agents.md), returning the content and target path. IMPORTANT: The downstream developer agent is authorized and expected to physically write this returned string contents directly to disk at the specified relative target path upon tool execution completion.",
+    description: "Syncs workspace agent configuration instructions. Compiles all active stack and architecture memories for the project into a polished configuration file (.claudemd, .cursorrules, .github/copilot-instructions.md, .geminirules, or agents.md), returning the content and target path. IMPORTANT: The downstream developer agent is authorized and expected to physically write this returned string contents directly to disk at the specified relative target path upon tool execution completion.",
     inputSchema: {
       type: "object",
       properties: {
         projectKey: { type: "string", description: "The project workspace key." },
-        formatType: { type: "string", enum: ["claude.md", "agents.md"], description: "Target instruction manifesto format." },
+        formatType: { type: "string", enum: ["claude", "cursor", "copilot", "gemini", "agents"], description: "Target instruction format (claude, cursor, copilot, gemini, agents)." },
       },
       required: ["projectKey", "formatType"],
       additionalProperties: false,
@@ -678,7 +665,6 @@ export async function handleMcpRequest(
       if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
       if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
-      if (t.name === "apply_technical_baseline") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "sync_workspace_agent_configs") return !!(claims.permissions & MCP_PERM_RECALL);
       return false;
     });
@@ -732,7 +718,6 @@ export async function handleMcpRequest(
       if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
       if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
-      if (t.name === "apply_technical_baseline") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "sync_workspace_agent_configs") return !!(claims.permissions & MCP_PERM_RECALL);
       return false;
     });
@@ -1524,250 +1509,6 @@ export async function handleMcpRequest(
     });
   }
 
-  if (toolName === "apply_technical_baseline") {
-    if (!(claims.permissions & MCP_PERM_COMMIT)) {
-      return mcpError(id, -32001, "Token does not have commit_memory permission");
-    }
-
-    const projectKey = args.projectKey as string | undefined;
-    const baselineId = args.baselineId as string | undefined;
-
-    if (projectKey === undefined || typeof projectKey !== "string") {
-      return mcpError(id, -32602, "Invalid params: projectKey is required");
-    }
-    if (!baselineId || typeof baselineId !== "string") {
-      return mcpError(id, -32602, "Invalid params: baselineId is required");
-    }
-
-    if (!claims.userId) {
-      throw new Error("Unauthorized: userId is required for baseline application");
-    }
-
-    const resolvedProjectKey = resolveProjectKey(claims, projectKey);
-    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, resolvedProjectKey)) {
-      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${resolvedProjectKey ?? "personal"}'`);
-    }
-
-    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, resolvedProjectKey);
-    if (!vaultAllowed) {
-      return mcpError(id, -32003, `Forbidden: no access to vault scope '${resolvedProjectKey}'`);
-    }
-
-    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "commit", orgId);
-    if (!quotaCheck.allowed) {
-      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
-    }
-
-    // Verify the requested baselineId exists in technical_baselines
-    const baselines = await db
-      .select()
-      .from(technicalBaselines)
-      .where(eq(technicalBaselines.id, baselineId))
-      .limit(1)
-      .all();
-
-    if (!baselines.length) {
-      return mcpError(id, -32602, `Baseline not found: ${baselineId}`);
-    }
-    const baseline = baselines[0];
-
-    // Link it to the project space via project_baselines table
-    const existingLinks = await db
-      .select()
-      .from(projectBaselines)
-      .where(
-        and(
-          eq(projectBaselines.projectKey, resolvedProjectKey || ""),
-          eq(projectBaselines.baselineId, baseline.id)
-        )
-      )
-      .limit(1)
-      .all();
-
-    if (!existingLinks.length) {
-      await db.insert(projectBaselines).values({
-        id: crypto.randomUUID(),
-        projectKey: resolvedProjectKey || "",
-        baselineId: baseline.id,
-        createdAt: Date.now(),
-      });
-    }
-
-    // Parse configPayload JSON
-    let payload: any;
-    try {
-      payload = JSON.parse(baseline.configPayload);
-    } catch (e) {
-      return mcpError(id, -32603, `Invalid config payload JSON in baseline: ${e}`);
-    }
-
-    const constraints: string[] = [];
-    if (payload.techStack?.cloudflare?.rules) {
-      constraints.push(...payload.techStack.cloudflare.rules);
-    }
-    if (payload.techStack?.tanstack?.rules) {
-      constraints.push(...payload.techStack.tanstack.rules);
-    }
-    if (payload.restrictions?.rules) {
-      constraints.push(...payload.restrictions.rules);
-    }
-    if (payload.repositoryRules?.rules) {
-      constraints.push(...payload.repositoryRules.rules);
-    }
-
-    // Clean up existing authoritative baseline memories for this vault to prevent duplicates/orphans
-    const existingMemories = await db
-      .select()
-      .from(memories)
-      .where(
-        and(
-          resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
-            ? eq(memories.projectKey, resolvedProjectKey)
-            : and(eq(memories.userId, claims.userId), sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`),
-          eq(memories.authorityType, "authoritative")
-        )
-      )
-      .all();
-
-    if (existingMemories.length > 0) {
-      const idsToDelete = existingMemories.map((m) => m.id);
-      for (const memId of idsToDelete) {
-        await db.delete(memories).where(eq(memories.id, memId)).run();
-      }
-      try {
-        await env.VECTOR_INDEX.deleteByIds(idsToDelete);
-      } catch (err) {
-        console.error("[apply_baseline] Failed to delete from Vectorize index:", err);
-      }
-    }
-
-    const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-
-    let scopeType: "personal" | "organization" | "team" = "personal";
-    let scopeId: string | null = null;
-    if (resolvedProjectKey) {
-      if (resolvedProjectKey.startsWith("org:")) {
-        scopeType = "organization";
-        scopeId = resolvedProjectKey.slice(4);
-      } else if (resolvedProjectKey.startsWith("team:")) {
-        scopeType = "team";
-        scopeId = resolvedProjectKey.slice(5);
-      }
-    }
-
-    // Define distinct category groups based on baseline structure
-    const categoryGroups: Array<{ name: string; tag: string; rules: string[] }> = [];
-
-    if (payload.techStack?.cloudflare?.rules && payload.techStack.cloudflare.rules.length > 0) {
-      categoryGroups.push({
-        name: "infrastructure-stack",
-        tag: "infrastructure",
-        rules: payload.techStack.cloudflare.rules,
-      });
-    }
-
-    if (payload.techStack?.tanstack?.rules && payload.techStack.tanstack.rules.length > 0) {
-      categoryGroups.push({
-        name: "frontend-stack",
-        tag: "frontend",
-        rules: payload.techStack.tanstack.rules,
-      });
-    }
-
-    if (payload.restrictions?.rules && payload.restrictions.rules.length > 0) {
-      categoryGroups.push({
-        name: "restrictions",
-        tag: "restrictions",
-        rules: payload.restrictions.rules,
-      });
-    }
-
-    if (payload.repositoryRules?.rules && payload.repositoryRules.rules.length > 0) {
-      categoryGroups.push({
-        name: "repository-rules",
-        tag: "repository-rules",
-        rules: payload.repositoryRules.rules,
-      });
-    }
-
-    let tokensConsumed = 0;
-
-    for (const group of categoryGroups) {
-      const factContent = group.rules.map((r) => r.trim()).join("\n");
-      const encryptedFact = await encrypt(factContent, vaultKey);
-      const memId = crypto.randomUUID();
-      const timestamp = Date.now();
-
-      await db.insert(memories).values({
-        id: memId,
-        userId: claims.userId,
-        fact: encryptedFact,
-        category: "rules" as const,
-        tags: `architecture, baseline, mcp, ${group.tag}`,
-        timestamp,
-        isActive: true,
-        projectKey: resolvedProjectKey || null,
-        scopeType,
-        scopeId,
-        authorityType: "authoritative" as const,
-      }).run();
-
-      await db.insert(memoryVersions).values({
-        id: crypto.randomUUID(),
-        memoryId: memId,
-        fact: encryptedFact,
-        category: "rules" as const,
-        tags: `architecture, baseline, mcp, ${group.tag}`,
-        changedBy: claims.userId,
-        changeReason: "created",
-        timestamp,
-      }).run();
-
-      const embedding = await generateEmbedding(env.AI, factContent);
-      tokensConsumed += estimateEmbeddingTokens(factContent);
-
-      await env.VECTOR_INDEX.insert([
-        {
-          id: memId,
-          values: embedding,
-          metadata: {
-            userId: claims.userId,
-            category: "rules",
-            tags: `architecture, baseline, mcp, ${group.tag}`,
-            projectKey: resolvedProjectKey ?? "",
-          },
-        },
-      ]);
-    }
-
-    // Audit log & token usage
-    await logAudit(db, {
-      orgId,
-      userId: claims.userId,
-      tokenId: claims.tokenId,
-      action: "apply_technical_baseline",
-      ipAddress,
-      userAgent,
-      metadata: { baselineId, projectKey: resolvedProjectKey, insertedCount: categoryGroups.length },
-    });
-    await logTokenUsage(db, claims.tokenId, "commit", tokensConsumed);
-
-    return mcpResult(id, {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            success: true,
-            baselineId,
-            projectKey: resolvedProjectKey,
-            insertedCount: categoryGroups.length,
-          }),
-        },
-      ],
-    });
-  }
-
   if (toolName === "sync_workspace_agent_configs") {
     if (!(claims.permissions & MCP_PERM_RECALL)) {
       return mcpError(id, -32001, "Token does not have recall_context permission");
@@ -1779,8 +1520,8 @@ export async function handleMcpRequest(
     if (projectKey === undefined || typeof projectKey !== "string") {
       return mcpError(id, -32602, "Invalid params: projectKey is required");
     }
-    if (!formatType || (formatType !== "claude.md" && formatType !== "agents.md")) {
-      return mcpError(id, -32602, "Invalid params: formatType must be 'claude.md' or 'agents.md'");
+    if (!formatType || !["claude", "cursor", "copilot", "gemini", "agents"].includes(formatType)) {
+      return mcpError(id, -32602, "Invalid params: formatType must be claude, cursor, copilot, gemini, or agents");
     }
 
     if (!claims.userId) {
@@ -1802,12 +1543,11 @@ export async function handleMcpRequest(
       return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
     }
 
-    // Select all authoritative active memories for this workspace
+    // Select all active memories for this workspace
     const conditions = [
       resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
         ? eq(memories.projectKey, resolvedProjectKey)
         : and(eq(memories.userId, claims.userId), sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`),
-      eq(memories.authorityType, "authoritative"),
       eq(memories.isActive, true)
     ];
 
@@ -1835,14 +1575,15 @@ export async function handleMcpRequest(
 
     const filtered = decryptedMemories.filter((r): r is NonNullable<typeof r> => {
       if (!r) return false;
+      if (r.category === "stack") return true;
       const tagsList = (r.tags || "").split(",").map((t) => t.trim().toLowerCase());
-      return tagsList.includes("architecture") || tagsList.includes("baseline");
+      return (
+        tagsList.includes("architecture") ||
+        tagsList.includes("baseline") ||
+        tagsList.includes("stack") ||
+        tagsList.includes("blueprint")
+      );
     });
-
-    const targetPath = formatType === "claude.md" ? "./.claudemd" : "./agents.md";
-    const header = formatType === "claude.md"
-      ? "# Claude System Instructions - Technical Stack Blueprint"
-      : "# Developer Agent Rules - Technical Stack Blueprint";
 
     const lines = filtered.flatMap((m) =>
       m.fact.split("\n")
@@ -1851,17 +1592,41 @@ export async function handleMcpRequest(
         .map((line) => line.startsWith("- ") ? line.slice(2) : line)
     );
 
-    const markdownBody = `${header}
+    let targetPath = "./agents.md";
+    let markdownBody = "";
 
-This manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.
-
-## Enforced Guidelines
-
-${lines.map((line) => `- ${line}`).join("\n")}
-
----
-*Generated at: ${new Date().toISOString()}*
-`;
+    switch (formatType) {
+      case "claude":
+        targetPath = "./.claudemd";
+        markdownBody = `# Claude System Instructions - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n## Enforced Guidelines\n${lines.map((line) => `- ${line}`).join("\n")}\n\n---\n*Generated at: ${new Date().toISOString()}*\n`;
+        break;
+      case "cursor":
+        targetPath = "./.cursorrules";
+        markdownBody = JSON.stringify(
+          {
+            name: "Workspace Guidelines",
+            description: "Architectural rules synced from Locker",
+            globs: ["*"],
+            rules: lines,
+          },
+          null,
+          2
+        );
+        break;
+      case "copilot":
+        targetPath = "./.github/copilot-instructions.md";
+        markdownBody = `# Copilot Instructions - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n## Rules:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n---\n*Generated at: ${new Date().toISOString()}*\n`;
+        break;
+      case "gemini":
+        targetPath = "./.geminirules";
+        markdownBody = `# Gemini Rules - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n## Coding Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n---\n*Generated at: ${new Date().toISOString()}*\n`;
+        break;
+      case "agents":
+      default:
+        targetPath = "./agents.md";
+        markdownBody = `# Developer Agent Rules - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n## General Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n---\n*Generated at: ${new Date().toISOString()}*\n`;
+        break;
+     }
 
     // Audit log & token usage
     await logAudit(db, {

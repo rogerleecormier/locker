@@ -242,6 +242,9 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
         <Link to="/memories" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Memory Locker
         </Link>
+        <Link to="/templates" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
+          Templates
+        </Link>
         <Link to="/import" style={navStyles.link} activeProps={{ style: navStyles.linkActive }}>
           Import
         </Link>

@@ -62,32 +62,456 @@ function Counter({ to, suffix = "" }: { to: number; suffix?: string }) {
 
 // ── Mockup components ─────────────────────────────────────────────────────────
 
-function MemoryVaultMockup() {
-  const rows = [
-    { cat: "rules", color: "#818cf8", fact: "Always prefer TypeScript strict mode with no implicit any.", tags: "typescript, rules" },
-    { cat: "projects", color: "#34d399", fact: "Locker — encrypted memory vault for AI context. Stack: TanStack Start, Cloudflare Workers, D1.", tags: "locker, active" },
-    { cat: "references", color: "#fbbf24", fact: "Lives in Florida. Prefers concise, no-filler responses.", tags: "identity, preferences" },
-    { cat: "rules", color: "#818cf8", fact: "Never add trailing summaries or restate what was just done.", tags: "feedback, style" },
-  ];
+function HeroStackCreatorMockup() {
+  const [step, setStep] = useState(1);
+  const [lang, setLang] = useState("TS");
+  const [frontend, setFrontend] = useState("React");
+  const [db, setDb] = useState("D1");
+  const [orm, setOrm] = useState("Drizzle");
+  const [copied, setCopied] = useState(false);
+  const [activeFormat, setActiveFormat] = useState<"cursor" | "claude" | "gemini">("cursor");
+
+  const getRulesText = () => {
+    const rules = [];
+    rules.push(`// Architectural constraints for ${lang} + ${frontend} using ${orm} & ${db}`);
+    if (lang === "TS") {
+      rules.push("- Always enforce strict null checks and avoid explicit 'any'.");
+      rules.push("- Use TypeScript interfaces for type declarations instead of types.");
+    } else if (lang === "Go") {
+      rules.push("- Check all err return values explicitly; never ignore errors.");
+      rules.push("- Prefer struct pointers for database model operations.");
+    } else {
+      rules.push("- Enforce typing via type hints and adhere to PEP8 formatting.");
+    }
+
+    if (frontend === "React") {
+      rules.push("- Keep components modular; split complex logic into custom hooks.");
+      rules.push("- Avoid inline styled elements; structure layouts with CSS classes.");
+    } else if (frontend === "Next") {
+      rules.push("- Leverage Next.js React Server Components (RSC) to minimize client bundle.");
+    }
+
+    if (db === "D1") {
+      rules.push("- Batch SQL statements to optimize Cloudflare Workers execution timeouts.");
+    }
+    if (orm === "Drizzle") {
+      rules.push("- Perform schema updates using declarative migrations generated via Drizzle Kit.");
+    }
+
+    if (activeFormat === "cursor") {
+      return JSON.stringify({
+        name: `Locker Stack: ${lang}-${frontend}`,
+        description: `Architecture standards for ${lang}/${frontend}`,
+        globs: ["*"],
+        rules: rules
+      }, null, 2);
+    } else if (activeFormat === "claude") {
+      return `# System Prompt Constraints\n\n${rules.map(r => r).join("\n")}`;
+    } else {
+      return `[Instructions]\n${rules.map(r => `rule = ${r}`).join("\n")}`;
+    }
+  };
+
+  const handleCopy = () => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", fontFamily: "monospace" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", textAlign: "left", fontFamily: "monospace" }}>
       <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8, background: "var(--surface2)" }}>
         <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#ef4444", opacity: 0.7 }} />
         <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#f59e0b", opacity: 0.7 }} />
         <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#22c55e", opacity: 0.7 }} />
-        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)" }}>Memories — 367 entries</span>
+        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)", flex: 1 }}>Tech Stack & Agent Rules Wizard</span>
+        {step > 1 && (
+          <button 
+            onClick={() => setStep(step - 1)} 
+            style={{ fontSize: 10, background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", padding: "2px 8px", borderRadius: 4, cursor: "pointer" }}
+          >
+            ← Back
+          </button>
+        )}
       </div>
-      <div>
-        {rows.map((r, i) => (
-          <div key={i} style={{ padding: "10px 16px", borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none", display: "flex", gap: 10, alignItems: "flex-start" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: r.color, background: `${r.color}18`, border: `1px solid ${r.color}40`, borderRadius: 20, padding: "2px 7px", whiteSpace: "nowrap", marginTop: 1 }}>
-              {r.cat}
-            </span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.5 }}>{r.fact}</div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>{r.tags}</div>
+
+      <div style={{ padding: 16, minHeight: 280, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        {step === 1 && (
+          <div>
+            <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 700, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>STEP 1: Core Technologies</div>
+            
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Language</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["TS", "Go", "Python"].map(l => (
+                  <button 
+                    key={l}
+                    onClick={() => setLang(l)}
+                    style={{
+                      flex: 1, padding: "8px", fontSize: 11,
+                      background: lang === l ? "var(--accent-dim)" : "var(--surface2)",
+                      border: `1px solid ${lang === l ? "var(--accent)" : "var(--border)"}`,
+                      color: lang === l ? "var(--text)" : "var(--text-muted)",
+                      fontWeight: lang === l ? 700 : 400,
+                      cursor: "pointer"
+                    }}
+                  >
+                    {l === "TS" ? "TypeScript" : l}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div style={{ fontSize: 10, color: "#22c55e", opacity: 0.6, marginTop: 1 }}>🔒</div>
+
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Frontend Framework</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["React", "Next", "Vanilla"].map(f => (
+                  <button 
+                    key={f}
+                    onClick={() => setFrontend(f)}
+                    style={{
+                      flex: 1, padding: "8px", fontSize: 11,
+                      background: frontend === f ? "var(--accent-dim)" : "var(--surface2)",
+                      border: `1px solid ${frontend === f ? "var(--accent)" : "var(--border)"}`,
+                      color: frontend === f ? "var(--text)" : "var(--text-muted)",
+                      fontWeight: frontend === f ? 700 : 400,
+                      cursor: "pointer"
+                    }}
+                  >
+                    {f === "React" ? "React/TanStack" : f === "Next" ? "Next.js" : "Vanilla JS"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setStep(2)}
+              style={{ width: "100%", padding: "10px", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", borderRadius: 6 }}
+            >
+              Configure Infrastructure →
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div>
+            <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 700, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>STEP 2: Infrastructure Configuration</div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>Database</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["D1", "Postgres"].map(d => (
+                  <button 
+                    key={d}
+                    onClick={() => setDb(d)}
+                    style={{
+                      flex: 1, padding: "8px", fontSize: 11,
+                      background: db === d ? "var(--accent-dim)" : "var(--surface2)",
+                      border: `1px solid ${db === d ? "var(--accent)" : "var(--border)"}`,
+                      color: db === d ? "var(--text)" : "var(--text-muted)",
+                      fontWeight: db === d ? 700 : 400,
+                      cursor: "pointer"
+                    }}
+                  >
+                    {d === "D1" ? "Cloudflare D1" : "PostgreSQL"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>ORM / Access Layer</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["Drizzle", "Prisma"].map(o => (
+                  <button 
+                    key={o}
+                    onClick={() => setOrm(o)}
+                    style={{
+                      flex: 1, padding: "8px", fontSize: 11,
+                      background: orm === o ? "var(--accent-dim)" : "var(--surface2)",
+                      border: `1px solid ${orm === o ? "var(--accent)" : "var(--border)"}`,
+                      color: orm === o ? "var(--text)" : "var(--text-muted)",
+                      fontWeight: orm === o ? 700 : 400,
+                      cursor: "pointer"
+                    }}
+                  >
+                    {o === "Drizzle" ? "Drizzle ORM" : "Prisma Client"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setStep(3)}
+              style={{ width: "100%", padding: "10px", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", borderRadius: 6 }}
+            >
+              Compile Agent Configuration File →
+            </button>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, height: "100%" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 8, marginBottom: 4 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                {["cursor", "claude", "gemini"].map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveFormat(tab as any)}
+                    style={{
+                      fontSize: 10, padding: "3px 8px", borderRadius: 4, cursor: "pointer",
+                      background: activeFormat === tab ? "var(--accent-dim)" : "transparent",
+                      border: `1px solid ${activeFormat === tab ? "var(--accent)" : "transparent"}`,
+                      color: activeFormat === tab ? "var(--text)" : "var(--text-muted)"
+                    }}
+                  >
+                    {tab === "cursor" ? ".cursorrules" : tab === "claude" ? ".claudemd" : ".geminirules"}
+                  </button>
+                ))}
+              </div>
+              <button 
+                onClick={handleCopy}
+                style={{
+                  fontSize: 10, padding: "4px 10px", borderRadius: 4, cursor: "pointer",
+                  background: copied ? "rgba(34,197,94,0.15)" : "var(--surface2)",
+                  border: `1px solid ${copied ? "var(--success)" : "var(--border)"}`,
+                  color: copied ? "var(--success)" : "var(--text-muted)"
+                }}
+              >
+                {copied ? "✓ Copied" : "Copy"}
+              </button>
+            </div>
+
+            <pre style={{
+              background: "var(--surface2)",
+              padding: 10,
+              borderRadius: 6,
+              fontSize: 10,
+              color: "var(--text)",
+              lineHeight: 1.4,
+              overflowY: "auto",
+              height: 140,
+              textAlign: "left",
+              whiteSpace: "pre-wrap",
+              border: "1px solid var(--border)",
+              margin: 0
+            }}>
+              {getRulesText()}
+            </pre>
+
+            <button 
+              onClick={() => { setStep(1); setCopied(false); }}
+              style={{ width: "100%", padding: "8px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 11, cursor: "pointer", borderRadius: 6, marginTop: 4 }}
+            >
+              Reset Stack Wizard
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MemoryTemplatesMockup() {
+  const [selectedCategory, setSelectedCategory] = useState<"coding" | "devops" | "compliance">("coding");
+  const [importingCard, setImportingCard] = useState<string | null>(null);
+  const [importedStatus, setImportedStatus] = useState<Record<string, boolean>>({});
+
+  const templatesData = {
+    coding: [
+      { id: "ts-rules", title: "TypeScript Clean Code", desc: "Best practices, type safety enforcement, interfaces constraints.", count: 5, preview: "Avoid explicit any; enable strict null checks; mandate interfaces for API shapes." },
+      { id: "rust-sec", title: "Rust Audit Standards", desc: "Handling safety, clippy configurations, thread safety patterns.", count: 6, preview: "Verify cargo clippy passes; isolate unsafe scopes; avoid unwrap() in library codes." }
+    ],
+    devops: [
+      { id: "gha-deploy", title: "GitHub Actions CI/CD", desc: "Pipeline caching, lockfile checking, edge deployments.", count: 4, preview: "Secrets in wrangler.json; verify bundle size limits (< 150KB); run security scanners." },
+      { id: "docker-hard", title: "Docker Container Security", desc: "Multi-stage builds, non-root runtimes, layer caching optimizations.", count: 5, preview: "Use alpine distroless base; never run as root; pin exact image SHA digest." }
+    ],
+    compliance: [
+      { id: "soc2-controls", title: "SOC2 Compliance Baseline", desc: "Audit logging, access controls, token lifetimes.", count: 8, preview: "Rotate edge decryption keys every 90 days; log all D1 database accesses; require token scope audits." },
+      { id: "gdpr-PII", title: "GDPR Masking & Erasure", desc: "PII isolation, data minimization, delete cascade safety.", count: 6, preview: "Encrypt email hashes; purge user-related vectorize logs on delete request; mask password hashes." }
+    ]
+  };
+
+  const handleImport = (id: string) => {
+    setImportingCard(id);
+    setTimeout(() => {
+      setImportingCard(null);
+      setImportedStatus(prev => ({ ...prev, [id]: true }));
+      setTimeout(() => {
+        setImportedStatus(prev => ({ ...prev, [id]: false }));
+      }, 3000);
+    }, 1200);
+  };
+
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", textAlign: "left", fontFamily: "monospace" }}>
+      <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8, background: "var(--surface2)" }}>
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#ef4444", opacity: 0.7 }} />
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#f59e0b", opacity: 0.7 }} />
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#22c55e", opacity: 0.7 }} />
+        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)" }}>Templates Library</span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "130px 1fr", minHeight: 280 }}>
+        <div style={{ borderRight: "1px solid var(--border)", background: "var(--surface2)", padding: "12px 8px", display: "flex", flexDirection: "column", gap: 4 }}>
+          {[
+            { id: "coding", label: "Coding Standards" },
+            { id: "devops", label: "DevOps & CI" },
+            { id: "compliance", label: "Compliance" }
+          ].map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategory(cat.id as any)}
+              style={{
+                fontSize: 10, padding: "6px 8px", textAlign: "left", borderRadius: 4, width: "100%",
+                background: selectedCategory === cat.id ? "var(--accent-dim)" : "transparent",
+                color: selectedCategory === cat.id ? "var(--text)" : "var(--text-muted)",
+                border: "none", cursor: "pointer"
+              }}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", maxHeight: 280 }}>
+          {templatesData[selectedCategory].map(t => (
+            <div 
+              key={t.id}
+              style={{
+                background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: 10,
+                display: "flex", flexDirection: "column", gap: 6, transition: "border-color 0.2s"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)" }}>{t.title}</div>
+                  <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>{t.desc}</div>
+                </div>
+                <button
+                  onClick={() => handleImport(t.id)}
+                  disabled={importingCard === t.id}
+                  style={{
+                    fontSize: 9, padding: "3px 8px", cursor: "pointer", borderRadius: 4, flexShrink: 0,
+                    background: importedStatus[t.id] ? "rgba(34,197,94,0.15)" : "var(--accent)",
+                    color: importedStatus[t.id] ? "var(--success)" : "#fff",
+                    border: importedStatus[t.id] ? "1px solid var(--success)" : "none"
+                  }}
+                >
+                  {importingCard === t.id ? "Importing..." : importedStatus[t.id] ? "✓ Imported" : "Import"}
+                </button>
+              </div>
+
+              <div style={{
+                background: "var(--surface)", borderLeft: "2px solid var(--accent)", padding: "4px 8px", fontSize: 9,
+                color: "var(--text-muted)", whiteSpace: "normal", wordBreak: "break-word"
+              }}>
+                <span style={{ color: "var(--accent)", fontWeight: 600 }}>Rules preview:</span> {t.preview}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewQueueMockup() {
+  const [items, setItems] = useState([
+    {
+      id: "rec-1",
+      submittedBy: "dev-carl",
+      project: "mobile-gateway",
+      action: "commit_memory via Cline IDE",
+      diffAdd: "+ Use kysely query builder with node-postgres driver.",
+      diffSub: "- Use Prisma ORM clients inside edge handler loops.",
+      reason: "Prisma client cold starts exceed Workers 50ms limits.",
+      status: "pending"
+    },
+    {
+      id: "rec-2",
+      submittedBy: "devops-anna",
+      project: "core-auth",
+      action: "commit_memory via Copilot",
+      diffAdd: "+ Enforce JWT signature verification with RS256 algorithm.",
+      diffSub: "",
+      reason: "Ensure compliance with security standards on auth verification endpoints.",
+      status: "pending"
+    }
+  ]);
+
+  const handleAction = (id: string, action: "approve" | "reject") => {
+    setItems(prev => prev.map(item => {
+      if (item.id === id) {
+        return { ...item, status: action === "approve" ? "approved" : "rejected" };
+      }
+      return item;
+    }));
+  };
+
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", textAlign: "left", fontFamily: "monospace" }}>
+      <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8, background: "var(--surface2)" }}>
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#ef4444", opacity: 0.7 }} />
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#f59e0b", opacity: 0.7 }} />
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#22c55e", opacity: 0.7 }} />
+        <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)", flex: 1 }}>Org Governance Review Queue</span>
+        <span style={{ fontSize: 10, background: "rgba(168,85,247,0.15)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
+          {items.filter(i => i.status === "pending").length} Pending
+        </span>
+      </div>
+
+      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12, minHeight: 280, maxHeight: 310, overflowY: "auto" }}>
+        {items.map(item => (
+          <div 
+            key={item.id} 
+            style={{ 
+              background: "var(--surface2)", border: `1px solid ${item.status === "approved" ? "rgba(34,197,94,0.3)" : item.status === "rejected" ? "rgba(239,68,68,0.3)" : "var(--border)"}`, 
+              borderRadius: 8, padding: 10, display: "flex", flexDirection: "column", gap: 6,
+              opacity: item.status !== "pending" ? 0.75 : 1, transition: "all 0.3s ease"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10 }}>
+              <span style={{ color: "var(--text-muted)" }}>
+                By <strong style={{ color: "var(--text)" }}>{item.submittedBy}</strong> in <span style={{ color: "var(--accent)" }}>{item.project}</span>
+              </span>
+              <span style={{ fontSize: 9, opacity: 0.8 }}>{item.action}</span>
+            </div>
+
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", fontSize: 10, display: "flex", flexDirection: "column", gap: 2 }}>
+              {item.diffSub && <div style={{ color: "#ef4444", textDecoration: "line-through" }}>{item.diffSub}</div>}
+              {item.diffAdd && <div style={{ color: "#22c55e" }}>{item.diffAdd}</div>}
+              <div style={{ fontSize: 9, color: "var(--text-muted)", borderTop: "1px dashed var(--border)", marginTop: 4, paddingTop: 4 }}>
+                <span style={{ color: "var(--accent)" }}>Reason:</span> {item.reason}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 2 }}>
+              {item.status === "pending" ? (
+                <>
+                  <button 
+                    onClick={() => handleAction(item.id, "reject")}
+                    style={{ fontSize: 10, padding: "4px 10px", background: "transparent", border: "1px solid rgba(239,68,68,0.4)", color: "var(--error)", cursor: "pointer", borderRadius: 4 }}
+                  >
+                    Reject
+                  </button>
+                  <button 
+                    onClick={() => handleAction(item.id, "approve")}
+                    style={{ fontSize: 10, padding: "4px 12px", background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)", color: "var(--success)", fontWeight: 700, cursor: "pointer", borderRadius: 4 }}
+                  >
+                    Approve to Org Vault
+                  </button>
+                </>
+              ) : item.status === "approved" ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--success)", fontWeight: 700 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  Approved & Org Vault Locked (Authoritative) 🔒
+                </div>
+              ) : (
+                <div style={{ fontSize: 10, color: "var(--error)", fontWeight: 700 }}>
+                  Rejected Recommendation
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -128,12 +552,12 @@ function TokenMockup() {
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
       <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--surface2)", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        API Tokens
+        API Tokens & Scopes
       </div>
       <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
         {[{ name: "Claude Desktop", perms: [0, 1] }, { name: "Codex (read-only)", perms: [0] }].map((tok, i) => (
           <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px" }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>{tok.name}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 6, textAlign: "left" }}>{tok.name}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {tools.map((t, j) => (
                 <span key={j} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: tok.perms.includes(j) ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.03)", border: `1px solid ${tok.perms.includes(j) ? "rgba(168,85,247,0.4)" : "var(--border)"}`, color: tok.perms.includes(j) ? "var(--accent)" : "var(--text-muted)", fontFamily: "monospace" }}>
@@ -228,7 +652,7 @@ function EncryptionMockup() {
   const plain = "Prefers TypeScript strict mode. Lives in Florida.";
   const enc   = "a3f9d2c1e8b5:9f2a1c4b8e7d3f6a2c5b9e1d4f7a3c6b2e8d5f1a4c7b3e9d6f2a5c8b4e1d7f3a6c2b5e8d4f1...";
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, fontFamily: "monospace" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, fontFamily: "monospace", textAlign: "left" }}>
       <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>AES-256-GCM at rest</div>
       <div style={{ position: "relative", height: 64 }}>
         <div style={{ position: "absolute", inset: 0, padding: "10px 12px", borderRadius: 8, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", fontSize: 11, color: "#22c55e", lineHeight: 1.5, opacity: flipped ? 0 : 1, transition: "opacity 0.5s ease" }}>
@@ -270,7 +694,7 @@ function FeatureCard({ icon, title, desc, delay }: { icon: React.ReactNode; titl
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        style={{ background: "var(--surface)", border: `1px solid ${hovered ? "rgba(168,85,247,0.4)" : "var(--border)"}`, borderRadius: 12, padding: "22px 20px", height: "100%", transition: "border-color 0.2s, transform 0.2s, box-shadow 0.2s", transform: hovered ? "translateY(-3px)" : "none", boxShadow: hovered ? "0 8px 24px rgba(168,85,247,0.12)" : "none" }}
+        style={{ background: "var(--surface)", border: `1px solid ${hovered ? "rgba(168,85,247,0.4)" : "var(--border)"}`, borderRadius: 12, padding: "22px 20px", height: "100%", transition: "border-color 0.2s, transform 0.2s, box-shadow 0.2s", transform: hovered ? "translateY(-3px)" : "none", boxShadow: hovered ? "0 8px 24px rgba(168,85,247,0.12)" : "none", textAlign: "left" }}
       >
         <div style={{ marginBottom: 12 }}>{icon}</div>
         <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{title}</div>
@@ -283,7 +707,7 @@ function FeatureCard({ icon, title, desc, delay }: { icon: React.ReactNode; titl
 // ── How it works step ─────────────────────────────────────────────────────────
 function Step({ num, title, desc, delay }: { num: string; title: string; desc: string; delay?: number }) {
   return (
-    <FadeIn delay={delay} style={{ display: "flex", gap: 18 }}>
+    <FadeIn delay={delay} style={{ display: "flex", gap: 18, textAlign: "left" }}>
       <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: "50%", background: "var(--accent-dim)", border: "1px solid rgba(168,85,247,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "var(--accent)" }}>
         {num}
       </div>
@@ -336,11 +760,11 @@ function LandingPage() {
 
           <div style={{ opacity: heroVisible ? 1 : 0, transform: heroVisible ? "none" : "translateY(24px)", transition: "opacity 0.7s ease 0.1s, transform 0.7s ease 0.1s" }}>
             <h1 style={{ fontSize: "clamp(36px, 6vw, 60px)", fontWeight: 800, letterSpacing: "-0.04em", color: "var(--text)", lineHeight: 1.1, marginBottom: 20 }}>
-              Your AI memory,{" "}
-              <span style={{ color: "var(--accent)" }}>encrypted & portable</span>
+              The Context & Rule Engine for{" "}
+              <span style={{ color: "var(--accent)" }}>AI-Native Engineering</span>
             </h1>
-            <p style={{ fontSize: 18, color: "var(--text-muted)", lineHeight: 1.7, maxWidth: 540, margin: "0 auto 36px", fontWeight: 400 }}>
-              Locker is a shared memory platform that securely stores team context and makes it available to any AI tool — via a universal MCP endpoint. One source of truth for your whole team.
+            <p style={{ fontSize: 18, color: "var(--text-muted)", lineHeight: 1.7, maxWidth: 640, margin: "0 auto 36px", fontWeight: 400 }}>
+              Standardize developer tribal knowledge, enforce architectural standards, and sync agent files across your team. Secure, edge-native memory vaults powered by the Model Context Protocol (MCP).
             </p>
 
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
@@ -349,13 +773,13 @@ function LandingPage() {
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent)"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
-                Open Vault
+                Launch Console
               </Link>
               <Link to="/docs" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "transparent", color: "var(--text-muted)", fontWeight: 600, fontSize: 14, borderRadius: 10, border: "1px solid var(--border)", textDecoration: "none", transition: "border-color 0.15s, color 0.15s" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
               >
-                Connect an AI client →
+                Connect AI Agent →
               </Link>
             </div>
           </div>
@@ -366,9 +790,9 @@ function LandingPage() {
       <div style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
         <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0 }}>
           {[
-            { value: PLATFORMS.filter((p) => p.status === "tested").length, suffix: "", label: "Tested AI platforms" },
-            { value: 256, suffix: "-bit", label: "AES-GCM encryption" },
-            { value: 100, suffix: "%", label: "Self-hosted on Cloudflare" },
+            { value: PLATFORMS.filter((p) => p.status === "tested").length, suffix: "", label: "Supported AI Clients" },
+            { value: 256, suffix: "-bit", label: "AES-GCM Encryption" },
+            { value: 100, suffix: "%", label: "Edge-Native Architecture" },
           ].map(({ value, suffix, label }, i) => (
             <div key={label} style={{ textAlign: "center", padding: "16px 24px", borderRight: i < 2 ? "1px solid var(--border)" : "none" }}>
               <div style={{ fontSize: 32, fontWeight: 800, color: "var(--accent)", letterSpacing: "-0.03em", lineHeight: 1 }}>
@@ -380,21 +804,21 @@ function LandingPage() {
         </div>
       </div>
 
-      {/* ── MEMORY VAULT MOCKUP ── */}
+      {/* ── STACK WIZARD SECTION ── */}
       <Section>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
           <div>
             <FadeIn>
-              <SectionLabel>Personal Vault</SectionLabel>
+              <SectionLabel>Stack Creator</SectionLabel>
               <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
-                All your context, one encrypted vault
+                Bootstrap agent behavior from your codebase stack
               </h2>
               <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
-                Store rules, projects, and references as discrete memory entries. Every fact is encrypted with AES-256-GCM before hitting the database — your data stays yours.
+                Define your project's programming language, framework, database, and ORM. Locker generates optimized `.cursorrules`, `.claudemd`, `.geminirules`, and `agents.md` configurations dynamically to prevent context drift and token overhead.
               </p>
               <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                {["Rules, projects, and reference categories", "Tags for precise filtering", "Bulk import from any chatbot export", "Edit, delete, and bulk manage entries"].map((item) => (
-                  <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)" }}>
+                {["Tailored coding constraints generated dynamically", "Compatible with Cursor, Claude, Copilot, and Gemini", "Optimized instructions reduce context-window waste", "Download configurations directly into your repo"].map((item) => (
+                  <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)", textAlign: "left" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                     {item}
                   </li>
@@ -404,7 +828,7 @@ function LandingPage() {
           </div>
           <FadeIn delay={150}>
             <div style={{ animation: "float 6s ease-in-out infinite" }}>
-              <MemoryVaultMockup />
+              <HeroStackCreatorMockup />
             </div>
           </FadeIn>
         </div>
@@ -419,16 +843,16 @@ function LandingPage() {
             </FadeIn>
             <div>
               <FadeIn>
-                <SectionLabel>MCP Endpoint</SectionLabel>
+                <SectionLabel>MCP Protocol</SectionLabel>
                 <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
-                  Universal context, any AI client
+                  Expose Locker context via universal MCP endpoints
                 </h2>
                 <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
-                  A single <code style={{ color: "var(--accent)", fontSize: 13, background: "var(--surface2)", padding: "1px 5px", borderRadius: 4 }}>/api/mcp</code> endpoint speaks the Model Context Protocol. Wire it into Claude Desktop, Cursor, Cline, VS Code Copilot — any MCP-compatible client.
+                  Connect your vault to IDE code assistants using a single `/api/mcp` endpoint compliant with the Model Context Protocol. AI assistants retrieve semantic memories on demand.
                 </p>
                 <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                  {["recall_context — semantic vector search", "commit_memory — write new facts mid-session", "Runs on Cloudflare edge, sub-50ms globally", "Standard JSON-RPC 2.0 transport"].map((item) => (
-                    <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)" }}>
+                  {["recall_context — semantic vector query of facts", "commit_memory — persist new rules directly from prompt sessions", "Edge-distributed vector search under 50ms", "JSON-RPC 2.0 transport over secure HTTP"].map((item) => (
+                    <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)", textAlign: "left" }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                       {item}
                     </li>
@@ -468,25 +892,55 @@ function LandingPage() {
         </div>
       </Section>
 
-      {/* ── API TOKENS ── */}
+      {/* ── MEMORY TEMPLATES SECTION ── */}
+      <Section>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
+          <div>
+            <FadeIn>
+              <SectionLabel>Memory Templates</SectionLabel>
+              <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
+                Standardize guidelines, security policies, and runbooks
+              </h2>
+              <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
+                Accelerate workspace onboarding. Locker provides pre-made memory templates covering core coding standards, CI/CD deployment setups, Docker security rules, and SOC2 compliance targets.
+              </p>
+              <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+                {["One-click template ingestion to your locker", "Boilerplates for TypeScript, Rust, and Go standards", "Deployment checks and CI workflow guides", "Enforce SOC2 and GDPR compliance criteria"].map((item) => (
+                  <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)", textAlign: "left" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </FadeIn>
+          </div>
+          <FadeIn delay={150}>
+            <div style={{ animation: "float 6s ease-in-out infinite" }}>
+              <MemoryTemplatesMockup />
+            </div>
+          </FadeIn>
+        </div>
+      </Section>
+
+      {/* ── GOVERNANCE & REVIEWS SECTION ── */}
       <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
         <Section>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
             <FadeIn delay={150}>
-              <TokenMockup />
+              <ReviewQueueMockup />
             </FadeIn>
             <div>
               <FadeIn>
-                <SectionLabel>API Tokens</SectionLabel>
+                <SectionLabel>Governance & Reviews</SectionLabel>
                 <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
-                  Fine-grained access control
+                  Authoritative Org Vaults & Peer Review Queue
                 </h2>
                 <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
-                  Generate Bearer tokens with per-tool permission bitmasks. Give your coding assistant read-only access, while letting your personal Claude write new memories mid-session.
+                  Ensure team-wide context remains reliable. Developers can suggest rules from their IDE agents, which queue inside the Recommendation Dashboard. Approving them promotes them to the Authoritative Org Vault.
                 </p>
                 <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                  {["Tokens stored as SHA-256 hashes only", "Shown once at creation, never again", "Toggle recall_context and commit_memory independently", "Revoke any token instantly"].map((item) => (
-                    <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)" }}>
+                  {["Proposed agent updates enqueued automatically", "Full markdown diff view for auditing change intents", "Authoritative rules override personal context", "Enforce security standards team-wide"].map((item) => (
+                    <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)", textAlign: "left" }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                       {item}
                     </li>
@@ -498,24 +952,52 @@ function LandingPage() {
         </Section>
       </div>
 
+      {/* ── API TOKENS ── */}
+      <Section>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
+          <div>
+            <FadeIn>
+              <SectionLabel>API Security</SectionLabel>
+              <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
+                Fine-grained access control & scopes
+              </h2>
+              <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
+                Generate Bearer tokens with per-tool permission bitmasks. Give your coding assistant read-only access, while letting your personal Claude write new memories mid-session.
+              </p>
+              <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+                {["Tokens stored as SHA-256 hashes only", "Shown once at creation, never again", "Toggle recall_context and commit_memory independently", "Revoke any token instantly"].map((item) => (
+                  <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)", textAlign: "left" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </FadeIn>
+          </div>
+          <FadeIn delay={150}>
+            <TokenMockup />
+          </FadeIn>
+        </div>
+      </Section>
+
       {/* ── HOW IT WORKS ── */}
       <Section>
         <div style={{ textAlign: "center", marginBottom: 56 }}>
           <FadeIn>
             <SectionLabel>How It Works</SectionLabel>
             <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2 }}>
-              From export to AI context in minutes
+              From stack wizard to active AI context in minutes
             </h2>
           </FadeIn>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-            <Step num="1" title="Export memories from any chatbot" desc="Use the built-in prompts on the Import page to pull your existing memories out of ChatGPT, Claude, Gemini, Grok, Perplexity, or Copilot." delay={0} />
-            <Step num="2" title="Paste & AI-extract" desc="Paste the raw chatbot output. Locker's AI parser extracts discrete facts, categorises them, and tags them automatically." delay={100} />
+            <Step num="1" title="Build or Import Context" desc="Run the Tech Stack Wizard to output target constraints, or ingest pre-built memory templates and chatbot exports." delay={0} />
+            <Step num="2" title="Extract & Tag Rules" desc="Locker automatically indexes, labels, and encrypts facts before writing them as discrete records into the database." delay={100} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-            <Step num="3" title="Connect your AI client" desc="Follow the Connect guide to add Locker as an MCP server in any compatible client using your Bearer token." delay={200} />
-            <Step num="4" title="Your context follows you everywhere" desc="Every AI session starts with your full personal and technical context — encrypted, always up to date, under your control." delay={300} />
+            <Step num="3" title="Bind Universal MCP Endpoint" desc="Expose your Locker context to Cursor, Claude Desktop, Copilot, or CLI clients using your secure bearer token." delay={200} />
+            <Step num="4" title="Execute with Precise Context" desc="IDE agents access updated codebase context and organizational rules automatically on every prompt cycle." delay={300} />
           </div>
         </div>
       </Section>
@@ -527,7 +1009,7 @@ function LandingPage() {
             <FadeIn>
               <SectionLabel>Core Features</SectionLabel>
               <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2 }}>
-                Built for teams of all sizes
+                Built for AI-Native Engineering Orgs
               </h2>
             </FadeIn>
           </div>
@@ -535,13 +1017,13 @@ function LandingPage() {
             {[
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "End-to-end encryption", desc: "AES-256-GCM on every fact. Database rows are ciphertext only.", delay: 0 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "Semantic vector search", desc: "Cloudflare Vectorize powers fuzzy recall — find facts by meaning, not just keywords.", delay: 60 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: `${PLATFORMS.length}+ platform configs`, desc: "Claude (Web/Extension/CLI) and Antigravity 2.0 fully tested and working. Config snippets for all major AI clients — more platforms coming.", delay: 120 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>, title: "AI-powered import", desc: "Paste any raw text — Claude extracts, categorises, and deduplicates the facts.", delay: 180 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Per-token permissions", desc: "Bearer tokens with bitmask permissions — read-only or full write access, per client.", delay: 240 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>, title: "Cloudflare edge", desc: "Workers + D1 + Vectorize — globally distributed, no server to manage.", delay: 300 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, title: "Org Vault & Teams", desc: "Create shared vaults for teams with role-based access control.", delay: 360 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>, title: "Authoritative Vault", desc: "Lock official facts in the Org Vault so they override personal context in AI queries.", delay: 420 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>, title: "Recommendation Queue & Reviews", desc: "Submit context updates for review with full in-app and email notifications.", delay: 480 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: "Tech Stack Wizard", desc: "Instantly compile optimized .cursorrules, .claudemd, and agents.md files tailored to your development stack.", delay: 120 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>, title: "Memory Templates", desc: "Deploy pre-built coding guidelines, DevOps runbooks, and SOC2 compliance controls directly to developer agents.", delay: 180 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Review & Approval Queue", desc: "Review context suggestions made by developer agents before merging them production-wide.", delay: 240 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>, title: "Authoritative Org Vault", desc: "Lock critical standards inside organization scopes. Authoritative rules always take precedence in agent contexts.", delay: 300 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, title: "Per-Token Scopes", desc: "Configure bitmask permissions to toggle read-only recall_context and write-access commit_memory capabilities.", delay: 360 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>, title: "Cloudflare Edge Native", desc: "Zero-servers to manage. Runs entirely on Cloudflare Workers, Cloudflare D1, and Cloudflare Vectorize.", delay: 420 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>, title: "In-App Notifications", desc: "Receive immediate toasts and notifications when agent-committed rules require TPM or DevOps review.", delay: 480 },
             ].map((f) => (
               <FeatureCard key={f.title} icon={f.icon} title={f.title} desc={f.desc} delay={f.delay} />
             ))}
@@ -552,12 +1034,12 @@ function LandingPage() {
       {/* ── PLATFORMS ── */}
       <Section style={{ textAlign: "center" }}>
         <FadeIn>
-          <SectionLabel>Supported Platforms</SectionLabel>
+          <SectionLabel>Supported Clients</SectionLabel>
           <h2 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 8 }}>
-            Works with your whole stack
+            Integrates with your active AI toolchain
           </h2>
-          <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 36 }}>
-            One endpoint, every client. Claude (Web, Extension, CLI), ChatGPT, and Antigravity 2.0 (Editor & CLI) are fully tested and working. Configs for other platforms are provided as a best-effort guide — they may need adjustment as those clients evolve.
+          <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 36, maxWidth: 640, margin: "0 auto 36px" }}>
+            Expose context to your entire toolkit. Claude Code (CLI, Extension, Web), ChatGPT, and Antigravity 2.0 (Editor & CLI) are fully verified. Configuration scripts are provided to hook up all major MCP clients.
           </p>
         </FadeIn>
         <PlatformGrid />
@@ -567,7 +1049,7 @@ function LandingPage() {
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
             >
-              View all config guides →
+              View config guides →
             </Link>
           </div>
         </FadeIn>
@@ -580,30 +1062,30 @@ function LandingPage() {
             <FadeIn>
               <SectionLabel>Use Cases</SectionLabel>
               <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2 }}>
-                For engineering teams, product teams, and beyond
+                Designed for engineering, DevOps, and project governance
               </h2>
             </FadeIn>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20 }}>
             {[
               {
-                title: "Engineering Teams",
-                desc: "Store architecture decisions, API specs, coding standards, and best practices. Give every team member instant access to tribal knowledge, accelerating onboarding and reducing context-switching.",
+                title: "Software Engineers",
+                desc: "Compile tailored agent rules like .cursorrules dynamically. Keep coding context, standards, APIs, and project rules aligned with AI assistants during coding sessions.",
                 icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
               },
               {
-                title: "Product & Design",
-                desc: "Collaborate on user research, design principles, market analysis, and feature specs. AI tools can instantly understand your product vision and generate more coherent specs and docs.",
+                title: "DevOps & Infrastructure",
+                desc: "Maintain and deploy memory templates for CI/CD pipelines, Docker container security, and package handling guidelines. Eliminate manual agent config setups on developer machines.",
                 icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
               },
               {
-                title: "Business Analysts",
-                desc: "Maintain a shared repository of business rules, market requirements, stakeholder preferences, and project history. Let AI tools understand your business context and generate more actionable insights.",
+                title: "Security & Compliance",
+                desc: "Standardize SOC2 controls and GDPR rulesets inside authoritative locker scopes. Enforce decryption, auditing, and secret retrieval constraints production-wide.",
                 icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
               },
               {
-                title: "Project Managers",
-                desc: "Keep roadmap decisions, release notes, client feedback, and project context in one searchable vault. AI assistants can instantly surface relevant context for sprint planning and status reports.",
+                title: "Technical Project Managers (TPM)",
+                desc: "Review and approve developer rule updates using the Recommendation Review Queue. Sync product roadmap context and backlog definitions with team-wide agent configurations.",
                 icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               },
             ].map(({ title, desc, icon }) => (
@@ -624,10 +1106,10 @@ function LandingPage() {
         <FadeIn>
           <SectionLabel>Pricing</SectionLabel>
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 8 }}>
-            Plans for every team
+            Plans for every team size
           </h2>
           <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 48, maxWidth: 500, margin: "0 auto 48px" }}>
-            Start free with personal context. Upgrade for team collaboration, shared vaults, and usage analytics.
+            Start free with personal context. Upgrade for shared vaults, recommendation queue reviews, and custom templates.
           </p>
         </FadeIn>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 40, textAlign: "left" }}>
@@ -663,17 +1145,17 @@ function LandingPage() {
               </svg>
             </div>
             <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", marginBottom: 14 }}>
-              Start building shared context
+              Deploy Secure Context Storage
             </h2>
             <p style={{ fontSize: 15, color: "var(--text-muted)", lineHeight: 1.7, marginBottom: 32 }}>
-              Create your personal vault free. Invite your team when you're ready to share organizational knowledge and accelerate AI-driven work.
+              Establish your personal vault free. Add team organizations when you're ready to share authoritative codebase standards and speed up engineering pipelines.
             </p>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
               <Link to="/memories" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px", background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 14, borderRadius: 10, textDecoration: "none", transition: "background 0.15s" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent-hover)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent)"; }}
               >
-                Open Vault
+                Launch Console
               </Link>
               <Link to="/pricing" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "transparent", color: "var(--text-muted)", fontWeight: 600, fontSize: 14, borderRadius: 10, border: "1px solid var(--border)", textDecoration: "none", transition: "border-color 0.15s, color 0.15s" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}

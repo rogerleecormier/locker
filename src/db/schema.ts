@@ -78,7 +78,7 @@ export const memories = sqliteTable("memories", {
   id: text("id").primaryKey(),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   fact: text("fact").notNull(),
-  category: text("category", { enum: ["rules", "projects", "references"] }).notNull(),
+  category: text("category", { enum: ["rules", "projects", "references", "stack"] }).notNull(),
   tags: text("tags").notNull().default(""),
   timestamp: integer("timestamp").notNull(),
   isActive: integer("isActive", { mode: "boolean" }).notNull().default(true),
@@ -256,7 +256,7 @@ export const memoryVersions = sqliteTable("memory_versions", {
   id: text("id").primaryKey(),
   memoryId: text("memoryId").notNull().references(() => memories.id, { onDelete: "cascade" }),
   fact: text("fact").notNull(),
-  category: text("category", { enum: ["rules", "projects", "references"] }).notNull(),
+  category: text("category", { enum: ["rules", "projects", "references", "stack"] }).notNull(),
   tags: text("tags").notNull(),
   changedBy: text("changedBy").notNull(), // userId or 'system'
   changeReason: text("changeReason"), // 'created', 'updated', 'contradiction (archived)', etc.
@@ -319,7 +319,7 @@ export const memoryRecommendations = sqliteTable("memory_recommendations", {
   orgId: text("orgId").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   fact: text("fact").notNull(),
-  category: text("category", { enum: ["rules", "projects", "references"] }).notNull(),
+  category: text("category", { enum: ["rules", "projects", "references", "stack"] }).notNull(),
   tags: text("tags").notNull().default(""),
   projectKey: text("projectKey"),
   status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
@@ -370,19 +370,15 @@ export type MemoryRecommendation = typeof memoryRecommendations.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type FeatureOverride = typeof featureOverrides.$inferSelect;
 
-export const technicalBaselines = sqliteTable("technical_baselines", {
-  id: text("id").primaryKey(),                 // e.g., "cf-edge-tanstack-v8"
-  name: text("name").notNull(),                // e.g., "Cloudflare Edge + TanStack Fullstack"
+export const memoryTemplates = sqliteTable("memory_templates", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
   description: text("description").notNull(),
+  category: text("category", { enum: ["stack", "governance", "devops", "compliance", "documentation"] }).notNull().default("stack"),
   configPayload: text("config_payload").notNull(), // JSON string tracking directories, rules, constraints
   createdAt: integer("created_at").notNull(),
 });
 
-export const projectBaselines = sqliteTable("project_baselines", {
-  id: text("id").primaryKey(),
-  projectKey: text("project_key").notNull(),   // Correlates directly to existing memory grouping
-  baselineId: text("baseline_id")
-    .notNull()
-    .references(() => technicalBaselines.id, { onDelete: "cascade" }),
-  createdAt: integer("created_at").notNull(),
-});
+export type MemoryTemplate = typeof memoryTemplates.$inferSelect;
+
+

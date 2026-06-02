@@ -19,8 +19,10 @@ import {
   permanentlyDeleteArchivedMemory,
   analyzeProjectRequirements,
   generateStackRecommendation,
+  listMemoryTemplates,
+  createMemoryTemplate,
 } from "~/server/memoryFunctions";
-import type { Memory } from "~/db/schema";
+import type { Memory, MemoryTemplate } from "~/db/schema";
 
 export const Route = createFileRoute("/memories")({
   component: Dashboard,
@@ -31,12 +33,14 @@ const CATEGORY_LABELS: Record<string, string> = {
   rules: "Rules",
   projects: "Projects",
   references: "References",
+  stack: "Stack",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
   rules: "#818cf8",
   projects: "#34d399",
   references: "#fbbf24",
+  stack: "#a855f7",
 };
 
 function CategoryBadge({ category }: { category: string }) {
@@ -193,12 +197,13 @@ function MemoryRow({
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <select
               value={editCategory}
-              onChange={(e) => setEditCategory(e.target.value as "rules" | "projects" | "references")}
+              onChange={(e) => setEditCategory(e.target.value as any)}
               style={{ padding: "5px 8px", fontSize: 12 }}
             >
               <option value="rules">Rules</option>
               <option value="projects">Projects</option>
               <option value="references">References</option>
+              <option value="stack">Stack</option>
             </select>
             <input
               type="text"
@@ -547,13 +552,19 @@ function NewMemoryModal({
     queryFn: () => getUserWorkspaces(),
   });
 
+  // Templates query
+  const { data: templates = [] } = useQuery({
+    queryKey: ["templates"],
+    queryFn: () => listMemoryTemplates(),
+  });
+
   // Wizard state
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [mode, setMode] = useState<"single" | "stack" | null>(null);
 
   // Path A: Single Memory Fact
   const [fact, setFact] = useState("");
-  const [category, setCategory] = useState<"rules" | "projects" | "references">("references");
+  const [category, setCategory] = useState<"rules" | "projects" | "references" | "stack">("references");
   const [tags, setTags] = useState("");
   const [singleLocker, setSingleLocker] = useState(projectKey || "personal");
 
@@ -591,6 +602,8 @@ function NewMemoryModal({
     bannedProviders: [] as string[],
   });
 
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+
   const [recommendation, setRecommendation] = useState<{
     name: string;
     description: string;
@@ -607,6 +620,18 @@ function NewMemoryModal({
   });
   const [savingStack, setSavingStack] = useState(false);
   const [stackError, setStackError] = useState("");
+
+  // Merge Templates state
+  const [selectedMergeTemplateIds, setSelectedMergeTemplateIds] = useState<string[]>([]);
+  const [mergeVariables, setMergeVariables] = useState<Record<string, Record<string, string>>>({});
+
+  // Save as template option state
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [templateDescription, setTemplateDescription] = useState("");
+
+  // CLI Downloader format state
+  const [cliFormat, setCliFormat] = useState<"claude" | "cursor" | "copilot" | "gemini" | "agents">("cursor");
 
   // Preset list
   const PRESET_ARCHETYPES = [
@@ -755,21 +780,68 @@ function NewMemoryModal({
     }
   };
 
+  const nonStackTemplates = useMemo(() => {
+    return templates.filter((t) => t.category !== "stack");
+  }, [templates]);
+
+  const mergedRules = useMemo(() => {
+    if (!recommendation) return [];
+    const list = [...recommendation.rules];
+    
+    selectedMergeTemplateIds.forEach((tmplId) => {
+      const tmpl = templates.find((t) => t.id === tmplId);
+      if (!tmpl) return;
+      try {
+        const payload = JSON.parse(tmpl.configPayload);
+        const tmplRules = payload.rules || [];
+        const vars = mergeVariables[tmplId] || {};
+        
+        tmplRules.forEach((rule: string) => {
+          let finalRule = rule;
+          Object.entries(vars).forEach(([k, v]) => {
+            finalRule = finalRule.replaceAll(`{{${k}}}`, v);
+          });
+          list.push(finalRule);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    });
+    
+    return list;
+  }, [recommendation, selectedMergeTemplateIds, templates, mergeVariables]);
+
   const handleSaveStack = async () => {
     if (!recommendation) return;
     setSavingStack(true);
     setStackError("");
     try {
-      const factText = `# ${recommendation.name}\n${recommendation.description}\n\n## Stack Preferences:\n- Language: ${preferences.language}\n- Frontend: ${preferences.frontend}\n- Hosting: ${preferences.hosting}\n- Database: ${preferences.database}\n- ORM/DB Access: ${preferences.orm}\n- Authentication: ${preferences.auth}\n- Styling: ${preferences.styling}\n- State/Cache: ${preferences.stateCache}\n- Storage: ${preferences.storage}\n- Search/Vector: ${preferences.search}\n- Banned Providers: ${preferences.bannedProviders.join(", ") || "None"}\n\n## Architectural Rules:\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+      const factText = `# ${recommendation.name}\n${recommendation.description}\n\n## Stack Preferences:\n- Language: ${preferences.language}\n- Frontend: ${preferences.frontend}\n- Hosting: ${preferences.hosting}\n- Database: ${preferences.database}\n- ORM/DB Access: ${preferences.orm}\n- Authentication: ${preferences.auth}\n- Styling: ${preferences.styling}\n- State/Cache: ${preferences.stateCache}\n- Storage: ${preferences.storage}\n- Search/Vector: ${preferences.search}\n- Banned Providers: ${preferences.bannedProviders.join(", ") || "None"}\n\n## Architectural Rules:\n${mergedRules.map((r) => `- ${r}`).join("\n")}`;
 
       await addMemory({
         data: {
           fact: factText,
-          category: "rules",
+          category: "stack",
           tags: "stack,blueprint",
           projectKey: targetLocker === "personal" ? undefined : targetLocker,
         },
       });
+
+      if (saveAsTemplate) {
+        await createMemoryTemplate({
+          data: {
+            name: templateName.trim() || recommendation.name,
+            description: templateDescription.trim() || recommendation.description,
+            category: "stack",
+            configPayload: JSON.stringify({
+              ...preferences,
+              rules: recommendation.rules,
+              variables: [],
+            }),
+          },
+        });
+        queryClient.invalidateQueries({ queryKey: ["templates"] });
+      }
 
       queryClient.invalidateQueries({ queryKey: ["memories"] });
       onSaved();
@@ -798,7 +870,7 @@ function NewMemoryModal({
 
     switch (format) {
       case "claude":
-        content = `# ${recommendation.name} Rules\n\n${recommendation.description}\n\n## Development Standards and Architectural Constraints\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+        content = `# ${recommendation.name} Rules\n\n${recommendation.description}\n\n## Development Standards and Architectural Constraints\n${mergedRules.map((r) => `- ${r}`).join("\n")}`;
         filename = ".claudemd";
         break;
       case "cursor":
@@ -807,7 +879,7 @@ function NewMemoryModal({
             name: recommendation.name,
             description: recommendation.description,
             globs: ["*"],
-            rules: recommendation.rules,
+            rules: mergedRules,
           },
           null,
           2
@@ -815,15 +887,15 @@ function NewMemoryModal({
         filename = ".cursorrules";
         break;
       case "copilot":
-        content = `# Copilot Instructions for ${recommendation.name}\n\n${recommendation.description}\n\n## Rules:\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+        content = `# Copilot Instructions for ${recommendation.name}\n\n${recommendation.description}\n\n## Rules:\n${mergedRules.map((r) => `- ${r}`).join("\n")}`;
         filename = "copilot-instructions.md";
         break;
       case "gemini":
-        content = `# Gemini Rules for ${recommendation.name}\n\n${recommendation.description}\n\n## Coding Guidelines:\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+        content = `# Gemini Rules for ${recommendation.name}\n\n${recommendation.description}\n\n## Coding Guidelines:\n${mergedRules.map((r) => `- ${r}`).join("\n")}`;
         filename = ".geminirules";
         break;
       case "agents":
-        content = `# Custom Agent Rules - ${recommendation.name}\n\n${recommendation.description}\n\n## General Guidelines:\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+        content = `# Custom Agent Rules - ${recommendation.name}\n\n${recommendation.description}\n\n## General Guidelines:\n${mergedRules.map((r) => `- ${r}`).join("\n")}`;
         filename = "agents.md";
         break;
     }
@@ -1069,6 +1141,7 @@ function NewMemoryModal({
                     <option value="references">References</option>
                     <option value="rules">Rules</option>
                     <option value="projects">Projects</option>
+                    <option value="stack">Stack</option>
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>
@@ -1146,6 +1219,49 @@ function NewMemoryModal({
                 {/* Left Column: Archetypes & AI Goals */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                   
+                  {/* Load from Template */}
+                  {templates.filter((t) => t.category === "stack").length > 0 && (
+                    <div>
+                      <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontWeight: 600 }}>
+                        Load from Memory Template
+                      </label>
+                      <select
+                        value={selectedTemplateId}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedTemplateId(val);
+                          const tmpl = templates.find((t) => t.id === val);
+                          if (tmpl) {
+                            try {
+                              const payload = JSON.parse(tmpl.configPayload);
+                              setPreferences({
+                                language: payload.language || "TypeScript",
+                                frontend: payload.frontend || "React / TanStack",
+                                hosting: payload.hosting || "Cloudflare Edge",
+                                database: payload.database || "Cloudflare D1",
+                                storage: payload.storage || "Cloudflare R2",
+                                search: payload.search || "Cloudflare Vectorize",
+                                orm: payload.orm || "Drizzle ORM",
+                                auth: payload.auth || "Better Auth",
+                                styling: payload.styling || "Vanilla CSS",
+                                stateCache: payload.stateCache || "TanStack Store",
+                                bannedProviders: payload.bannedProviders || [],
+                              });
+                            } catch (err) {
+                              console.error(err);
+                            }
+                          }
+                        }}
+                        style={{ width: "100%", padding: "10px 12px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none", marginBottom: 16 }}
+                      >
+                        <option value="">-- Choose custom template preset --</option>
+                        {templates.filter((t) => t.category === "stack").map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   {/* Presets */}
                   <div>
                     <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontWeight: 600 }}>
@@ -1155,7 +1271,10 @@ function NewMemoryModal({
                       {PRESET_ARCHETYPES.map((arch) => (
                         <button
                           key={arch.name}
-                          onClick={() => setPreferences({ ...arch.preferences })}
+                          onClick={() => {
+                            setPreferences({ ...arch.preferences });
+                            setSelectedTemplateId("");
+                          }}
                           style={{
                             padding: "10px 12px",
                             background: "var(--surface2)",
@@ -1501,7 +1620,7 @@ function NewMemoryModal({
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", display: "block", marginBottom: 8, letterSpacing: "0.04em" }}>Architectural Rules:</span>
                       <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 6, lineHeight: 1.5 }}>
-                        {recommendation.rules.map((rule, idx) => (
+                        {mergedRules.map((rule, idx) => (
                           <li key={idx}>{rule}</li>
                         ))}
                       </ul>
@@ -1510,18 +1629,18 @@ function NewMemoryModal({
                 </div>
 
                 {/* Right Column: Save Destination & Config File Generator */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 20, borderLeft: "1px solid var(--border)", paddingLeft: 32 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 16, borderLeft: "1px solid var(--border)", paddingLeft: 32, maxHeight: "420px", overflowY: "auto" }}>
                   
                   {/* Locker selector */}
                   <div>
-                    <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontWeight: 600 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
                       Save To Locker
                       <InfoTooltip text="Select the target locker/vault where this blueprint memory should be saved." size={12} />
                     </label>
                     <select
                       value={targetLocker}
                       onChange={(e) => setTargetLocker(e.target.value)}
-                      style={{ width: "100%", padding: "10px 12px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                      style={{ width: "100%", padding: "8px 10px", fontSize: 12.5, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
                     >
                       {workspaces.map((w) => (
                         <option key={w.key} value={w.key}>{w.label}</option>
@@ -1529,12 +1648,49 @@ function NewMemoryModal({
                     </select>
                   </div>
 
+                  {/* Save as template options */}
+                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={saveAsTemplate}
+                        onChange={(e) => setSaveAsTemplate(e.target.checked)}
+                        style={{ accentColor: "var(--accent)", cursor: "pointer" }}
+                      />
+                      <span style={{ fontWeight: 600 }}>Save as Memory Template</span>
+                    </label>
+                    {saveAsTemplate && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, padding: 8, background: "var(--surface2)", borderRadius: "var(--radius)" }}>
+                        <div>
+                          <label style={{ display: "block", fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 2 }}>Template Name</label>
+                          <input
+                            type="text"
+                            value={templateName}
+                            onChange={(e) => setTemplateName(e.target.value)}
+                            placeholder={recommendation.name}
+                            style={{ width: "100%", padding: "4px 6px", fontSize: 11, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 2 }}>Template Description</label>
+                          <input
+                            type="text"
+                            value={templateDescription}
+                            onChange={(e) => setTemplateDescription(e.target.value)}
+                            placeholder={recommendation.description}
+                            style={{ width: "100%", padding: "4px 6px", fontSize: 11, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Config Files Checkboxes */}
-                  <div>
-                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10, fontWeight: 600 }}>
+                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontWeight: 600 }}>
                       Generate Assistant Config Files
                     </label>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {[
                         { id: "claude", label: ".claudemd (Claude)" },
                         { id: "cursor", label: ".cursorrules (Cursor)" },
@@ -1542,7 +1698,7 @@ function NewMemoryModal({
                         { id: "gemini", label: ".geminirules (Gemini)" },
                         { id: "agents", label: "agents.md (General)" },
                       ].map((cf) => (
-                        <label key={cf.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, cursor: "pointer", padding: "2px 0" }}>
+                        <label key={cf.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, cursor: "pointer", padding: "2px 0" }}>
                           <input
                             type="checkbox"
                             checked={(syncOptions as any)[cf.id]}
@@ -1554,6 +1710,76 @@ function NewMemoryModal({
                       ))}
                     </div>
                   </div>
+
+                  {/* Multi-template Composition */}
+                  {nonStackTemplates.length > 0 && (
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                      <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontWeight: 600 }}>
+                        Merge Additional Guidelines
+                      </label>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {nonStackTemplates.map((tmpl) => {
+                          const isChecked = selectedMergeTemplateIds.includes(tmpl.id);
+                          let payload: any = { rules: [], variables: [] };
+                          try {
+                            payload = JSON.parse(tmpl.configPayload);
+                          } catch {}
+                          const hasVars = payload.variables && payload.variables.length > 0;
+                          return (
+                            <div key={tmpl.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 8, background: isChecked ? "rgba(168,85,247,0.02)" : "transparent" }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedMergeTemplateIds(prev => [...prev, tmpl.id]);
+                                      const defaultVars: Record<string, string> = {};
+                                      (payload.variables || []).forEach((v: any) => {
+                                        defaultVars[v.key] = v.default;
+                                      });
+                                      setMergeVariables(prev => ({ ...prev, [tmpl.id]: defaultVars }));
+                                    } else {
+                                      setSelectedMergeTemplateIds(prev => prev.filter(id => id !== tmpl.id));
+                                    }
+                                  }}
+                                  style={{ accentColor: "var(--accent)", cursor: "pointer" }}
+                                />
+                                <div>
+                                  <span style={{ fontWeight: 600 }}>{tmpl.name}</span>
+                                  <span style={{ fontSize: 9, marginLeft: 6, padding: "1px 4px", background: "var(--surface2)", borderRadius: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>{tmpl.category}</span>
+                                </div>
+                              </label>
+                              {isChecked && hasVars && (
+                                <div style={{ marginTop: 6, padding: "6px 8px", background: "var(--surface2)", borderRadius: 4, display: "flex", flexDirection: "column", gap: 6 }}>
+                                  {payload.variables.map((v: any) => (
+                                    <div key={v.key} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                      <label style={{ fontSize: 9, fontWeight: 600 }}>{v.key} ({v.description})</label>
+                                      <input
+                                        type="text"
+                                        value={mergeVariables[tmpl.id]?.[v.key] ?? v.default}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setMergeVariables(prev => ({
+                                            ...prev,
+                                            [tmpl.id]: {
+                                              ...(prev[tmpl.id] || {}),
+                                              [v.key]: val
+                                            }
+                                          }));
+                                        }}
+                                        style={{ padding: "2px 4px", fontSize: 10, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", width: "100%" }}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                 </div>
 
@@ -1703,6 +1929,53 @@ function NewMemoryModal({
                     );
                   })}
                 </div>
+              </div>
+
+              {/* CLI Downloader Block */}
+              <div style={{ width: "100%", textAlign: "left", marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    Or Sync via CLI (MCP CURL Downloader):
+                  </span>
+                  <select
+                    value={cliFormat}
+                    onChange={(e) => setCliFormat(e.target.value as any)}
+                    style={{ padding: "4px 8px", fontSize: 11, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                  >
+                    <option value="cursor">.cursorrules (Cursor)</option>
+                    <option value="claude">.claudemd (Claude)</option>
+                    <option value="copilot">copilot-instructions.md</option>
+                    <option value="gemini">.geminirules (Gemini)</option>
+                    <option value="agents">agents.md (General)</option>
+                  </select>
+                </div>
+                
+                <div style={{ position: "relative", background: "rgba(0,0,0,0.2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "10px 12px", fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)", wordBreak: "break-all", whiteSpace: "pre-wrap", lineHeight: 1.4, minHeight: "60px" }}>
+                  {(() => {
+                    const origin = typeof window !== "undefined" ? window.location.origin : "https://locker.rcormier.dev";
+                    const projectParam = targetLocker === "personal" ? "personal" : targetLocker;
+                    const redirectCmd = cliFormat === "copilot"
+                      ? `mkdir -p .github && curl -s -X POST -H "Authorization: Bearer <API_KEY>" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sync_workspace_agent_configs","arguments":{"projectKey":"${projectParam}","formatType":"${cliFormat}"}}}' ${origin}/api/mcp | jq -r '.result.content[0].text' | jq -r '.markdown' > .github/copilot-instructions.md`
+                      : `curl -s -X POST -H "Authorization: Bearer <API_KEY>" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sync_workspace_agent_configs","arguments":{"projectKey":"${projectParam}","formatType":"${cliFormat}"}}}' ${origin}/api/mcp | jq -r '.result.content[0].text' | jq -r '.markdown' > .${cliFormat === "agents" ? "agents.md" : cliFormat === "claude" ? "claudemd" : cliFormat + "rules"}`;
+                    return (
+                      <>
+                        <span style={{ display: "block", paddingRight: "45px" }}>{redirectCmd}</span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(redirectCmd);
+                            alert("Copied to clipboard!");
+                          }}
+                          style={{ position: "absolute", top: 6, right: 6, padding: "3px 6px", fontSize: 10, background: "var(--surface2)", border: "1px solid var(--border)", cursor: "pointer", color: "var(--text)", borderRadius: 3 }}
+                        >
+                          Copy
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+                <span style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginTop: 6 }}>
+                  * Replace <code>&lt;API_KEY&gt;</code> with your active personal API token (generated from the API Keys tab in settings). Requires <code>jq</code>.
+                </span>
               </div>
 
               <button
@@ -2369,7 +2642,7 @@ function Dashboard() {
   }
 
   const totalByCategory = useMemo(() => {
-    const counts: Record<string, number> = { rules: 0, projects: 0, references: 0 };
+    const counts: Record<string, number> = { rules: 0, projects: 0, references: 0, stack: 0 };
     for (const m of memories) counts[m.category] = (counts[m.category] ?? 0) + 1;
     return counts;
   }, [memories]);
@@ -2513,9 +2786,10 @@ function Dashboard() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 28 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 28 }}>
         {[
           { label: "Total", value: memories.length, color: "var(--text)" },
+          { label: "Stacks", value: totalByCategory.stack, color: CATEGORY_COLORS.stack },
           { label: "Rules", value: totalByCategory.rules, color: CATEGORY_COLORS.rules },
           { label: "Projects", value: totalByCategory.projects, color: CATEGORY_COLORS.projects },
           { label: "References", value: totalByCategory.references, color: CATEGORY_COLORS.references },
@@ -2617,6 +2891,7 @@ function Dashboard() {
             style={{ padding: "8px 12px", minWidth: 140 }}
           >
             <option value="">All categories</option>
+            <option value="stack">Stacks</option>
             <option value="rules">Rules</option>
             <option value="projects">Projects</option>
             <option value="references">References</option>
