@@ -584,6 +584,10 @@ function NewMemoryModal({
     database: "Cloudflare D1",
     storage: "Cloudflare R2",
     search: "Cloudflare Vectorize",
+    orm: "Drizzle ORM",
+    auth: "Better Auth",
+    styling: "Vanilla CSS",
+    stateCache: "TanStack Store",
     bannedProviders: [] as string[],
   });
 
@@ -608,7 +612,7 @@ function NewMemoryModal({
   const PRESET_ARCHETYPES = [
     {
       name: "Cloudflare Edge",
-      description: "TS + TanStack + Edge + D1 + R2 + Vectorize",
+      description: "TS + TanStack + Edge + D1 + R2 + Vectorize + Drizzle",
       preferences: {
         language: "TypeScript",
         frontend: "React / TanStack",
@@ -616,12 +620,16 @@ function NewMemoryModal({
         database: "Cloudflare D1",
         storage: "Cloudflare R2",
         search: "Cloudflare Vectorize",
+        orm: "Drizzle ORM",
+        auth: "Better Auth",
+        styling: "Vanilla CSS",
+        stateCache: "TanStack Store",
         bannedProviders: [],
       },
     },
     {
       name: "AWS Serverless",
-      description: "TS + React + Lambda + Aurora PG + S3 + Pinecone",
+      description: "TS + React + Lambda + Aurora PG + S3 + Pinecone + Prisma",
       preferences: {
         language: "TypeScript",
         frontend: "React / TanStack",
@@ -629,12 +637,16 @@ function NewMemoryModal({
         database: "Aurora PostgreSQL",
         storage: "AWS S3",
         search: "Pinecone",
+        orm: "Prisma",
+        auth: "Clerk",
+        styling: "Tailwind CSS",
+        stateCache: "Zustand",
         bannedProviders: [],
       },
     },
     {
       name: "Netlify Jamstack",
-      description: "TS + Next.js + Netlify + Supabase + Vector",
+      description: "TS + Next.js + Netlify + Supabase + Vector + Kysely",
       preferences: {
         language: "TypeScript",
         frontend: "Next.js",
@@ -642,12 +654,16 @@ function NewMemoryModal({
         database: "PostgreSQL",
         storage: "Supabase Storage",
         search: "Supabase Vector",
+        orm: "Kysely",
+        auth: "Supabase Auth",
+        styling: "Tailwind CSS",
+        stateCache: "React Context",
         bannedProviders: [],
       },
     },
     {
       name: "Vercel Fullstack",
-      description: "TS + Next.js + Vercel + PG + S3 + Pinecone",
+      description: "TS + Next.js + Vercel + PG + S3 + Pinecone + Prisma",
       preferences: {
         language: "TypeScript",
         frontend: "Next.js",
@@ -655,6 +671,10 @@ function NewMemoryModal({
         database: "PostgreSQL",
         storage: "AWS S3",
         search: "Pinecone",
+        orm: "Prisma",
+        auth: "Auth.js (NextAuth)",
+        styling: "Tailwind CSS",
+        stateCache: "Zustand",
         bannedProviders: [],
       },
     },
@@ -668,6 +688,10 @@ function NewMemoryModal({
         database: "Azure SQL",
         storage: "Azure Blob Storage",
         search: "Azure AI Search",
+        orm: "SQL (Raw)",
+        auth: "Custom JWT",
+        styling: "Tailwind CSS",
+        stateCache: "Zustand",
         bannedProviders: [],
       },
     },
@@ -681,6 +705,10 @@ function NewMemoryModal({
         database: "Cloud Spanner",
         storage: "Google Cloud Storage",
         search: "Vertex AI Vector Search",
+        orm: "SQL (Raw)",
+        auth: "Custom JWT",
+        styling: "Tailwind CSS",
+        stateCache: "Zustand",
         bannedProviders: [],
       },
     },
@@ -698,6 +726,10 @@ function NewMemoryModal({
         database: res.database || "Cloudflare D1",
         storage: res.storage || "Cloudflare R2",
         search: res.search || "Cloudflare Vectorize",
+        orm: res.orm || "Drizzle ORM",
+        auth: res.auth || "Better Auth",
+        styling: res.styling || "Tailwind CSS",
+        stateCache: res.stateCache || "TanStack Store",
         bannedProviders: res.bannedProviders || [],
       });
     } catch (e) {
@@ -728,7 +760,7 @@ function NewMemoryModal({
     setSavingStack(true);
     setStackError("");
     try {
-      const factText = `# ${recommendation.name}\n${recommendation.description}\n\n## Stack Preferences:\n- Language: ${preferences.language}\n- Frontend: ${preferences.frontend}\n- Hosting: ${preferences.hosting}\n- Database: ${preferences.database}\n- Storage: ${preferences.storage}\n- Search/Vector: ${preferences.search}\n- Banned Providers: ${preferences.bannedProviders.join(", ") || "None"}\n\n## Architectural Rules:\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+      const factText = `# ${recommendation.name}\n${recommendation.description}\n\n## Stack Preferences:\n- Language: ${preferences.language}\n- Frontend: ${preferences.frontend}\n- Hosting: ${preferences.hosting}\n- Database: ${preferences.database}\n- ORM/DB Access: ${preferences.orm}\n- Authentication: ${preferences.auth}\n- Styling: ${preferences.styling}\n- State/Cache: ${preferences.stateCache}\n- Storage: ${preferences.storage}\n- Search/Vector: ${preferences.search}\n- Banned Providers: ${preferences.bannedProviders.join(", ") || "None"}\n\n## Architectural Rules:\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
 
       await addMemory({
         data: {
@@ -1264,6 +1296,62 @@ function NewMemoryModal({
                           style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
                         >
                           {["Cloudflare D1", "PostgreSQL", "Aurora PostgreSQL", "Azure SQL", "Cloud Spanner", "MySQL", "SQLite", "MongoDB", "DynamoDB"].map(x => (
+                            <option key={x} value={x}>{x}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* ORM */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>ORM / DB Access</label>
+                        <select
+                          value={preferences.orm}
+                          onChange={(e) => setPreferences({ ...preferences, orm: e.target.value })}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                        >
+                          {["Drizzle ORM", "Prisma", "Kysely", "SQL (Raw)", "SQLAlchemy", "Prisma Client Python", "None"].map(x => (
+                            <option key={x} value={x}>{x}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Authentication */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>Authentication</label>
+                        <select
+                          value={preferences.auth}
+                          onChange={(e) => setPreferences({ ...preferences, auth: e.target.value })}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                        >
+                          {["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Custom JWT", "None"].map(x => (
+                            <option key={x} value={x}>{x}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Styling */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>CSS / Styling</label>
+                        <select
+                          value={preferences.styling}
+                          onChange={(e) => setPreferences({ ...preferences, styling: e.target.value })}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                        >
+                          {["Tailwind CSS", "CSS Modules", "Styled Components", "Vanilla CSS", "Panda CSS"].map(x => (
+                            <option key={x} value={x}>{x}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* State / Cache */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>State / Cache</label>
+                        <select
+                          value={preferences.stateCache}
+                          onChange={(e) => setPreferences({ ...preferences, stateCache: e.target.value })}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                        >
+                          {["TanStack Store", "Zustand", "Redux", "React Context", "Redis", "Cloudflare KV", "None"].map(x => (
                             <option key={x} value={x}>{x}</option>
                           ))}
                         </select>

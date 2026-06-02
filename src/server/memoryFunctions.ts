@@ -3201,6 +3201,10 @@ export const analyzeProjectRequirements = createServerFn({ method: "POST" })
     database: string;
     storage: string;
     search: string;
+    orm: string;
+    auth: string;
+    styling: string;
+    stateCache: string;
     bannedProviders: string[];
   }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
@@ -3214,6 +3218,10 @@ Based on the description, recommend the most appropriate options for their tech 
 - Database: "Cloudflare D1", "PostgreSQL", "Aurora PostgreSQL", "Azure SQL", "Cloud Spanner", "MySQL", "SQLite", "MongoDB", "DynamoDB"
 - Blob/Object Storage: "Cloudflare R2", "AWS S3", "Google Cloud Storage", "Azure Blob Storage", "Local"
 - Search / Vector Index: "Cloudflare Vectorize", "Pinecone", "Supabase Vector", "Azure AI Search", "Vertex AI Vector Search", "Qdrant", "None"
+- ORM / DB Access: "Drizzle ORM", "Prisma", "Kysely", "SQL (Raw)", "SQLAlchemy", "Prisma Client Python", "None"
+- Authentication: "Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Custom JWT", "None"
+- CSS / Styling: "Tailwind CSS", "CSS Modules", "Styled Components", "Vanilla CSS", "Panda CSS"
+- Client State / Cache: "TanStack Store", "Zustand", "Redux", "React Context", "Redis", "Cloudflare KV", "None"
 - Banned Providers/Services: Recommend any cloud providers (like "AWS", "Google Cloud", "Azure", "Atlassian/Jira") that should be explicitly banned if the user expresses privacy or competitor concerns. Choose from: "AWS", "Google Cloud", "Azure", "Atlassian/Jira".
 
 Respond with ONLY a JSON object conforming to the following format. Do not include explanation, markdown code fences, or any other text.
@@ -3224,6 +3232,10 @@ Respond with ONLY a JSON object conforming to the following format. Do not inclu
   "database": string,
   "storage": string,
   "search": string,
+  "orm": string,
+  "auth": string,
+  "styling": string,
+  "stateCache": string,
   "bannedProviders": string[]
 }
 
@@ -3247,6 +3259,10 @@ Project Description:
           database: String(parsed.database || "Cloudflare D1"),
           storage: String(parsed.storage || "Cloudflare R2"),
           search: String(parsed.search || "Cloudflare Vectorize"),
+          orm: String(parsed.orm || "Drizzle ORM"),
+          auth: String(parsed.auth || "Better Auth"),
+          styling: String(parsed.styling || "Tailwind CSS"),
+          stateCache: String(parsed.stateCache || "TanStack Store"),
           bannedProviders: Array.isArray(parsed.bannedProviders) ? parsed.bannedProviders.map(String) : [],
         };
       }
@@ -3262,6 +3278,10 @@ Project Description:
       database: "Cloudflare D1",
       storage: "Cloudflare R2",
       search: "Cloudflare Vectorize",
+      orm: "Drizzle ORM",
+      auth: "Better Auth",
+      styling: "Vanilla CSS",
+      stateCache: "TanStack Store",
       bannedProviders: ["AWS", "Google Cloud"],
     };
   });
@@ -3274,6 +3294,10 @@ export const generateStackRecommendation = createServerFn({ method: "POST" })
     database: string;
     storage: string;
     search: string;
+    orm: string;
+    auth: string;
+    styling: string;
+    stateCache: string;
     bannedProviders: string[];
   } => {
     const d = data as any;
@@ -3284,6 +3308,10 @@ export const generateStackRecommendation = createServerFn({ method: "POST" })
       database: String(d.database || ""),
       storage: String(d.storage || ""),
       search: String(d.search || ""),
+      orm: String(d.orm || ""),
+      auth: String(d.auth || ""),
+      styling: String(d.styling || ""),
+      stateCache: String(d.stateCache || ""),
       bannedProviders: Array.isArray(d.bannedProviders) ? d.bannedProviders.map(String) : [],
     };
   })
@@ -3304,6 +3332,10 @@ Preferences:
 - Database: ${data.database}
 - Blob/Object Storage: ${data.storage}
 - Search / Vector Index: ${data.search}
+- ORM / DB Access: ${data.orm}
+- Authentication: ${data.auth}
+- CSS / Styling: ${data.styling}
+- Client State / Cache: ${data.stateCache}
 - Banned Providers/Services: ${data.bannedProviders.join(", ") || "None"}
 
 Please return your response in raw JSON format (no markdown code blocks, no explanation, no headers) conforming to the following TypeScript interface:
@@ -3339,12 +3371,16 @@ Please return your response in raw JSON format (no markdown code blocks, no expl
     // Fallback if parsing fails
     return {
       name: `${data.frontend || "Custom"} Stack Blueprint`,
-      description: `Architectural blueprint for a stack using ${data.language} with ${data.frontend} and ${data.hosting}.`,
+      description: `Architectural blueprint for a stack using ${data.language} with ${data.frontend}, ${data.hosting}, using ${data.orm} and ${data.auth}.`,
       rules: [
         `Enforce ${data.language} as the primary language.`,
         `Enforce ${data.frontend} for frontend structure and routing.`,
         `Enforce ${data.hosting} for hosting compute runtimes.`,
         `Enforce ${data.database} as the primary database.`,
+        `Enforce ${data.orm} for database ORM and query building.`,
+        `Enforce ${data.auth} for user sessions and identity.`,
+        `Enforce ${data.styling} for styling user interface components.`,
+        `Enforce ${data.stateCache} for client-side state / server-side caching.`,
         `Enforce ${data.storage} for object storage.`,
         `Enforce ${data.search} for search/embeddings.`,
         ...data.bannedProviders.map(p => `Strict negative constraint: ${p} services are explicitly banned.`)
