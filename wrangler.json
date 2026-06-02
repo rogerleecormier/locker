@@ -19,7 +19,8 @@
   "vectorize": [
     {
       "binding": "VECTOR_INDEX",
-      "index_name": "locker-memories-v2"
+      "index_name": "locker-memories-v2",
+      "remote": true
     }
   ],
   "ai": {

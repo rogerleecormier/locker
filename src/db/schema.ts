@@ -370,3 +370,19 @@ export type MemoryRecommendation = typeof memoryRecommendations.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type FeatureOverride = typeof featureOverrides.$inferSelect;
 
+export const technicalBaselines = sqliteTable("technical_baselines", {
+  id: text("id").primaryKey(),                 // e.g., "cf-edge-tanstack-v8"
+  name: text("name").notNull(),                // e.g., "Cloudflare Edge + TanStack Fullstack"
+  description: text("description").notNull(),
+  configPayload: text("config_payload").notNull(), // JSON string tracking directories, rules, constraints
+  createdAt: integer("created_at").notNull(),
+});
+
+export const projectBaselines = sqliteTable("project_baselines", {
+  id: text("id").primaryKey(),
+  projectKey: text("project_key").notNull(),   // Correlates directly to existing memory grouping
+  baselineId: text("baseline_id")
+    .notNull()
+    .references(() => technicalBaselines.id, { onDelete: "cascade" }),
+  createdAt: integer("created_at").notNull(),
+});

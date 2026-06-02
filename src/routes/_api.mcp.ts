@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, technicalBaselines, projectBaselines } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
@@ -161,6 +161,32 @@ export const ALL_TOOLS = [
         id: { type: "string", description: "The unique ID of the memory to delete." },
       },
       required: ["id"],
+    },
+  },
+  {
+    name: "apply_technical_baseline",
+    description: "Applies a technical baseline to a project workspace. Verifies the baseline, links it, and automatically injects authoritative architecture memories tagged with #architecture and #baseline into the database.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectKey: { type: "string", description: "The target project workspace key." },
+        baselineId: { type: "string", description: "The ID of the technical baseline to apply (e.g., cf-edge-tanstack-v8)." },
+      },
+      required: ["projectKey", "baselineId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "sync_workspace_agent_configs",
+    description: "Syncs workspace agent configuration instructions. Compiles all authoritative architectural baseline memories for the project into a polished Markdown manifesto (.claudemd or agents.md), returning the content and target path. IMPORTANT: The downstream developer agent is authorized and expected to physically write this returned string contents directly to disk at the specified relative target path upon tool execution completion.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectKey: { type: "string", description: "The project workspace key." },
+        formatType: { type: "string", enum: ["claude.md", "agents.md"], description: "Target instruction manifesto format." },
+      },
+      required: ["projectKey", "formatType"],
+      additionalProperties: false,
     },
   },
 ];
@@ -652,6 +678,8 @@ export async function handleMcpRequest(
       if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
       if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
+      if (t.name === "apply_technical_baseline") return !!(claims.permissions & MCP_PERM_COMMIT);
+      if (t.name === "sync_workspace_agent_configs") return !!(claims.permissions & MCP_PERM_RECALL);
       return false;
     });
     return new Response(
@@ -704,6 +732,8 @@ export async function handleMcpRequest(
       if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
       if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
+      if (t.name === "apply_technical_baseline") return !!(claims.permissions & MCP_PERM_COMMIT);
+      if (t.name === "sync_workspace_agent_configs") return !!(claims.permissions & MCP_PERM_RECALL);
       return false;
     });
     return mcpResult(id, { tools: allowedTools });
@@ -1490,6 +1520,345 @@ export async function handleMcpRequest(
     return mcpResult(id, {
       content: [
         { type: "text", text: JSON.stringify({ success: true, id: memId }) },
+      ],
+    });
+  }
+
+  if (toolName === "apply_technical_baseline") {
+    if (!(claims.permissions & MCP_PERM_COMMIT)) {
+      return mcpError(id, -32001, "Token does not have commit_memory permission");
+    }
+
+    const projectKey = args.projectKey as string | undefined;
+    const baselineId = args.baselineId as string | undefined;
+
+    if (projectKey === undefined || typeof projectKey !== "string") {
+      return mcpError(id, -32602, "Invalid params: projectKey is required");
+    }
+    if (!baselineId || typeof baselineId !== "string") {
+      return mcpError(id, -32602, "Invalid params: baselineId is required");
+    }
+
+    if (!claims.userId) {
+      throw new Error("Unauthorized: userId is required for baseline application");
+    }
+
+    const resolvedProjectKey = resolveProjectKey(claims, projectKey);
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, resolvedProjectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${resolvedProjectKey ?? "personal"}'`);
+    }
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, resolvedProjectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${resolvedProjectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "commit", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
+    // Verify the requested baselineId exists in technical_baselines
+    const baselines = await db
+      .select()
+      .from(technicalBaselines)
+      .where(eq(technicalBaselines.id, baselineId))
+      .limit(1)
+      .all();
+
+    if (!baselines.length) {
+      return mcpError(id, -32602, `Baseline not found: ${baselineId}`);
+    }
+    const baseline = baselines[0];
+
+    // Link it to the project space via project_baselines table
+    const existingLinks = await db
+      .select()
+      .from(projectBaselines)
+      .where(
+        and(
+          eq(projectBaselines.projectKey, resolvedProjectKey || ""),
+          eq(projectBaselines.baselineId, baseline.id)
+        )
+      )
+      .limit(1)
+      .all();
+
+    if (!existingLinks.length) {
+      await db.insert(projectBaselines).values({
+        id: crypto.randomUUID(),
+        projectKey: resolvedProjectKey || "",
+        baselineId: baseline.id,
+        createdAt: Date.now(),
+      });
+    }
+
+    // Parse configPayload JSON
+    let payload: any;
+    try {
+      payload = JSON.parse(baseline.configPayload);
+    } catch (e) {
+      return mcpError(id, -32603, `Invalid config payload JSON in baseline: ${e}`);
+    }
+
+    const constraints: string[] = [];
+    if (payload.techStack?.cloudflare?.rules) {
+      constraints.push(...payload.techStack.cloudflare.rules);
+    }
+    if (payload.techStack?.tanstack?.rules) {
+      constraints.push(...payload.techStack.tanstack.rules);
+    }
+    if (payload.restrictions?.rules) {
+      constraints.push(...payload.restrictions.rules);
+    }
+    if (payload.repositoryRules?.rules) {
+      constraints.push(...payload.repositoryRules.rules);
+    }
+
+    // Fetch existing memories for this vault to prevent duplicates
+    const existingMemories = await db
+      .select()
+      .from(memories)
+      .where(
+        and(
+          resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
+            ? eq(memories.projectKey, resolvedProjectKey)
+            : and(eq(memories.userId, claims.userId), sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`),
+          eq(memories.authorityType, "authoritative"),
+          eq(memories.isActive, true)
+        )
+      )
+      .all();
+
+    const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+
+    const decryptedExisting = await Promise.all(
+      existingMemories.map(async (m) => {
+        try {
+          return await decryptFact(m.fact, vaultKey, env.ENCRYPTION_KEY);
+        } catch {
+          return "";
+        }
+      })
+    );
+
+    const newConstraints = constraints.filter((c) => !decryptedExisting.includes(c.trim()));
+    let scopeType: "personal" | "organization" | "team" = "personal";
+    let scopeId: string | null = null;
+    if (resolvedProjectKey) {
+      if (resolvedProjectKey.startsWith("org:")) {
+        scopeType = "organization";
+        scopeId = resolvedProjectKey.slice(4);
+      } else if (resolvedProjectKey.startsWith("team:")) {
+        scopeType = "team";
+        scopeId = resolvedProjectKey.slice(5);
+      }
+    }
+
+    let tokensConsumed = 0;
+
+    if (newConstraints.length > 0) {
+      const memoryValues = [];
+      const versionValues = [];
+      const vectorInserts = [];
+
+      for (const constraint of newConstraints) {
+        const trimmed = constraint.trim();
+        const encrypted = await encrypt(trimmed, vaultKey);
+        const memId = crypto.randomUUID();
+        const timestamp = Date.now();
+
+        memoryValues.push({
+          id: memId,
+          userId: claims.userId,
+          fact: encrypted,
+          category: "rules" as const,
+          tags: "architecture, baseline, mcp",
+          timestamp,
+          isActive: true,
+          projectKey: resolvedProjectKey || null,
+          scopeType,
+          scopeId,
+          authorityType: "authoritative" as const,
+        });
+
+        versionValues.push({
+          id: crypto.randomUUID(),
+          memoryId: memId,
+          fact: encrypted,
+          category: "rules" as const,
+          tags: "architecture, baseline, mcp",
+          changedBy: claims.userId,
+          changeReason: "created",
+          timestamp,
+        });
+
+        const embedding = await generateEmbedding(env.AI, trimmed);
+        tokensConsumed += estimateEmbeddingTokens(trimmed);
+
+        vectorInserts.push({
+          id: memId,
+          values: embedding,
+          metadata: {
+            userId: claims.userId,
+            category: "rules",
+            tags: "architecture, baseline, mcp",
+            projectKey: resolvedProjectKey ?? "",
+          },
+        });
+      }
+
+      // Insert memories and versions one-by-one to avoid SQLite/D1 parameter limits
+      for (const mVal of memoryValues) {
+        await db.insert(memories).values(mVal).run();
+      }
+      for (const vVal of versionValues) {
+        await db.insert(memoryVersions).values(vVal).run();
+      }
+
+      // Batch insert into Vectorize
+      await env.VECTOR_INDEX.insert(vectorInserts);
+    }
+
+    // Audit log & token usage
+    await logAudit(db, {
+      orgId,
+      userId: claims.userId,
+      tokenId: claims.tokenId,
+      action: "apply_technical_baseline",
+      ipAddress,
+      userAgent,
+      metadata: { baselineId, projectKey: resolvedProjectKey, insertedCount: newConstraints.length },
+    });
+    await logTokenUsage(db, claims.tokenId, "commit", tokensConsumed);
+
+    return mcpResult(id, {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            success: true,
+            baselineId,
+            projectKey: resolvedProjectKey,
+            insertedCount: newConstraints.length,
+          }),
+        },
+      ],
+    });
+  }
+
+  if (toolName === "sync_workspace_agent_configs") {
+    if (!(claims.permissions & MCP_PERM_RECALL)) {
+      return mcpError(id, -32001, "Token does not have recall_context permission");
+    }
+
+    const projectKey = args.projectKey as string | undefined;
+    const formatType = args.formatType as string | undefined;
+
+    if (projectKey === undefined || typeof projectKey !== "string") {
+      return mcpError(id, -32602, "Invalid params: projectKey is required");
+    }
+    if (!formatType || (formatType !== "claude.md" && formatType !== "agents.md")) {
+      return mcpError(id, -32602, "Invalid params: formatType must be 'claude.md' or 'agents.md'");
+    }
+
+    if (!claims.userId) {
+      throw new Error("Unauthorized: userId is required for syncing agent configs");
+    }
+
+    const resolvedProjectKey = resolveProjectKey(claims, projectKey);
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, resolvedProjectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${resolvedProjectKey ?? "personal"}'`);
+    }
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, resolvedProjectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${resolvedProjectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "recall", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
+    // Select all authoritative active memories for this workspace
+    const conditions = [
+      resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
+        ? eq(memories.projectKey, resolvedProjectKey)
+        : and(eq(memories.userId, claims.userId), sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`),
+      eq(memories.authorityType, "authoritative"),
+      eq(memories.isActive, true)
+    ];
+
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(and(...conditions))
+      .all();
+
+    const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+
+    const decryptedMemories = await Promise.all(
+      rows.map(async (r) => {
+        try {
+          return {
+            ...r,
+            fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY),
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const filtered = decryptedMemories.filter((r): r is NonNullable<typeof r> => {
+      if (!r) return false;
+      const tagsList = (r.tags || "").split(",").map((t) => t.trim().toLowerCase());
+      return tagsList.includes("architecture") || tagsList.includes("baseline");
+    });
+
+    const targetPath = formatType === "claude.md" ? "./.claudemd" : "./agents.md";
+    const header = formatType === "claude.md"
+      ? "# Claude System Instructions - Technical Stack Blueprint"
+      : "# Developer Agent Rules - Technical Stack Blueprint";
+
+    const markdownBody = `${header}
+
+This manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.
+
+## Enforced Guidelines
+
+${filtered.map((m) => `- ${m.fact}`).join("\n")}
+
+---
+*Generated at: ${new Date().toISOString()}*
+`;
+
+    // Audit log & token usage
+    await logAudit(db, {
+      orgId,
+      userId: claims.userId,
+      tokenId: claims.tokenId,
+      action: "sync_workspace_agent_configs",
+      ipAddress,
+      userAgent,
+      metadata: { projectKey: resolvedProjectKey, formatType, rulesCount: filtered.length },
+    });
+    await logTokenUsage(db, claims.tokenId, "recall", 0);
+
+    return mcpResult(id, {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            markdown: markdownBody,
+            targetPath: targetPath,
+            projectKey: resolvedProjectKey,
+            rulesCount: filtered.length,
+          }),
+        },
       ],
     });
   }
