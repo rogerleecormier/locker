@@ -800,7 +800,7 @@ function NewMemoryModal({
   };
 
   // Determine dynamic width
-  const modalWidth = step === 2 && mode === "stack" ? 680 : 540;
+  const modalWidth = (step === 2 || step === 3) && mode === "stack" ? 940 : step === 1 ? 680 : 580;
 
   return (
     <div
@@ -826,7 +826,7 @@ function NewMemoryModal({
           borderRadius: "var(--radius)",
           width: "100%",
           maxWidth: modalWidth,
-          boxShadow: "0 24px 48px rgba(0,0,0,0.4)",
+          boxShadow: "0 24px 48px rgba(0,0,0,0.5)",
           transition: "max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
           overflow: "hidden",
           maxHeight: "90vh",
@@ -837,7 +837,7 @@ function NewMemoryModal({
         {/* Header */}
         <div
           style={{
-            padding: "16px 20px",
+            padding: "18px 24px",
             borderBottom: "1px solid var(--border)",
             display: "flex",
             alignItems: "center",
@@ -845,8 +845,8 @@ function NewMemoryModal({
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontWeight: 600, fontSize: 15 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: "-0.01em" }}>
               {mode === "stack" ? "AI Tech Stack Creator" : "New Memory"}
             </span>
             {mode === "stack" && (
@@ -861,9 +861,11 @@ function NewMemoryModal({
               background: "none",
               border: "none",
               color: "var(--text-muted)",
-              fontSize: 18,
+              fontSize: 20,
               padding: "0 4px",
               cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
             }}
           >
             ✕
@@ -871,19 +873,19 @@ function NewMemoryModal({
         </div>
 
         {/* Content body */}
-        <div style={{ padding: 20, overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ padding: "24px 28px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
           
           {/* STEP 1: Choose Path */}
           {step === 1 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div style={{ textAlign: "center", marginBottom: 8 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 6px 0" }}>Choose Memory Type</h3>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              <div style={{ textAlign: "center", marginBottom: 6 }}>
+                <h3 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 6px 0", letterSpacing: "-0.01em" }}>Choose Memory Type</h3>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
                   Select whether you want to save a simple fact or design an AI-recommended tech stack ruleset.
                 </p>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
                 {/* Option A Card */}
                 <div
                   onClick={() => {
@@ -892,33 +894,35 @@ function NewMemoryModal({
                   }}
                   style={{
                     border: "1px solid var(--border)",
-                    borderRadius: 12,
-                    padding: 20,
+                    borderRadius: 14,
+                    padding: "24px 20px",
                     cursor: "pointer",
                     background: "rgba(255,255,255,0.01)",
-                    transition: "all 0.2s ease",
+                    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
                     textAlign: "center",
-                    gap: 12,
+                    gap: 14,
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "var(--text-muted)";
-                    e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-                    e.currentTarget.style.transform = "translateY(-2px)";
+                    e.currentTarget.style.borderColor = "var(--accent)";
+                    e.currentTarget.style.background = "rgba(168,85,247,0.02)";
+                    e.currentTarget.style.transform = "translateY(-3px)";
+                    e.currentTarget.style.boxShadow = "0 8px 24px rgba(168,85,247,0.06)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = "var(--border)";
                     e.currentTarget.style.background = "rgba(255,255,255,0.01)";
                     e.currentTarget.style.transform = "none";
+                    e.currentTarget.style.boxShadow = "none";
                   }}
                 >
                   <div
                     style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 10,
+                      width: 48,
+                      height: 48,
+                      borderRadius: 12,
                       background: "rgba(168,85,247,0.1)",
                       display: "flex",
                       alignItems: "center",
@@ -926,14 +930,14 @@ function NewMemoryModal({
                       color: "var(--accent)",
                     }}
                   >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
                       <polyline points="14 2 14 8 20 8" />
                     </svg>
                   </div>
                   <div>
-                    <h4 style={{ fontSize: 14, fontWeight: 600, margin: "0 0 4px 0" }}>Single Memory Fact</h4>
-                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, lineHeight: 1.4 }}>
+                    <h4 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 6px 0" }}>Single Memory Fact</h4>
+                    <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
                       Directly record a single rule, preference, lookup info, or custom project note.
                     </p>
                   </div>
@@ -947,33 +951,35 @@ function NewMemoryModal({
                   }}
                   style={{
                     border: "1px solid rgba(168,85,247,0.3)",
-                    borderRadius: 12,
-                    padding: 20,
+                    borderRadius: 14,
+                    padding: "24px 20px",
                     cursor: "pointer",
                     background: "linear-gradient(135deg, rgba(168,85,247,0.05) 0%, rgba(139,92,246,0.02) 100%)",
-                    transition: "all 0.2s ease",
+                    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
                     textAlign: "center",
-                    gap: 12,
+                    gap: 14,
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = "var(--accent)";
-                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(139,92,246,0.04) 100%)";
-                    e.currentTarget.style.transform = "translateY(-2px)";
+                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(168,85,247,0.09) 0%, rgba(139,92,246,0.04) 100%)";
+                    e.currentTarget.style.transform = "translateY(-3px)";
+                    e.currentTarget.style.boxShadow = "0 8px 24px rgba(168,85,247,0.12)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = "rgba(168,85,247,0.3)";
                     e.currentTarget.style.background = "linear-gradient(135deg, rgba(168,85,247,0.05) 0%, rgba(139,92,246,0.02) 100%)";
                     e.currentTarget.style.transform = "none";
+                    e.currentTarget.style.boxShadow = "none";
                   }}
                 >
                   <div
                     style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 10,
+                      width: 48,
+                      height: 48,
+                      borderRadius: 12,
                       background: "rgba(168,85,247,0.2)",
                       display: "flex",
                       alignItems: "center",
@@ -981,7 +987,7 @@ function NewMemoryModal({
                       color: "var(--accent)",
                     }}
                   >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="3" width="7" height="9" />
                       <rect x="14" y="3" width="7" height="5" />
                       <rect x="14" y="12" width="7" height="9" />
@@ -989,8 +995,8 @@ function NewMemoryModal({
                     </svg>
                   </div>
                   <div>
-                    <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", margin: "0 0 4px 0" }}>Tech Stack Blueprint</h4>
-                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, lineHeight: 1.4 }}>
+                    <h4 style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)", margin: "0 0 6px 0" }}>Tech Stack Blueprint</h4>
+                    <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
                       Create a consolidated architecture memory containing structured rules for coding assistants.
                     </p>
                   </div>
@@ -1001,7 +1007,7 @@ function NewMemoryModal({
 
           {/* STEP 2: Path A - Single Memory Fact */}
           {step === 2 && mode === "single" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
                 <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
                   Fact
@@ -1011,13 +1017,13 @@ function NewMemoryModal({
                   autoFocus
                   value={fact}
                   onChange={(e) => setFact(e.target.value)}
-                  rows={4}
+                  rows={5}
                   placeholder="Enter the memory fact…"
-                  style={{ width: "100%", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, resize: "vertical", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  style={{ width: "100%", padding: "12px 14px", fontSize: 13, lineHeight: 1.5, resize: "vertical", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
                 />
               </div>
 
-              <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ display: "flex", gap: 16 }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
                     Category
@@ -1026,7 +1032,7 @@ function NewMemoryModal({
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value as any)}
-                    style={{ width: "100%", padding: "8px 10px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                    style={{ width: "100%", padding: "10px 12px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
                   >
                     <option value="references">References</option>
                     <option value="rules">Rules</option>
@@ -1043,7 +1049,7 @@ function NewMemoryModal({
                     value={tags}
                     onChange={(e) => setTags(e.target.value)}
                     placeholder="comma-separated"
-                    style={{ width: "100%", padding: "8px 10px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                    style={{ width: "100%", padding: "10px 12px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
                   />
                 </div>
               </div>
@@ -1056,7 +1062,7 @@ function NewMemoryModal({
                 <select
                   value={singleLocker}
                   onChange={(e) => setSingleLocker(e.target.value)}
-                  style={{ width: "100%", padding: "8px 10px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  style={{ width: "100%", padding: "10px 12px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
                 >
                   {workspaces.map((w) => (
                     <option key={w.key} value={w.key}>{w.label}</option>
@@ -1076,21 +1082,21 @@ function NewMemoryModal({
                     setStep(1);
                     setMode(null);
                   }}
-                  style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                  style={{ padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
                 >
                   Back
                 </button>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     onClick={onClose}
-                    style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                    style={{ padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => singleMutation.mutate()}
                     disabled={!fact.trim() || singleMutation.isPending}
-                    style={{ padding: "8px 20px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: (!fact.trim() || singleMutation.isPending) ? "default" : "pointer" }}
+                    style={{ padding: "10px 22px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: (!fact.trim() || singleMutation.isPending) ? "default" : "pointer" }}
                   >
                     {singleMutation.isPending ? "Saving…" : "Save Memory"}
                   </button>
@@ -1099,220 +1105,248 @@ function NewMemoryModal({
             </div>
           )}
 
-          {/* STEP 2: Path B - Preferences Builder */}
+          {/* STEP 2: Path B - Preferences Builder (2-Column Redesign) */}
           {step === 2 && mode === "stack" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               
-              {/* Presets */}
-              <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
-                  Quick-Select Stack Archetypes
-                </label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                  {PRESET_ARCHETYPES.map((arch) => (
-                    <button
-                      key={arch.name}
-                      onClick={() => setPreferences({ ...arch.preferences })}
-                      style={{
-                        padding: "8px 10px",
-                        background: "var(--surface2)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "var(--radius)",
-                        color: "var(--text)",
-                        fontSize: 11,
-                        textAlign: "left",
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = "var(--accent)";
-                        e.currentTarget.style.background = "rgba(168,85,247,0.03)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = "var(--border)";
-                        e.currentTarget.style.background = "var(--surface2)";
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, marginBottom: 2 }}>{arch.name}</div>
-                      <div style={{ fontSize: 9, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {arch.description}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Goal Prompt */}
-              <div>
-                <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-                  AI Prompt Input (Interview / Goal Box)
-                  <InfoTooltip text="Describe your goals (e.g. 'A low-latency real-time chat site built on edge platforms with no AWS'). The AI will auto-populate stack options." size={12} />
-                </label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <textarea
-                    value={interviewPrompt}
-                    onChange={(e) => setInterviewPrompt(e.target.value)}
-                    placeholder="Describe your project goal (e.g., I want to build a real-time multiplayer card game with room matches, low latency, and a global database...)"
-                    rows={2}
-                    style={{ flex: 1, padding: "8px 10px", fontSize: 12, resize: "none", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", lineHeight: 1.4 }}
-                  />
-                  <button
-                    onClick={handleAnalyzePrompt}
-                    disabled={analyzingPrompt || !interviewPrompt.trim()}
-                    style={{
-                      padding: "0 16px",
-                      background: "var(--accent)",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "var(--radius)",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: (analyzingPrompt || !interviewPrompt.trim()) ? "default" : "pointer",
-                      opacity: (analyzingPrompt || !interviewPrompt.trim()) ? 0.6 : 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      minWidth: 100,
-                    }}
-                  >
-                    {analyzingPrompt ? "Analyzing…" : "Analyze"}
-                  </button>
-                </div>
-              </div>
-
-              {/* Grid of drop downs */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 32 }}>
                 
-                {/* Language */}
-                <div>
-                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Language</label>
-                  <select
-                    value={preferences.language}
-                    onChange={(e) => setPreferences({ ...preferences, language: e.target.value })}
-                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
-                  >
-                    {["TypeScript", "JavaScript", "Go", "Python", "Rust", "C# / .NET"].map(x => (
-                      <option key={x} value={x}>{x}</option>
-                    ))}
-                  </select>
+                {/* Left Column: Archetypes & AI Goals */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  
+                  {/* Presets */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontWeight: 600 }}>
+                      Quick-Select Stack Archetypes
+                    </label>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      {PRESET_ARCHETYPES.map((arch) => (
+                        <button
+                          key={arch.name}
+                          onClick={() => setPreferences({ ...arch.preferences })}
+                          style={{
+                            padding: "10px 12px",
+                            background: "var(--surface2)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "var(--radius)",
+                            color: "var(--text)",
+                            fontSize: 11,
+                            textAlign: "left",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 4,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = "var(--accent)";
+                            e.currentTarget.style.background = "rgba(168,85,247,0.04)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = "var(--border)";
+                            e.currentTarget.style.background = "var(--surface2)";
+                          }}
+                        >
+                          <div style={{ fontWeight: 700 }}>{arch.name}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.3 }}>
+                            {arch.description}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Goal Prompt */}
+                  <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                      AI Prompt Input (Interview / Goal Box)
+                      <InfoTooltip text="Describe your goals (e.g. 'A low-latency real-time chat site built on edge platforms with no AWS'). The AI will auto-populate stack options." size={12} />
+                    </label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
+                      <textarea
+                        value={interviewPrompt}
+                        onChange={(e) => setInterviewPrompt(e.target.value)}
+                        placeholder="Describe your project goal (e.g., I want to build a real-time multiplayer card game with room matches, low latency, and a global database...)"
+                        rows={5}
+                        style={{ width: "100%", flex: 1, padding: "12px", fontSize: 12.5, resize: "none", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", lineHeight: 1.5, outline: "none" }}
+                      />
+                      <button
+                        onClick={handleAnalyzePrompt}
+                        disabled={analyzingPrompt || !interviewPrompt.trim()}
+                        style={{
+                          padding: "10px 16px",
+                          background: "var(--accent)",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "var(--radius)",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: (analyzingPrompt || !interviewPrompt.trim()) ? "default" : "pointer",
+                          opacity: (analyzingPrompt || !interviewPrompt.trim()) ? 0.6 : 1,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          width: "100%",
+                        }}
+                      >
+                        {analyzingPrompt ? (
+                          <>
+                            <span className="spinner" style={{ border: "2px solid rgba(255,255,255,0.3)", borderTop: "2px solid #fff", borderRadius: "50%", width: 12, height: 12, display: "inline-block", animation: "spin 0.8s linear infinite" }} />
+                            Analyzing Requirements…
+                          </>
+                        ) : (
+                          "Analyze & Autofill Stack"
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
                 </div>
 
-                {/* Frontend */}
-                <div>
-                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Frontend Framework</label>
-                  <select
-                    value={preferences.frontend}
-                    onChange={(e) => setPreferences({ ...preferences, frontend: e.target.value })}
-                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
-                  >
-                    {["React / TanStack", "Next.js", "Vue / Nuxt", "Svelte", "Solid", "Vanilla JS"].map(x => (
-                      <option key={x} value={x}>{x}</option>
-                    ))}
-                  </select>
+                {/* Right Column: Preferences Selectors & Banned List */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 20, borderLeft: "1px solid var(--border)", paddingLeft: 32 }}>
+                  
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10, fontWeight: 600 }}>
+                      Technical Preferences
+                    </label>
+                    
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      {/* Language */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>Language</label>
+                        <select
+                          value={preferences.language}
+                          onChange={(e) => setPreferences({ ...preferences, language: e.target.value })}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                        >
+                          {["TypeScript", "JavaScript", "Go", "Python", "Rust", "C# / .NET"].map(x => (
+                            <option key={x} value={x}>{x}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Frontend */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>Frontend Framework</label>
+                        <select
+                          value={preferences.frontend}
+                          onChange={(e) => setPreferences({ ...preferences, frontend: e.target.value })}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                        >
+                          {["React / TanStack", "Next.js", "Vue / Nuxt", "Svelte", "Solid", "Vanilla JS"].map(x => (
+                            <option key={x} value={x}>{x}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Hosting */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>Hosting / Runtime</label>
+                        <select
+                          value={preferences.hosting}
+                          onChange={(e) => setPreferences({ ...preferences, hosting: e.target.value })}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                        >
+                          {["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "GCP Cloud Run", "Azure Functions", "VPS / Docker"].map(x => (
+                            <option key={x} value={x}>{x}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Database */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>Database</label>
+                        <select
+                          value={preferences.database}
+                          onChange={(e) => setPreferences({ ...preferences, database: e.target.value })}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                        >
+                          {["Cloudflare D1", "PostgreSQL", "Aurora PostgreSQL", "Azure SQL", "Cloud Spanner", "MySQL", "SQLite", "MongoDB", "DynamoDB"].map(x => (
+                            <option key={x} value={x}>{x}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Storage */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>Blob Storage</label>
+                        <select
+                          value={preferences.storage}
+                          onChange={(e) => setPreferences({ ...preferences, storage: e.target.value })}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                        >
+                          {["Cloudflare R2", "AWS S3", "Google Cloud Storage", "Azure Blob Storage", "Local"].map(x => (
+                            <option key={x} value={x}>{x}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Vector search */}
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>Vector Search</label>
+                        <select
+                          value={preferences.search}
+                          onChange={(e) => setPreferences({ ...preferences, search: e.target.value })}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                        >
+                          {["Cloudflare Vectorize", "Pinecone", "Supabase Vector", "Azure AI Search", "Vertex AI Vector Search", "Qdrant", "None"].map(x => (
+                            <option key={x} value={x}>{x}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Banned Providers */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontWeight: 600 }}>
+                      Banned Cloud Providers
+                    </label>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      {["AWS", "Google Cloud", "Azure", "Vercel", "Netlify", "Supabase", "Pinecone"].map((p) => {
+                        const isBanned = preferences.bannedProviders.includes(p);
+                        return (
+                          <label key={p} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer", padding: "4px 0" }}>
+                            <input
+                              type="checkbox"
+                              checked={isBanned}
+                              onChange={() => toggleBannedProvider(p)}
+                              style={{ accentColor: "var(--accent)", cursor: "pointer", width: 14, height: 14 }}
+                            />
+                            <span style={{ color: isBanned ? "var(--error)" : "var(--text-muted)", fontWeight: isBanned ? 600 : 400 }}>{p}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                 </div>
 
-                {/* Hosting */}
-                <div>
-                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Hosting / Runtime</label>
-                  <select
-                    value={preferences.hosting}
-                    onChange={(e) => setPreferences({ ...preferences, hosting: e.target.value })}
-                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
-                  >
-                    {["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "GCP Cloud Run", "Azure Functions", "VPS / Docker"].map(x => (
-                      <option key={x} value={x}>{x}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Database */}
-                <div>
-                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Database</label>
-                  <select
-                    value={preferences.database}
-                    onChange={(e) => setPreferences({ ...preferences, database: e.target.value })}
-                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
-                  >
-                    {["Cloudflare D1", "PostgreSQL", "Aurora PostgreSQL", "Azure SQL", "Cloud Spanner", "MySQL", "SQLite", "MongoDB", "DynamoDB"].map(x => (
-                      <option key={x} value={x}>{x}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Storage */}
-                <div>
-                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Blob Storage</label>
-                  <select
-                    value={preferences.storage}
-                    onChange={(e) => setPreferences({ ...preferences, storage: e.target.value })}
-                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
-                  >
-                    {["Cloudflare R2", "AWS S3", "Google Cloud Storage", "Azure Blob Storage", "Local"].map(x => (
-                      <option key={x} value={x}>{x}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Vector search */}
-                <div>
-                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Vector Index / Search</label>
-                  <select
-                    value={preferences.search}
-                    onChange={(e) => setPreferences({ ...preferences, search: e.target.value })}
-                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
-                  >
-                    {["Cloudflare Vectorize", "Pinecone", "Supabase Vector", "Azure AI Search", "Vertex AI Vector Search", "Qdrant", "None"].map(x => (
-                      <option key={x} value={x}>{x}</option>
-                    ))}
-                  </select>
-                </div>
-
-              </div>
-
-              {/* Banned Providers */}
-              <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
-                  Banned Cloud Providers
-                </label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                  {["AWS", "Google Cloud", "Azure", "Vercel", "Netlify", "Supabase", "Pinecone"].map((p) => {
-                    const isBanned = preferences.bannedProviders.includes(p);
-                    return (
-                      <label key={p} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={isBanned}
-                          onChange={() => toggleBannedProvider(p)}
-                          style={{ accentColor: "var(--accent)", cursor: "pointer" }}
-                        />
-                        <span style={{ color: isBanned ? "var(--error)" : "var(--text-muted)" }}>{p}</span>
-                      </label>
-                    );
-                  })}
-                </div>
               </div>
 
               {stackError && (
-                <div style={{ padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
+                <div style={{ padding: "10px 14px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12.5 }}>
                   {stackError}
                 </div>
               )}
 
               {/* Navigation buttons */}
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 18, marginTop: 4 }}>
                 <button
                   onClick={() => {
                     setStep(1);
                     setMode(null);
                   }}
-                  style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                  style={{ padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 500 }}
                 >
                   Back
                 </button>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     onClick={onClose}
-                    style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                    style={{ padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
                   >
                     Cancel
                   </button>
@@ -1320,7 +1354,7 @@ function NewMemoryModal({
                     onClick={handleGenerateRecommendation}
                     disabled={generatingRecommendation}
                     style={{
-                      padding: "8px 20px",
+                      padding: "10px 22px",
                       background: "var(--accent)",
                       color: "#fff",
                       border: "none",
@@ -1329,9 +1363,20 @@ function NewMemoryModal({
                       fontSize: 13,
                       cursor: generatingRecommendation ? "default" : "pointer",
                       opacity: generatingRecommendation ? 0.6 : 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
                     }}
                   >
-                    {generatingRecommendation ? "Analyzing Stack…" : "Generate Blueprint"}
+                    {generatingRecommendation ? (
+                      <>
+                        <span className="spinner" style={{ border: "2px solid rgba(255,255,255,0.3)", borderTop: "2px solid #fff", borderRadius: "50%", width: 12, height: 12, display: "inline-block", animation: "spin 0.8s linear infinite" }} />
+                        Analyzing Stack…
+                      </>
+                    ) : (
+                      "Generate Blueprint"
+                    )}
                   </button>
                 </div>
               </div>
@@ -1339,95 +1384,111 @@ function NewMemoryModal({
             </div>
           )}
 
-          {/* STEP 3: Preview Card & Target Locker */}
+          {/* STEP 3: Preview Card & Target Locker (2-Column Redesign) */}
           {step === 3 && recommendation && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               
-              {/* Stack Preview Card */}
-              <div
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  padding: 16,
-                  background: "linear-gradient(135deg, rgba(168,85,247,0.02) 0%, rgba(139,92,246,0.01) 100%)",
-                  maxHeight: 220,
-                  overflowY: "auto",
-                }}
-              >
-                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)", margin: "0 0 6px 0" }}>{recommendation.name}</h4>
-                <p style={{ fontSize: 12, color: "var(--text)", margin: "0 0 12px 0", lineHeight: 1.4 }}>{recommendation.description}</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 32 }}>
                 
-                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Architectural Rules Generated:</span>
-                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 4, lineHeight: 1.4 }}>
-                    {recommendation.rules.map((rule, idx) => (
-                      <li key={idx}>{rule}</li>
-                    ))}
-                  </ul>
+                {/* Left Column: Stack Preview Card */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+                    Generated Stack Blueprint
+                  </label>
+                  <div
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 20,
+                      background: "linear-gradient(135deg, rgba(168,85,247,0.02) 0%, rgba(139,92,246,0.01) 100%)",
+                      flex: 1,
+                      overflowY: "auto",
+                      maxHeight: "360px",
+                      minHeight: "260px",
+                    }}
+                  >
+                    <h4 style={{ fontSize: 16, fontWeight: 800, color: "var(--accent)", margin: "0 0 8px 0" }}>{recommendation.name}</h4>
+                    <p style={{ fontSize: 13, color: "var(--text)", margin: "0 0 16px 0", lineHeight: 1.5 }}>{recommendation.description}</p>
+                    
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", display: "block", marginBottom: 8, letterSpacing: "0.04em" }}>Architectural Rules:</span>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 6, lineHeight: 1.5 }}>
+                        {recommendation.rules.map((rule, idx) => (
+                          <li key={idx}>{rule}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              {/* Locker selector */}
-              <div>
-                <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-                  Save To Locker
-                  <InfoTooltip text="Select the target locker/vault where this blueprint memory should be saved." size={12} />
-                </label>
-                <select
-                  value={targetLocker}
-                  onChange={(e) => setTargetLocker(e.target.value)}
-                  style={{ width: "100%", padding: "8px 10px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
-                >
-                  {workspaces.map((w) => (
-                    <option key={w.key} value={w.key}>{w.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Config Files Checkboxes */}
-              <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
-                  Generate Rules For Config Files
-                </label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  {[
-                    { id: "claude", label: ".claudemd (Claude)" },
-                    { id: "cursor", label: ".cursorrules (Cursor)" },
-                    { id: "copilot", label: ".github/copilot-instructions.md" },
-                    { id: "gemini", label: ".geminirules (Gemini)" },
-                    { id: "agents", label: "agents.md (General)" },
-                  ].map((cf) => (
-                    <label key={cf.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={(syncOptions as any)[cf.id]}
-                        onChange={() => setSyncOptions(prev => ({ ...prev, [cf.id]: !(prev as any)[cf.id] }))}
-                        style={{ accentColor: "var(--accent)", cursor: "pointer" }}
-                      />
-                      <span style={{ color: (syncOptions as any)[cf.id] ? "var(--text)" : "var(--text-muted)" }}>{cf.label}</span>
+                {/* Right Column: Save Destination & Config File Generator */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 20, borderLeft: "1px solid var(--border)", paddingLeft: 32 }}>
+                  
+                  {/* Locker selector */}
+                  <div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontWeight: 600 }}>
+                      Save To Locker
+                      <InfoTooltip text="Select the target locker/vault where this blueprint memory should be saved." size={12} />
                     </label>
-                  ))}
+                    <select
+                      value={targetLocker}
+                      onChange={(e) => setTargetLocker(e.target.value)}
+                      style={{ width: "100%", padding: "10px 12px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
+                    >
+                      {workspaces.map((w) => (
+                        <option key={w.key} value={w.key}>{w.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Config Files Checkboxes */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10, fontWeight: 600 }}>
+                      Generate Assistant Config Files
+                    </label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {[
+                        { id: "claude", label: ".claudemd (Claude)" },
+                        { id: "cursor", label: ".cursorrules (Cursor)" },
+                        { id: "copilot", label: ".github/copilot-instructions.md" },
+                        { id: "gemini", label: ".geminirules (Gemini)" },
+                        { id: "agents", label: "agents.md (General)" },
+                      ].map((cf) => (
+                        <label key={cf.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, cursor: "pointer", padding: "2px 0" }}>
+                          <input
+                            type="checkbox"
+                            checked={(syncOptions as any)[cf.id]}
+                            onChange={() => setSyncOptions(prev => ({ ...prev, [cf.id]: !(prev as any)[cf.id] }))}
+                            style={{ accentColor: "var(--accent)", cursor: "pointer", width: 14, height: 14 }}
+                          />
+                          <span style={{ color: (syncOptions as any)[cf.id] ? "var(--text)" : "var(--text-muted)", fontWeight: (syncOptions as any)[cf.id] ? 500 : 400 }}>{cf.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
                 </div>
+
               </div>
 
               {stackError && (
-                <div style={{ padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
+                <div style={{ padding: "10px 14px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12.5 }}>
                   {stackError}
                 </div>
               )}
 
               {/* Navigation buttons */}
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 18, marginTop: 4 }}>
                 <button
                   onClick={() => setStep(2)}
-                  style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                  style={{ padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 500 }}
                 >
                   Back
                 </button>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     onClick={onClose}
-                    style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                    style={{ padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
                   >
                     Cancel
                   </button>
@@ -1435,7 +1496,7 @@ function NewMemoryModal({
                     onClick={handleSaveStack}
                     disabled={savingStack}
                     style={{
-                      padding: "8px 20px",
+                      padding: "10px 22px",
                       background: "var(--accent)",
                       color: "#fff",
                       border: "none",
@@ -1444,9 +1505,20 @@ function NewMemoryModal({
                       fontSize: 13,
                       cursor: savingStack ? "default" : "pointer",
                       opacity: savingStack ? 0.6 : 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
                     }}
                   >
-                    {savingStack ? "Saving Stack…" : "Save to Locker"}
+                    {savingStack ? (
+                      <>
+                        <span className="spinner" style={{ border: "2px solid rgba(255,255,255,0.3)", borderTop: "2px solid #fff", borderRadius: "50%", width: 12, height: 12, display: "inline-block", animation: "spin 0.8s linear infinite" }} />
+                        Saving Stack…
+                      </>
+                    ) : (
+                      "Save to Locker"
+                    )}
                   </button>
                 </div>
               </div>
@@ -1456,41 +1528,41 @@ function NewMemoryModal({
 
           {/* STEP 4: Success & Config Downloads */}
           {step === 4 && recommendation && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "center", textAlign: "center", padding: "10px 0" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 18, alignItems: "center", textAlign: "center", padding: "10px 0" }}>
               
-              {/* Success animation or big green check */}
+              {/* Success checkmark */}
               <div
                 style={{
-                  width: 52,
-                  height: 52,
+                  width: 56,
+                  height: 56,
                   borderRadius: "50%",
                   background: "rgba(52,211,153,0.1)",
                   color: "#34d399",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 24,
+                  fontSize: 26,
                   fontWeight: "bold",
-                  marginBottom: 8,
+                  marginBottom: 6,
                 }}
               >
                 ✓
               </div>
 
               <div>
-                <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 6px 0" }}>Tech Stack Saved Successfully!</h3>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.4, maxWidth: 360 }}>
-                  Consolidated blueprint ruleset added to target locker. Download your coding assistant files below.
+                <h3 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 6px 0", letterSpacing: "-0.01em" }}>Tech Stack Saved Successfully!</h3>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.5, maxWidth: 400 }}>
+                  Consolidated blueprint ruleset added to your target locker. Download your coding assistant configuration files below.
                 </p>
               </div>
 
               {/* Config Files download grid */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", marginTop: 8 }}>
-                <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", display: "block", textAlign: "left" }}>
-                  Download Selected Configs:
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", marginTop: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", display: "block", textAlign: "left", letterSpacing: "0.04em" }}>
+                  Download Generated Config Files:
                 </span>
                 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, width: "100%" }}>
                   {[
                     { id: "claude", label: ".claudemd", filename: ".claudemd" },
                     { id: "cursor", label: ".cursorrules", filename: ".cursorrules" },
@@ -1505,13 +1577,13 @@ function NewMemoryModal({
                         key={cf.id}
                         onClick={() => handleDownloadConfig(cf.id as any)}
                         style={{
-                          padding: "10px 12px",
+                          padding: "12px 14px",
                           background: "var(--surface2)",
                           border: "1px solid var(--border)",
                           borderRadius: "var(--radius)",
                           color: "var(--text)",
-                          fontSize: 12,
-                          fontWeight: 500,
+                          fontSize: 12.5,
+                          fontWeight: 600,
                           cursor: "pointer",
                           display: "flex",
                           alignItems: "center",
@@ -1520,21 +1592,21 @@ function NewMemoryModal({
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.borderColor = "var(--accent)";
-                          e.currentTarget.style.background = "rgba(168,85,247,0.03)";
+                          e.currentTarget.style.background = "rgba(168,85,247,0.04)";
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.borderColor = "var(--border)";
                           e.currentTarget.style.background = "var(--surface2)";
                         }}
                       >
-                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                             <polyline points="14 2 14 8 20 8" />
                           </svg>
                           {cf.label}
                         </span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                           <polyline points="7 10 12 15 17 10" />
                           <line x1="12" y1="15" x2="12" y2="3" />
@@ -1548,14 +1620,14 @@ function NewMemoryModal({
               <button
                 onClick={onClose}
                 style={{
-                  padding: "8px 24px",
+                  padding: "10px 24px",
                   background: "var(--accent)",
                   color: "#fff",
                   border: "none",
                   borderRadius: "var(--radius)",
-                  fontSize: 13,
+                  fontSize: 13.5,
                   fontWeight: 600,
-                  marginTop: 12,
+                  marginTop: 14,
                   cursor: "pointer",
                   width: "100%",
                 }}
@@ -1568,6 +1640,14 @@ function NewMemoryModal({
 
         </div>
       </div>
+      
+      {/* Keyframe spinner animation style block */}
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
