@@ -3185,3 +3185,169 @@ export const exportAuditLogsCsv = createServerFn({ method: "POST" })
 
     return { csv };
   });
+
+export const analyzeProjectRequirements = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { description: string } => {
+    const d = data as { description: string };
+    if (!d.description || typeof d.description !== "string") {
+      throw new Error("description is required");
+    }
+    return { description: d.description.trim() };
+  })
+  .handler(async ({ data, context }): Promise<{
+    language: string;
+    frontend: string;
+    hosting: string;
+    database: string;
+    storage: string;
+    search: string;
+    bannedProviders: string[];
+  }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireSession(env); // Ensure authenticated
+
+    const prompt = `You are an AI system analyzer. A developer will describe their project requirements.
+Based on the description, recommend the most appropriate options for their tech stack from the following choices:
+- Preferred Language: "TypeScript", "JavaScript", "Go", "Python", "Rust", "C# / .NET"
+- Frontend Ecosystem / Framework: "React / TanStack", "Next.js", "Vue / Nuxt", "Svelte", "Solid", "Vanilla JS"
+- Hosting / Runtime Environment: "Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "GCP Cloud Run", "Azure Functions", "VPS / Docker"
+- Database: "Cloudflare D1", "PostgreSQL", "Aurora PostgreSQL", "Azure SQL", "Cloud Spanner", "MySQL", "SQLite", "MongoDB", "DynamoDB"
+- Blob/Object Storage: "Cloudflare R2", "AWS S3", "Google Cloud Storage", "Azure Blob Storage", "Local"
+- Search / Vector Index: "Cloudflare Vectorize", "Pinecone", "Supabase Vector", "Azure AI Search", "Vertex AI Vector Search", "Qdrant", "None"
+- Banned Providers/Services: Recommend any cloud providers (like "AWS", "Google Cloud", "Azure", "Atlassian/Jira") that should be explicitly banned if the user expresses privacy or competitor concerns. Choose from: "AWS", "Google Cloud", "Azure", "Atlassian/Jira".
+
+Respond with ONLY a JSON object conforming to the following format. Do not include explanation, markdown code fences, or any other text.
+{
+  "language": string,
+  "frontend": string,
+  "hosting": string,
+  "database": string,
+  "storage": string,
+  "search": string,
+  "bannedProviders": string[]
+}
+
+Project Description:
+"${data.description}"`;
+
+    try {
+      const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+        prompt,
+        max_tokens: 512,
+      });
+
+      const text = extractText(result).trim();
+      const match = text.match(/\{[\s\S]*?\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        return {
+          language: String(parsed.language || "TypeScript"),
+          frontend: String(parsed.frontend || "React / TanStack"),
+          hosting: String(parsed.hosting || "Cloudflare Edge"),
+          database: String(parsed.database || "Cloudflare D1"),
+          storage: String(parsed.storage || "Cloudflare R2"),
+          search: String(parsed.search || "Cloudflare Vectorize"),
+          bannedProviders: Array.isArray(parsed.bannedProviders) ? parsed.bannedProviders.map(String) : [],
+        };
+      }
+    } catch (e) {
+      console.error("[analyzeProjectRequirements] error:", e);
+    }
+
+    // Default fallback
+    return {
+      language: "TypeScript",
+      frontend: "React / TanStack",
+      hosting: "Cloudflare Edge",
+      database: "Cloudflare D1",
+      storage: "Cloudflare R2",
+      search: "Cloudflare Vectorize",
+      bannedProviders: ["AWS", "Google Cloud"],
+    };
+  });
+
+export const generateStackRecommendation = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): {
+    language: string;
+    frontend: string;
+    hosting: string;
+    database: string;
+    storage: string;
+    search: string;
+    bannedProviders: string[];
+  } => {
+    const d = data as any;
+    return {
+      language: String(d.language || ""),
+      frontend: String(d.frontend || ""),
+      hosting: String(d.hosting || ""),
+      database: String(d.database || ""),
+      storage: String(d.storage || ""),
+      search: String(d.search || ""),
+      bannedProviders: Array.isArray(d.bannedProviders) ? d.bannedProviders.map(String) : [],
+    };
+  })
+  .handler(async ({ data, context }): Promise<{
+    name: string;
+    description: string;
+    rules: string[];
+  }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireSession(env); // Ensure authenticated
+
+    const prompt = `You are an expert software architect. Based on the following stack preferences, generate a comprehensive architectural baseline/ruleset.
+    
+Preferences:
+- Preferred Language: ${data.language}
+- Frontend Ecosystem / Framework: ${data.frontend}
+- Hosting / Runtime Environment: ${data.hosting}
+- Database: ${data.database}
+- Blob/Object Storage: ${data.storage}
+- Search / Vector Index: ${data.search}
+- Banned Providers/Services: ${data.bannedProviders.join(", ") || "None"}
+
+Please return your response in raw JSON format (no markdown code blocks, no explanation, no headers) conforming to the following TypeScript interface:
+{
+  "name": string,
+  "description": string,
+  "rules": string[]
+}
+`;
+
+    try {
+      const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+        prompt,
+        max_tokens: 1500,
+      });
+
+      const text = extractText(result).trim();
+      const match = text.match(/\{[\s\S]*?\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        if (parsed.name && parsed.description && Array.isArray(parsed.rules)) {
+          return {
+            name: String(parsed.name),
+            description: String(parsed.description),
+            rules: parsed.rules.map(String),
+          };
+        }
+      }
+    } catch (e) {
+      console.error("[generateStackRecommendation] Failed to parse JSON response:", e);
+    }
+    
+    // Fallback if parsing fails
+    return {
+      name: `${data.frontend || "Custom"} Stack Blueprint`,
+      description: `Architectural blueprint for a stack using ${data.language} with ${data.frontend} and ${data.hosting}.`,
+      rules: [
+        `Enforce ${data.language} as the primary language.`,
+        `Enforce ${data.frontend} for frontend structure and routing.`,
+        `Enforce ${data.hosting} for hosting compute runtimes.`,
+        `Enforce ${data.database} as the primary database.`,
+        `Enforce ${data.storage} for object storage.`,
+        `Enforce ${data.search} for search/embeddings.`,
+        ...data.bannedProviders.map(p => `Strict negative constraint: ${p} services are explicitly banned.`)
+      ]
+    };
+  });

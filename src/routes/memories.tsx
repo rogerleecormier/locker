@@ -17,6 +17,8 @@ import {
   archiveMemory,
   restoreMemory,
   permanentlyDeleteArchivedMemory,
+  analyzeProjectRequirements,
+  generateStackRecommendation,
 } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 
@@ -538,103 +540,1032 @@ function NewMemoryModal({
   projectKey?: string;
 }) {
   const queryClient = useQueryClient();
+
+  // Workspaces query
+  const { data: workspaces = [] } = useQuery({
+    queryKey: ["workspaces"],
+    queryFn: () => getUserWorkspaces(),
+  });
+
+  // Wizard state
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [mode, setMode] = useState<"single" | "stack" | null>(null);
+
+  // Path A: Single Memory Fact
   const [fact, setFact] = useState("");
   const [category, setCategory] = useState<"rules" | "projects" | "references">("references");
   const [tags, setTags] = useState("");
+  const [singleLocker, setSingleLocker] = useState(projectKey || "personal");
 
-  const mutation = useMutation({
-    mutationFn: () => addMemory({ data: { fact, category, tags, projectKey } }),
+  const singleMutation = useMutation({
+    mutationFn: () =>
+      addMemory({
+        data: {
+          fact,
+          category,
+          tags,
+          projectKey: singleLocker === "personal" ? undefined : singleLocker,
+        },
+      }),
     onSuccess: (newMemory) => {
-      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
-        old ? [newMemory, ...old] : [newMemory]
-      );
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
       onSaved();
       onClose();
     },
   });
 
+  // Path B: Tech Stack Creator
+  const [interviewPrompt, setInterviewPrompt] = useState("");
+  const [analyzingPrompt, setAnalyzingPrompt] = useState(false);
+  const [preferences, setPreferences] = useState({
+    language: "TypeScript",
+    frontend: "React / TanStack",
+    hosting: "Cloudflare Edge",
+    database: "Cloudflare D1",
+    storage: "Cloudflare R2",
+    search: "Cloudflare Vectorize",
+    bannedProviders: [] as string[],
+  });
+
+  const [recommendation, setRecommendation] = useState<{
+    name: string;
+    description: string;
+    rules: string[];
+  } | null>(null);
+  const [generatingRecommendation, setGeneratingRecommendation] = useState(false);
+  const [targetLocker, setTargetLocker] = useState(projectKey || "personal");
+  const [syncOptions, setSyncOptions] = useState({
+    claude: true,
+    cursor: true,
+    copilot: true,
+    gemini: true,
+    agents: true,
+  });
+  const [savingStack, setSavingStack] = useState(false);
+  const [stackError, setStackError] = useState("");
+
+  // Preset list
+  const PRESET_ARCHETYPES = [
+    {
+      name: "Cloudflare Edge",
+      description: "TS + TanStack + Edge + D1 + R2 + Vectorize",
+      preferences: {
+        language: "TypeScript",
+        frontend: "React / TanStack",
+        hosting: "Cloudflare Edge",
+        database: "Cloudflare D1",
+        storage: "Cloudflare R2",
+        search: "Cloudflare Vectorize",
+        bannedProviders: [],
+      },
+    },
+    {
+      name: "AWS Serverless",
+      description: "TS + React + Lambda + Aurora PG + S3 + Pinecone",
+      preferences: {
+        language: "TypeScript",
+        frontend: "React / TanStack",
+        hosting: "AWS Lambda",
+        database: "Aurora PostgreSQL",
+        storage: "AWS S3",
+        search: "Pinecone",
+        bannedProviders: [],
+      },
+    },
+    {
+      name: "Netlify Jamstack",
+      description: "TS + Next.js + Netlify + Supabase + Vector",
+      preferences: {
+        language: "TypeScript",
+        frontend: "Next.js",
+        hosting: "Netlify",
+        database: "PostgreSQL",
+        storage: "Supabase Storage",
+        search: "Supabase Vector",
+        bannedProviders: [],
+      },
+    },
+    {
+      name: "Vercel Fullstack",
+      description: "TS + Next.js + Vercel + PG + S3 + Pinecone",
+      preferences: {
+        language: "TypeScript",
+        frontend: "Next.js",
+        hosting: "Vercel",
+        database: "PostgreSQL",
+        storage: "AWS S3",
+        search: "Pinecone",
+        bannedProviders: [],
+      },
+    },
+    {
+      name: "Azure Serverless",
+      description: "C# + React + Functions + SQL + Blob + Search",
+      preferences: {
+        language: "C# / .NET",
+        frontend: "React / TanStack",
+        hosting: "Azure Functions",
+        database: "Azure SQL",
+        storage: "Azure Blob Storage",
+        search: "Azure AI Search",
+        bannedProviders: [],
+      },
+    },
+    {
+      name: "GCP Serverless",
+      description: "Go + React + Cloud Run + Spanner + GCS + Vertex AI",
+      preferences: {
+        language: "Go",
+        frontend: "React / TanStack",
+        hosting: "GCP Cloud Run",
+        database: "Cloud Spanner",
+        storage: "Google Cloud Storage",
+        search: "Vertex AI Vector Search",
+        bannedProviders: [],
+      },
+    },
+  ];
+
+  const handleAnalyzePrompt = async () => {
+    if (!interviewPrompt.trim()) return;
+    setAnalyzingPrompt(true);
+    try {
+      const res = await analyzeProjectRequirements({ data: { description: interviewPrompt } });
+      setPreferences({
+        language: res.language || "TypeScript",
+        frontend: res.frontend || "React / TanStack",
+        hosting: res.hosting || "Cloudflare Edge",
+        database: res.database || "Cloudflare D1",
+        storage: res.storage || "Cloudflare R2",
+        search: res.search || "Cloudflare Vectorize",
+        bannedProviders: res.bannedProviders || [],
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Failed to analyze requirements: " + String(e));
+    } finally {
+      setAnalyzingPrompt(false);
+    }
+  };
+
+  const handleGenerateRecommendation = async () => {
+    setGeneratingRecommendation(true);
+    setStackError("");
+    try {
+      const res = await generateStackRecommendation({ data: preferences });
+      setRecommendation(res);
+      setStep(3);
+    } catch (e) {
+      console.error(e);
+      setStackError("Failed to generate stack recommendation: " + String(e));
+    } finally {
+      setGeneratingRecommendation(false);
+    }
+  };
+
+  const handleSaveStack = async () => {
+    if (!recommendation) return;
+    setSavingStack(true);
+    setStackError("");
+    try {
+      const factText = `# ${recommendation.name}\n${recommendation.description}\n\n## Stack Preferences:\n- Language: ${preferences.language}\n- Frontend: ${preferences.frontend}\n- Hosting: ${preferences.hosting}\n- Database: ${preferences.database}\n- Storage: ${preferences.storage}\n- Search/Vector: ${preferences.search}\n- Banned Providers: ${preferences.bannedProviders.join(", ") || "None"}\n\n## Architectural Rules:\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+
+      await addMemory({
+        data: {
+          fact: factText,
+          category: "rules",
+          tags: "stack,blueprint",
+          projectKey: targetLocker === "personal" ? undefined : targetLocker,
+        },
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      onSaved();
+      setStep(4);
+    } catch (e) {
+      console.error(e);
+      setStackError("Failed to save tech stack: " + String(e));
+    } finally {
+      setSavingStack(false);
+    }
+  };
+
+  const toggleBannedProvider = (p: string) => {
+    setPreferences((prev) => {
+      const list = prev.bannedProviders.includes(p)
+        ? prev.bannedProviders.filter((item) => item !== p)
+        : [...prev.bannedProviders, p];
+      return { ...prev, bannedProviders: list };
+    });
+  };
+
+  const handleDownloadConfig = (format: "claude" | "cursor" | "copilot" | "gemini" | "agents") => {
+    if (!recommendation) return;
+    let content = "";
+    let filename = "";
+
+    switch (format) {
+      case "claude":
+        content = `# ${recommendation.name} Rules\n\n${recommendation.description}\n\n## Development Standards and Architectural Constraints\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+        filename = ".claudemd";
+        break;
+      case "cursor":
+        content = JSON.stringify(
+          {
+            name: recommendation.name,
+            description: recommendation.description,
+            globs: ["*"],
+            rules: recommendation.rules,
+          },
+          null,
+          2
+        );
+        filename = ".cursorrules";
+        break;
+      case "copilot":
+        content = `# Copilot Instructions for ${recommendation.name}\n\n${recommendation.description}\n\n## Rules:\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+        filename = "copilot-instructions.md";
+        break;
+      case "gemini":
+        content = `# Gemini Rules for ${recommendation.name}\n\n${recommendation.description}\n\n## Coding Guidelines:\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+        filename = ".geminirules";
+        break;
+      case "agents":
+        content = `# Custom Agent Rules - ${recommendation.name}\n\n${recommendation.description}\n\n## General Guidelines:\n${recommendation.rules.map((r) => `- ${r}`).join("\n")}`;
+        filename = "agents.md";
+        break;
+    }
+
+    downloadFile(content, filename, "text/plain");
+  };
+
+  // Determine dynamic width
+  const modalWidth = step === 2 && mode === "stack" ? 680 : 540;
+
   return (
     <div
       onClick={onClose}
       style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 50,
-        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        backdropFilter: "blur(8px)",
+        zIndex: 50,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        transition: "all 0.3s ease",
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "var(--surface)", border: "1px solid var(--border)",
-          borderRadius: "var(--radius)", width: "100%", maxWidth: 520,
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          width: "100%",
+          maxWidth: modalWidth,
           boxShadow: "0 24px 48px rgba(0,0,0,0.4)",
+          transition: "max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+          overflow: "hidden",
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontWeight: 600 }}>New Memory</span>
-          <button onClick={onClose} style={{ background: "none", color: "var(--text-muted)", fontSize: 18, padding: "0 4px" }}>✕</button>
+        {/* Header */}
+        <div
+          style={{
+            padding: "16px 20px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 600, fontSize: 15 }}>
+              {mode === "stack" ? "AI Tech Stack Creator" : "New Memory"}
+            </span>
+            {mode === "stack" && (
+              <span style={{ fontSize: 10, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
+                Step {step} of 4
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--text-muted)",
+              fontSize: 18,
+              padding: "0 4px",
+              cursor: "pointer",
+            }}
+          >
+            ✕
+          </button>
         </div>
-        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-              Fact
-              <InfoTooltip text="A discrete piece of information your AI assistant should remember — a preference, rule, project detail, or reference." size={12} />
-            </label>
-            <textarea
-              autoFocus
-              value={fact}
-              onChange={(e) => setFact(e.target.value)}
-              rows={4}
-              placeholder="Enter the memory fact…"
-              style={{ width: "100%", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
-            />
-          </div>
-          <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-                Category
-                <InfoTooltip text="Rules: coding conventions and preferences. Projects: context about specific projects. References: links, contacts, or factual lookups." size={12} />
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as "rules" | "projects" | "references")}
-                style={{ width: "100%", padding: "8px 10px", fontSize: 13 }}
-              >
-                <option value="references">References</option>
-                <option value="rules">Rules</option>
-                <option value="projects">Projects</option>
-              </select>
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-                Tags
-                <InfoTooltip text="Comma-separated keywords used to group and filter memories. Tags help you find related entries quickly." size={12} />
-              </label>
-              <input
-                type="text"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                placeholder="comma-separated"
-                style={{ width: "100%", padding: "8px 10px", fontSize: 13 }}
-              />
-            </div>
-          </div>
-          {mutation.isError && (
-            <div style={{ padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
-              {(mutation.error as Error).message}
+
+        {/* Content body */}
+        <div style={{ padding: 20, overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+          
+          {/* STEP 1: Choose Path */}
+          {step === 1 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ textAlign: "center", marginBottom: 8 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 6px 0" }}>Choose Memory Type</h3>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                  Select whether you want to save a simple fact or design an AI-recommended tech stack ruleset.
+                </p>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                {/* Option A Card */}
+                <div
+                  onClick={() => {
+                    setMode("single");
+                    setStep(2);
+                  }}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 12,
+                    padding: 20,
+                    cursor: "pointer",
+                    background: "rgba(255,255,255,0.01)",
+                    transition: "all 0.2s ease",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    textAlign: "center",
+                    gap: 12,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "var(--text-muted)";
+                    e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "var(--border)";
+                    e.currentTarget.style.background = "rgba(255,255,255,0.01)";
+                    e.currentTarget.style.transform = "none";
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      background: "rgba(168,85,247,0.1)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--accent)",
+                    }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 style={{ fontSize: 14, fontWeight: 600, margin: "0 0 4px 0" }}>Single Memory Fact</h4>
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, lineHeight: 1.4 }}>
+                      Directly record a single rule, preference, lookup info, or custom project note.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Option B Card */}
+                <div
+                  onClick={() => {
+                    setMode("stack");
+                    setStep(2);
+                  }}
+                  style={{
+                    border: "1px solid rgba(168,85,247,0.3)",
+                    borderRadius: 12,
+                    padding: 20,
+                    cursor: "pointer",
+                    background: "linear-gradient(135deg, rgba(168,85,247,0.05) 0%, rgba(139,92,246,0.02) 100%)",
+                    transition: "all 0.2s ease",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    textAlign: "center",
+                    gap: 12,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "var(--accent)";
+                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(139,92,246,0.04) 100%)";
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "rgba(168,85,247,0.3)";
+                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(168,85,247,0.05) 0%, rgba(139,92,246,0.02) 100%)";
+                    e.currentTarget.style.transform = "none";
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      background: "rgba(168,85,247,0.2)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--accent)",
+                    }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="7" height="9" />
+                      <rect x="14" y="3" width="7" height="5" />
+                      <rect x="14" y="12" width="7" height="9" />
+                      <rect x="3" y="16" width="7" height="5" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", margin: "0 0 4px 0" }}>Tech Stack Blueprint</h4>
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, lineHeight: 1.4 }}>
+                      Create a consolidated architecture memory containing structured rules for coding assistants.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-            <button onClick={onClose} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13 }}>
-              Cancel
-            </button>
-            <button
-              onClick={() => mutation.mutate()}
-              disabled={!fact.trim() || mutation.isPending}
-              style={{ padding: "8px 20px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13 }}
-            >
-              {mutation.isPending ? "Saving…" : "Save Memory"}
-            </button>
-          </div>
+
+          {/* STEP 2: Path A - Single Memory Fact */}
+          {step === 2 && mode === "single" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                  Fact
+                  <InfoTooltip text="A discrete piece of information your AI assistant should remember — a preference, rule, project detail, or reference." size={12} />
+                </label>
+                <textarea
+                  autoFocus
+                  value={fact}
+                  onChange={(e) => setFact(e.target.value)}
+                  rows={4}
+                  placeholder="Enter the memory fact…"
+                  style={{ width: "100%", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, resize: "vertical", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                    Category
+                    <InfoTooltip text="Rules: coding conventions and preferences. Projects: context about specific projects. References: links, contacts, or factual lookups." size={12} />
+                  </label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value as any)}
+                    style={{ width: "100%", padding: "8px 10px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  >
+                    <option value="references">References</option>
+                    <option value="rules">Rules</option>
+                    <option value="projects">Projects</option>
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                    Tags
+                    <InfoTooltip text="Comma-separated keywords used to group and filter memories. Tags help you find related entries quickly." size={12} />
+                  </label>
+                  <input
+                    type="text"
+                    value={tags}
+                    onChange={(e) => setTags(e.target.value)}
+                    placeholder="comma-separated"
+                    style={{ width: "100%", padding: "8px 10px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                  Target Locker
+                  <InfoTooltip text="Choose the vault/locker where this memory should be saved." size={12} />
+                </label>
+                <select
+                  value={singleLocker}
+                  onChange={(e) => setSingleLocker(e.target.value)}
+                  style={{ width: "100%", padding: "8px 10px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                >
+                  {workspaces.map((w) => (
+                    <option key={w.key} value={w.key}>{w.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {singleMutation.isError && (
+                <div style={{ padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
+                  {(singleMutation.error as Error).message}
+                </div>
+              )}
+
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+                <button
+                  onClick={() => {
+                    setStep(1);
+                    setMode(null);
+                  }}
+                  style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                >
+                  Back
+                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={onClose}
+                    style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => singleMutation.mutate()}
+                    disabled={!fact.trim() || singleMutation.isPending}
+                    style={{ padding: "8px 20px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: (!fact.trim() || singleMutation.isPending) ? "default" : "pointer" }}
+                  >
+                    {singleMutation.isPending ? "Saving…" : "Save Memory"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: Path B - Preferences Builder */}
+          {step === 2 && mode === "stack" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              
+              {/* Presets */}
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
+                  Quick-Select Stack Archetypes
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  {PRESET_ARCHETYPES.map((arch) => (
+                    <button
+                      key={arch.name}
+                      onClick={() => setPreferences({ ...arch.preferences })}
+                      style={{
+                        padding: "8px 10px",
+                        background: "var(--surface2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius)",
+                        color: "var(--text)",
+                        fontSize: 11,
+                        textAlign: "left",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = "var(--accent)";
+                        e.currentTarget.style.background = "rgba(168,85,247,0.03)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = "var(--border)";
+                        e.currentTarget.style.background = "var(--surface2)";
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, marginBottom: 2 }}>{arch.name}</div>
+                      <div style={{ fontSize: 9, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {arch.description}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Goal Prompt */}
+              <div>
+                <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                  AI Prompt Input (Interview / Goal Box)
+                  <InfoTooltip text="Describe your goals (e.g. 'A low-latency real-time chat site built on edge platforms with no AWS'). The AI will auto-populate stack options." size={12} />
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <textarea
+                    value={interviewPrompt}
+                    onChange={(e) => setInterviewPrompt(e.target.value)}
+                    placeholder="Describe your project goal (e.g., I want to build a real-time multiplayer card game with room matches, low latency, and a global database...)"
+                    rows={2}
+                    style={{ flex: 1, padding: "8px 10px", fontSize: 12, resize: "none", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", lineHeight: 1.4 }}
+                  />
+                  <button
+                    onClick={handleAnalyzePrompt}
+                    disabled={analyzingPrompt || !interviewPrompt.trim()}
+                    style={{
+                      padding: "0 16px",
+                      background: "var(--accent)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "var(--radius)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: (analyzingPrompt || !interviewPrompt.trim()) ? "default" : "pointer",
+                      opacity: (analyzingPrompt || !interviewPrompt.trim()) ? 0.6 : 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minWidth: 100,
+                    }}
+                  >
+                    {analyzingPrompt ? "Analyzing…" : "Analyze"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid of drop downs */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                
+                {/* Language */}
+                <div>
+                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Language</label>
+                  <select
+                    value={preferences.language}
+                    onChange={(e) => setPreferences({ ...preferences, language: e.target.value })}
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  >
+                    {["TypeScript", "JavaScript", "Go", "Python", "Rust", "C# / .NET"].map(x => (
+                      <option key={x} value={x}>{x}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Frontend */}
+                <div>
+                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Frontend Framework</label>
+                  <select
+                    value={preferences.frontend}
+                    onChange={(e) => setPreferences({ ...preferences, frontend: e.target.value })}
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  >
+                    {["React / TanStack", "Next.js", "Vue / Nuxt", "Svelte", "Solid", "Vanilla JS"].map(x => (
+                      <option key={x} value={x}>{x}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Hosting */}
+                <div>
+                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Hosting / Runtime</label>
+                  <select
+                    value={preferences.hosting}
+                    onChange={(e) => setPreferences({ ...preferences, hosting: e.target.value })}
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  >
+                    {["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "GCP Cloud Run", "Azure Functions", "VPS / Docker"].map(x => (
+                      <option key={x} value={x}>{x}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Database */}
+                <div>
+                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Database</label>
+                  <select
+                    value={preferences.database}
+                    onChange={(e) => setPreferences({ ...preferences, database: e.target.value })}
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  >
+                    {["Cloudflare D1", "PostgreSQL", "Aurora PostgreSQL", "Azure SQL", "Cloud Spanner", "MySQL", "SQLite", "MongoDB", "DynamoDB"].map(x => (
+                      <option key={x} value={x}>{x}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Storage */}
+                <div>
+                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Blob Storage</label>
+                  <select
+                    value={preferences.storage}
+                    onChange={(e) => setPreferences({ ...preferences, storage: e.target.value })}
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  >
+                    {["Cloudflare R2", "AWS S3", "Google Cloud Storage", "Azure Blob Storage", "Local"].map(x => (
+                      <option key={x} value={x}>{x}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Vector search */}
+                <div>
+                  <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>Vector Index / Search</label>
+                  <select
+                    value={preferences.search}
+                    onChange={(e) => setPreferences({ ...preferences, search: e.target.value })}
+                    style={{ width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  >
+                    {["Cloudflare Vectorize", "Pinecone", "Supabase Vector", "Azure AI Search", "Vertex AI Vector Search", "Qdrant", "None"].map(x => (
+                      <option key={x} value={x}>{x}</option>
+                    ))}
+                  </select>
+                </div>
+
+              </div>
+
+              {/* Banned Providers */}
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
+                  Banned Cloud Providers
+                </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                  {["AWS", "Google Cloud", "Azure", "Vercel", "Netlify", "Supabase", "Pinecone"].map((p) => {
+                    const isBanned = preferences.bannedProviders.includes(p);
+                    return (
+                      <label key={p} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={isBanned}
+                          onChange={() => toggleBannedProvider(p)}
+                          style={{ accentColor: "var(--accent)", cursor: "pointer" }}
+                        />
+                        <span style={{ color: isBanned ? "var(--error)" : "var(--text-muted)" }}>{p}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {stackError && (
+                <div style={{ padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
+                  {stackError}
+                </div>
+              )}
+
+              {/* Navigation buttons */}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+                <button
+                  onClick={() => {
+                    setStep(1);
+                    setMode(null);
+                  }}
+                  style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                >
+                  Back
+                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={onClose}
+                    style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleGenerateRecommendation}
+                    disabled={generatingRecommendation}
+                    style={{
+                      padding: "8px 20px",
+                      background: "var(--accent)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "var(--radius)",
+                      fontWeight: 600,
+                      fontSize: 13,
+                      cursor: generatingRecommendation ? "default" : "pointer",
+                      opacity: generatingRecommendation ? 0.6 : 1,
+                    }}
+                  >
+                    {generatingRecommendation ? "Analyzing Stack…" : "Generate Blueprint"}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* STEP 3: Preview Card & Target Locker */}
+          {step === 3 && recommendation && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              
+              {/* Stack Preview Card */}
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  padding: 16,
+                  background: "linear-gradient(135deg, rgba(168,85,247,0.02) 0%, rgba(139,92,246,0.01) 100%)",
+                  maxHeight: 220,
+                  overflowY: "auto",
+                }}
+              >
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)", margin: "0 0 6px 0" }}>{recommendation.name}</h4>
+                <p style={{ fontSize: 12, color: "var(--text)", margin: "0 0 12px 0", lineHeight: 1.4 }}>{recommendation.description}</p>
+                
+                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Architectural Rules Generated:</span>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 4, lineHeight: 1.4 }}>
+                    {recommendation.rules.map((rule, idx) => (
+                      <li key={idx}>{rule}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Locker selector */}
+              <div>
+                <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                  Save To Locker
+                  <InfoTooltip text="Select the target locker/vault where this blueprint memory should be saved." size={12} />
+                </label>
+                <select
+                  value={targetLocker}
+                  onChange={(e) => setTargetLocker(e.target.value)}
+                  style={{ width: "100%", padding: "8px 10px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                >
+                  {workspaces.map((w) => (
+                    <option key={w.key} value={w.key}>{w.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Config Files Checkboxes */}
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
+                  Generate Rules For Config Files
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[
+                    { id: "claude", label: ".claudemd (Claude)" },
+                    { id: "cursor", label: ".cursorrules (Cursor)" },
+                    { id: "copilot", label: ".github/copilot-instructions.md" },
+                    { id: "gemini", label: ".geminirules (Gemini)" },
+                    { id: "agents", label: "agents.md (General)" },
+                  ].map((cf) => (
+                    <label key={cf.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={(syncOptions as any)[cf.id]}
+                        onChange={() => setSyncOptions(prev => ({ ...prev, [cf.id]: !(prev as any)[cf.id] }))}
+                        style={{ accentColor: "var(--accent)", cursor: "pointer" }}
+                      />
+                      <span style={{ color: (syncOptions as any)[cf.id] ? "var(--text)" : "var(--text-muted)" }}>{cf.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {stackError && (
+                <div style={{ padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
+                  {stackError}
+                </div>
+              )}
+
+              {/* Navigation buttons */}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+                <button
+                  onClick={() => setStep(2)}
+                  style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                >
+                  Back
+                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={onClose}
+                    style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveStack}
+                    disabled={savingStack}
+                    style={{
+                      padding: "8px 20px",
+                      background: "var(--accent)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "var(--radius)",
+                      fontWeight: 600,
+                      fontSize: 13,
+                      cursor: savingStack ? "default" : "pointer",
+                      opacity: savingStack ? 0.6 : 1,
+                    }}
+                  >
+                    {savingStack ? "Saving Stack…" : "Save to Locker"}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* STEP 4: Success & Config Downloads */}
+          {step === 4 && recommendation && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "center", textAlign: "center", padding: "10px 0" }}>
+              
+              {/* Success animation or big green check */}
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: "50%",
+                  background: "rgba(52,211,153,0.1)",
+                  color: "#34d399",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 24,
+                  fontWeight: "bold",
+                  marginBottom: 8,
+                }}
+              >
+                ✓
+              </div>
+
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 6px 0" }}>Tech Stack Saved Successfully!</h3>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.4, maxWidth: 360 }}>
+                  Consolidated blueprint ruleset added to target locker. Download your coding assistant files below.
+                </p>
+              </div>
+
+              {/* Config Files download grid */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", marginTop: 8 }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", display: "block", textAlign: "left" }}>
+                  Download Selected Configs:
+                </span>
+                
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%" }}>
+                  {[
+                    { id: "claude", label: ".claudemd", filename: ".claudemd" },
+                    { id: "cursor", label: ".cursorrules", filename: ".cursorrules" },
+                    { id: "copilot", label: ".github/copilot-instructions.md", filename: "copilot-instructions.md" },
+                    { id: "gemini", label: ".geminirules", filename: ".geminirules" },
+                    { id: "agents", label: "agents.md", filename: "agents.md" },
+                  ].map((cf) => {
+                    const isSelected = (syncOptions as any)[cf.id];
+                    if (!isSelected) return null;
+                    return (
+                      <button
+                        key={cf.id}
+                        onClick={() => handleDownloadConfig(cf.id as any)}
+                        style={{
+                          padding: "10px 12px",
+                          background: "var(--surface2)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "var(--radius)",
+                          color: "var(--text)",
+                          fontSize: 12,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          transition: "all 0.15s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "var(--accent)";
+                          e.currentTarget.style.background = "rgba(168,85,247,0.03)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = "var(--border)";
+                          e.currentTarget.style.background = "var(--surface2)";
+                        }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                          </svg>
+                          {cf.label}
+                        </span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                onClick={onClose}
+                style={{
+                  padding: "8px 24px",
+                  background: "var(--accent)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "var(--radius)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginTop: 12,
+                  cursor: "pointer",
+                  width: "100%",
+                }}
+              >
+                Close & Return to Dashboard
+              </button>
+
+            </div>
+          )}
+
         </div>
       </div>
     </div>
