@@ -1656,52 +1656,90 @@ export async function handleMcpRequest(
       }
     }
 
-    // Consolidate constraints into a single markdown facts block
-    const consolidatedFacts = constraints.map((c) => c.trim()).join("\n");
-    const encryptedFact = await encrypt(consolidatedFacts, vaultKey);
-    const memId = crypto.randomUUID();
-    const timestamp = Date.now();
+    // Define distinct category groups based on baseline structure
+    const categoryGroups: Array<{ name: string; tag: string; rules: string[] }> = [];
 
-    await db.insert(memories).values({
-      id: memId,
-      userId: claims.userId,
-      fact: encryptedFact,
-      category: "rules" as const,
-      tags: "architecture, baseline, mcp",
-      timestamp,
-      isActive: true,
-      projectKey: resolvedProjectKey || null,
-      scopeType,
-      scopeId,
-      authorityType: "authoritative" as const,
-    }).run();
+    if (payload.techStack?.cloudflare?.rules && payload.techStack.cloudflare.rules.length > 0) {
+      categoryGroups.push({
+        name: "infrastructure-stack",
+        tag: "infrastructure",
+        rules: payload.techStack.cloudflare.rules,
+      });
+    }
 
-    await db.insert(memoryVersions).values({
-      id: crypto.randomUUID(),
-      memoryId: memId,
-      fact: encryptedFact,
-      category: "rules" as const,
-      tags: "architecture, baseline, mcp",
-      changedBy: claims.userId,
-      changeReason: "created",
-      timestamp,
-    }).run();
+    if (payload.techStack?.tanstack?.rules && payload.techStack.tanstack.rules.length > 0) {
+      categoryGroups.push({
+        name: "frontend-stack",
+        tag: "frontend",
+        rules: payload.techStack.tanstack.rules,
+      });
+    }
 
-    const embedding = await generateEmbedding(env.AI, consolidatedFacts);
-    const tokensConsumed = estimateEmbeddingTokens(consolidatedFacts);
+    if (payload.restrictions?.rules && payload.restrictions.rules.length > 0) {
+      categoryGroups.push({
+        name: "restrictions",
+        tag: "restrictions",
+        rules: payload.restrictions.rules,
+      });
+    }
 
-    await env.VECTOR_INDEX.insert([
-      {
+    if (payload.repositoryRules?.rules && payload.repositoryRules.rules.length > 0) {
+      categoryGroups.push({
+        name: "repository-rules",
+        tag: "repository-rules",
+        rules: payload.repositoryRules.rules,
+      });
+    }
+
+    let tokensConsumed = 0;
+
+    for (const group of categoryGroups) {
+      const factContent = group.rules.map((r) => r.trim()).join("\n");
+      const encryptedFact = await encrypt(factContent, vaultKey);
+      const memId = crypto.randomUUID();
+      const timestamp = Date.now();
+
+      await db.insert(memories).values({
         id: memId,
-        values: embedding,
-        metadata: {
-          userId: claims.userId,
-          category: "rules",
-          tags: "architecture, baseline, mcp",
-          projectKey: resolvedProjectKey ?? "",
+        userId: claims.userId,
+        fact: encryptedFact,
+        category: "rules" as const,
+        tags: `architecture, baseline, mcp, ${group.tag}`,
+        timestamp,
+        isActive: true,
+        projectKey: resolvedProjectKey || null,
+        scopeType,
+        scopeId,
+        authorityType: "authoritative" as const,
+      }).run();
+
+      await db.insert(memoryVersions).values({
+        id: crypto.randomUUID(),
+        memoryId: memId,
+        fact: encryptedFact,
+        category: "rules" as const,
+        tags: `architecture, baseline, mcp, ${group.tag}`,
+        changedBy: claims.userId,
+        changeReason: "created",
+        timestamp,
+      }).run();
+
+      const embedding = await generateEmbedding(env.AI, factContent);
+      tokensConsumed += estimateEmbeddingTokens(factContent);
+
+      await env.VECTOR_INDEX.insert([
+        {
+          id: memId,
+          values: embedding,
+          metadata: {
+            userId: claims.userId,
+            category: "rules",
+            tags: `architecture, baseline, mcp, ${group.tag}`,
+            projectKey: resolvedProjectKey ?? "",
+          },
         },
-      },
-    ]);
+      ]);
+    }
 
     // Audit log & token usage
     await logAudit(db, {
@@ -1711,7 +1749,7 @@ export async function handleMcpRequest(
       action: "apply_technical_baseline",
       ipAddress,
       userAgent,
-      metadata: { baselineId, projectKey: resolvedProjectKey, insertedCount: 1 },
+      metadata: { baselineId, projectKey: resolvedProjectKey, insertedCount: categoryGroups.length },
     });
     await logTokenUsage(db, claims.tokenId, "commit", tokensConsumed);
 
@@ -1723,7 +1761,7 @@ export async function handleMcpRequest(
             success: true,
             baselineId,
             projectKey: resolvedProjectKey,
-            insertedCount: 1,
+            insertedCount: categoryGroups.length,
           }),
         },
       ],
