@@ -1615,7 +1615,7 @@ export async function handleMcpRequest(
       constraints.push(...payload.repositoryRules.rules);
     }
 
-    // Fetch existing memories for this vault to prevent duplicates
+    // Clean up existing authoritative baseline memories for this vault to prevent duplicates/orphans
     const existingMemories = await db
       .select()
       .from(memories)
@@ -1624,26 +1624,26 @@ export async function handleMcpRequest(
           resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
             ? eq(memories.projectKey, resolvedProjectKey)
             : and(eq(memories.userId, claims.userId), sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`),
-          eq(memories.authorityType, "authoritative"),
-          eq(memories.isActive, true)
+          eq(memories.authorityType, "authoritative")
         )
       )
       .all();
 
+    if (existingMemories.length > 0) {
+      const idsToDelete = existingMemories.map((m) => m.id);
+      for (const memId of idsToDelete) {
+        await db.delete(memories).where(eq(memories.id, memId)).run();
+      }
+      try {
+        await env.VECTOR_INDEX.deleteByIds(idsToDelete);
+      } catch (err) {
+        console.error("[apply_baseline] Failed to delete from Vectorize index:", err);
+      }
+    }
+
     const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
     const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
 
-    const decryptedExisting = await Promise.all(
-      existingMemories.map(async (m) => {
-        try {
-          return await decryptFact(m.fact, vaultKey, env.ENCRYPTION_KEY);
-        } catch {
-          return "";
-        }
-      })
-    );
-
-    const newConstraints = constraints.filter((c) => !decryptedExisting.includes(c.trim()));
     let scopeType: "personal" | "organization" | "team" = "personal";
     let scopeId: string | null = null;
     if (resolvedProjectKey) {
@@ -1656,70 +1656,52 @@ export async function handleMcpRequest(
       }
     }
 
-    let tokensConsumed = 0;
+    // Consolidate constraints into a single markdown facts block
+    const consolidatedFacts = constraints.map((c) => c.trim()).join("\n");
+    const encryptedFact = await encrypt(consolidatedFacts, vaultKey);
+    const memId = crypto.randomUUID();
+    const timestamp = Date.now();
 
-    if (newConstraints.length > 0) {
-      const memoryValues = [];
-      const versionValues = [];
-      const vectorInserts = [];
+    await db.insert(memories).values({
+      id: memId,
+      userId: claims.userId,
+      fact: encryptedFact,
+      category: "rules" as const,
+      tags: "architecture, baseline, mcp",
+      timestamp,
+      isActive: true,
+      projectKey: resolvedProjectKey || null,
+      scopeType,
+      scopeId,
+      authorityType: "authoritative" as const,
+    }).run();
 
-      for (const constraint of newConstraints) {
-        const trimmed = constraint.trim();
-        const encrypted = await encrypt(trimmed, vaultKey);
-        const memId = crypto.randomUUID();
-        const timestamp = Date.now();
+    await db.insert(memoryVersions).values({
+      id: crypto.randomUUID(),
+      memoryId: memId,
+      fact: encryptedFact,
+      category: "rules" as const,
+      tags: "architecture, baseline, mcp",
+      changedBy: claims.userId,
+      changeReason: "created",
+      timestamp,
+    }).run();
 
-        memoryValues.push({
-          id: memId,
+    const embedding = await generateEmbedding(env.AI, consolidatedFacts);
+    const tokensConsumed = estimateEmbeddingTokens(consolidatedFacts);
+
+    await env.VECTOR_INDEX.insert([
+      {
+        id: memId,
+        values: embedding,
+        metadata: {
           userId: claims.userId,
-          fact: encrypted,
-          category: "rules" as const,
+          category: "rules",
           tags: "architecture, baseline, mcp",
-          timestamp,
-          isActive: true,
-          projectKey: resolvedProjectKey || null,
-          scopeType,
-          scopeId,
-          authorityType: "authoritative" as const,
-        });
-
-        versionValues.push({
-          id: crypto.randomUUID(),
-          memoryId: memId,
-          fact: encrypted,
-          category: "rules" as const,
-          tags: "architecture, baseline, mcp",
-          changedBy: claims.userId,
-          changeReason: "created",
-          timestamp,
-        });
-
-        const embedding = await generateEmbedding(env.AI, trimmed);
-        tokensConsumed += estimateEmbeddingTokens(trimmed);
-
-        vectorInserts.push({
-          id: memId,
-          values: embedding,
-          metadata: {
-            userId: claims.userId,
-            category: "rules",
-            tags: "architecture, baseline, mcp",
-            projectKey: resolvedProjectKey ?? "",
-          },
-        });
-      }
-
-      // Insert memories and versions one-by-one to avoid SQLite/D1 parameter limits
-      for (const mVal of memoryValues) {
-        await db.insert(memories).values(mVal).run();
-      }
-      for (const vVal of versionValues) {
-        await db.insert(memoryVersions).values(vVal).run();
-      }
-
-      // Batch insert into Vectorize
-      await env.VECTOR_INDEX.insert(vectorInserts);
-    }
+          projectKey: resolvedProjectKey ?? "",
+        },
+      },
+    ]);
 
     // Audit log & token usage
     await logAudit(db, {
@@ -1729,7 +1711,7 @@ export async function handleMcpRequest(
       action: "apply_technical_baseline",
       ipAddress,
       userAgent,
-      metadata: { baselineId, projectKey: resolvedProjectKey, insertedCount: newConstraints.length },
+      metadata: { baselineId, projectKey: resolvedProjectKey, insertedCount: 1 },
     });
     await logTokenUsage(db, claims.tokenId, "commit", tokensConsumed);
 
@@ -1741,7 +1723,7 @@ export async function handleMcpRequest(
             success: true,
             baselineId,
             projectKey: resolvedProjectKey,
-            insertedCount: newConstraints.length,
+            insertedCount: 1,
           }),
         },
       ],
@@ -1824,13 +1806,20 @@ export async function handleMcpRequest(
       ? "# Claude System Instructions - Technical Stack Blueprint"
       : "# Developer Agent Rules - Technical Stack Blueprint";
 
+    const lines = filtered.flatMap((m) =>
+      m.fact.split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => line.startsWith("- ") ? line.slice(2) : line)
+    );
+
     const markdownBody = `${header}
 
 This manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.
 
 ## Enforced Guidelines
 
-${filtered.map((m) => `- ${m.fact}`).join("\n")}
+${lines.map((line) => `- ${line}`).join("\n")}
 
 ---
 *Generated at: ${new Date().toISOString()}*
@@ -1844,7 +1833,7 @@ ${filtered.map((m) => `- ${m.fact}`).join("\n")}
       action: "sync_workspace_agent_configs",
       ipAddress,
       userAgent,
-      metadata: { projectKey: resolvedProjectKey, formatType, rulesCount: filtered.length },
+      metadata: { projectKey: resolvedProjectKey, formatType, rulesCount: lines.length },
     });
     await logTokenUsage(db, claims.tokenId, "recall", 0);
 
@@ -1856,7 +1845,7 @@ ${filtered.map((m) => `- ${m.fact}`).join("\n")}
             markdown: markdownBody,
             targetPath: targetPath,
             projectKey: resolvedProjectKey,
-            rulesCount: filtered.length,
+            rulesCount: lines.length,
           }),
         },
       ],
