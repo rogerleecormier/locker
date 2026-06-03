@@ -1771,6 +1771,7 @@ function TemplateFormModal({
       alignItems: "center",
       justifyContent: "center",
       padding: 20,
+      overflowY: "auto",
     }}>
       <div style={{
         background: "var(--surface)",
@@ -1778,7 +1779,6 @@ function TemplateFormModal({
         borderRadius: "var(--radius)",
         width: "100%",
         maxWidth: currentStep === 1 ? 680 : currentStep === 2 ? 960 : 840,
-        maxHeight: "90vh",
         display: "flex",
         flexDirection: "column",
         boxShadow: "0 24px 48px rgba(0,0,0,0.5)",
@@ -1848,7 +1848,7 @@ function TemplateFormModal({
         </div>
 
         {/* Modal Body */}
-        <div style={{ padding: 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16, contain: "content" }}>
+        <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
           
           {/* STEP 1: General Info */}
           {currentStep === 1 && (
@@ -2133,7 +2133,7 @@ function TemplateFormModal({
               </div>
 
               {/* Stack Fields */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, paddingBottom: 160 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, paddingBottom: 12 }}>
                 {/* Column 1: Frontend & Language */}
                 <div style={{
                   background: "var(--surface2)",
