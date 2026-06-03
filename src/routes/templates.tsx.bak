@@ -2368,6 +2368,957 @@ function TemplateFormModal({
     </div>
   );
 }
+
+function TemplatesPage() {
+  const queryClient = useQueryClient();
+const getDynamicFieldOptions = (field: string, lang: string, framework: string): string[] => {
+    const langLower = lang.toLowerCase();
+    const frameLower = framework.toLowerCase();
+    
+    if (field === "frontend") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        return ["React / TanStack", "Next.js", "Remix", "Vue / Nuxt", "Svelte / SvelteKit", "Astro", "SolidJS", "Angular", "Node.js / Express", "HTML/JS", "None"];
+      }
+      if (langLower === "python") {
+        return ["Django", "FastAPI", "Flask", "MkDocs", "Streamlit", "None"];
+      }
+      if (langLower === "go") {
+        return ["Gin", "Echo", "Fiber", "Hugo", "Go Standard HTTP", "None"];
+      }
+      if (langLower === "rust") {
+        return ["Actix-web", "Axum", "Rocket", "None"];
+      }
+      if (langLower === "ruby") {
+        return ["Ruby on Rails", "Sinatra", "Jekyll", "None"];
+      }
+      if (langLower === "java") {
+        return ["Spring Boot", "Quarkus", "None"];
+      }
+      if (langLower === "c#") {
+        return ["ASP.NET Core", "None"];
+      }
+      if (langLower === "php") {
+        return ["Laravel", "Symfony", "WordPress", "None"];
+      }
+      return ["React / TanStack", "Next.js", "Django", "FastAPI", "Gin", "Laravel", "Ruby on Rails", "Spring Boot", "ASP.NET Core", "Actix-web", "None"];
+    }
+
+    if (field === "database") {
+      if (langLower === "c#") {
+        return ["Azure SQL Database", "PostgreSQL", "MySQL", "SQLite", "None"];
+      }
+      if (langLower === "python") {
+        return ["Google Cloud SQL", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "None"];
+      }
+      return FIELD_OPTIONS.database || [];
+    }
+
+    if (field === "storage") {
+      if (langLower === "c#") {
+        return ["Azure Blob Storage", "Local Filesystem", "None"];
+      }
+      if (langLower === "python") {
+        return ["Google Cloud Storage", "AWS S3", "Local Filesystem", "None"];
+      }
+      return FIELD_OPTIONS.storage || [];
+    }
+
+    if (field === "orm") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        if (frameLower.includes("next.js") || frameLower.includes("remix")) {
+          return ["Drizzle ORM", "Prisma", "Kysely", "SQL (Raw)", "None"];
+        }
+        return ["Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "SQL (Raw)", "None"];
+      }
+      if (langLower === "python") {
+        if (frameLower.includes("django")) {
+          return ["Django ORM", "SQLAlchemy", "SQL (Raw)", "None"];
+        }
+        return ["SQLAlchemy", "SQLModel", "Django ORM", "Tortoise ORM", "PyMongo", "SQL (Raw)", "None"];
+      }
+      if (langLower === "go") {
+        return ["GORM", "Ent", "SQLX", "SQL (Raw)", "None"];
+      }
+      if (langLower === "rust") {
+        return ["Diesel", "SQLx", "None"];
+      }
+      if (langLower === "ruby") {
+        return ["Active Record", "Sequel", "None"];
+      }
+      if (langLower === "java") {
+        return ["Hibernate (JPA)", "None"];
+      }
+      if (langLower === "c#") {
+        return ["Entity Framework Core", "None"];
+      }
+      if (langLower === "php") {
+        if (frameLower.includes("laravel")) {
+          return ["Eloquent", "Doctrine", "None"];
+        }
+        return ["Eloquent", "Doctrine", "None"];
+      }
+      return ["Drizzle ORM", "SQLAlchemy", "GORM", "Active Record", "Entity Framework Core", "SQL (Raw)", "None"];
+    }
+
+    if (field === "auth") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        if (frameLower.includes("next.js")) {
+          return ["Auth.js (NextAuth)", "Clerk", "Better Auth", "Supabase Auth", "Kinde", "None"];
+        }
+        if (frameLower.includes("remix")) {
+          return ["Better Auth", "Clerk", "Supabase Auth", "Lucia", "None"];
+        }
+        return ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Kinde", "Lucia", "Custom", "None"];
+      }
+      if (langLower === "python") {
+        if (frameLower.includes("django")) {
+          return ["Django Auth", "Clerk", "Supabase Auth", "Custom", "None"];
+        }
+        if (frameLower.includes("fastapi")) {
+          return ["FastAPI Users", "Clerk", "Supabase Auth", "Firebase Auth", "Custom", "None"];
+        }
+        return ["Clerk", "Supabase Auth", "Firebase Auth", "Auth0", "Custom", "None"];
+      }
+      if (langLower === "php") {
+        if (frameLower.includes("laravel")) {
+          return ["Laravel Breeze / Jetstream", "Clerk", "Supabase Auth", "Custom", "None"];
+        }
+      }
+      if (langLower === "c#") {
+        return ["Microsoft Entra ID", "Custom", "None"];
+      }
+      if (langLower === "go" || langLower === "rust") {
+        return ["Clerk", "Auth0", "Supabase Auth", "Firebase Auth", "Custom", "None"];
+      }
+      return ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Custom", "None"];
+    }
+
+    if (field === "statecache") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        return ["TanStack Store", "Cloudflare KV", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "None"];
+      }
+      return ["Cloudflare KV", "Redis Cache", "Memcached", "None"];
+    }
+
+    if (field === "hosting") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        return ["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS", "None"];
+      }
+      if (langLower === "c#") {
+        return ["Azure App Service", "Self-Hosted VPS", "None"];
+      }
+      return ["AWS Lambda", "Google Cloud Run", "Azure App Service", "Fly.io", "Cloudflare Edge", "Vercel", "Netlify", "Heroku", "Railway", "Render", "Self-Hosted VPS", "None"];
+    }
+
+    if (field === "styling") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        if (frameLower.includes("angular")) {
+          return ["Sass/SCSS", "Tailwind CSS", "Vanilla CSS", "None"];
+        }
+        return ["Vanilla CSS", "Tailwind CSS", "Bootstrap", "Material Design", "CSS Modules", "Styled Components", "Sass/SCSS", "Tailwind + CSS Modules"];
+      }
+      if (langLower === "python") {
+        if (frameLower.includes("django")) {
+          return ["Django Templates + Tailwind", "Django Templates + Bootstrap", "Vanilla CSS", "None"];
+        }
+        if (frameLower.includes("fastapi") || frameLower.includes("flask") || frameLower.includes("mkdocs")) {
+          return ["Jinja2 + Tailwind", "Jinja2 + Bootstrap", "Vanilla CSS", "None"];
+        }
+        if (frameLower.includes("streamlit")) {
+          return ["Streamlit Theme", "None"];
+        }
+        return ["Jinja2 + Tailwind", "Jinja2 + Bootstrap", "Vanilla CSS", "None"];
+      }
+      if (langLower === "php") {
+        if (frameLower.includes("laravel")) {
+          return ["Blade + Tailwind", "Blade + Bootstrap", "Vanilla CSS", "None"];
+        }
+        return ["Blade + Tailwind", "Twig + Tailwind", "Blade + Bootstrap", "Vanilla CSS", "None"];
+      }
+      if (langLower === "go") {
+        return ["Go HTML Templates + Tailwind", "Templ + Tailwind", "Go HTML Templates + Bootstrap", "Vanilla CSS", "None"];
+      }
+      if (langLower === "ruby") {
+        return ["ERB + Tailwind", "ERB + Bootstrap", "Vanilla CSS", "None"];
+      }
+      return ["Tailwind CSS", "Bootstrap", "Vanilla CSS", "None"];
+    }
+
+    if (field === "componentLibrary") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        if (frameLower.includes("angular")) {
+          return ["Angular Material", "PrimeNG", "NG-ZORRO", "None"];
+        }
+        if (frameLower.includes("vue / nuxt")) {
+          return ["Vuetify", "PrimeVue", "Element Plus", "DaisyUI", "None"];
+        }
+        if (frameLower.includes("svelte")) {
+          return ["Svelte UX", "Flowbite Svelte", "DaisyUI", "None"];
+        }
+        return ["shadcn/ui", "MUI (Material UI)", "Chakra UI", "Radix UI", "DaisyUI", "PrimeReact", "None"];
+      }
+      if (langLower === "python") {
+        if (frameLower.includes("django")) {
+          return ["Django Cotton (Reusable Templates)", "Django Unicorn (Reactive)", "None"];
+        }
+        if (frameLower.includes("dash")) {
+          return ["Dash Mantine Components", "Dash Bootstrap Components", "None"];
+        }
+        if (frameLower.includes("reflex")) {
+          return ["Reflex UI (Radix/Chakra)", "None"];
+        }
+        if (frameLower.includes("flet")) {
+          return ["Flet (Flutter UI)", "None"];
+        }
+        return ["Django Cotton (Reusable Templates)", "Django Unicorn (Reactive)", "None"];
+      }
+      if (langLower === "php") {
+        if (frameLower.includes("laravel")) {
+          return ["Laravel Livewire", "Blade Components", "None"];
+        }
+        return ["Laravel Livewire", "Blade Components", "Twig Components", "None"];
+      }
+      if (langLower === "go") {
+        return ["Templ Components", "Hugo Components", "None"];
+      }
+      if (langLower === "rust") {
+        return ["Leptos Components", "Yew Components", "None"];
+      }
+      if (langLower === "ruby") {
+        return ["ViewComponent (Rails)", "Phlex", "None"];
+      }
+      return ["None"];
+    }
+
+    return FIELD_OPTIONS[field] || [];
+  };
+
+function TemplateFormModal({ editingTemplate, onClose, onSuccess }: { editingTemplate?: any; onClose: () => void; onSuccess: () => void }) {
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+  const [formName, setFormName] = useState(editingTemplate?.name || "");
+  const [formDesc, setFormDesc] = useState(editingTemplate?.description || "");
+  const [formCategory, setFormCategory] = useState<TemplateCategory>(editingTemplate?.category || "stack");
+  const [formRules, setFormRules] = useState<string[]>([""]);
+  const [formVariables, setFormVariables] = useState<VariableConfig[]>([]);
+
+  // Stack Fields
+  const [stackLanguage, setStackLanguage] = useState("TypeScript");
+  const [stackFrontend, setStackFrontend] = useState("React / TanStack");
+  const [stackHosting, setStackHosting] = useState("Cloudflare Edge");
+  const [stackDatabase, setStackDatabase] = useState("Cloudflare D1");
+  const [stackStorage, setStackStorage] = useState("Cloudflare R2");
+  const [stackSearch, setStackSearch] = useState("None");
+  const [stackVector, setStackVector] = useState("Cloudflare Vectorize");
+  const [stackOrm, setStackOrm] = useState("Drizzle ORM");
+  const [stackAuth, setStackAuth] = useState("Better Auth");
+  const [stackStyling, setStackStyling] = useState("Tailwind CSS");
+  const [stackStateCache, setStackStateCache] = useState("TanStack Store");
+  const [stackComponentLibrary, setStackComponentLibrary] = useState("None");
+  const [stackBanned, setStackBanned] = useState<string[]>([]);
+  
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (editingTemplate) {
+        let payload: ParsedPayload = { rules: [] };
+        try {
+            payload = JSON.parse(editingTemplate.configPayload);
+        } catch (e) {}
+
+        setFormRules(payload.rules || [""]);
+        setFormVariables(payload.variables || []);
+
+        if (editingTemplate.category === "stack") {
+            setStackLanguage(payload.language || "TypeScript");
+            setStackFrontend(payload.frontend || "React / TanStack");
+            setStackHosting(payload.hosting || "Cloudflare Edge");
+            setStackDatabase(payload.database || "Cloudflare D1");
+            setStackStorage(payload.storage || "Cloudflare R2");
+            setStackSearch(payload.search || "None");
+            setStackVector(payload.vector || "None");
+            setStackOrm(payload.orm || "Drizzle ORM");
+            setStackAuth(payload.auth || "Better Auth");
+            setStackStyling(payload.styling || "Tailwind CSS");
+            setStackStateCache(payload.stateCache || "TanStack Store");
+            setStackComponentLibrary(payload.componentLibrary || "None");
+            setStackBanned(payload.bannedProviders || []);
+        }
+    }
+  }, [editingTemplate]);
+
+  const createMut = useMutation({
+    mutationFn: (data: any) => createMemoryTemplate({ data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      onSuccess();
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (data: any) => updateMemoryTemplate({ data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      onSuccess();
+    },
+  });
+
+  const handleSave = () => {
+    const payload: ParsedPayload = {
+      rules: formRules.filter((r) => r.trim() !== ""),
+      variables: formVariables.filter((v) => v.key.trim() !== ""),
+    };
+
+    if (formCategory === "stack") {
+      payload.language = stackLanguage;
+      payload.frontend = stackFrontend;
+      payload.hosting = stackHosting;
+      payload.database = stackDatabase;
+      payload.storage = stackStorage;
+      payload.search = stackSearch;
+      payload.vector = stackVector;
+      payload.orm = stackOrm;
+      payload.auth = stackAuth;
+      payload.styling = stackStyling;
+      payload.stateCache = stackStateCache;
+      payload.componentLibrary = stackComponentLibrary;
+      payload.bannedProviders = stackBanned;
+    }
+
+    const templateData = {
+      name: formName,
+      description: formDesc,
+      category: formCategory,
+      configPayload: JSON.stringify(payload),
+    };
+
+    if (editingTemplate) {
+      updateMut.mutate({ id: editingTemplate.id, ...templateData });
+    } else {
+      createMut.mutate(templateData);
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.6)",
+      backdropFilter: "blur(4px)",
+      zIndex: 100,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20,
+    }}>
+      <div style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        width: "100%",
+        maxWidth: currentStep >= 3 ? 840 : 680,
+        maxHeight: "90vh",
+        display: "flex",
+        flexDirection: "column",
+        boxShadow: "0 24px 48px rgba(0,0,0,0.5)",
+        transition: "max-width 0.2s ease-in-out",
+        willChange: "transform",
+      }}>
+        {/* Modal Header */}
+        <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontWeight: 700, fontSize: 16 }}>
+            {editingTemplate ? "Edit Template" : "New Memory Template"}
+          </span>
+          <button onClick={onClose} style={{ background: "none", color: "var(--text-muted)", fontSize: 20 }}>×</button>
+        </div>
+
+        {/* Progress Indicator */}
+        <div style={{ padding: "20px 24px 0 24px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px" }}>
+            {stepsList.map((s, index) => {
+              const isCompleted = currentStep > s.id;
+              const isActive = currentStep === s.id;
+              return (
+                <div key={s.id} style={{ display: "flex", alignItems: "center", flex: index < stepsList.length - 1 ? 1 : "initial" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      type="button"
+                      disabled={!formName.trim() && s.id !== 1}
+                      onClick={() => {
+                        if (formName.trim()) {
+                          setCurrentStep(s.id as 1 | 2 | 3 | 4);
+                        }
+                      }}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: "50%",
+                        background: isActive ? "var(--accent)" : isCompleted ? "var(--success)" : "var(--surface2)",
+                        border: `1px solid ${isActive ? "var(--accent)" : isCompleted ? "var(--success)" : "var(--border)"}`,
+                        color: isActive || isCompleted ? "#fff" : "var(--text-muted)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      {isCompleted ? "✓" : index + 1}
+                    </button>
+                    <span style={{ fontSize: 12, fontWeight: isActive ? 600 : 400, color: isActive ? "var(--text)" : "var(--text-muted)" }}>
+                      {s.label}
+                    </span>
+                  </div>
+                  {index < stepsList.length - 1 && (
+                    <div style={{
+                      flex: 1,
+                      height: 2,
+                      background: isCompleted ? "var(--success)" : "var(--border)",
+                      margin: "0 16px",
+                      minWidth: 20,
+                    }} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Modal Body */}
+        <div style={{ padding: 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16, contain: "content" }}>
+          
+          {/* STEP 1: General Info */}
+          {currentStep === 1 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Template Name</label>
+                  <input
+                    type="text"
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="e.g. Next.js Stack Preset"
+                    style={{ width: "100%", padding: "8px 12px" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Category</label>
+                  <select
+                    value={formCategory}
+                    onChange={(e) => {
+                      setFormCategory(e.target.value as TemplateCategory);
+                    }}
+                    style={{ width: "100%", padding: "8px 12px", background: "var(--surface2)" }}
+                    disabled={!!editingTemplate}
+                  >
+                    <option value="stack">Stack (Tech Stack Blueprint)</option>
+                    <option value="governance">Governance (Git, Branching, PRs)</option>
+                    <option value="devops">DevOps (CI/CD Pipeline)</option>
+                    <option value="compliance">Compliance (GDPR, Privacy)</option>
+                    <option value="documentation">Documentation (API, Style)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Description</label>
+                <textarea
+                  value={formDesc}
+                  onChange={(e) => setFormDesc(e.target.value)}
+                  placeholder="Summarize what guidelines this template governs..."
+                  style={{ width: "100%", padding: "8px 12px", minHeight: 80, resize: "vertical" }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: Stack Settings */}
+          {currentStep === 2 && formCategory === "stack" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Stack Quick Load Presets */}
+              <div style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "16px", padding: "20px" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 14, letterSpacing: "0.05em" }}>Quick Load Stack Presets</span>
+                
+                <style>{`
+                  .presets-scroll-container {
+                    display: flex;
+                    flex-direction: row;
+                    gap: 16px;
+                    overflow-x: auto;
+                    padding-bottom: 12px;
+                    scroll-behavior: smooth;
+                    scroll-snap-type: x mandatory;
+                    -webkit-overflow-scrolling: touch;
+                    will-change: transform;
+                    contain: content;
+                  }
+                  .presets-scroll-container::-webkit-scrollbar {
+                    height: 6px;
+                  }
+                  .presets-scroll-container::-webkit-scrollbar-track {
+                    background: rgba(255, 255, 255, 0.02);
+                    border-radius: 3px;
+                  }
+                  .presets-scroll-container::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.12);
+                    border-radius: 3px;
+                    transition: background 0.15s;
+                  }
+                  .presets-scroll-container::-webkit-scrollbar-thumb:hover {
+                    background: rgba(255, 255, 255, 0.2);
+                  }
+                `}</style>
+                
+                <div className="presets-scroll-container">
+                  {STACK_PRESETS.map((preset) => {
+                    const isCurrentlySelected = 
+                      stackLanguage === preset.language &&
+                      stackFrontend === preset.frontend &&
+                      stackHosting === preset.hosting &&
+                      stackDatabase === preset.database &&
+                      stackOrm === preset.orm &&
+                      stackAuth === preset.auth &&
+                      stackStyling === preset.styling &&
+                      stackStorage === preset.storage &&
+                      stackComponentLibrary === preset.componentLibrary;
+                      
+                    return (
+                      <div
+                        key={preset.name}
+                        onClick={() => {
+                          setStackLanguage(preset.language);
+                          setStackFrontend(preset.frontend);
+                          setStackHosting(preset.hosting);
+                          setStackDatabase(preset.database);
+                          setStackOrm(preset.orm);
+                          setStackAuth(preset.auth);
+                          setStackStyling(preset.styling);
+                          setStackSearch(preset.search);
+                          setStackVector(preset.vector || "None");
+                          setStackStorage(preset.storage);
+                          setStackStateCache(preset.stateCache || "None");
+                          setStackComponentLibrary(preset.componentLibrary || "None");
+                        }}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          padding: "16px",
+                          background: isCurrentlySelected ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.015)",
+                          border: isCurrentlySelected ? `2px solid ${preset.themeColor}` : "1px solid rgba(255,255,255,0.08)",
+                          borderRadius: "12px",
+                          cursor: "pointer",
+                          transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+                          position: "relative",
+                          overflow: "hidden",
+                          boxShadow: isCurrentlySelected ? `0 0 20px ${preset.themeColor}15` : "none",
+                          flexShrink: 0,
+                          width: "290px",
+                          scrollSnapAlign: "start"
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = "translateY(-4px)";
+                          e.currentTarget.style.borderColor = preset.themeColor;
+                          e.currentTarget.style.boxShadow = `0 8px 24px rgba(0,0,0,0.2), 0 0 15px ${preset.themeColor}20`;
+                          e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = "none";
+                          e.currentTarget.style.borderColor = isCurrentlySelected ? preset.themeColor : "rgba(255,255,255,0.08)";
+                          e.currentTarget.style.boxShadow = isCurrentlySelected ? `0 0 20px ${preset.themeColor}15` : "none";
+                          e.currentTarget.style.background = isCurrentlySelected ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.015)";
+                        }}
+                      >
+                        {/* Background Glow */}
+                        <div style={{
+                          position: "absolute",
+                          top: "-30px",
+                          right: "-30px",
+                          width: "80px",
+                          height: "80px",
+                          borderRadius: "50%",
+                          background: preset.themeColor,
+                          opacity: 0.08,
+                          filter: "blur(20px)",
+                          pointerEvents: "none"
+                        }} />
+                        
+                        {/* Header */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                          <div style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: "36px",
+                            height: "36px",
+                            borderRadius: "10px",
+                            background: `linear-gradient(135deg, ${preset.themeColor}1a, ${preset.themeColor}33)`,
+                            border: `1px solid ${preset.themeColor}4d`,
+                            color: preset.themeColor
+                          }}>
+                            {renderPresetIcon(preset.icon)}
+                          </div>
+                          <span style={{
+                            fontSize: "9px",
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            padding: "2px 8px",
+                            borderRadius: "10px",
+                            background: "rgba(255,255,255,0.06)",
+                            color: "var(--text-muted)",
+                            border: "1px solid rgba(255,255,255,0.05)"
+                          }}>
+                            {preset.language}
+                          </span>
+                        </div>
+                        
+                        {/* Title & Description */}
+                        <div style={{ marginBottom: 12 }}>
+                          <div style={{ fontSize: "13px", fontWeight: 650, color: "var(--text)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                            {preset.name}
+                            {isCurrentlySelected && (
+                              <span style={{
+                                width: "6px",
+                                height: "6px",
+                                borderRadius: "50%",
+                                background: "var(--accent)"
+                              }} />
+                            )}
+                          </div>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: "1.4" }}>
+                            {preset.description}
+                          </div>
+                        </div>
+                        
+                        {/* Badges/Highlights */}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: "auto" }}>
+                          {preset.badges.map(b => (
+                            <span key={b} style={{
+                              fontSize: "9.5px",
+                              fontWeight: 500,
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              background: "rgba(255,255,255,0.03)",
+                              border: "1px solid rgba(255,255,255,0.04)",
+                              color: "rgba(255,255,255,0.6)"
+                            }}>
+                              {b}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Stack Fields */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, paddingBottom: 140 }}>
+                {/* Column 1: Frontend & Client Stack */}
+                <div style={{
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "12px",
+                  padding: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 8, marginBottom: 4 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect width="18" height="18" x="3" y="3" rx="2" />
+                      <path d="M7 8h10M7 12h10M7 16h6" />
+                    </svg>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Frontend & Client Stack</span>
+                  </div>
+                  <Combobox label="Language" value={stackLanguage} onChange={handleLanguageChange} options={FIELD_OPTIONS.language} placeholder="e.g. TypeScript" />
+                  <Combobox label="Frontend Framework" value={stackFrontend} onChange={handleFrontendChange} options={getDynamicFieldOptions("frontend", stackLanguage, "")} placeholder="e.g. Next.js" />
+                  <Combobox label="Styling / Templating" value={stackStyling} onChange={setStackStyling} options={getDynamicFieldOptions("styling", stackLanguage, stackFrontend)} placeholder="e.g. Tailwind CSS" />
+                  <Combobox label="Component Library" value={stackComponentLibrary} onChange={setStackComponentLibrary} options={getDynamicFieldOptions("componentLibrary", stackLanguage, stackFrontend)} placeholder="e.g. shadcn/ui" />
+                  <Combobox label="Auth" value={stackAuth} onChange={setStackAuth} options={getDynamicFieldOptions("auth", stackLanguage, stackFrontend)} placeholder="e.g. Better Auth" />
+                  <Combobox label="State / Client Cache" value={stackStateCache} onChange={setStackStateCache} options={getDynamicFieldOptions("statecache", stackLanguage, stackFrontend)} placeholder="e.g. Zustand" />
+                  <Combobox label="Full-Text Search (Lexical)" value={stackSearch} onChange={setStackSearch} options={FIELD_OPTIONS.search} placeholder="e.g. Fuse.js" />
+                </div>
+
+                {/* Column 2: Backend & Infrastructure */}
+                <div style={{
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "12px",
+                  padding: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 8, marginBottom: 4 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <ellipse cx="12" cy="5" rx="9" ry="3" />
+                      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+                      <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
+                    </svg>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Backend & Infrastructure</span>
+                  </div>
+                  <Combobox label="Hosting Runtime" value={stackHosting} onChange={setStackHosting} options={getDynamicFieldOptions("hosting", stackLanguage, stackFrontend)} placeholder="e.g. Cloudflare Pages" />
+                  <Combobox label="Database" value={stackDatabase} onChange={setStackDatabase} options={FIELD_OPTIONS.database} placeholder="e.g. Cloudflare D1" />
+                  <Combobox label="ORM / DB Client" value={stackOrm} onChange={setStackOrm} options={getDynamicFieldOptions("orm", stackLanguage, stackFrontend)} placeholder="e.g. Drizzle ORM" />
+                  <Combobox label="Storage (Buckets)" value={stackStorage} onChange={setStackStorage} options={FIELD_OPTIONS.storage} placeholder="e.g. Cloudflare R2" />
+                  <Combobox label="Vector Database (Semantic)" value={stackVector} onChange={setStackVector} options={FIELD_OPTIONS.vector} placeholder="e.g. Cloudflare Vectorize" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: Guidelines & Rules */}
+          {currentStep === 3 && (
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 20 }}>
+              {/* Left Column: Rules Builder */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Guidelines / Rules</label>
+                  <button onClick={() => setFormRules([...formRules, ""])} style={{ padding: "4px 10px", background: "var(--border)", color: "var(--text)", fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}>
+                    <span>＋</span> Add Rule
+                  </button>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "40vh", overflowY: "auto", paddingRight: 4 }}>
+                  {formRules.map((rule, idx) => (
+                    <div key={idx} style={{ display: "flex", gap: 8 }}>
+                      <input
+                        type="text"
+                        value={rule}
+                        onChange={(e) => {
+                          const list = [...formRules];
+                          list[idx] = e.target.value;
+                          setFormRules(list);
+                        }}
+                        placeholder="Define a constraint rule (you can inject variables like {{MY_VAR}})..."
+                        style={{ flex: 1, padding: "6px 10px" }}
+                      />
+                      {formRules.length > 1 && (
+                        <button
+                          onClick={() => setFormRules(formRules.filter((_, i) => i !== idx))}
+                          style={{ padding: "0 10px", background: "rgba(239,68,68,0.1)", color: "var(--error)", border: "1px solid rgba(239,68,68,0.2)" }}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right Column: Key Rule Presets */}
+              <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+                <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Rule Presets</label>
+                <div style={{ maxHeight: "40vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingRight: 4 }}>
+                  {getDynamicRulePresets().map((group) => (
+                    <div key={group.category}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{group.category}</span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {group.rules.map((ruleText) => {
+                          const isAdded = formRules.includes(ruleText);
+                          return (
+                            <div
+                              key={ruleText}
+                              onClick={() => !isAdded && addRuleFromPreset(ruleText)}
+                              style={{
+                                padding: "6px 10px",
+                                background: isAdded ? "rgba(34,197,94,0.06)" : "var(--surface2)",
+                                border: `1px solid ${isAdded ? "rgba(34,197,94,0.2)" : "var(--border)"}`,
+                                borderRadius: 6,
+                                fontSize: 11,
+                                color: isAdded ? "var(--success)" : "var(--text)",
+                                cursor: isAdded ? "default" : "pointer",
+                                transition: "all 0.15s",
+                                textAlign: "left",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isAdded) {
+                                  e.currentTarget.style.borderColor = "var(--accent)";
+                                  e.currentTarget.style.background = "var(--accent-dim)";
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isAdded) {
+                                  e.currentTarget.style.borderColor = "var(--border)";
+                                  e.currentTarget.style.background = "var(--surface2)";
+                                }
+                              }}
+                            >
+                              {ruleText} {isAdded && <span style={{ marginLeft: 4 }}>✓</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: Variables Mapping */}
+          {currentStep === 4 && (
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 20 }}>
+              {/* Left Column: Variables Mapping Builder */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Variables Mapping</label>
+                  <button onClick={() => setFormVariables([...formVariables, { key: "", description: "", default: "" }])} style={{ padding: "4px 10px", background: "var(--border)", color: "var(--text)", fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}>
+                    <span>＋</span> Add Variable
+                  </button>
+                </div>
+                
+                {formVariables.length === 0 ? (
+                  <div style={{ padding: "30px 10px", textAlign: "center", color: "var(--text-muted)", fontSize: 12, border: "1px dashed var(--border)", borderRadius: "var(--radius)" }}>
+                    No variables defined. Click presets on the right or Add Variable above to define custom parameters.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "40vh", overflowY: "auto", paddingRight: 4 }}>
+                    {formVariables.map((v, idx) => (
+                      <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input
+                          type="text"
+                          value={v.key}
+                          onChange={(e) => {
+                            const list = [...formVariables];
+                            list[idx].key = e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "");
+                            setFormVariables(list);
+                          }}
+                          placeholder="KEY (e.g. DB)"
+                          style={{ width: "30%", padding: 6 }}
+                        />
+                        <input
+                          type="text"
+                          value={v.description}
+                          onChange={(e) => {
+                            const list = [...formVariables];
+                            list[idx].description = e.target.value;
+                            setFormVariables(list);
+                          }}
+                          placeholder="Description"
+                          style={{ flex: 1, padding: 6 }}
+                        />
+                        <input
+                          type="text"
+                          value={v.default}
+                          onChange={(e) => {
+                            const list = [...formVariables];
+                            list[idx].default = e.target.value;
+                            setFormVariables(list);
+                          }}
+                          placeholder="Default"
+                          style={{ width: "20%", padding: 6 }}
+                        />
+                        <button
+                          onClick={() => setFormVariables(formVariables.filter((_, i) => i !== idx))}
+                          style={{ padding: "0 10px", background: "rgba(239,68,68,0.1)", color: "var(--error)", border: "1px solid rgba(239,68,68,0.2)", height: 28 }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Variable Presets */}
+              <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+                <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Variable Presets</label>
+                <div style={{ maxHeight: "40vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, paddingRight: 4 }}>
+                  {getDynamicVariablePresets().map((v) => {
+                    const isAdded = formVariables.some((existing) => existing.key === v.key);
+                    return (
+                      <div
+                        key={v.key}
+                        onClick={() => !isAdded && addVariableFromPreset(v)}
+                        style={{
+                          padding: "8px 12px",
+                          background: isAdded ? "rgba(34,197,94,0.06)" : "var(--surface2)",
+                          border: `1px solid ${isAdded ? "rgba(34,197,94,0.2)" : "var(--border)"}`,
+                          borderRadius: 6,
+                          cursor: isAdded ? "default" : "pointer",
+                          fontSize: 11,
+                          color: isAdded ? "var(--success)" : "var(--text)",
+                          transition: "all 0.15s",
+                          textAlign: "left",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isAdded) {
+                            e.currentTarget.style.borderColor = "var(--accent)";
+                            e.currentTarget.style.background = "var(--accent-dim)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isAdded) {
+                            e.currentTarget.style.borderColor = "var(--border)";
+                            e.currentTarget.style.background = "var(--surface2)";
+                          }
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontWeight: 700, fontFamily: "monospace" }}>{v.key}</span>
+                          {isAdded ? (
+                            <span>✓</span>
+                          ) : (
+                            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Default: {v.default}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{v.description}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+
+        {/* Modal Footer */}
+        <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <button
+              onClick={onClose}
+              style={{ padding: "10px 18px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+          </div>
+          
+          <div style={{ display: "flex", gap: 10 }}>
+            {currentStep > 1 && (
+              <button
+                onClick={handleBack}
+                style={{ padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+              >
+                Back
+              </button>
+            )}
+            
+            {!isLast ? (
+              <button
+                onClick={handleNext}
+                disabled={!formName.trim()}
+                style={{ padding: "10px 22px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: !formName.trim() ? "default" : "pointer" }}
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                onClick={handleSave}
+                disabled={!formName.trim() || createMut.isPending || updateMut.isPending}
+                style={{ padding: "10px 22px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: (!formName.trim() || createMut.isPending || updateMut.isPending) ? "default" : "pointer" }}
+              >
+                {createMut.isPending || updateMut.isPending ? "Saving..." : "Save Template"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TemplatesPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"all" | TemplateCategory>("all");
