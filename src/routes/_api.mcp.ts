@@ -1598,7 +1598,7 @@ export async function handleMcpRequest(
     switch (formatType) {
       case "claude":
         targetPath = "./.claudemd";
-        markdownBody = `# Claude System Instructions - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n## Enforced Guidelines\n${lines.map((line) => `- ${line}`).join("\n")}\n\n---\n*Generated at: ${new Date().toISOString()}*\n`;
+        markdownBody = `# Claude System Instructions - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Enforced Guidelines\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
         break;
       case "cursor":
         targetPath = "./.cursorrules";
@@ -1615,16 +1615,16 @@ export async function handleMcpRequest(
         break;
       case "copilot":
         targetPath = "./.github/copilot-instructions.md";
-        markdownBody = `# Copilot Instructions - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n## Rules:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n---\n*Generated at: ${new Date().toISOString()}*\n`;
+        markdownBody = `# Copilot Instructions - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Rules:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
         break;
       case "gemini":
         targetPath = "./.geminirules";
-        markdownBody = `# Gemini Rules - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n## Coding Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n---\n*Generated at: ${new Date().toISOString()}*\n`;
+        markdownBody = `# Gemini Rules - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Coding Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
         break;
       case "agents":
       default:
         targetPath = "./agents.md";
-        markdownBody = `# Developer Agent Rules - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n## General Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n---\n*Generated at: ${new Date().toISOString()}*\n`;
+        markdownBody = `# Developer Agent Rules - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## General Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
         break;
      }
 
