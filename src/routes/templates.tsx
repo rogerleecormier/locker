@@ -2202,7 +2202,36 @@ function TemplatesPage() {
                     {/* Stack Quick Load Presets */}
                     <div style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "16px", padding: "20px" }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 14, letterSpacing: "0.05em" }}>Quick Load Stack Presets</span>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+                      
+                      <style>{`
+                        .presets-scroll-container {
+                          display: flex;
+                          flex-direction: row;
+                          gap: 16px;
+                          overflow-x: auto;
+                          padding-bottom: 12px;
+                          scroll-behavior: smooth;
+                          scroll-snap-type: x mandatory;
+                          -webkit-overflow-scrolling: touch;
+                        }
+                        .presets-scroll-container::-webkit-scrollbar {
+                          height: 6px;
+                        }
+                        .presets-scroll-container::-webkit-scrollbar-track {
+                          background: rgba(255, 255, 255, 0.02);
+                          border-radius: 3px;
+                        }
+                        .presets-scroll-container::-webkit-scrollbar-thumb {
+                          background: rgba(255, 255, 255, 0.12);
+                          border-radius: 3px;
+                          transition: background 0.15s;
+                        }
+                        .presets-scroll-container::-webkit-scrollbar-thumb:hover {
+                          background: rgba(255, 255, 255, 0.2);
+                        }
+                      `}</style>
+                      
+                      <div className="presets-scroll-container">
                         {STACK_PRESETS.map((preset) => {
                           const isCurrentlySelected = 
                             stackLanguage === preset.language &&
@@ -2243,7 +2272,10 @@ function TemplatesPage() {
                                 transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
                                 position: "relative",
                                 overflow: "hidden",
-                                boxShadow: isCurrentlySelected ? `0 0 20px ${preset.themeColor}15` : "none"
+                                boxShadow: isCurrentlySelected ? `0 0 20px ${preset.themeColor}15` : "none",
+                                flexShrink: 0,
+                                width: "290px",
+                                scrollSnapAlign: "start"
                               }}
                               onMouseEnter={(e) => {
                                 e.currentTarget.style.transform = "translateY(-4px)";
