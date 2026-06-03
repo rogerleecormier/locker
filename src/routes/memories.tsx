@@ -245,7 +245,7 @@ function ExportMemoryModal({
             >
               <option value="CLAUDE.md">CLAUDE.md (Claude Desktop/CLI)</option>
               <option value=".cursorrules">.cursorrules (Cursor)</option>
-              <option value=".github/copilot-instructions.md">.github/copilot-instructions.md (GitHub Copilot)</option>
+              <option value=".github/copilot-instructions.md">copilot-instructions.md (GitHub Copilot)</option>
               <option value=".codexrules">.codexrules (Codex)</option>
               <option value=".antigravityrules">.antigravityrules (Antigravity)</option>
               <option value=".geminirules">.geminirules (Gemini)</option>
@@ -1201,11 +1201,25 @@ function Dashboard() {
         count={memories.length}
         countLabel="entries"
         actions={
-          <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            onClick={() => setShowNewMemory(true)}
+            className="flex items-center gap-1.5 h-9 font-bold"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New Memory
+          </Button>
+        }
+      >
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-6">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs font-bold text-text-muted select-none uppercase tracking-wider text-[10px]">Workspace</span>
             <Select
               value={projectKey}
               onChange={(e) => setProjectKey(e.target.value)}
-              className="text-xs h-9 bg-surface border border-border text-text cursor-pointer focus:ring-1 focus:ring-accent"
+              className="text-xs h-8.5 bg-surface border border-border text-text cursor-pointer focus:ring-1 focus:ring-accent min-w-[180px]"
             >
               {workspaces.map((w) => (
                 <option key={w.key} value={w.key}>
@@ -1213,37 +1227,26 @@ function Dashboard() {
                 </option>
               ))}
             </Select>
+          </div>
 
-            <Button
-              onClick={() => setShowNewMemory(true)}
-              className="flex items-center gap-1.5 h-9 font-bold"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              New Memory
-            </Button>
-          </div>
-        }
-      >
-        {/* Usage bar */}
-        {usageStats && usageStats.limit && usageStats.used / usageStats.limit > 0.6 && (
-          <div className="mt-3.5 pt-3.5 border-t border-border/60 max-w-[300px] select-none">
-            <div className="flex items-center justify-between gap-4 mb-1.5">
-              <span className="text-[10px] uppercase font-bold text-text-muted">Memory Allocation</span>
-              <span className={`text-xs font-bold ${usageStats.used >= usageStats.limit ? "text-error" : "text-accent"}`}>
-                {usageStats.used} / {usageStats.limit}
-              </span>
+          {/* Usage bar */}
+          {usageStats && usageStats.limit && usageStats.used / usageStats.limit > 0.6 && (
+            <div className="flex flex-col gap-1 min-w-[200px] select-none">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-[10px] uppercase font-bold text-text-muted">Memory Allocation</span>
+                <span className={`text-xs font-bold ${usageStats.used >= usageStats.limit ? "text-error" : "text-accent"}`}>
+                  {usageStats.used} / {usageStats.limit}
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-surface border border-border rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-300 ${usageStats.used >= usageStats.limit ? "bg-error" : "bg-accent"}`}
+                  style={{ width: `${Math.min(100, (usageStats.used / usageStats.limit) * 100)}%` }}
+                />
+              </div>
             </div>
-            <div className="w-full h-1.5 bg-surface border border-border rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all duration-300 ${usageStats.used >= usageStats.limit ? "bg-error" : "bg-accent"}`}
-                style={{ width: `${Math.min(100, (usageStats.used / usageStats.limit) * 100)}%` }}
-              />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </PageHeader>
 
       <PageContainer>
