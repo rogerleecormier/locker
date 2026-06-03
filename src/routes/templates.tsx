@@ -668,116 +668,7 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   search: ["Cloudflare Vectorize", "Pinecone", "pgvector", "Supabase Vector", "Qdrant", "Meilisearch", "Elasticsearch", "Algolia", "None"],
 };
 
-const RULE_PRESETS_BY_CATEGORY: Record<TemplateCategory, Array<{ category: string; rules: string[] }>> = {
-  stack: [
-    {
-      category: "Coding Standards",
-      rules: [
-        "Always use TypeScript strict mode with strictNullChecks enabled.",
-        "Prefer const over let, and never use var.",
-        "Use interfaces for public APIs and types for internal data structures.",
-        "Avoid using any; use unknown or specific types instead.",
-        "Use async/await instead of .then() chains for promise handling."
-      ]
-    },
-    {
-      category: "Performance",
-      rules: [
-        "Optimize rendering performance; minimize re-renders and use memoization where appropriate.",
-        "Implement lazy loading for heavy routes and components.",
-        "Ensure all image tags include explicit width/height and loading='lazy'.",
-        "Avoid N+1 query patterns in database access layer.",
-        "Perform database querying inside server components/functions or edge middleware."
-      ]
-    },
-    {
-      category: "Security",
-      rules: [
-        "Sanitize all user inputs to prevent SQL Injection and XSS vulnerabilities.",
-        "Never expose sensitive API keys or credentials in client-side code; use server-only environment variables.",
-        "Enforce strict CORS configuration and secure cookies for authentication.",
-        "Hash passwords using strong algorithms like bcrypt or argon2 before saving."
-      ]
-    },
-    {
-      category: "Testing",
-      rules: [
-        "Write unit tests for core utilities, helpers, and custom hooks.",
-        "Ensure test coverage is at least 80% for new business logic.",
-        "Include integration or E2E tests using Playwright/Cypress for critical user flows."
-      ]
-    }
-  ],
-  governance: [
-    {
-      category: "Branching & Git",
-      rules: [
-        "Follow branching naming conventions: feature/, bugfix/, hotfix/, or docs/ prefix.",
-        "Always require squash-merge for pull requests to maintain a linear commit history.",
-        "Enforce Conventional Commits styling (e.g., feat:, fix:, chore:, docs:)."
-      ]
-    },
-    {
-      category: "Code Review & PRs",
-      rules: [
-        "Require at least one peer approval before merging pull requests.",
-        "Verify that PR descriptions link to the relevant issue or ticket.",
-        "Ensure no debug logs (console.log, debugger) are left in production-bound files."
-      ]
-    }
-  ],
-  devops: [
-    {
-      category: "CI/CD & Deploy",
-      rules: [
-        "Ensure all CI tests and linters pass before code is merged into the deployment branch.",
-        "Use docker multi-stage builds to minimize production container image sizes.",
-        "Define strict health check endpoints for all production service deployments."
-      ]
-    },
-    {
-      category: "Secrets & Environments",
-      rules: [
-        "Never commit API keys, secrets, or raw .env files to the repository.",
-        "Use cloud secrets manager or encrypted variables for environment configurations."
-      ]
-    }
-  ],
-  compliance: [
-    {
-      category: "Data Privacy & GDPR",
-      rules: [
-        "Mask or sanitize PII (Personally Identifiable Information) in application logs.",
-        "Implement right-to-be-forgotten deletion cascades for user profiles.",
-        "Store passwords only as salted hashes using secure algorithms (Argon2id or bcrypt)."
-      ]
-    },
-    {
-      category: "Security Checks",
-      rules: [
-        "Enforce HTTPS/TLS 1.3 for all client communication.",
-        "Scan dependencies regularly for vulnerabilities using npm audit or Snyk."
-      ]
-    }
-  ],
-  documentation: [
-    {
-      category: "Standards",
-      rules: [
-        "Document all public functions, modules, and API routes with JSDoc comments.",
-        "Maintain an up-to-date README.md with clear installation and configuration guidelines.",
-        "Keep documentation of all system architecture choices and ADRs in a /docs folder."
-      ]
-    },
-    {
-      category: "APIs & Errors",
-      rules: [
-        "Verify that API changes update the corresponding OpenAPI / Swagger schema.",
-        "Document all custom error codes, their causes, and suggested user recovery paths."
-      ]
-    }
-  ]
-};
+
 
 
 
@@ -1099,6 +990,234 @@ function TemplatesPage() {
       const filtered = prev.filter((r) => r.trim() !== "");
       return [...filtered, presetText];
     });
+  };
+
+  const getDynamicRulePresets = () => {
+    if (formCategory === "devops") {
+      return [
+        {
+          category: "CI/CD & Runners",
+          rules: [
+            "Ensure all CI tests, typechecks, and linters pass before code is merged.",
+            "Use GitHub Actions runner caching for npm/yarn package managers to speed up builds.",
+            "Configure Docker runner caching to reuse intermediate layer caches.",
+            "Verify build artifacts (e.g. static HTML, production bundle) on runner machines before deployment."
+          ]
+        },
+        {
+          category: "Testing & Validation",
+          rules: [
+            "Run unit tests on every pull request push.",
+            "Enforce 100% build verification in testing runners.",
+            "Include E2E integration test runs (e.g. Playwright) for staging environment workflows.",
+            "Enforce code coverage thresholds (e.g., minimum 80% coverage) on new pull requests."
+          ]
+        },
+        {
+          category: "Build & Code Quality",
+          rules: [
+            "Enforce code formatting verification in runners (e.g. prettier --check).",
+            "Run static analysis tools (e.g. ESLint, SonarQube) in testing pipelines.",
+            "Use Husky or pre-commit hooks to run linters and tests locally before push."
+          ]
+        },
+        {
+          category: "Environments & Secrets",
+          rules: [
+            "Never commit secrets or keys to git; inject them as runner secrets.",
+            "Use infrastructure-as-code linting (e.g. terraform fmt) on runner workflows."
+          ]
+        }
+      ];
+    }
+
+    if (formCategory === "governance") {
+      return [
+        {
+          category: "Branching & Git",
+          rules: [
+            "Follow branching naming conventions: feature/, bugfix/, hotfix/, or docs/ prefix.",
+            "Always require squash-merge for pull requests to maintain a linear commit history.",
+            "Enforce Conventional Commits styling (e.g., feat:, fix:, chore:, docs:)."
+          ]
+        },
+        {
+          category: "Code Review & PRs",
+          rules: [
+            "Require at least one peer approval before merging pull requests.",
+            "Verify that PR descriptions link to the relevant issue or ticket.",
+            "Ensure no debug logs (console.log, debugger) are left in production-bound files."
+          ]
+        }
+      ];
+    }
+
+    if (formCategory === "compliance") {
+      return [
+        {
+          category: "Data Privacy & GDPR",
+          rules: [
+            "Mask or sanitize PII (Personally Identifiable Information) in application logs.",
+            "Implement right-to-be-forgotten deletion cascades for user profiles.",
+            "Store passwords only as salted hashes using secure algorithms (Argon2id or bcrypt)."
+          ]
+        },
+        {
+          category: "Security Checks",
+          rules: [
+            "Enforce HTTPS/TLS 1.3 for all client communication.",
+            "Scan dependencies regularly for vulnerabilities using npm audit or Snyk."
+          ]
+        }
+      ];
+    }
+
+    if (formCategory === "documentation") {
+      return [
+        {
+          category: "Standards",
+          rules: [
+            "Document all public functions, modules, and API routes with JSDoc comments.",
+            "Maintain an up-to-date README.md with clear installation and configuration guidelines.",
+            "Keep documentation of all system architecture choices and ADRs in a /docs folder."
+          ]
+        },
+        {
+          category: "APIs & Errors",
+          rules: [
+            "Verify that API changes update the corresponding OpenAPI / Swagger schema.",
+            "Document all custom error codes, their causes, and suggested user recovery paths."
+          ]
+        }
+      ];
+    }
+
+    if (formCategory !== "stack") {
+      return [];
+    }
+
+    const sections: Array<{ category: string; rules: string[] }> = [];
+
+    // Language & Coding Standards
+    const standards = [
+      "Prefer const over let, and never use var.",
+      "Use async/await instead of .then() chains for promise handling."
+    ];
+    const langLower = stackLanguage.toLowerCase();
+    if (langLower === "typescript") {
+      standards.unshift("Always use TypeScript strict mode with strictNullChecks enabled.");
+      standards.push("Enforce strict compilation checks using tsc --noEmit in CI pipelines.");
+      standards.push("Avoid using 'any' types; define explicit interfaces or use 'unknown'.");
+    } else if (langLower === "python") {
+      standards.unshift("Enforce Python PEP 8 style guide compliance.");
+      standards.push("Use static type checker (e.g., mypy --strict) on CI runners.");
+      standards.push("Use ruff for linting and code formatting in development workflows.");
+    } else if (langLower === "go") {
+      standards.unshift("Verify code formatting with go fmt / goimports before commits.");
+      standards.push("Run golangci-lint in CI pipeline to detect issues.");
+      standards.push("Ensure goroutines handle panics and defer resource cleanup properly.");
+    } else if (langLower === "rust") {
+      standards.unshift("Enforce clippy checks (cargo clippy) and rustfmt formatting in CI.");
+      standards.push("Minimize usage of unsafe blocks; thoroughly document any unsafe code.");
+    }
+    sections.push({ category: "Language & Coding Standards", rules: standards });
+
+    // Database & ORM
+    const dbRules: string[] = [];
+    const dbLower = stackDatabase.toLowerCase();
+    const ormLower = stackOrm.toLowerCase();
+
+    if (dbLower.includes("d1")) {
+      dbRules.push("Use wrangler migrations to update D1 schema; do not modify D1 schema directly.");
+    } else if (dbLower.includes("postgres") || dbLower.includes("supabase") || dbLower.includes("neon")) {
+      dbRules.push("Enforce database connection pooling (e.g. Supabase Connection Pooler) for serverless routines.");
+    }
+
+    if (ormLower.includes("drizzle")) {
+      dbRules.push("Run drizzle-kit generate to output migration SQL files and commit them to git.");
+      if (dbLower.includes("d1")) {
+        dbRules.push("Verify database changes on a local dev D1 sqlite binding before applying migrations.");
+      } else {
+        dbRules.push("Run drizzle-kit migrate in the CI pipeline to run migrations on deployment.");
+      }
+    } else if (ormLower.includes("prisma")) {
+      dbRules.push("Run prisma format on save and verify prisma schema in CI pipelines.");
+      dbRules.push("Enforce prisma schema verification using prisma db pull/push safety checks.");
+    }
+    if (dbRules.length > 0) {
+      sections.push({ category: "Database & ORM Guidelines", rules: dbRules });
+    }
+
+    // Hosting
+    const hostingRules: string[] = [];
+    const hostLower = stackHosting.toLowerCase();
+    if (hostLower.includes("edge") || hostLower.includes("cloudflare")) {
+      hostingRules.push("Ensure code complies with V8 Worker isolate constraints (e.g. no Node.js fs module in Edge runtime).");
+      hostingRules.push("Keep worker bundle size under Cloudflare's platform limits (1MB for free, 10MB for paid).");
+    } else if (hostLower.includes("vercel")) {
+      hostingRules.push("Configure Vercel functions execution limits and maxDuration configurations appropriately.");
+    }
+    if (hostingRules.length > 0) {
+      sections.push({ category: "Runtime & Deployment Constraints", rules: hostingRules });
+    }
+
+    // Auth
+    const authRules: string[] = [];
+    const authLower = stackAuth.toLowerCase();
+    if (authLower.includes("better")) {
+      authRules.push("Configure CORS and trusted origins strictly for Better Auth client endpoints.");
+      authRules.push("Implement secure session cookie options (HttpOnly, Secure, SameSite=Lax).");
+    } else if (authLower.includes("clerk")) {
+      authRules.push("Verify Clerk webhooks signature strictly using svix verification helper.");
+    } else if (authLower.includes("supabase")) {
+      authRules.push("Enforce Row Level Security (RLS) policies on all tables in Supabase Postgres.");
+    }
+    if (authRules.length > 0) {
+      sections.push({ category: "Authentication Standards", rules: authRules });
+    }
+
+    // Styling & UI
+    const uiRules: string[] = [];
+    const stylingLower = stackStyling.toLowerCase();
+    const frontLower = stackFrontend.toLowerCase();
+    if (stylingLower.includes("tailwind")) {
+      uiRules.push("Use utility classes for layout and structure; keep custom CSS classes to a minimum.");
+    }
+    if (frontLower.includes("react")) {
+      uiRules.push("Optimize rendering performance; minimize re-renders and use memoization where appropriate.");
+      uiRules.push("Use key prop properly on collections; avoid using index as key.");
+    }
+    if (uiRules.length > 0) {
+      sections.push({ category: "UI & Frontend Guidelines", rules: uiRules });
+    }
+
+    // Storage
+    const storageRules: string[] = [];
+    const storageLower = stackStorage.toLowerCase();
+    if (storageLower.includes("r2") || storageLower.includes("s3")) {
+      storageRules.push("Enforce private access on buckets; only expose media through signed URLs or proxy workers.");
+      storageRules.push("Implement multipart uploads for objects larger than 100MB to ensure transfer stability.");
+    }
+    if (storageRules.length > 0) {
+      sections.push({ category: "Cloud Storage Policies", rules: storageRules });
+    }
+
+    // State, Cache & Search
+    const searchRules: string[] = [];
+    const searchLower = stackSearch.toLowerCase();
+    const cacheLower = stackStateCache.toLowerCase();
+    if (searchLower.includes("vectorize")) {
+      searchRules.push("Limit embeddings dimensions to match Vectorize configuration (e.g. 1536 for openai-text-embedding-3).");
+    }
+    if (cacheLower.includes("kv")) {
+      searchRules.push("Cache assets with strict TTL; enforce key namespace isolation (e.g. namespace:userid:key).");
+      searchRules.push("Be mindful of KV eventual consistency; do not write/read synchronously expecting instant updates.");
+    }
+    if (searchRules.length > 0) {
+      sections.push({ category: "Search & Cache Systems", rules: searchRules });
+    }
+
+    return sections;
   };
 
   const addVariableFromPreset = (preset: { key: string; description: string; default: string }) => {
@@ -1646,17 +1765,55 @@ function TemplatesPage() {
                     </div>
 
                     {/* Stack Fields */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                      <Combobox label="Language" value={stackLanguage} onChange={setStackLanguage} options={FIELD_OPTIONS.language} placeholder="e.g. TypeScript" />
-                      <Combobox label="Frontend Framework" value={stackFrontend} onChange={setStackFrontend} options={FIELD_OPTIONS.frontend} placeholder="e.g. Next.js" />
-                      <Combobox label="Hosting Runtime" value={stackHosting} onChange={setStackHosting} options={FIELD_OPTIONS.hosting} placeholder="e.g. Cloudflare Pages" />
-                      <Combobox label="Database" value={stackDatabase} onChange={setStackDatabase} options={FIELD_OPTIONS.database} placeholder="e.g. Cloudflare D1" />
-                      <Combobox label="ORM" value={stackOrm} onChange={setStackOrm} options={FIELD_OPTIONS.orm} placeholder="e.g. Drizzle ORM" />
-                      <Combobox label="Auth" value={stackAuth} onChange={setStackAuth} options={FIELD_OPTIONS.auth} placeholder="e.g. Better Auth" />
-                      <Combobox label="Styling" value={stackStyling} onChange={setStackStyling} options={FIELD_OPTIONS.styling} placeholder="e.g. Vanilla CSS" />
-                      <Combobox label="State / Cache" value={stackStateCache} onChange={setStackStateCache} options={FIELD_OPTIONS.stateCache} placeholder="e.g. Zustand" />
-                      <Combobox label="Storage" value={stackStorage} onChange={setStackStorage} options={FIELD_OPTIONS.storage} placeholder="e.g. Cloudflare R2" />
-                      <Combobox label="Search / Vector" value={stackSearch} onChange={setStackSearch} options={FIELD_OPTIONS.search} placeholder="e.g. Cloudflare Vectorize" />
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                      {/* Column 1: Frontend & Client Stack */}
+                      <div style={{
+                        background: "var(--surface2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "12px",
+                        padding: 16,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 12
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 8, marginBottom: 4 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect width="18" height="18" x="3" y="3" rx="2" />
+                            <path d="M7 8h10M7 12h10M7 16h6" />
+                          </svg>
+                          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Frontend & Client Stack</span>
+                        </div>
+                        <Combobox label="Language" value={stackLanguage} onChange={setStackLanguage} options={FIELD_OPTIONS.language} placeholder="e.g. TypeScript" />
+                        <Combobox label="Frontend Framework" value={stackFrontend} onChange={setStackFrontend} options={FIELD_OPTIONS.frontend} placeholder="e.g. Next.js" />
+                        <Combobox label="Styling" value={stackStyling} onChange={setStackStyling} options={FIELD_OPTIONS.styling} placeholder="e.g. Vanilla CSS" />
+                        <Combobox label="Auth" value={stackAuth} onChange={setStackAuth} options={FIELD_OPTIONS.auth} placeholder="e.g. Better Auth" />
+                        <Combobox label="State / Client Cache" value={stackStateCache} onChange={setStackStateCache} options={FIELD_OPTIONS.stateCache} placeholder="e.g. Zustand" />
+                      </div>
+
+                      {/* Column 2: Backend & Infrastructure */}
+                      <div style={{
+                        background: "var(--surface2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "12px",
+                        padding: 16,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 12
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 8, marginBottom: 4 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <ellipse cx="12" cy="5" rx="9" ry="3" />
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+                            <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
+                          </svg>
+                          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Backend & Infrastructure</span>
+                        </div>
+                        <Combobox label="Hosting Runtime" value={stackHosting} onChange={setStackHosting} options={FIELD_OPTIONS.hosting} placeholder="e.g. Cloudflare Pages" />
+                        <Combobox label="Database" value={stackDatabase} onChange={setStackDatabase} options={FIELD_OPTIONS.database} placeholder="e.g. Cloudflare D1" />
+                        <Combobox label="ORM / DB Client" value={stackOrm} onChange={setStackOrm} options={FIELD_OPTIONS.orm} placeholder="e.g. Drizzle ORM" />
+                        <Combobox label="Storage (Buckets)" value={stackStorage} onChange={setStackStorage} options={FIELD_OPTIONS.storage} placeholder="e.g. Cloudflare R2" />
+                        <Combobox label="Search / Vector Index" value={stackSearch} onChange={setStackSearch} options={FIELD_OPTIONS.search} placeholder="e.g. Cloudflare Vectorize" />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1703,7 +1860,7 @@ function TemplatesPage() {
                     <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 20, display: "flex", flexDirection: "column", gap: 12 }}>
                       <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Rule Presets</label>
                       <div style={{ maxHeight: "40vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingRight: 4 }}>
-                        {(RULE_PRESETS_BY_CATEGORY[formCategory] || []).map((group) => (
+                        {getDynamicRulePresets().map((group) => (
                           <div key={group.category}>
                             <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{group.category}</span>
                             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
