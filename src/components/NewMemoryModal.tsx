@@ -183,6 +183,7 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
         stateCache: res.stateCache || DEFAULT_STACK_PREFERENCES.stateCache,
         bannedProviders: res.bannedProviders || DEFAULT_STACK_PREFERENCES.bannedProviders,
       });
+      setRecommendation(null);
     } catch (e) {
       alert("Failed to analyze requirements: " + String(e));
     } finally {
@@ -284,6 +285,7 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
         : [...prev.bannedProviders, p];
       return { ...prev, bannedProviders: list };
     });
+    setRecommendation(null);
   };
 
   const handleDownloadConfig = (format: "claude" | "cursor" | "copilot" | "gemini" | "agents") => {
@@ -472,25 +474,88 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
         {/* STEP 2: Stack Settings Wizard */}
         {step === 2 && mode === "stack" && (
           <div className="flex flex-col gap-5 py-2">
-            {/* Presets */}
-            <div className="bg-surface2 border border-border rounded-xl p-4">
-              <span className="text-xs font-bold text-accent uppercase tracking-wider block mb-3">
-                Load Presets Archetypes
-              </span>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {PRESET_ARCHETYPES.map((arch) => (
-                  <div
-                    key={arch.name}
-                    onClick={() => setPreferences({ ...arch.preferences })}
-                    className="flex flex-col p-3 rounded-lg border border-border bg-surface hover:border-accent transition-all cursor-pointer"
-                  >
-                    <span className="text-xs font-bold text-text mb-1">{arch.name}</span>
-                    <span className="text-[10px] text-text-muted leading-relaxed">
-                      {arch.description}
-                    </span>
-                  </div>
-                ))}
+            {/* Presets & Custom Blueprints */}
+            <div className="bg-surface2 border border-border rounded-xl p-4 flex flex-col gap-4">
+              <div>
+                <span className="text-xs font-bold text-accent uppercase tracking-wider block mb-2.5">
+                  Load Presets Archetypes
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {PRESET_ARCHETYPES.map((arch) => (
+                    <div
+                      key={arch.name}
+                      onClick={() => {
+                        setPreferences({ ...arch.preferences });
+                        setRecommendation(null);
+                      }}
+                      className="flex flex-col p-3 rounded-lg border border-border bg-surface hover:border-accent transition-all cursor-pointer"
+                    >
+                      <span className="text-xs font-bold text-text mb-1">{arch.name}</span>
+                      <span className="text-[10px] text-text-muted leading-relaxed">
+                        {arch.description}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
+
+              {templates.filter((t) => t.category === "stack").length > 0 && (
+                <div>
+                  <span className="text-xs font-bold text-accent uppercase tracking-wider block mb-2.5">
+                    Load Custom Stack Blueprints
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {templates
+                      .filter((t) => t.category === "stack")
+                      .map((tmpl) => (
+                        <div
+                          key={tmpl.id}
+                          onClick={() => {
+                            try {
+                              const payload = JSON.parse(tmpl.configPayload);
+                              setPreferences({
+                                language: payload.language || DEFAULT_STACK_PREFERENCES.language,
+                                frontend: payload.frontend || DEFAULT_STACK_PREFERENCES.frontend,
+                                hosting: payload.hosting || DEFAULT_STACK_PREFERENCES.hosting,
+                                database: payload.database || DEFAULT_STACK_PREFERENCES.database,
+                                storage: payload.storage || DEFAULT_STACK_PREFERENCES.storage,
+                                search: payload.search || DEFAULT_STACK_PREFERENCES.search,
+                                vector: payload.vector || DEFAULT_STACK_PREFERENCES.vector,
+                                componentLibrary: payload.componentLibrary || DEFAULT_STACK_PREFERENCES.componentLibrary,
+                                orm: payload.orm || DEFAULT_STACK_PREFERENCES.orm,
+                                auth: payload.auth || DEFAULT_STACK_PREFERENCES.auth,
+                                styling: payload.styling || DEFAULT_STACK_PREFERENCES.styling,
+                                stateCache: payload.stateCache || DEFAULT_STACK_PREFERENCES.stateCache,
+                                bannedProviders: payload.bannedProviders || DEFAULT_STACK_PREFERENCES.bannedProviders,
+                              });
+
+                              if (payload.rules && payload.rules.length > 0) {
+                                setRecommendation({
+                                  name: tmpl.name,
+                                  description: tmpl.description,
+                                  rules: payload.rules,
+                                });
+                              } else {
+                                setRecommendation(null);
+                              }
+                            } catch (e) {
+                              console.error("Failed to parse custom blueprint template payload:", e);
+                            }
+                          }}
+                          className="flex flex-col p-3 rounded-lg border border-border bg-surface hover:border-accent transition-all cursor-pointer relative group"
+                        >
+                          <span className="text-xs font-bold text-text mb-1 flex items-center justify-between gap-2">
+                            <span>{tmpl.name}</span>
+                            <span className="text-[9px] bg-accent/10 text-accent font-semibold px-1 rounded-sm border border-accent/20">Saved</span>
+                          </span>
+                          <span className="text-[10px] text-text-muted leading-relaxed">
+                            {tmpl.description}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Prompt interview */}
@@ -524,9 +589,10 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
                   <Select
                     id={`stack-${key}`}
                     value={(preferences as any)[key] || "None"}
-                    onChange={(e) =>
-                      setPreferences({ ...preferences, [key]: e.target.value })
-                    }
+                    onChange={(e) => {
+                      setPreferences({ ...preferences, [key]: e.target.value });
+                      setRecommendation(null);
+                    }}
                   >
                     {FIELD_OPTIONS[key].map((opt) => (
                       <option key={opt} value={opt}>
@@ -561,12 +627,22 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
               <Button variant="ghost" onClick={() => setStep(1)}>
                 Back
               </Button>
-              <Button
-                onClick={handleGenerateRecommendation}
-                disabled={generatingRecommendation}
-              >
-                {generatingRecommendation ? "Compiling Stack Constraints..." : "Compile Stack Guidelines →"}
-              </Button>
+              <div className="flex gap-2">
+                {recommendation && (
+                  <Button
+                    onClick={() => setStep(3)}
+                    variant="outline"
+                  >
+                    Use Loaded Template Rules →
+                  </Button>
+                )}
+                <Button
+                  onClick={handleGenerateRecommendation}
+                  disabled={generatingRecommendation}
+                >
+                  {generatingRecommendation ? "Compiling Stack Constraints..." : "Compile Stack Guidelines →"}
+                </Button>
+              </div>
             </div>
           </div>
         )}
