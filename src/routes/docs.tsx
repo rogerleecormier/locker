@@ -1061,6 +1061,61 @@ enabled = true`,
             </ol>
           </div>
         );
+      case "security-privacy":
+        return (
+          <div>
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Security & Privacy</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+              Locker is built on a zero-compromise security model designed to safeguard sensitive tech stack architecture, corporate code guidelines, and personal context. Our architecture isolates, encrypts, and audits every layer of data interaction.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>1. Zero-Plaintext Storage (AES-256-GCM)</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+              All memory contents, negative constraints, and custom instructions are encrypted before database insertion:
+            </p>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              <li><strong>Secure Server-Side Keys:</strong> Decryption keys reside strictly inside the Edge Worker environment variables and are never sent to front-end clients or logged.</li>
+              <li><strong>Encrypted Backups:</strong> Database logs, D1 transaction records, and system backups store only cipher text. If backup assets are ever leaked, they remain completely unreadable without the runtime keys.</li>
+            </ul>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>2. Isolated V8 Sandbox (Cloudflare Workers)</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+              Locker operates on Cloudflare's serverless Edge runtime:
+            </p>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              <li><strong>No Long-Lived Servers:</strong> Code execution occurs in isolated ephemeral V8 sandboxes. This prevents classic persistent server hijacks, root directory traversal hacks, and daemon level exploits.</li>
+              <li><strong>Zero Cold Starts:</strong> Request sandboxes spin up globally in under 5 milliseconds, ensuring swift execution and closing windows of attack.</li>
+            </ul>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>3. Cryptographic API Token Scopes</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+              External AI developer agents authenticate using secure token strings prefixed with <code>lkr_</code>:
+            </p>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              <li><strong>SHA-256 Hashing:</strong> Token strings are cryptographically hashed using SHA-256 for validation.</li>
+              <li><strong>Granular Permissions:</strong> Access tokens enforce strict permissions (e.g. read-only clients are barred from performing mutations).</li>
+              <li><strong>Workspace Scoping:</strong> Tokens can be locked down to a single project key. Even if a token is compromised, the leak is contained to that repository.</li>
+            </ul>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>4. Safe Semantic Indexing</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+              Our vector search implementation ensures no plain text is exposed to indexing databases:
+            </p>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              <li><strong>Index Anonymization:</strong> Cloudflare Vectorize indices are mapped using anonymized UUID hashes.</li>
+              <li><strong>Decryption at the Edge:</strong> The vector database resolves query matches and returns indexes. Text decryption occurs exclusively inside the Edge Worker after validation, returning plain text only to the authenticated client request.</li>
+            </ul>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>5. Enterprise Audit Trails</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+              Track access and administrative mutations:
+            </p>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              <li><strong>Administrative Logs:</strong> Locker logs token generation, subscription updates, role modifications, and organization changes.</li>
+              <li><strong>Usage Auditing:</strong> Each remote MCP tool call records the timestamp, IP address, and browser User Agent to log exactly who accessed which scopes.</li>
+            </ul>
+          </div>
+        );
       case "import-memories":
         return (
           <div>
@@ -1612,6 +1667,7 @@ enabled = true`,
           <optgroup label="Getting Started">
             <option value="overview">Overview</option>
             <option value="connection-auth">Connection & Auth</option>
+            <option value="security-privacy">Security & Privacy</option>
           </optgroup>
           <optgroup label="Features & Workflows">
             <option value="managing-memories">Managing Memories</option>
@@ -1665,6 +1721,9 @@ enabled = true`,
                   </button>
                   <button onClick={() => setActiveSection("connection-auth")} className={`sidebar-button ${activeSection === "connection-auth" ? "active" : ""}`}>
                     <span>🔑</span> Connection & Auth
+                  </button>
+                  <button onClick={() => setActiveSection("security-privacy")} className={`sidebar-button ${activeSection === "security-privacy" ? "active" : ""}`}>
+                    <span>🔒</span> Security & Privacy
                   </button>
                 </div>
 
