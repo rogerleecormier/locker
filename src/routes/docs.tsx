@@ -1055,9 +1055,9 @@ enabled = true`,
 
             <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginTop: 28, marginBottom: 12 }}>Obtaining an API Token</h3>
             <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, display: "flex", flexDirection: "column", gap: 6 }}>
-              <li>Navigate to the **Admin** page from the top navigation bar.</li>
-              <li>Under the personal settings sidebar, click **API Tokens**.</li>
-              <li>Click the **Generate Token** button. Give the token a name (e.g., <code>Claude Desktop</code>) and select the specific scopes it is authorized to call (such as <code>recall_context</code> or <code>commit_memory</code>).</li>
+              <li>Navigate to the <strong>Admin</strong> page from the top navigation bar.</li>
+              <li>Under the personal settings sidebar, click <strong>API Tokens</strong>.</li>
+              <li>Click the <strong>Generate Token</strong> button. Give the token a name (e.g., <code>Claude Desktop</code>) and select the specific scopes it is authorized to call (such as <code>recall_context</code> or <code>commit_memory</code>).</li>
               <li>Click generate and copy the token string (beginning with <code>lkr_</code>). It will only be visible once!</li>
             </ol>
           </div>
@@ -1095,12 +1095,12 @@ enabled = true`,
 
             <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Workflow</h3>
             <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, display: "flex", flexDirection: "column", gap: 6 }}>
-              <li>Navigate to the **Vault** page and click the **New Memory** button.</li>
-              <li>Select **Tech Stack Creator** to launch the step-by-step wizard.</li>
+              <li>Navigate to the <strong>Vault</strong> page and click the <strong>New Memory</strong> button.</li>
+              <li>Select <strong>Tech Stack Creator</strong> to launch the step-by-step wizard.</li>
               <li>Provide your selections for each of the 12 tech stack categories.</li>
-              <li>Input any custom **negative constraints** (e.g., "no Tailwind inline utilities" or "do not write raw SQL queries outside repos").</li>
-              <li>Click **Review Recommended Blueprint** to compile rules tailored to your choices. Adjust individual guidelines before saving.</li>
-              <li>Click **Store Memory** to save these rules globally or to a specific project scope. The constraints are instantly synced without exposing database structures to local clients.</li>
+              <li>Input any custom <strong>negative constraints</strong> (e.g., "no Tailwind inline utilities" or "do not write raw SQL queries outside repos").</li>
+              <li>Click <strong>Review Recommended Blueprint</strong> to compile rules tailored to your choices. Adjust individual guidelines before saving.</li>
+              <li>Click <strong>Store Memory</strong> to save these rules globally or to a specific project scope. The constraints are instantly synced without exposing database structures to local clients.</li>
             </ol>
           </div>
         );
@@ -1118,7 +1118,7 @@ enabled = true`,
                   💾 Creating Templates
                 </h3>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-                  Go to the **Templates** view and click **New Template**. Set up the stack selections, custom constraints, and rule lists. Save to add the template to your database.
+                  Go to the <strong>Templates</strong> view and click <strong>New Template</strong>. Set up the stack selections, custom constraints, and rule lists. Save to add the template to your database.
                 </p>
               </div>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
@@ -1126,14 +1126,14 @@ enabled = true`,
                   ⚡ Instant Loading
                 </h3>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-                  In the Stack Creator wizard, click **Load Custom Stack Blueprints** to choose a template. The selections, constraints, and recommendations load instantly.
+                  In the Stack Creator wizard, click <strong>Load Custom Stack Blueprints</strong> to choose a template. The selections, constraints, and recommendations load instantly.
                 </p>
               </div>
             </div>
 
             <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Bypassing LLM Regeneration</h3>
             <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-              If a template already has verified instruction sets, Locker displays a **"Use Loaded Template Rules"** button. Clicking this skips LLM regeneration completely and sends you directly to the review step, reducing token overhead and conserving processing time.
+              If a template already has verified instruction sets, Locker displays a <strong>"Use Loaded Template Rules"</strong> button. Clicking this skips LLM regeneration completely and sends you directly to the review step, reducing token overhead and conserving processing time.
             </p>
           </div>
         );
@@ -1192,9 +1192,9 @@ enabled = true`,
 
             <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Method A: Direct Downloads via UI</h3>
             <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24, display: "flex", flexDirection: "column", gap: 6 }}>
-              <li>Open the **Vault** page, click the **Export Config File** button on any stack card.</li>
+              <li>Open the <strong>Vault</strong> page, click the <strong>Export Config File</strong> button on any stack card.</li>
               <li>Select your target format dropdown option (e.g. <code>.agents/rules/rules.md</code>).</li>
-              <li>Click **Download Rules** to trigger browser file delivery. Move it to the appropriate destination directory.</li>
+              <li>Click <strong>Download Rules</strong> to trigger browser file delivery. Move it to the appropriate destination directory.</li>
             </ol>
 
             <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Method B: Workspace Sync via MCP Tool</h3>
