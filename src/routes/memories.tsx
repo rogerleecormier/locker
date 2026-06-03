@@ -91,6 +91,7 @@ function MemoryRow({
   selected,
   onToggleSelect,
   onShowHistory,
+  onExport,
   workspaces = [],
   currentProjectKey = "personal",
 }: {
@@ -98,6 +99,7 @@ function MemoryRow({
   selected: boolean;
   onToggleSelect: (id: string) => void;
   onShowHistory: (id: string) => void;
+  onExport: (memory: Memory) => void;
   workspaces?: any[];
   currentProjectKey?: string;
 }) {
@@ -105,6 +107,7 @@ function MemoryRow({
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [targetWorkspace, setTargetWorkspace] = useState("");
   const [editFact, setEditFact] = useState(memory.fact);
   const [editCategory, setEditCategory] = useState(memory.category);
@@ -389,146 +392,188 @@ function MemoryRow({
               </button>
             </div>
           ) : (
-            <>
+            <div style={{ position: "relative" }}>
               <button
-                onClick={() => setEditing(true)}
+                onClick={() => setMenuOpen(!menuOpen)}
                 style={{
-                  padding: "3px 8px",
                   background: "transparent",
-                  border: "1px solid transparent",
+                  border: "1px solid var(--border)",
                   color: "var(--text-muted)",
-                  fontSize: 11,
+                  padding: "4px 8px",
                   borderRadius: "var(--radius)",
-                  opacity: 0.5,
-                  transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.15s",
                 }}
                 onMouseEnter={(e) => {
-                  const b = e.currentTarget as HTMLButtonElement;
-                  b.style.opacity = "1";
-                  b.style.borderColor = "rgba(168,85,247,0.4)";
+                  const b = e.currentTarget;
+                  b.style.borderColor = "var(--accent)";
                   b.style.color = "var(--accent)";
                 }}
                 onMouseLeave={(e) => {
-                  const b = e.currentTarget as HTMLButtonElement;
-                  b.style.opacity = "0.5";
-                  b.style.borderColor = "transparent";
+                  const b = e.currentTarget;
+                  b.style.borderColor = "var(--border)";
                   b.style.color = "var(--text-muted)";
                 }}
               >
-                Edit
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="1" />
+                  <circle cx="12" cy="5" r="1" />
+                  <circle cx="12" cy="19" r="1" />
+                </svg>
+                <span style={{ fontSize: 11, fontWeight: 600, marginLeft: 4 }}>Actions</span>
               </button>
-              <button
-                onClick={() => onShowHistory(memory.id)}
-                style={{
-                  padding: "3px 8px",
-                  background: "transparent",
-                  border: "1px solid transparent",
-                  color: "var(--text-muted)",
-                  fontSize: 11,
-                  borderRadius: "var(--radius)",
-                  opacity: 0.5,
-                  transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
-                }}
-                onMouseEnter={(e) => {
-                  const b = e.currentTarget as HTMLButtonElement;
-                  b.style.opacity = "1";
-                  b.style.borderColor = "rgba(168,85,247,0.4)";
-                  b.style.color = "var(--accent)";
-                }}
-                onMouseLeave={(e) => {
-                  const b = e.currentTarget as HTMLButtonElement;
-                  b.style.opacity = "0.5";
-                  b.style.borderColor = "transparent";
-                  b.style.color = "var(--text-muted)";
-                }}
-              >
-                History
-              </button>
-              {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
-                <button
-                  onClick={() => setMoving(true)}
-                  style={{
-                    padding: "3px 8px",
-                    background: "transparent",
-                    border: "1px solid transparent",
-                    color: "var(--text-muted)",
-                    fontSize: 11,
-                    borderRadius: "var(--radius)",
-                    opacity: 0.5,
-                    transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.opacity = "1";
-                    b.style.borderColor = "rgba(168,85,247,0.4)";
-                    b.style.color = "var(--accent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.opacity = "0.5";
-                    b.style.borderColor = "transparent";
-                    b.style.color = "var(--text-muted)";
-                  }}
-                >
-                  Move
-                </button>
+              {menuOpen && (
+                <>
+                  <div
+                    onClick={() => setMenuOpen(false)}
+                    style={{
+                      position: "fixed",
+                      inset: 0,
+                      zIndex: 999,
+                      background: "transparent",
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      right: 0,
+                      marginTop: 4,
+                      background: "var(--surface2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius)",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                      padding: "4px 0",
+                      minWidth: 120,
+                      zIndex: 1000,
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <button
+                      onClick={() => { setMenuOpen(false); setEditing(true); }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--text)",
+                        padding: "6px 12px",
+                        textAlign: "left",
+                        fontSize: 11,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        width: "100%",
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(168,85,247,0.1)"; e.currentTarget.style.color = "var(--accent)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => { setMenuOpen(false); onShowHistory(memory.id); }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--text)",
+                        padding: "6px 12px",
+                        textAlign: "left",
+                        fontSize: 11,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        width: "100%",
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(168,85,247,0.1)"; e.currentTarget.style.color = "var(--accent)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
+                    >
+                      History
+                    </button>
+                    {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
+                      <button
+                        onClick={() => { setMenuOpen(false); setMoving(true); }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "var(--text)",
+                          padding: "6px 12px",
+                          textAlign: "left",
+                          fontSize: 11,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                          width: "100%",
+                          transition: "all 0.15s",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(168,85,247,0.1)"; e.currentTarget.style.color = "var(--accent)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
+                      >
+                        Move
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { setMenuOpen(false); archiveMutation.mutate(); }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--text)",
+                        padding: "6px 12px",
+                        textAlign: "left",
+                        fontSize: 11,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        width: "100%",
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(168,85,247,0.1)"; e.currentTarget.style.color = "var(--accent)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
+                    >
+                      Archive
+                    </button>
+                    <button
+                      onClick={() => { setMenuOpen(false); onExport(memory); }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--text)",
+                        padding: "6px 12px",
+                        textAlign: "left",
+                        fontSize: 11,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        width: "100%",
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(168,85,247,0.1)"; e.currentTarget.style.color = "var(--accent)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
+                    >
+                      Export
+                    </button>
+                    <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+                    <button
+                      onClick={() => { setMenuOpen(false); setConfirming(true); }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--error)",
+                        padding: "6px 12px",
+                        textAlign: "left",
+                        fontSize: 11,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        width: "100%",
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.1)"; e.currentTarget.style.color = "var(--error)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--error)"; }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </>
               )}
-              <button
-                onClick={() => archiveMutation.mutate()}
-                disabled={archiveMutation.isPending}
-                style={{
-                  padding: "3px 8px",
-                  background: "transparent",
-                  border: "1px solid transparent",
-                  color: "var(--text-muted)",
-                  fontSize: 11,
-                  borderRadius: "var(--radius)",
-                  opacity: 0.5,
-                  transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
-                }}
-                onMouseEnter={(e) => {
-                  const b = e.currentTarget as HTMLButtonElement;
-                  b.style.opacity = "1";
-                  b.style.borderColor = "rgba(168,85,247,0.4)";
-                  b.style.color = "var(--accent)";
-                }}
-                onMouseLeave={(e) => {
-                  const b = e.currentTarget as HTMLButtonElement;
-                  b.style.opacity = "0.5";
-                  b.style.borderColor = "transparent";
-                  b.style.color = "var(--text-muted)";
-                }}
-              >
-                {archiveMutation.isPending ? "…" : "Archive"}
-              </button>
-              <button
-                onClick={() => setConfirming(true)}
-                style={{
-                  padding: "3px 8px",
-                  background: "transparent",
-                  border: "1px solid transparent",
-                  color: "var(--text-muted)",
-                  fontSize: 11,
-                  borderRadius: "var(--radius)",
-                  opacity: 0.5,
-                  transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
-                }}
-                onMouseEnter={(e) => {
-                  const b = e.currentTarget as HTMLButtonElement;
-                  b.style.opacity = "1";
-                  b.style.borderColor = "rgba(239,68,68,0.4)";
-                  b.style.color = "var(--error)";
-                }}
-                onMouseLeave={(e) => {
-                  const b = e.currentTarget as HTMLButtonElement;
-                  b.style.opacity = "0.5";
-                  b.style.borderColor = "transparent";
-                  b.style.color = "var(--text-muted)";
-                }}
-              >
-                Delete
-              </button>
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -2058,6 +2103,277 @@ function exportToMarkdown(memoriesToExport: Memory[]) {
   return md;
 }
 
+function compileRulesContent({
+  scope,
+  memory,
+  allMemories,
+  targetFile,
+}: {
+  scope: "single" | "all";
+  memory: Memory;
+  allMemories: Memory[];
+  targetFile: string;
+}) {
+  let lines: string[] = [];
+  if (scope === "single") {
+    lines = memory.fact.split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.startsWith("- ") ? line.slice(2) : line);
+  } else {
+    // Compile active memories that are stack OR tagged architecture/baseline/stack/blueprint
+    const filtered = allMemories.filter((m) => {
+      if (!m.isActive) return false;
+      if (m.category === "stack") return true;
+      const tagsList = (m.tags || "").split(",").map((t: string) => t.trim().toLowerCase());
+      return (
+        tagsList.includes("architecture") ||
+        tagsList.includes("baseline") ||
+        tagsList.includes("stack") ||
+        tagsList.includes("blueprint")
+      );
+    });
+
+    lines = filtered.flatMap((m) =>
+      m.fact.split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => line.startsWith("- ") ? line.slice(2) : line)
+    );
+  }
+
+  if (targetFile === ".cursorrules") {
+    return JSON.stringify(
+      {
+        name: scope === "single" ? "Single Rule Guideline" : "Workspace Guidelines",
+        description: scope === "single" ? "Architectural rule synced from Locker" : "Architectural rules synced from Locker",
+        globs: ["*"],
+        rules: lines,
+      },
+      null,
+      2
+    );
+  } else {
+    let title = "Developer Agent Rules";
+    let section = "Guidelines";
+    if (targetFile === "CLAUDE.md") {
+      title = "Claude System Instructions";
+      section = "Enforced Guidelines";
+    } else if (targetFile === ".github/copilot-instructions.md") {
+      title = "Copilot Instructions";
+      section = "Rules";
+    } else if (targetFile === ".geminirules") {
+      title = "Gemini Rules";
+      section = "Coding Guidelines";
+    } else if (targetFile === ".antigravityrules") {
+      title = "Antigravity Rules";
+      section = "Guidelines";
+    } else if (targetFile === ".codexrules") {
+      title = "Codex Rules";
+      section = "Rules";
+    }
+
+    return `# ${title} - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n## ${section}\n${lines.map((line) => `- ${line}`).join("\n")}\n\n---\n*Generated by Locker at: ${new Date().toLocaleString()}*\n`;
+  }
+}
+
+function ExportMemoryModal({
+  memory,
+  allMemories,
+  onClose,
+}: {
+  memory: Memory;
+  allMemories: Memory[];
+  onClose: () => void;
+}) {
+  const [exportScope, setExportScope] = useState<"single" | "all">("single");
+  const [targetFile, setTargetFile] = useState<
+    "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | ".geminirules"
+  >("CLAUDE.md");
+  const [exporting, setExporting] = useState(false);
+
+  const handleDownload = () => {
+    const content = compileRulesContent({
+      scope: exportScope,
+      memory,
+      allMemories,
+      targetFile,
+    });
+    const mimeType = targetFile === ".cursorrules" ? "application/json" : "text/markdown";
+    downloadFile(content, targetFile, mimeType);
+    onClose();
+  };
+
+  const handleSync = async () => {
+    setExporting(true);
+    try {
+      const content = compileRulesContent({
+        scope: exportScope,
+        memory,
+        allMemories,
+        targetFile,
+      });
+      const result = await syncWorkspaceFile({ data: { filename: targetFile, content } });
+      if (result.success) {
+        alert(`Successfully synced to local workspace file: ${targetFile}`);
+      } else {
+        const mimeType = targetFile === ".cursorrules" ? "application/json" : "text/markdown";
+        downloadFile(content, targetFile, mimeType);
+        alert(`Workspace write not supported in this environment: ${result.error || "Non-Node context"}.\nThe file "${targetFile}" has been downloaded to your system instead.`);
+      }
+      onClose();
+    } catch (err: any) {
+      console.error(err);
+      alert(`An error occurred during sync: ${err.message || String(err)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        backdropFilter: "blur(8px)",
+        zIndex: 100,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          width: "100%",
+          maxWidth: 500,
+          boxShadow: "0 24px 48px rgba(0,0,0,0.5)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Header */}
+        <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--text)" }}>Export Memory Rule</h3>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 18 }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Scope selection */}
+          <div>
+            <span style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+              Export Scope
+            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", padding: "10px 12px", border: `1px solid ${exportScope === "single" ? "var(--accent)" : "var(--border)"}`, borderRadius: "var(--radius)", background: exportScope === "single" ? "rgba(168,85,247,0.04)" : "transparent", transition: "all 0.15s" }}>
+                <input
+                  type="radio"
+                  name="exportScope"
+                  checked={exportScope === "single"}
+                  onChange={() => setExportScope("single")}
+                  style={{ marginTop: 2, accentColor: "var(--accent)", cursor: "pointer" }}
+                />
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Just this memory</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 380 }}>
+                    "{memory.fact}"
+                  </span>
+                </div>
+              </label>
+
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", padding: "10px 12px", border: `1px solid ${exportScope === "all" ? "var(--accent)" : "var(--border)"}`, borderRadius: "var(--radius)", background: exportScope === "all" ? "rgba(168,85,247,0.04)" : "transparent", transition: "all 0.15s" }}>
+                <input
+                  type="radio"
+                  name="exportScope"
+                  checked={exportScope === "all"}
+                  onChange={() => setExportScope("all")}
+                  style={{ marginTop: 2, accentColor: "var(--accent)", cursor: "pointer" }}
+                />
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>All active rules in this workspace</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                    Compiles active stack rules and tagged architectural memories.
+                  </span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Target format selection */}
+          <div>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+              Target File Format
+            </label>
+            <select
+              value={targetFile}
+              onChange={(e) => setTargetFile(e.target.value as any)}
+              style={{ width: "100%", padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+            >
+              <option value="CLAUDE.md">CLAUDE.md (Claude Desktop/CLI)</option>
+              <option value=".cursorrules">.cursorrules (Cursor)</option>
+              <option value=".github/copilot-instructions.md">.github/copilot-instructions.md (GitHub Copilot)</option>
+              <option value=".codexrules">.codexrules (Codex)</option>
+              <option value=".antigravityrules">.antigravityrules (Antigravity)</option>
+              <option value=".geminirules">.geminirules (Gemini)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "16px 24px", background: "var(--surface2)", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button
+            onClick={onClose}
+            disabled={exporting}
+            style={{ padding: "8px 16px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, fontWeight: 600, borderRadius: "var(--radius)", cursor: "pointer" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={exporting}
+            style={{ padding: "8px 16px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 13, fontWeight: 600, borderRadius: "var(--radius)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            Download
+          </button>
+          <button
+            onClick={handleSync}
+            disabled={exporting}
+            style={{ padding: "8px 16px", background: "var(--accent)", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, borderRadius: "var(--radius)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            {exporting ? "Syncing..." : "Sync to Workspace"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MemoryTable({
   memories,
   filter,
@@ -2086,6 +2402,8 @@ function MemoryTable({
   const [bulkConfirming, setBulkConfirming] = useState(false);
   const [bulkMoving, setBulkMoving] = useState(false);
   const [bulkTargetWorkspace, setBulkTargetWorkspace] = useState("");
+  const [exportMemory, setExportMemory] = useState<Memory | null>(null);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   function handleExport(itemsToExport: Memory[], format: "json" | "md") {
     if (format === "json") {
@@ -2557,10 +2875,19 @@ function MemoryTable({
           selected={selected.has(m.id)}
           onToggleSelect={toggleOne}
           onShowHistory={onShowHistory}
+          onExport={(mem) => { setExportMemory(mem); setShowExportModal(true); }}
           workspaces={workspaces}
           currentProjectKey={currentProjectKey}
         />
       ))}
+
+      {showExportModal && exportMemory && (
+        <ExportMemoryModal
+          memory={exportMemory}
+          allMemories={memories}
+          onClose={() => { setShowExportModal(false); setExportMemory(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -2593,9 +2920,6 @@ function Dashboard() {
 
   const [projectKey, setProjectKey] = useState<string>("personal");
   const [memoryTab, setMemoryTab] = useState<"active" | "archived">("active");
-
-  const [syncTargetFile, setSyncTargetFile] = useState<"CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | ".geminirules">("CLAUDE.md");
-  const [syncingFile, setSyncingFile] = useState(false);
 
   const { data: workspaces = [] } = useQuery({
     queryKey: ["workspaces"],
@@ -2641,95 +2965,6 @@ function Dashboard() {
     }
   }
 
-  async function handleSyncWorkspace() {
-    if (!memories || memories.length === 0) {
-      alert("No memories found in the current active workspace to sync.");
-      return;
-    }
-    setSyncingFile(true);
-
-    try {
-      // 1. Filter memories: keep category === 'stack' or tagged with architecture, baseline, stack, blueprint
-      const filteredMemories = memories.filter((m) => {
-        if (!m.isActive) return false;
-        if (m.category === "stack") return true;
-        const tagsList = (m.tags || "").split(",").map((t: string) => t.trim().toLowerCase());
-        return (
-          tagsList.includes("architecture") ||
-          tagsList.includes("baseline") ||
-          tagsList.includes("stack") ||
-          tagsList.includes("blueprint")
-        );
-      });
-
-      if (filteredMemories.length === 0) {
-        alert("No active stack or architectural memories (tagged with 'stack', 'architecture', 'baseline', or 'blueprint') found in this workspace.");
-        setSyncingFile(false);
-        return;
-      }
-
-      // 2. Parse facts into clean rule lines
-      const lines = filteredMemories.flatMap((m) =>
-        m.fact.split("\n")
-          .map((line: string) => line.trim())
-          .filter(Boolean)
-          .map((line: string) => line.startsWith("- ") ? line.slice(2) : line)
-      );
-
-      // 3. Format according to chosen target file
-      let content = "";
-      if (syncTargetFile === ".cursorrules") {
-        content = JSON.stringify(
-          {
-            name: "Workspace Guidelines",
-            description: "Architectural rules synced from Locker",
-            globs: ["*"],
-            rules: lines,
-          },
-          null,
-          2
-        );
-      } else {
-        let title = "Developer Agent Rules";
-        let section = "Guidelines";
-        if (syncTargetFile === "CLAUDE.md") {
-          title = "Claude System Instructions";
-          section = "Enforced Guidelines";
-        } else if (syncTargetFile === ".github/copilot-instructions.md") {
-          title = "Copilot Instructions";
-          section = "Rules";
-        } else if (syncTargetFile === ".geminirules") {
-          title = "Gemini Rules";
-          section = "Coding Guidelines";
-        } else if (syncTargetFile === ".antigravityrules") {
-          title = "Antigravity Rules";
-          section = "Guidelines";
-        } else if (syncTargetFile === ".codexrules") {
-          title = "Codex Rules";
-          section = "Rules";
-        }
-
-        content = `# ${title} - Technical Stack Blueprint\n\nThis manifesto specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n## ${section}\n${lines.map((line) => `- ${line}`).join("\n")}\n\n---\n*Generated by Locker at: ${new Date().toLocaleString()}*\n`;
-      }
-
-      // 4. Call server function to write file directly
-      const result = await syncWorkspaceFile({ data: { filename: syncTargetFile, content } });
-
-      if (result.success) {
-        alert(`Successfully synced active memories to local file: ${syncTargetFile}`);
-      } else {
-        // Fallback to browser file download if writing failed (e.g. running in production)
-        const mimeType = syncTargetFile === ".cursorrules" ? "application/json" : "text/markdown";
-        downloadFile(content, syncTargetFile, mimeType);
-        alert(`Workspace write not supported in this environment: ${result.error || "Non-Node context"}.\nThe file "${syncTargetFile}" has been downloaded to your system instead.`);
-      }
-    } catch (err: any) {
-      console.error(err);
-      alert(`An error occurred during sync: ${err.message || String(err)}`);
-    } finally {
-      setSyncingFile(false);
-    }
-  }
 
 
   function invalidate() {
@@ -2807,55 +3042,6 @@ function Dashboard() {
               ))}
             </select>
 
-            <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}>Sync:</span>
-            <select
-              value={syncTargetFile}
-              onChange={(e) => setSyncTargetFile(e.target.value as any)}
-              style={{ padding: "6px 8px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12, borderRadius: "var(--radius)", cursor: "pointer" }}
-            >
-              <option value="CLAUDE.md">CLAUDE.md</option>
-              <option value=".cursorrules">.cursorrules</option>
-              <option value=".github/copilot-instructions.md">copilot-instructions.md</option>
-              <option value=".codexrules">.codexrules</option>
-              <option value=".antigravityrules">.antigravityrules</option>
-              <option value=".geminirules">.geminirules</option>
-            </select>
-            <button
-              onClick={handleSyncWorkspace}
-              disabled={syncingFile || memories.length === 0}
-              title="Sync current workspace memories to this instruction file format"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                padding: "6px 12px",
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                color: "var(--text)",
-                fontWeight: 600,
-                fontSize: 12,
-                borderRadius: "var(--radius)",
-                cursor: syncingFile || memories.length === 0 ? "default" : "pointer",
-                transition: "all 0.15s"
-              }}
-              onMouseEnter={(e) => {
-                if (syncingFile || memories.length === 0) return;
-                const b = e.currentTarget as HTMLButtonElement;
-                b.style.borderColor = "var(--accent)";
-                b.style.color = "var(--accent)";
-              }}
-              onMouseLeave={(e) => {
-                const b = e.currentTarget as HTMLButtonElement;
-                b.style.borderColor = "var(--border)";
-                b.style.color = "var(--text)";
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 4v6h-6M1 20v-6h6" />
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-              </svg>
-              <span>{syncingFile ? "Syncing..." : "Sync"}</span>
-            </button>
 
             <button
               onClick={() => setShowNewMemory(true)}
