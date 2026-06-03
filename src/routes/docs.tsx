@@ -1058,8 +1058,46 @@ enabled = true`,
               <li>Navigate to the <strong>Admin</strong> page from the top navigation bar.</li>
               <li>Under the personal settings sidebar, click <strong>API Tokens</strong>.</li>
               <li>Click the <strong>Generate Token</strong> button. Give the token a name (e.g., <code>Claude Desktop</code>) and select the specific scopes it is authorized to call (such as <code>recall_context</code> or <code>commit_memory</code>).</li>
-              <li>Click generate and copy the token string (beginning with <code>lkr_</code>). It will only be visible once!</li>
             </ol>
+          </div>
+        );
+      case "managing-memories":
+        return (
+          <div>
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Managing Memories</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+              Locker provides a flexible interface for managing your long-term memory vault. Memories can be created, updated, and purged either through the browser-based dashboard or directly by connected AI developer tools using Model Context Protocol (MCP).
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Managing Memories in the UI</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+              The <strong>Vault</strong> dashboard displays all your current saved memories, categorized and searchable:
+            </p>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              <li><strong>Creating Memories:</strong> Click the <strong>New Memory</strong> button at the top right of the dashboard. Select a Category (Rules, Projects, or References), write the Fact text, add custom tags, and optionally associate it with a specific <strong>Project Workspace</strong> key to isolate instructions.</li>
+              <li><strong>Editing & Deleting:</strong> Click the edit (pencil) icon on any memory card to modify its fields, or the delete icon to remove it. When you edit or delete a memory, Locker automatically updates the underlying SQL relational database and recalculates the semantic embeddings on Cloudflare Vectorize.</li>
+              <li><strong>Queue Approval Workflow:</strong> Connected AI agents can suggest new rules or project details during coding sessions. Proposed memories go into the <strong>Recommendations Queue</strong>. You must log in and click <strong>Approve</strong> to persist these into long-term storage, or <strong>Reject</strong> to discard them, giving you complete oversight of your vault.</li>
+            </ul>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Programmatic Management via MCP</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+              Locker exposes secure endpoints for AI models to retrieve and mutate memories in real time. Connected developer agents utilize these JSON-RPC commands behind the scenes:
+            </p>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              <li><strong>Reading Context:</strong> Models call <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>recall_context</button> for semantic vector searches and <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>search_memories</button> for exact tag/keyword scans.</li>
+              <li><strong>Mutating Store:</strong> Models use <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>commit_memory</button> to suggest facts, <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>update_memory</button> to refine facts, and <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>delete_memory</button> to remove stale data.</li>
+            </ul>
+            <div style={{
+              background: "rgba(168, 85, 247, 0.05)",
+              border: "1px solid rgba(168, 85, 247, 0.2)",
+              borderRadius: "var(--radius)",
+              padding: "12px 16px",
+              fontSize: 13,
+              color: "var(--text-muted)",
+              lineHeight: 1.6,
+            }}>
+              <strong>💡 Developer Tip:</strong> For more detailed input schemas, required parameters, and configuration guides for all management tools, head over to the full <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: "bold", textDecoration: "underline", padding: 0, font: "inherit" }}>MCP Tools Reference List</button>.
+            </div>
           </div>
         );
       case "stack-creator":
@@ -1495,6 +1533,7 @@ enabled = true`,
             <option value="connection-auth">Connection & Auth</option>
           </optgroup>
           <optgroup label="Features & Workflows">
+            <option value="managing-memories">Managing Memories</option>
             <option value="stack-creator">Tech Stack Creator</option>
             <option value="templates">Blueprint Templates</option>
             <option value="export-rules">Exporting Agent Rules</option>
@@ -1548,6 +1587,9 @@ enabled = true`,
 
                 <div>
                   <div className="sidebar-section-title">Features & Workflows</div>
+                  <button onClick={() => setActiveSection("managing-memories")} className={`sidebar-button ${activeSection === "managing-memories" ? "active" : ""}`}>
+                    <span>🧠</span> Managing Memories
+                  </button>
                   <button onClick={() => setActiveSection("stack-creator")} className={`sidebar-button ${activeSection === "stack-creator" ? "active" : ""}`}>
                     <span>🛠️</span> Tech Stack Creator
                   </button>
