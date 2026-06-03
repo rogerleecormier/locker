@@ -162,7 +162,7 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
 
   // CLI Downloader format state
   const [cliFormat, setCliFormat] = React.useState<
-    "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | "GEMINI.md" | "AGENTS.md"
+    "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | "GEMINI.md" | "AGENTS.md" | ".agents/rules/rules.md"
   >(".cursorrules");
 
   const handleAnalyzePrompt = async () => {
@@ -291,7 +291,7 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
   };
 
   const handleDownloadConfig = (
-    format: "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | "GEMINI.md" | "AGENTS.md"
+    format: "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | "GEMINI.md" | "AGENTS.md" | ".agents/rules/rules.md"
   ) => {
     if (!recommendation) return;
     let content = "";
@@ -320,14 +320,11 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
       } else if (format === "GEMINI.md") {
         title = "Gemini Rules";
         section = "Coding Guidelines";
-      } else if (format === ".antigravityrules") {
-        title = "Antigravity Rules";
-        section = "Guidelines";
-      } else if (format === ".codexrules") {
-        title = "Codex Rules";
-        section = "Rules";
       } else if (format === "AGENTS.md") {
         title = "Developer Agent Rules";
+        section = "Guidelines";
+      } else if (format === ".agents/rules/rules.md") {
+        title = "Antigravity Rules";
         section = "Guidelines";
       }
 
@@ -825,9 +822,8 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
                   <option value=".cursorrules">.cursorrules (Cursor)</option>
                   <option value=".github/copilot-instructions.md">copilot-instructions.md (GitHub Copilot)</option>
                   <option value="GEMINI.md">GEMINI.md (Gemini)</option>
-                  <option value=".codexrules">.codexrules (Codex)</option>
-                  <option value=".antigravityrules">.antigravityrules (Antigravity)</option>
-                  <option value="AGENTS.md">AGENTS.md (General Agents)</option>
+                  <option value="AGENTS.md">AGENTS.md (Codex / General Agents)</option>
+                  <option value=".agents/rules/rules.md">rules.md (Antigravity Workspace)</option>
                 </Select>
               </div>
               <Button onClick={() => handleDownloadConfig(cliFormat)} className="w-full">

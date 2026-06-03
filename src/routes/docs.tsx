@@ -1062,6 +1062,174 @@ enabled = true`,
             </ol>
           </div>
         );
+      case "stack-creator":
+        return (
+          <div>
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Tech Stack Creator</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+              The <strong>Tech Stack Creator</strong> is an interactive step-by-step wizard that allows you to define your workspace's technology profile across 12 architectural categories. Locker utilizes this profile to automatically compile optimized coding rules and agentic instructions.
+            </p>
+
+            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18, marginBottom: 24 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 8 }}>
+                🛠️ 12 Technology Categories
+              </h3>
+              <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+                Locker segments your stack into modular selections to enforce clean structural boundaries:
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px", fontSize: 12, color: "var(--text)" }}>
+                <div>• <strong>Language</strong> (TypeScript, Go, Python, Rust)</div>
+                <div>• <strong>Runtime</strong> (Node.js, Bun, Native Runtimes)</div>
+                <div>• <strong>Frontend</strong> (React, Next.js, Vue, Svelte)</div>
+                <div>• <strong>Backend Framework</strong> (Express, Hono, Django, FastAPI)</div>
+                <div>• <strong>Database</strong> (Cloudflare D1, PostgreSQL, SQLite, MySQL)</div>
+                <div>• <strong>ORM / DB Client</strong> (Drizzle ORM, Prisma, sqlx, pg)</div>
+                <div>• <strong>Deploy Platform</strong> (Workers, Vercel, Fly.io, AWS)</div>
+                <div>• <strong>Styling Strategy</strong> (Tailwind, Vanilla CSS, Styled Components)</div>
+                <div>• <strong>Lint & Format</strong> (ESLint + Prettier, Biome, Ruff)</div>
+                <div>• <strong>Test Runner</strong> (Vitest, Jest, Playwright)</div>
+                <div>• <strong>State Management</strong> (Zustand, Redux, Jotai)</div>
+                <div>• <strong>Build Tool</strong> (Vite, Webpack, Esbuild)</div>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Workflow</h3>
+            <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, display: "flex", flexDirection: "column", gap: 6 }}>
+              <li>Navigate to the **Vault** page and click the **New Memory** button.</li>
+              <li>Select **Tech Stack Creator** to launch the step-by-step wizard.</li>
+              <li>Provide your selections for each of the 12 tech stack categories.</li>
+              <li>Input any custom **negative constraints** (e.g., "no Tailwind inline utilities" or "do not write raw SQL queries outside repos").</li>
+              <li>Click **Review Recommended Blueprint** to compile rules tailored to your choices. Adjust individual guidelines before saving.</li>
+              <li>Click **Store Memory** to save these rules globally or to a specific project scope. The constraints are instantly synced without exposing database structures to local clients.</li>
+            </ol>
+          </div>
+        );
+      case "templates":
+        return (
+          <div>
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Blueprint Templates</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+              <strong>Blueprint Templates</strong> enable teams and individual developers to save, edit, and share standard configuration profiles. Instead of selecting the same 12 categories repeatedly, you can load templates directly to populate your rules baseline instantly.
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 28 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 8 }}>
+                  💾 Creating Templates
+                </h3>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+                  Go to the **Templates** view and click **New Template**. Set up the stack selections, custom constraints, and rule lists. Save to add the template to your database.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 8 }}>
+                  ⚡ Instant Loading
+                </h3>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+                  In the Stack Creator wizard, click **Load Custom Stack Blueprints** to choose a template. The selections, constraints, and recommendations load instantly.
+                </p>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Bypassing LLM Regeneration</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+              If a template already has verified instruction sets, Locker displays a **"Use Loaded Template Rules"** button. Clicking this skips LLM regeneration completely and sends you directly to the review step, reducing token overhead and conserving processing time.
+            </p>
+          </div>
+        );
+      case "export-rules":
+        return (
+          <div>
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Exporting Agent Rules</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
+              Locker translates your memory rules and tech stack blueprints into optimized configuration files formatted for specific AI developer agents.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Supported Formats & Targets</h3>
+            <div style={{ overflowX: "auto", marginBottom: 28 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                <thead>
+                  <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                    <th style={{ padding: "8px 12px", color: "var(--text)" }}>Format File</th>
+                    <th style={{ padding: "8px 12px", color: "var(--text)" }}>Agent / IDE Client</th>
+                    <th style={{ padding: "8px 12px", color: "var(--text)" }}>Recommended Target Path</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>CLAUDE.md</td>
+                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>Claude Code (CLI / Extension)</td>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>./CLAUDE.md</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>.cursorrules</td>
+                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>Cursor Editor (JSON formatted)</td>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>./.cursorrules</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>copilot-instructions.md</td>
+                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>GitHub Copilot Chat</td>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>./.github/copilot-instructions.md</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>GEMINI.md</td>
+                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>Gemini Code Assist / Global Rules</td>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>~/.gemini/GEMINI.md</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>AGENTS.md</td>
+                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>OpenAI Codex & General Agents</td>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>./AGENTS.md</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>.agents/rules/rules.md</td>
+                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>Google Antigravity Workspaces</td>
+                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>./.agents/rules/rules.md</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Method A: Direct Downloads via UI</h3>
+            <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24, display: "flex", flexDirection: "column", gap: 6 }}>
+              <li>Open the **Vault** page, click the **Export Config File** button on any stack card.</li>
+              <li>Select your target format dropdown option (e.g. <code>.agents/rules/rules.md</code>).</li>
+              <li>Click **Download Rules** to trigger browser file delivery. Move it to the appropriate destination directory.</li>
+            </ol>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Method B: Workspace Sync via MCP Tool</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+              If your developer agent is connected via MCP (e.g. Claude Code or Antigravity), it can call Locker's native sync tool to build and write rules files directly inside your active workspace without manual downloads.
+            </p>
+            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
+              <h4 style={{ margin: "0 0 8px 0", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Tool: sync_workspace_agent_configs</h4>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.5 }}>
+                Writes compiled stack instructions into files matching the target path schema of the requested formatting convention.
+              </p>
+              <pre style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: 12,
+                margin: 0,
+                fontFamily: "monospace",
+                fontSize: 11,
+                color: "var(--text)",
+                overflow: "auto",
+                lineHeight: 1.5,
+              }}>{`{
+  "method": "tools/call",
+  "params": {
+    "name": "sync_workspace_agent_configs",
+    "arguments": {
+      "formatType": "claude", // or cursor, copilot, gemini, agents, antigravity
+      "projectKey": "locker" // optional project filter
+    }
+  }
+}`}</pre>
+            </div>
+          </div>
+        );
       case "mcp-about":
         return (
           <div>
@@ -1308,6 +1476,11 @@ enabled = true`,
             <option value="overview">Overview</option>
             <option value="connection-auth">Connection & Auth</option>
           </optgroup>
+          <optgroup label="Features & Workflows">
+            <option value="stack-creator">Tech Stack Creator</option>
+            <option value="templates">Blueprint Templates</option>
+            <option value="export-rules">Exporting Agent Rules</option>
+          </optgroup>
           <optgroup label="MCP Reference">
             <option value="mcp-about">About MCP</option>
             <option value="mcp-tools">Tools Schema</option>
@@ -1352,6 +1525,19 @@ enabled = true`,
                   </button>
                   <button onClick={() => setActiveSection("connection-auth")} className={`sidebar-button ${activeSection === "connection-auth" ? "active" : ""}`}>
                     <span>🔑</span> Connection & Auth
+                  </button>
+                </div>
+
+                <div>
+                  <div className="sidebar-section-title">Features & Workflows</div>
+                  <button onClick={() => setActiveSection("stack-creator")} className={`sidebar-button ${activeSection === "stack-creator" ? "active" : ""}`}>
+                    <span>🛠️</span> Tech Stack Creator
+                  </button>
+                  <button onClick={() => setActiveSection("templates")} className={`sidebar-button ${activeSection === "templates" ? "active" : ""}`}>
+                    <span>📋</span> Blueprint Templates
+                  </button>
+                  <button onClick={() => setActiveSection("export-rules")} className={`sidebar-button ${activeSection === "export-rules" ? "active" : ""}`}>
+                    <span>💾</span> Exporting Agent Rules
                   </button>
                 </div>
 

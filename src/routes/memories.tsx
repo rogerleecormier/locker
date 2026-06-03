@@ -141,14 +141,11 @@ function compileRulesContent({
     } else if (targetFile === "GEMINI.md") {
       title = "Gemini Rules";
       section = "Coding Guidelines";
-    } else if (targetFile === ".antigravityrules") {
-      title = "Antigravity Rules";
-      section = "Guidelines";
-    } else if (targetFile === ".codexrules") {
-      title = "Codex Rules";
-      section = "Rules";
     } else if (targetFile === "AGENTS.md") {
       title = "Developer Agent Rules";
+      section = "Guidelines";
+    } else if (targetFile === ".agents/rules/rules.md") {
+      title = "Antigravity Rules";
       section = "Guidelines";
     }
 
@@ -170,7 +167,7 @@ function ExportMemoryModal({
 }) {
   const [exportScope, setExportScope] = useState<"single" | "all">("single");
   const [targetFile, setTargetFile] = useState<
-    "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | "GEMINI.md" | "AGENTS.md"
+    "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | "GEMINI.md" | "AGENTS.md" | ".agents/rules/rules.md"
   >("CLAUDE.md");
 
   const handleDownload = () => {
@@ -250,9 +247,8 @@ function ExportMemoryModal({
               <option value=".cursorrules">.cursorrules (Cursor)</option>
               <option value=".github/copilot-instructions.md">copilot-instructions.md (GitHub Copilot)</option>
               <option value="GEMINI.md">GEMINI.md (Gemini)</option>
-              <option value=".codexrules">.codexrules (Codex)</option>
-              <option value=".antigravityrules">.antigravityrules (Antigravity)</option>
-              <option value="AGENTS.md">AGENTS.md (General Agents)</option>
+              <option value="AGENTS.md">AGENTS.md (Codex / General Agents)</option>
+              <option value=".agents/rules/rules.md">rules.md (Antigravity Workspace)</option>
             </Select>
           </div>
         </div>

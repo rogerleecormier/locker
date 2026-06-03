@@ -69,7 +69,7 @@ function HeroStackCreatorMockup() {
   const [db, setDb] = useState("D1");
   const [orm, setOrm] = useState("Drizzle");
   const [copied, setCopied] = useState(false);
-  const [activeFormat, setActiveFormat] = useState<"cursor" | "claude" | "gemini" | "copilot" | "codex" | "antigravity" | "agents">("cursor");
+  const [activeFormat, setActiveFormat] = useState<"cursor" | "claude" | "gemini" | "copilot" | "antigravity" | "agents">("cursor");
 
   const getRulesText = () => {
     const rules = [];
@@ -120,9 +120,6 @@ function HeroStackCreatorMockup() {
       } else if (activeFormat === "antigravity") {
         title = "Antigravity Rules";
         section = "Guidelines";
-      } else if (activeFormat === "codex") {
-        title = "Codex Rules";
-        section = "Rules";
       } else if (activeFormat === "agents") {
         title = "Developer Agent Rules";
         section = "Guidelines";
@@ -273,7 +270,7 @@ function HeroStackCreatorMockup() {
           <div style={{ display: "flex", flexDirection: "column", gap: 8, height: "100%" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 8, marginBottom: 4 }}>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {["cursor", "claude", "copilot", "gemini", "codex", "antigravity", "agents"].map(tab => (
+                {["cursor", "claude", "copilot", "gemini", "antigravity", "agents"].map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveFormat(tab as any)}
@@ -293,10 +290,8 @@ function HeroStackCreatorMockup() {
                       ? "copilot-instructions.md" 
                       : tab === "gemini" 
                       ? "GEMINI.md" 
-                      : tab === "codex" 
-                      ? ".codexrules" 
                       : tab === "antigravity" 
-                      ? ".antigravityrules" 
+                      ? ".agents/rules/rules.md" 
                       : "AGENTS.md"}
                   </button>
                 ))}
@@ -847,7 +842,7 @@ function LandingPage() {
                 Bootstrap agent behavior from your codebase stack
               </h2>
               <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
-                Define your project's programming language, framework, database, and ORM. Locker generates optimized `.cursorrules`, `CLAUDE.md`, `copilot-instructions.md`, `GEMINI.md`, `.codexrules`, `.antigravityrules`, and `AGENTS.md` configurations dynamically to prevent context drift and token overhead.
+                Define your project's programming language, framework, database, and ORM. Locker generates optimized `.cursorrules`, `CLAUDE.md`, `copilot-instructions.md`, `GEMINI.md`, `.agents/rules/rules.md` (Antigravity Workspace), and `AGENTS.md` configurations dynamically to prevent context drift and token overhead.
               </p>
               <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
                 {["Tailored coding constraints generated dynamically", "Compatible with Cursor, Claude, Copilot, and Gemini", "Optimized instructions reduce context-window waste", "Download configurations directly into your repo"].map((item) => (
