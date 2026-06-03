@@ -31,11 +31,13 @@ type ParsedPayload = {
   hosting?: string;
   database?: string;
   storage?: string;
-  search?: string;
+  search?: string; // Governs Lexical Search
+  vector?: string; // Governs Semantic Search (Vector DB)
   orm?: string;
   auth?: string;
   styling?: string;
   stateCache?: string;
+  componentLibrary?: string;
   bannedProviders?: string[];
 };
 
@@ -596,10 +598,12 @@ const STACK_PRESETS = [
     database: "Cloudflare D1",
     orm: "Drizzle ORM",
     auth: "Better Auth",
-    styling: "Vanilla CSS",
-    stateCache: "TanStack Store",
+    styling: "Tailwind CSS",
+    stateCache: "Cloudflare KV",
     storage: "Cloudflare R2",
-    search: "Cloudflare Vectorize",
+    search: "None",
+    vector: "Cloudflare Vectorize",
+    componentLibrary: "shadcn/ui",
   },
   {
     name: "Next.js + Supabase",
@@ -612,7 +616,9 @@ const STACK_PRESETS = [
     styling: "Tailwind CSS",
     stateCache: "Zustand",
     storage: "Supabase Storage",
-    search: "Supabase Vector",
+    search: "None",
+    vector: "Supabase Vector",
+    componentLibrary: "shadcn/ui",
   },
   {
     name: "T3 Stack",
@@ -625,7 +631,9 @@ const STACK_PRESETS = [
     styling: "Tailwind CSS",
     stateCache: "Zustand",
     storage: "AWS S3",
-    search: "Pinecone",
+    search: "None",
+    vector: "Pinecone",
+    componentLibrary: "shadcn/ui",
   },
   {
     name: "MERN Stack",
@@ -639,6 +647,8 @@ const STACK_PRESETS = [
     stateCache: "Redux Toolkit",
     storage: "AWS S3",
     search: "MongoDB Atlas Search",
+    vector: "None",
+    componentLibrary: "None",
   },
   {
     name: "FastAPI + React",
@@ -651,21 +661,25 @@ const STACK_PRESETS = [
     styling: "Tailwind CSS",
     stateCache: "Zustand",
     storage: "AWS S3",
-    search: "Qdrant",
+    search: "None",
+    vector: "Qdrant",
+    componentLibrary: "None",
   }
 ];
 
 const FIELD_OPTIONS: Record<string, string[]> = {
   language: ["TypeScript", "JavaScript", "Python", "Go", "Rust", "Ruby", "Java", "C#", "C++", "PHP"],
-  frontend: ["React / TanStack", "Next.js", "Remix", "Vue / Nuxt", "Svelte / SvelteKit", "Astro", "SolidJS", "HTML/JS"],
+  frontend: ["React / TanStack", "Next.js", "Remix", "Vue / Nuxt", "Svelte / SvelteKit", "Astro", "SolidJS", "Angular", "Node.js / Express", "HTML/JS"],
   hosting: ["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS"],
   database: ["Cloudflare D1", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "Redis", "Supabase (Postgres)", "Neon (Postgres)", "PlanetScale", "Prisma Postgres"],
   orm: ["Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "SQL (Raw)", "None"],
   auth: ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Kinde", "Lucia", "Custom", "None"],
-  styling: ["Vanilla CSS", "Tailwind CSS", "CSS Modules", "Styled Components", "Sass/SCSS", "Tailwind + CSS Modules"],
+  styling: ["Vanilla CSS", "Tailwind CSS", "Bootstrap", "Material Design", "CSS Modules", "Styled Components", "Sass/SCSS", "Tailwind + CSS Modules"],
   stateCache: ["TanStack Store", "Cloudflare KV", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "None"],
   storage: ["Cloudflare R2", "AWS S3", "Supabase Storage", "Vercel Blob", "Firebase Storage", "Local Filesystem", "None"],
-  search: ["Cloudflare Vectorize", "Pinecone", "pgvector", "Supabase Vector", "Qdrant", "Meilisearch", "Elasticsearch", "Algolia", "None"],
+  search: ["Fuse.js", "Algolia", "Meilisearch", "Elasticsearch", "None"],
+  vector: ["Cloudflare Vectorize", "Pinecone", "pgvector", "Supabase Vector", "Qdrant", "None"],
+  componentLibrary: ["shadcn/ui", "MUI (Material UI)", "Chakra UI", "Radix UI", "DaisyUI", "PrimeReact", "None"],
 };
 
 
@@ -843,11 +857,13 @@ function TemplatesPage() {
   const [stackHosting, setStackHosting] = useState("Cloudflare Edge");
   const [stackDatabase, setStackDatabase] = useState("Cloudflare D1");
   const [stackStorage, setStackStorage] = useState("Cloudflare R2");
-  const [stackSearch, setStackSearch] = useState("Cloudflare Vectorize");
+  const [stackSearch, setStackSearch] = useState("None");
+  const [stackVector, setStackVector] = useState("Cloudflare Vectorize");
   const [stackOrm, setStackOrm] = useState("Drizzle ORM");
   const [stackAuth, setStackAuth] = useState("Better Auth");
-  const [stackStyling, setStackStyling] = useState("Vanilla CSS");
+  const [stackStyling, setStackStyling] = useState("Tailwind CSS");
   const [stackStateCache, setStackStateCache] = useState("TanStack Store");
+  const [stackComponentLibrary, setStackComponentLibrary] = useState("None");
   const [stackBanned, setStackBanned] = useState<string[]>([]);
 
   // Import State
@@ -913,11 +929,13 @@ function TemplatesPage() {
     setStackHosting("Cloudflare Edge");
     setStackDatabase("Cloudflare D1");
     setStackStorage("Cloudflare R2");
-    setStackSearch("Cloudflare Vectorize");
+    setStackSearch("None");
+    setStackVector("Cloudflare Vectorize");
     setStackOrm("Drizzle ORM");
     setStackAuth("Better Auth");
-    setStackStyling("Vanilla CSS");
+    setStackStyling("Tailwind CSS");
     setStackStateCache("TanStack Store");
+    setStackComponentLibrary("None");
     setStackBanned([]);
   };
 
@@ -942,11 +960,13 @@ function TemplatesPage() {
       setStackHosting(payload.hosting || "Cloudflare Edge");
       setStackDatabase(payload.database || "Cloudflare D1");
       setStackStorage(payload.storage || "Cloudflare R2");
-      setStackSearch(payload.search || "Cloudflare Vectorize");
+      setStackSearch(payload.search || "None");
+      setStackVector(payload.vector || "None");
       setStackOrm(payload.orm || "Drizzle ORM");
       setStackAuth(payload.auth || "Better Auth");
-      setStackStyling(payload.styling || "Vanilla CSS");
+      setStackStyling(payload.styling || "Tailwind CSS");
       setStackStateCache(payload.stateCache || "TanStack Store");
+      setStackComponentLibrary(payload.componentLibrary || "None");
       setStackBanned(payload.bannedProviders || []);
     }
   };
@@ -964,10 +984,12 @@ function TemplatesPage() {
       payload.database = stackDatabase;
       payload.storage = stackStorage;
       payload.search = stackSearch;
+      payload.vector = stackVector;
       payload.orm = stackOrm;
       payload.auth = stackAuth;
       payload.styling = stackStyling;
       payload.stateCache = stackStateCache;
+      payload.componentLibrary = stackComponentLibrary;
       payload.bannedProviders = stackBanned;
     }
 
@@ -983,6 +1005,95 @@ function TemplatesPage() {
     } else {
       createMut.mutate(templateData);
     }
+  };
+
+  const getDynamicFieldOptions = (field: string, lang: string): string[] => {
+    const langLower = lang.toLowerCase();
+    
+    if (field === "frontend") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        return ["React / TanStack", "Next.js", "Remix", "Vue / Nuxt", "Svelte / SvelteKit", "Astro", "SolidJS", "Angular", "Node.js / Express", "HTML/JS", "None"];
+      }
+      if (langLower === "python") {
+        return ["Django", "FastAPI", "Flask", "MkDocs", "Streamlit", "None"];
+      }
+      if (langLower === "go") {
+        return ["Gin", "Echo", "Fiber", "Hugo", "Go Standard HTTP", "None"];
+      }
+      if (langLower === "rust") {
+        return ["Actix-web", "Axum", "Rocket", "None"];
+      }
+      if (langLower === "ruby") {
+        return ["Ruby on Rails", "Sinatra", "Jekyll", "None"];
+      }
+      if (langLower === "java") {
+        return ["Spring Boot", "Quarkus", "None"];
+      }
+      if (langLower === "c#") {
+        return ["ASP.NET Core", "None"];
+      }
+      if (langLower === "php") {
+        return ["Laravel", "Symfony", "WordPress", "None"];
+      }
+      return ["React / TanStack", "Next.js", "Django", "FastAPI", "Gin", "Laravel", "Ruby on Rails", "Spring Boot", "ASP.NET Core", "Actix-web", "None"];
+    }
+
+    if (field === "orm") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        return ["Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "SQL (Raw)", "None"];
+      }
+      if (langLower === "python") {
+        return ["SQLAlchemy", "SQLModel", "Django ORM", "Tortoise ORM", "PyMongo", "SQL (Raw)", "None"];
+      }
+      if (langLower === "go") {
+        return ["GORM", "Ent", "SQLX", "SQL (Raw)", "None"];
+      }
+      if (langLower === "rust") {
+        return ["Diesel", "SQLx", "None"];
+      }
+      if (langLower === "ruby") {
+        return ["Active Record", "Sequel", "None"];
+      }
+      if (langLower === "java") {
+        return ["Hibernate (JPA)", "None"];
+      }
+      if (langLower === "c#") {
+        return ["Entity Framework Core", "None"];
+      }
+      if (langLower === "php") {
+        return ["Eloquent", "Doctrine", "None"];
+      }
+      return ["Drizzle ORM", "SQLAlchemy", "GORM", "Active Record", "Entity Framework Core", "SQL (Raw)", "None"];
+    }
+
+    if (field === "auth") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        return ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Kinde", "Lucia", "Custom", "None"];
+      }
+      if (langLower === "python") {
+        return ["FastAPI Users", "Django Auth", "Clerk", "Supabase Auth", "Firebase Auth", "Auth0", "Custom", "None"];
+      }
+      if (langLower === "go" || langLower === "rust") {
+        return ["Clerk", "Auth0", "Supabase Auth", "Firebase Auth", "Custom", "None"];
+      }
+      return ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Custom", "None"];
+    }
+
+    if (field === "statecache") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        return ["TanStack Store", "Cloudflare KV", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "None"];
+      }
+      return ["Cloudflare KV", "Redis Cache", "Memcached", "None"];
+    }
+
+    if (field === "hosting") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        return ["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS"];
+      }
+      return ["AWS Lambda", "Google Cloud Run", "Fly.io", "Cloudflare Edge", "Vercel", "Heroku", "Railway", "Render", "Self-Hosted VPS"];
+    }
+
+    return FIELD_OPTIONS[field] || [];
   };
 
   const addRuleFromPreset = (presetText: string) => {
@@ -1202,18 +1313,33 @@ function TemplatesPage() {
       sections.push({ category: "Cloud Storage Policies", rules: storageRules });
     }
 
-    // State, Cache & Search
+    // State, Cache & Search / Vector Databases
     const searchRules: string[] = [];
     const searchLower = stackSearch.toLowerCase();
+    const vectorLower = stackVector.toLowerCase();
     const cacheLower = stackStateCache.toLowerCase();
-    if (searchLower.includes("vectorize")) {
-      searchRules.push("Limit embeddings dimensions to match Vectorize configuration (e.g. 1536 for openai-text-embedding-3).");
+    
+    if (searchLower.includes("algolia")) {
+      searchRules.push("Validate Algolia search index configuration and optimize searchableAttributes.");
+    } else if (searchLower.includes("meilisearch")) {
+      searchRules.push("Secure Meilisearch instance with restricted read-only query keys for client routes.");
+    } else if (searchLower.includes("fuse.js")) {
+      searchRules.push("Initialize Fuse.js index on static client collections; restrict key search bounds.");
     }
+    
+    if (vectorLower.includes("vectorize")) {
+      searchRules.push("Limit embeddings dimensions to match Vectorize configuration (e.g. 1536 for openai-text-embedding-3).");
+    } else if (vectorLower.includes("pinecone")) {
+      searchRules.push("Configure Pinecone namespace separation for multi-tenant data storage partitions.");
+    }
+    
     if (cacheLower.includes("kv")) {
       searchRules.push("Cache assets with strict TTL; enforce key namespace isolation (e.g. namespace:userid:key).");
       searchRules.push("Be mindful of KV eventual consistency; do not write/read synchronously expecting instant updates.");
     }
+    
     if (searchRules.length > 0) {
+      searchRules.push("Enable hybrid search algorithms (lexical keyword ranking + dense vector cosine similarity) where appropriate.");
       sections.push({ category: "Search & Cache Systems", rules: searchRules });
     }
 
@@ -1277,13 +1403,18 @@ function TemplatesPage() {
       list.push({ key: "NEXTAUTH_SECRET", description: "Auth.js (NextAuth) JWT encryption secret.", default: "" });
     }
 
-    if (stackSearch.toLowerCase().includes("vectorize")) {
+    if (stackVector.toLowerCase().includes("vectorize")) {
       list.push({ key: "VECTORIZE_INDEX_BINDING", description: "Cloudflare Vectorize index binding name.", default: "VECTOR_INDEX" });
-    } else if (stackSearch.toLowerCase().includes("pinecone")) {
+    } else if (stackVector.toLowerCase().includes("pinecone")) {
       list.push({ key: "PINECONE_API_KEY", description: "Pinecone Vector database API key.", default: "" });
       list.push({ key: "PINECONE_ENVIRONMENT", description: "Pinecone index environment.", default: "us-east-1" });
-    } else if (stackSearch.toLowerCase().includes("qdrant")) {
+    } else if (stackVector.toLowerCase().includes("qdrant")) {
       list.push({ key: "QDRANT_URL", description: "Qdrant vector search server URL.", default: "http://localhost:6333" });
+    }
+
+    if (stackSearch.toLowerCase().includes("algolia")) {
+      list.push({ key: "ALGOLIA_APP_ID", description: "Algolia application ID key.", default: "" });
+      list.push({ key: "ALGOLIA_API_KEY", description: "Algolia admin/write API key.", default: "" });
     }
 
     if (stackStateCache.toLowerCase().includes("kv")) {
@@ -1338,8 +1469,16 @@ function TemplatesPage() {
       factText += `- Authentication: ${payload.auth}\n`;
       factText += `- Styling: ${payload.styling}\n`;
       factText += `- State/Cache: ${payload.stateCache}\n`;
+      if (payload.componentLibrary) {
+        factText += `- Component Library: ${payload.componentLibrary}\n`;
+      }
+      if (payload.search && payload.search !== "None") {
+        factText += `- Full-Text Search: ${payload.search}\n`;
+      }
+      if (payload.vector && payload.vector !== "None") {
+        factText += `- Vector Database: ${payload.vector}\n`;
+      }
       factText += `- Storage: ${payload.storage}\n`;
-      factText += `- Search/Vector: ${payload.search}\n`;
       if (payload.bannedProviders && payload.bannedProviders.length > 0) {
         factText += `- Banned Providers: ${payload.bannedProviders.join(", ")}\n`;
       }
@@ -1734,9 +1873,11 @@ function TemplatesPage() {
                               setStackOrm(preset.orm);
                               setStackAuth(preset.auth);
                               setStackStyling(preset.styling);
-                              setStackStateCache(preset.stateCache);
+                              setStackSearch(preset.search);
+                              setStackVector(preset.vector || "None");
                               setStackStorage(preset.storage);
                               setStackSearch(preset.search);
+                              setStackComponentLibrary(preset.componentLibrary || "None");
                             }}
                             style={{
                               padding: "6px 12px",
@@ -1765,7 +1906,7 @@ function TemplatesPage() {
                     </div>
 
                     {/* Stack Fields */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, paddingBottom: 140 }}>
                       {/* Column 1: Frontend & Client Stack */}
                       <div style={{
                         background: "var(--surface2)",
@@ -1784,10 +1925,12 @@ function TemplatesPage() {
                           <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Frontend & Client Stack</span>
                         </div>
                         <Combobox label="Language" value={stackLanguage} onChange={setStackLanguage} options={FIELD_OPTIONS.language} placeholder="e.g. TypeScript" />
-                        <Combobox label="Frontend Framework" value={stackFrontend} onChange={setStackFrontend} options={FIELD_OPTIONS.frontend} placeholder="e.g. Next.js" />
+                        <Combobox label="Frontend Framework" value={stackFrontend} onChange={setStackFrontend} options={getDynamicFieldOptions("frontend", stackLanguage)} placeholder="e.g. Next.js" />
                         <Combobox label="Styling" value={stackStyling} onChange={setStackStyling} options={FIELD_OPTIONS.styling} placeholder="e.g. Vanilla CSS" />
-                        <Combobox label="Auth" value={stackAuth} onChange={setStackAuth} options={FIELD_OPTIONS.auth} placeholder="e.g. Better Auth" />
-                        <Combobox label="State / Client Cache" value={stackStateCache} onChange={setStackStateCache} options={FIELD_OPTIONS.stateCache} placeholder="e.g. Zustand" />
+                        <Combobox label="Component Library" value={stackComponentLibrary} onChange={setStackComponentLibrary} options={FIELD_OPTIONS.componentLibrary} placeholder="e.g. shadcn/ui" />
+                        <Combobox label="Auth" value={stackAuth} onChange={setStackAuth} options={getDynamicFieldOptions("auth", stackLanguage)} placeholder="e.g. Better Auth" />
+                        <Combobox label="State / Client Cache" value={stackStateCache} onChange={setStackStateCache} options={getDynamicFieldOptions("statecache", stackLanguage)} placeholder="e.g. Zustand" />
+                        <Combobox label="Full-Text Search (Lexical)" value={stackSearch} onChange={setStackSearch} options={FIELD_OPTIONS.search} placeholder="e.g. Fuse.js" />
                       </div>
 
                       {/* Column 2: Backend & Infrastructure */}
@@ -1808,11 +1951,11 @@ function TemplatesPage() {
                           </svg>
                           <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Backend & Infrastructure</span>
                         </div>
-                        <Combobox label="Hosting Runtime" value={stackHosting} onChange={setStackHosting} options={FIELD_OPTIONS.hosting} placeholder="e.g. Cloudflare Pages" />
+                        <Combobox label="Hosting Runtime" value={stackHosting} onChange={setStackHosting} options={getDynamicFieldOptions("hosting", stackLanguage)} placeholder="e.g. Cloudflare Pages" />
                         <Combobox label="Database" value={stackDatabase} onChange={setStackDatabase} options={FIELD_OPTIONS.database} placeholder="e.g. Cloudflare D1" />
-                        <Combobox label="ORM / DB Client" value={stackOrm} onChange={setStackOrm} options={FIELD_OPTIONS.orm} placeholder="e.g. Drizzle ORM" />
+                        <Combobox label="ORM / DB Client" value={stackOrm} onChange={setStackOrm} options={getDynamicFieldOptions("orm", stackLanguage)} placeholder="e.g. Drizzle ORM" />
                         <Combobox label="Storage (Buckets)" value={stackStorage} onChange={setStackStorage} options={FIELD_OPTIONS.storage} placeholder="e.g. Cloudflare R2" />
-                        <Combobox label="Search / Vector Index" value={stackSearch} onChange={setStackSearch} options={FIELD_OPTIONS.search} placeholder="e.g. Cloudflare Vectorize" />
+                        <Combobox label="Vector Database (Semantic)" value={stackVector} onChange={setStackVector} options={FIELD_OPTIONS.vector} placeholder="e.g. Cloudflare Vectorize" />
                       </div>
                     </div>
                   </div>
