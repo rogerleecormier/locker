@@ -1277,6 +1277,10 @@ function TemplateFormModal({
       queryClient.invalidateQueries({ queryKey: ["templates"] });
       onSuccess();
     },
+    onError: (err: any) => {
+      console.error("[createMut] error:", err);
+      alert(`Failed to create template: ${err.message || String(err)}`);
+    },
   });
 
   const updateMut = useMutation({
@@ -1285,9 +1289,14 @@ function TemplateFormModal({
       queryClient.invalidateQueries({ queryKey: ["templates"] });
       onSuccess();
     },
+    onError: (err: any) => {
+      console.error("[updateMut] error:", err);
+      alert(`Failed to update template: ${err.message || String(err)}`);
+    },
   });
 
   const handleSave = () => {
+    console.log("[TemplateFormModal] handleSave called");
     const payload: ParsedPayload = {
       rules: formRules.filter((r) => r.trim() !== ""),
       variables: formVariables.filter((v) => v.key.trim() !== ""),
@@ -2572,6 +2581,9 @@ function TemplatesPage() {
     });
   };
 
+
+
+
   const totalByCategory = useMemo(() => {
     const counts: Record<string, number> = { stack: 0, governance: 0, devops: 0, compliance: 0, documentation: 0 };
     for (const t of templates) {
@@ -2845,6 +2857,7 @@ function TemplatesPage() {
                   </div>
                 </div>
               )}
+
             </div>
 
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 10 }}>

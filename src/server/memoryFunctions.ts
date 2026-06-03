@@ -3489,3 +3489,45 @@ export const deleteMemoryTemplate = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+export const syncWorkspaceFile = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { filename: string; content: string } => {
+    const d = data as any;
+    if (!d.filename || typeof d.filename !== "string") throw new Error("filename is required");
+    if (!d.content || typeof d.content !== "string") throw new Error("content is required");
+    return { filename: d.filename, content: d.content };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireSession(env);
+
+    // Check if we are running in Node.js environment
+    const isNode = typeof process !== "undefined" && process.versions && process.versions.node;
+    if (!isNode) {
+      return { success: false, error: "Not running in a Node.js environment" };
+    }
+
+    try {
+      // Dynamic import to prevent bundler errors on Cloudflare
+      const fsName = "node:fs";
+      const pathName = "node:path";
+      const fs = await import(fsName);
+      const path = await import(pathName);
+
+      // Resolve the project root path
+      const targetPath = path.resolve(process.cwd(), data.filename);
+      
+      // Ensure target directory exists (e.g. .github/)
+      const dir = path.dirname(targetPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      fs.writeFileSync(targetPath, data.content, "utf8");
+      return { success: true, path: targetPath };
+    } catch (err: any) {
+      console.error("[syncWorkspaceFile] error:", err);
+      return { success: false, error: err.message || String(err) };
+    }
+  });
+
+
