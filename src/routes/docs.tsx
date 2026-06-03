@@ -1354,6 +1354,24 @@ enabled = true`,
   return (
     <div className="docs-container" style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 52px)" }}>
       <style>{`
+        .docs-content ul, .docs-content ol {
+          display: block !important;
+          list-style-position: outside !important;
+          padding-left: 20px !important;
+          margin-top: 12px !important;
+          margin-bottom: 16px !important;
+        }
+        .docs-content ul {
+          list-style-type: disc !important;
+        }
+        .docs-content ol {
+          list-style-type: decimal !important;
+        }
+        .docs-content li {
+          display: list-item !important;
+          margin-bottom: 8px !important;
+          line-height: 1.6 !important;
+        }
         .docs-layout {
           display: flex;
           flex: 1;
