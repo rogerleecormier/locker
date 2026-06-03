@@ -532,20 +532,32 @@ function MemoryRow({
                     </button>
                     <button
                       onClick={() => { setMenuOpen(false); onExport(memory); }}
+                      disabled={memory.category !== "stack"}
                       style={{
                         background: "none",
                         border: "none",
-                        color: "var(--text)",
+                        color: memory.category === "stack" ? "var(--text)" : "var(--text-muted)",
                         padding: "6px 12px",
                         textAlign: "left",
                         fontSize: 11,
                         fontWeight: 500,
-                        cursor: "pointer",
+                        cursor: memory.category === "stack" ? "pointer" : "default",
                         width: "100%",
+                        opacity: memory.category === "stack" ? 1 : 0.5,
                         transition: "all 0.15s",
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(168,85,247,0.1)"; e.currentTarget.style.color = "var(--accent)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
+                      onMouseEnter={(e) => {
+                        if (memory.category === "stack") {
+                          e.currentTarget.style.background = "rgba(168,85,247,0.1)";
+                          e.currentTarget.style.color = "var(--accent)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (memory.category === "stack") {
+                          e.currentTarget.style.background = "none";
+                          e.currentTarget.style.color = "var(--text)";
+                        }
+                      }}
                     >
                       Export
                     </button>
