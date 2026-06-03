@@ -69,7 +69,7 @@ function HeroStackCreatorMockup() {
   const [db, setDb] = useState("D1");
   const [orm, setOrm] = useState("Drizzle");
   const [copied, setCopied] = useState(false);
-  const [activeFormat, setActiveFormat] = useState<"cursor" | "claude" | "gemini">("cursor");
+  const [activeFormat, setActiveFormat] = useState<"cursor" | "claude" | "gemini" | "copilot" | "codex" | "antigravity" | "agents">("cursor");
 
   const getRulesText = () => {
     const rules = [];
@@ -105,10 +105,30 @@ function HeroStackCreatorMockup() {
         globs: ["*"],
         rules: rules
       }, null, 2);
-    } else if (activeFormat === "claude") {
-      return `# Claude System Instructions\n\n## Enforced Guidelines\n${rules.map(r => r).join("\n")}`;
     } else {
-      return `# Gemini Rules\n\n## Coding Guidelines\n${rules.map(r => r).join("\n")}`;
+      let title = "Developer Agent Rules";
+      let section = "Guidelines";
+      if (activeFormat === "claude") {
+        title = "Claude System Instructions";
+        section = "Enforced Guidelines";
+      } else if (activeFormat === "copilot") {
+        title = "Copilot Instructions";
+        section = "Rules";
+      } else if (activeFormat === "gemini") {
+        title = "Gemini Rules";
+        section = "Coding Guidelines";
+      } else if (activeFormat === "antigravity") {
+        title = "Antigravity Rules";
+        section = "Guidelines";
+      } else if (activeFormat === "codex") {
+        title = "Codex Rules";
+        section = "Rules";
+      } else if (activeFormat === "agents") {
+        title = "Developer Agent Rules";
+        section = "Guidelines";
+      }
+
+      return `# ${title}\n\n## ${section}\n${rules.map(r => r).join("\n")}`;
     }
   };
 
@@ -252,8 +272,8 @@ function HeroStackCreatorMockup() {
         {step === 3 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, height: "100%" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 8, marginBottom: 4 }}>
-              <div style={{ display: "flex", gap: 6 }}>
-                {["cursor", "claude", "gemini"].map(tab => (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {["cursor", "claude", "copilot", "gemini", "codex", "antigravity", "agents"].map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveFormat(tab as any)}
@@ -261,10 +281,23 @@ function HeroStackCreatorMockup() {
                       fontSize: 10, padding: "3px 8px", borderRadius: 4, cursor: "pointer",
                       background: activeFormat === tab ? "var(--accent-dim)" : "transparent",
                       border: `1px solid ${activeFormat === tab ? "var(--accent)" : "transparent"}`,
-                      color: activeFormat === tab ? "var(--text)" : "var(--text-muted)"
+                      color: activeFormat === tab ? "var(--text)" : "var(--text-muted)",
+                      marginBottom: 4
                     }}
                   >
-                    {tab === "cursor" ? ".cursorrules" : tab === "claude" ? "CLAUDE.md" : "GEMINI.md"}
+                    {tab === "cursor" 
+                      ? ".cursorrules" 
+                      : tab === "claude" 
+                      ? "CLAUDE.md" 
+                      : tab === "copilot" 
+                      ? "copilot-instructions.md" 
+                      : tab === "gemini" 
+                      ? "GEMINI.md" 
+                      : tab === "codex" 
+                      ? ".codexrules" 
+                      : tab === "antigravity" 
+                      ? ".antigravityrules" 
+                      : "AGENTS.md"}
                   </button>
                 ))}
               </div>
@@ -814,7 +847,7 @@ function LandingPage() {
                 Bootstrap agent behavior from your codebase stack
               </h2>
               <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
-                Define your project's programming language, framework, database, and ORM. Locker generates optimized `.cursorrules`, `CLAUDE.md`, `GEMINI.md`, and `AGENTS.md` configurations dynamically to prevent context drift and token overhead.
+                Define your project's programming language, framework, database, and ORM. Locker generates optimized `.cursorrules`, `CLAUDE.md`, `copilot-instructions.md`, `GEMINI.md`, `.codexrules`, `.antigravityrules`, and `AGENTS.md` configurations dynamically to prevent context drift and token overhead.
               </p>
               <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
                 {["Tailored coding constraints generated dynamically", "Compatible with Cursor, Claude, Copilot, and Gemini", "Optimized instructions reduce context-window waste", "Download configurations directly into your repo"].map((item) => (

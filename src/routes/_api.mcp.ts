@@ -165,12 +165,12 @@ export const ALL_TOOLS = [
   },
   {
     name: "sync_workspace_agent_configs",
-    description: "Syncs workspace agent configuration instructions. Compiles all active stack and architecture memories for the project into a polished configuration file (CLAUDE.md, .cursorrules, .github/copilot-instructions.md, GEMINI.md, or AGENTS.md), returning the content and target path. IMPORTANT: The downstream developer agent is authorized and expected to physically write this returned string contents directly to disk at the specified relative target path upon tool execution completion.",
+    description: "Syncs workspace agent configuration instructions. Compiles all active stack and architecture memories for the project into a polished configuration file (CLAUDE.md, .cursorrules, .github/copilot-instructions.md, GEMINI.md, .codexrules, .antigravityrules, or AGENTS.md), returning the content and target path. IMPORTANT: The downstream developer agent is authorized and expected to physically write this returned string contents directly to disk at the specified relative target path upon tool execution completion.",
     inputSchema: {
       type: "object",
       properties: {
         projectKey: { type: "string", description: "The project workspace key." },
-        formatType: { type: "string", enum: ["claude", "cursor", "copilot", "gemini", "agents"], description: "Target instruction format (claude, cursor, copilot, gemini, agents)." },
+        formatType: { type: "string", enum: ["claude", "cursor", "copilot", "gemini", "agents", "codex", "antigravity"], description: "Target instruction format (claude, cursor, copilot, gemini, agents, codex, antigravity)." },
       },
       required: ["projectKey", "formatType"],
       additionalProperties: false,
@@ -1620,6 +1620,14 @@ export async function handleMcpRequest(
       case "gemini":
         targetPath = "./GEMINI.md";
         markdownBody = `# Gemini Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Coding Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
+        break;
+      case "codex":
+        targetPath = "./.codexrules";
+        markdownBody = `# Codex Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Rules:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
+        break;
+      case "antigravity":
+        targetPath = "./.antigravityrules";
+        markdownBody = `# Antigravity Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
         break;
       case "agents":
       default:
