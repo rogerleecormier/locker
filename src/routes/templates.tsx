@@ -2445,16 +2445,16 @@ function TemplateFormModal({
             {!isLast ? (
               <button
                 onClick={handleNext}
-                disabled={!formName.trim()}
-                style={{ padding: "10px 22px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: !formName.trim() ? "default" : "pointer" }}
+                disabled={!formName.trim() || !formDesc.trim()}
+                style={{ padding: "10px 22px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: (!formName.trim() || !formDesc.trim()) ? "default" : "pointer" }}
               >
                 Next
               </button>
             ) : (
               <button
                 onClick={handleSave}
-                disabled={!formName.trim() || createMut.isPending || updateMut.isPending}
-                style={{ padding: "10px 22px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: (!formName.trim() || createMut.isPending || updateMut.isPending) ? "default" : "pointer" }}
+                disabled={!formName.trim() || !formDesc.trim() || createMut.isPending || updateMut.isPending}
+                style={{ padding: "10px 22px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: (!formName.trim() || !formDesc.trim() || createMut.isPending || updateMut.isPending) ? "default" : "pointer" }}
               >
                 {createMut.isPending || updateMut.isPending ? "Saving..." : "Save Template"}
               </button>
