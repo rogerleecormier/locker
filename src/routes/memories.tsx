@@ -108,13 +108,9 @@ function MemoryRow({
 }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [targetWorkspace, setTargetWorkspace] = useState("");
-  const [editFact, setEditFact] = useState(memory.fact);
-  const [editCategory, setEditCategory] = useState(memory.category);
-  const [editTags, setEditTags] = useState(memory.tags);
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteMemory({ data: { id: memory.id } }),
@@ -122,19 +118,6 @@ function MemoryRow({
       queryClient.setQueryData<Memory[]>(["memories"], (old) =>
         old ? old.filter((m) => m.id !== memory.id) : []
       );
-    },
-    onError: () => {
-      queryClient.invalidateQueries({ queryKey: ["memories"] });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: () => updateMemory({ data: { id: memory.id, fact: editFact, category: editCategory, tags: editTags } }),
-    onSuccess: (updated) => {
-      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
-        old ? old.map((m) => m.id === updated.id ? updated : m) : []
-      );
-      setEditing(false);
     },
     onError: () => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
@@ -164,441 +147,206 @@ function MemoryRow({
     },
   });
 
-  function cancelEdit() {
-    setEditFact(memory.fact);
-    setEditCategory(memory.category);
-    setEditTags(memory.tags);
-    setEditing(false);
-  }
-
   const tags = memory.tags
     ? memory.tags.split(",").map((t) => t.trim()).filter(Boolean)
     : [];
-
-  if (editing) {
-    return (
-      <div
-        style={{
-          padding: "14px 18px",
-          borderBottom: "1px solid var(--border)",
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: "8px 16px",
-          background: "rgba(168,85,247,0.04)",
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={() => onToggleSelect(memory.id)}
-          style={{ marginTop: 3, cursor: "pointer", accentColor: "var(--accent)" }}
-        />
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <textarea
-            value={editFact}
-            onChange={(e) => setEditFact(e.target.value)}
-            rows={3}
-            autoFocus
-            style={{ width: "100%", padding: "8px 10px", fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
-          />
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <select
-              value={editCategory}
-              onChange={(e) => setEditCategory(e.target.value as any)}
-              style={{ padding: "5px 8px", fontSize: 12 }}
-            >
-              <option value="rules">Rules</option>
-              <option value="projects">Projects</option>
-              <option value="references">References</option>
-              <option value="stack">Stack</option>
-            </select>
-            <input
-              type="text"
-              value={editTags}
-              onChange={(e) => setEditTags(e.target.value)}
-              placeholder="tags (comma-separated)"
-              style={{ flex: 1, padding: "5px 8px", fontSize: 12, minWidth: 120 }}
-            />
-            <button
-              onClick={() => updateMutation.mutate()}
-              disabled={updateMutation.isPending || !editFact.trim()}
-              style={{
-                padding: "5px 14px",
-                background: "var(--accent)",
-                color: "#fff",
-                fontWeight: 600,
-                fontSize: 12,
-                borderRadius: "var(--radius)",
-              }}
-            >
-              {updateMutation.isPending ? "Saving…" : "Save"}
-            </button>
-            <button
-              onClick={cancelEdit}
-              disabled={updateMutation.isPending}
-              style={{
-                padding: "5px 10px",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                color: "var(--text-muted)",
-                fontSize: 12,
-                borderRadius: "var(--radius)",
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-          {updateMutation.isError && (
-            <span style={{ fontSize: 11, color: "var(--error)" }}>Save failed. Try again.</span>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div
       onClick={onSelect}
       className={`memory-item-card ${isSelected ? "selected" : ""}`}
-      style={{
-        padding: "14px 18px",
-        borderBottom: "1px solid var(--border)",
-        display: "grid",
-        gridTemplateColumns: "auto 1fr auto",
-        gap: "8px 16px",
-        alignItems: "start",
-        background: isSelected ? "rgba(168,85,247,0.08)" : (selected ? "rgba(168,85,247,0.04)" : undefined),
-        borderLeft: isSelected ? "3px solid var(--accent)" : "3px solid transparent",
-        paddingLeft: isSelected ? "15px" : "18px",
-        cursor: "pointer",
-      }}
     >
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={(e) => { e.stopPropagation(); onToggleSelect(memory.id); }}
-        onClick={(e) => e.stopPropagation()}
-        style={{ marginTop: 3, cursor: "pointer", accentColor: "var(--accent)" }}
-      />
-      <div style={{ minWidth: 0 }}>
-        <p style={{ marginBottom: tags.length ? 6 : 0, lineHeight: 1.5, wordBreak: "break-word" }}>
+      <div>
+        {/* Card Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }} onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(e) => { e.stopPropagation(); onToggleSelect(memory.id); }}
+            onClick={(e) => e.stopPropagation()}
+            style={{ cursor: "pointer", accentColor: "var(--accent)" }}
+          />
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <CategoryBadge category={memory.category} />
+            {(() => {
+              const STALE_MS = 90 * 24 * 60 * 60 * 1000;
+              const lastAccessed = memory.lastAccessedAt ? Date.now() - memory.lastAccessedAt : Date.now() - memory.timestamp;
+              const isStale = lastAccessed > STALE_MS;
+              return isStale ? (
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  padding: "2px 6px",
+                  background: "rgba(245, 158, 11, 0.15)",
+                  color: "rgb(245, 158, 11)",
+                  borderRadius: 3,
+                  whiteSpace: "nowrap"
+                }}>
+                  Stale
+                </span>
+              ) : null;
+            })()}
+          </div>
+        </div>
+
+        {/* Fact Text */}
+        <p className="memory-item-card-body">
           {memory.fact}
         </p>
+      </div>
+
+      {/* Card Footer */}
+      <div>
         {tags.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }} onClick={(e) => e.stopPropagation()}>
             {tags.map((tag) => (
               <TagChip key={tag} tag={tag} />
             ))}
           </div>
         )}
-      </div>
-      <div 
-        onClick={(e) => e.stopPropagation()} 
-        style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, minWidth: 110 }}
-      >
-        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <CategoryBadge category={memory.category} />
-          {(() => {
-            const STALE_MS = 90 * 24 * 60 * 60 * 1000;
-            const lastAccessed = memory.lastAccessedAt ? Date.now() - memory.lastAccessedAt : Date.now() - memory.timestamp;
-            const isStale = lastAccessed > STALE_MS;
-            return isStale ? (
-              <span style={{
-                fontSize: 10,
-                fontWeight: 600,
-                padding: "2px 8px",
-                background: "rgba(245, 158, 11, 0.15)",
-                color: "rgb(245, 158, 11)",
-                borderRadius: 3,
-                whiteSpace: "nowrap"
-              }}>
-                Stale
-              </span>
-            ) : null;
-          })()}
-        </div>
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          {new Date(memory.timestamp).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })}
-        </span>
-        <div style={{ display: "flex", gap: 4 }}>
-          {moving ? (
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              <select
-                value={targetWorkspace}
-                onChange={(e) => setTargetWorkspace(e.target.value)}
-                style={{ padding: "3.5px 6px", fontSize: 11, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
-              >
-                <option value="">Move to...</option>
-                {workspaces
-                  .filter((w) => w.key !== currentProjectKey)
-                  .map((w) => (
-                    <option key={w.key} value={w.key}>
-                      {w.label}
-                    </option>
-                  ))}
-              </select>
-              <button
-                onClick={() => moveMutation.mutate()}
-                disabled={moveMutation.isPending || !targetWorkspace}
-                style={{
-                  padding: "3.5px 10px",
-                  background: "var(--accent)",
-                  color: "#fff",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                {moveMutation.isPending ? "Moving…" : "Move"}
-              </button>
-              <button
-                onClick={() => { setMoving(false); setTargetWorkspace(""); }}
-                disabled={moveMutation.isPending}
-                style={{
-                  padding: "3.5px 8px",
-                  background: "var(--surface2)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-muted)",
-                  fontSize: 11,
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : confirming ? (
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Delete?</span>
-              <button
-                onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
-                style={{
-                  padding: "3px 10px",
-                  background: "rgba(239,68,68,0.15)",
-                  border: "1px solid rgba(239,68,68,0.4)",
-                  color: "var(--error)",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                {deleteMutation.isPending ? "…" : "Yes"}
-              </button>
-              <button
-                onClick={() => setConfirming(false)}
-                disabled={deleteMutation.isPending}
-                style={{
-                  padding: "3px 8px",
-                  background: "var(--surface2)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-muted)",
-                  fontSize: 11,
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                No
-              </button>
-            </div>
-          ) : (
-            <div style={{ position: "relative" }}>
-              <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                style={{
-                  background: "transparent",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-muted)",
-                  padding: "4px 8px",
-                  borderRadius: "var(--radius)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transition: "all 0.15s",
-                }}
-                onMouseEnter={(e) => {
-                  const b = e.currentTarget;
-                  b.style.borderColor = "var(--accent)";
-                  b.style.color = "var(--accent)";
-                }}
-                onMouseLeave={(e) => {
-                  const b = e.currentTarget;
-                  b.style.borderColor = "var(--border)";
-                  b.style.color = "var(--text-muted)";
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="1" />
-                  <circle cx="12" cy="5" r="1" />
-                  <circle cx="12" cy="19" r="1" />
-                </svg>
-                <span style={{ fontSize: 11, fontWeight: 600, marginLeft: 4 }}>Actions</span>
-              </button>
-              {menuOpen && (
-                <>
-                  <div
-                    onClick={() => setMenuOpen(false)}
-                    style={{
-                      position: "fixed",
-                      inset: 0,
-                      zIndex: 999,
-                      background: "transparent",
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "100%",
-                      right: 0,
-                      marginTop: 4,
-                      background: "var(--surface2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius)",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                      padding: "4px 0",
-                      minWidth: 120,
-                      zIndex: 1000,
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <button
-                      onClick={() => { setMenuOpen(false); setEditing(true); }}
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
+            {new Date(memory.timestamp).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </span>
+
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            {moving ? (
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <select
+                  value={targetWorkspace}
+                  onChange={(e) => setTargetWorkspace(e.target.value)}
+                  style={{ padding: "2px 4px", fontSize: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                >
+                  <option value="">Move...</option>
+                  {workspaces
+                    .filter((w) => w.key !== currentProjectKey)
+                    .map((w) => (
+                      <option key={w.key} value={w.key}>
+                        {w.label}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  onClick={() => moveMutation.mutate()}
+                  disabled={moveMutation.isPending || !targetWorkspace}
+                  style={{ padding: "2px 6px", background: "var(--accent)", color: "#fff", fontSize: 10, borderRadius: "var(--radius)", fontWeight: 600 }}
+                >
+                  Go
+                </button>
+                <button
+                  onClick={() => { setMoving(false); setTargetWorkspace(""); }}
+                  style={{ padding: "2px 6px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 10, borderRadius: "var(--radius)" }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : confirming ? (
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Delete?</span>
+                <button
+                  onClick={() => deleteMutation.mutate()}
+                  disabled={deleteMutation.isPending}
+                  style={{ padding: "2px 6px", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "var(--error)", fontSize: 10, borderRadius: "var(--radius)", fontWeight: 600 }}
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={() => setConfirming(false)}
+                  style={{ padding: "2px 6px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 10, borderRadius: "var(--radius)" }}
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <div style={{ position: "relative" }}>
+                <button
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-muted)",
+                    padding: "3px 6px",
+                    borderRadius: "var(--radius)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="1" />
+                    <circle cx="12" cy="5" r="1" />
+                    <circle cx="12" cy="19" r="1" />
+                  </svg>
+                </button>
+                {menuOpen && (
+                  <>
+                    <div
+                      onClick={() => setMenuOpen(false)}
+                      style={{ position: "fixed", inset: 0, zIndex: 999, background: "transparent" }}
+                    />
+                    <div
                       style={{
-                        background: "none",
-                        border: "none",
-                        color: "var(--text)",
-                        padding: "6px 12px",
-                        textAlign: "left",
-                        fontSize: 11,
-                        fontWeight: 500,
-                        cursor: "pointer",
-                        width: "100%",
-                        transition: "all 0.15s",
+                        position: "absolute",
+                        bottom: "100%",
+                        right: 0,
+                        marginBottom: 4,
+                        background: "var(--surface2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius)",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                        padding: "4px 0",
+                        minWidth: 110,
+                        zIndex: 1000,
+                        display: "flex",
+                        flexDirection: "column",
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(168,85,247,0.1)"; e.currentTarget.style.color = "var(--accent)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
                     >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => { setMenuOpen(false); onShowHistory(memory.id); }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "var(--text)",
-                        padding: "6px 12px",
-                        textAlign: "left",
-                        fontSize: 11,
-                        fontWeight: 500,
-                        cursor: "pointer",
-                        width: "100%",
-                        transition: "all 0.15s",
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(168,85,247,0.1)"; e.currentTarget.style.color = "var(--accent)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
-                    >
-                      History
-                    </button>
-                    {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
                       <button
-                        onClick={() => { setMenuOpen(false); setMoving(true); }}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "var(--text)",
-                          padding: "6px 12px",
-                          textAlign: "left",
-                          fontSize: 11,
-                          fontWeight: 500,
-                          cursor: "pointer",
-                          width: "100%",
-                          transition: "all 0.15s",
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(168,85,247,0.1)"; e.currentTarget.style.color = "var(--accent)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
+                        onClick={() => { setMenuOpen(false); onSelect?.(); }}
+                        style={{ background: "none", border: "none", color: "var(--text)", padding: "5px 10px", textAlign: "left", fontSize: 11, cursor: "pointer", width: "100%" }}
                       >
-                        Move
+                        Edit / History
                       </button>
-                    )}
-                    <button
-                      onClick={() => { setMenuOpen(false); archiveMutation.mutate(); }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "var(--text)",
-                        padding: "6px 12px",
-                        textAlign: "left",
-                        fontSize: 11,
-                        fontWeight: 500,
-                        cursor: "pointer",
-                        width: "100%",
-                        transition: "all 0.15s",
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(168,85,247,0.1)"; e.currentTarget.style.color = "var(--accent)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
-                    >
-                      Archive
-                    </button>
-                    <button
-                      onClick={() => { setMenuOpen(false); onExport(memory); }}
-                      disabled={memory.category !== "stack"}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: memory.category === "stack" ? "var(--text)" : "var(--text-muted)",
-                        padding: "6px 12px",
-                        textAlign: "left",
-                        fontSize: 11,
-                        fontWeight: 500,
-                        cursor: memory.category === "stack" ? "pointer" : "default",
-                        width: "100%",
-                        opacity: memory.category === "stack" ? 1 : 0.5,
-                        transition: "all 0.15s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (memory.category === "stack") {
-                          e.currentTarget.style.background = "rgba(168,85,247,0.1)";
-                          e.currentTarget.style.color = "var(--accent)";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (memory.category === "stack") {
-                          e.currentTarget.style.background = "none";
-                          e.currentTarget.style.color = "var(--text)";
-                        }
-                      }}
-                    >
-                      Export
-                    </button>
-                    <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
-                    <button
-                      onClick={() => { setMenuOpen(false); setConfirming(true); }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "var(--error)",
-                        padding: "6px 12px",
-                        textAlign: "left",
-                        fontSize: 11,
-                        fontWeight: 500,
-                        cursor: "pointer",
-                        width: "100%",
-                        transition: "all 0.15s",
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.1)"; e.currentTarget.style.color = "var(--error)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--error)"; }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                      {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
+                        <button
+                          onClick={() => { setMenuOpen(false); setMoving(true); }}
+                          style={{ background: "none", border: "none", color: "var(--text)", padding: "5px 10px", textAlign: "left", fontSize: 11, cursor: "pointer", width: "100%" }}
+                        >
+                          Move
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setMenuOpen(false); archiveMutation.mutate(); }}
+                        style={{ background: "none", border: "none", color: "var(--text)", padding: "5px 10px", textAlign: "left", fontSize: 11, cursor: "pointer", width: "100%" }}
+                      >
+                        Archive
+                      </button>
+                      <button
+                        onClick={() => { setMenuOpen(false); onExport(memory); }}
+                        disabled={memory.category !== "stack"}
+                        style={{ background: "none", border: "none", color: memory.category === "stack" ? "var(--text)" : "var(--text-muted)", padding: "5px 10px", textAlign: "left", fontSize: 11, cursor: memory.category === "stack" ? "pointer" : "default", width: "100%", opacity: memory.category === "stack" ? 1 : 0.5 }}
+                      >
+                        Export
+                      </button>
+                      <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+                      <button
+                        onClick={() => { setMenuOpen(false); setConfirming(true); }}
+                        style={{ background: "none", border: "none", color: "var(--error)", padding: "5px 10px", textAlign: "left", fontSize: 11, cursor: "pointer", width: "100%" }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -2078,43 +1826,57 @@ function NewMemoryModal({
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
         .memories-grid-container {
           display: grid;
-          grid-template-columns: 1fr;
-          gap: 24px;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: 20px;
           align-items: start;
         }
-        @media (min-width: 1024px) {
+        @media (max-width: 640px) {
           .memories-grid-container {
-            grid-template-columns: 1.25fr 0.75fr;
+            grid-template-columns: 1fr;
           }
         }
-        .detail-pane {
-          display: none;
+        .details-drawer-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(4px);
+          z-index: 1000;
+          animation: fadeIn 0.2s ease-out;
+          display: flex;
+          justify-content: flex-end;
         }
-        @media (min-width: 1024px) {
-          .detail-pane {
-            display: block;
-            position: sticky;
-            top: 72px;
-          }
-        }
-        .detail-panel {
+        .details-drawer {
+          position: fixed;
+          right: 0;
+          top: 0;
+          width: 480px;
+          max-width: 100%;
+          height: 100vh;
           background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: var(--radius);
-          padding: 20px;
-          max-height: calc(100vh - 100px);
+          border-left: 1px solid var(--border);
+          box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
+          z-index: 1001;
+          display: flex;
+          flex-direction: column;
+          animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .details-drawer-content {
+          padding: 24px;
           overflow-y: auto;
+          flex: 1;
           display: flex;
           flex-direction: column;
           gap: 16px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-          animation: slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        @keyframes slideInRight {
-          from { transform: translateX(12px); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
         }
         .stat-card {
           background: linear-gradient(135deg, rgba(168,85,247,0.03) 0%, rgba(139,92,246,0.01) 100%);
@@ -2174,19 +1936,40 @@ function NewMemoryModal({
           background: var(--surface);
         }
         .memory-item-card {
-          padding: 14px 18px;
-          border-bottom: 1px solid var(--border);
+          padding: 18px;
+          border-radius: 12px;
+          border: 1px solid var(--border);
           background: var(--surface);
-          transition: all 0.15s ease;
           cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          min-height: 220px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          box-sizing: border-box;
         }
         .memory-item-card:hover {
+          transform: translateY(-4px);
+          border-color: rgba(168,85,247,0.35);
+          box-shadow: 0 10px 30px rgba(168,85,247,0.08);
           background: var(--surface2);
         }
         .memory-item-card.selected {
           background: rgba(168, 85, 247, 0.04) !important;
-          border-left: 3px solid var(--accent) !important;
-          padding-left: 15px !important;
+          border: 1.5px solid var(--accent) !important;
+          box-shadow: 0 0 16px rgba(168, 85, 247, 0.15) !important;
+        }
+        .memory-item-card-body {
+          font-size: 13.5px;
+          line-height: 1.5;
+          color: var(--text);
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 5;
+          -webkit-box-orient: vertical;
+          margin: 0 0 12px 0;
+          word-break: break-word;
+          opacity: 0.9;
         }
       `}</style>
     </div>
@@ -3133,7 +2916,7 @@ function MemoryTable({
   const percentLoaded = Math.min(100, Math.floor((visibleMemories.length / filtered.length) * 100));
 
   return (
-    <div className="memories-grid-container">
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div
         style={{
           background: "var(--surface)",
@@ -3150,6 +2933,7 @@ function MemoryTable({
             alignItems: "center",
             gap: 12,
             background: "var(--surface2)",
+            flexWrap: "wrap",
           }}
         >
           <input
@@ -3248,7 +3032,7 @@ function MemoryTable({
                   </button>
                 </div>
               ) : (
-                <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                   <button
                     onClick={() => handleExport(selectedInView, "json")}
                     style={{
@@ -3378,7 +3162,7 @@ function MemoryTable({
                 {filtered.length} memor{filtered.length !== 1 ? "ies" : "y"}
               </span>
               {filtered.length > 0 && (
-                <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                   <button
                     onClick={() => handleExport(filtered, "json")}
                     style={{
@@ -3480,7 +3264,7 @@ function MemoryTable({
           )}
         </div>
 
-        <div style={{ padding: "8px 18px", background: "var(--surface)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ padding: "8px 18px", background: "var(--surface)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
             Showing {visibleMemories.length} of {filtered.length} entries
           </span>
@@ -3488,69 +3272,72 @@ function MemoryTable({
             <div style={{ width: `${percentLoaded}%`, height: "100%", background: "var(--accent)", transition: "width 0.25s" }} />
           </div>
         </div>
-
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          {visibleMemories.map((m) => (
-            <MemoryRow
-              key={m.id}
-              memory={m}
-              selected={selected.has(m.id)}
-              onToggleSelect={toggleOne}
-              onShowHistory={onShowHistory}
-              onExport={(mem) => { setExportMemory(mem); setShowExportModal(true); }}
-              workspaces={workspaces}
-              currentProjectKey={currentProjectKey}
-              isSelected={activeSelectedId === m.id}
-              onSelect={() => setActiveSelectedId(m.id)}
-            />
-          ))}
-        </div>
-
-        {hasMore && (
-          <div ref={sentinelRef} style={{ padding: "20px", display: "flex", justifyContent: "center", alignItems: "center", borderTop: "1px solid var(--border)", background: "var(--surface2)" }}>
-            <button
-              onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
-              style={{
-                padding: "8px 16px",
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                color: "var(--text-muted)",
-                fontSize: 12,
-                borderRadius: "var(--radius)",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <span className="spinner" style={{ width: 12, height: 12, border: "2px solid var(--text-muted)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin 1s linear infinite" }} />
-              Loading more memories...
-            </button>
-          </div>
-        )}
-
-        {!hasMore && filtered.length > 0 && (
-          <div style={{ padding: "24px 20px", textAlign: "center", borderTop: "1px solid var(--border)", color: "var(--text-muted)", background: "var(--surface2)", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-            <span style={{ fontSize: 11, fontWeight: 500 }}>Vault list fully loaded ({filtered.length} entries)</span>
-          </div>
-        )}
       </div>
 
-      <div className="detail-pane">
-        {activeMemory ? (
-          <MemoryDetailPanel
-            memory={activeMemory}
-            onClose={() => setActiveSelectedId(null)}
+      <div className="memories-grid-container">
+        {visibleMemories.map((m) => (
+          <MemoryRow
+            key={m.id}
+            memory={m}
+            selected={selected.has(m.id)}
+            onToggleSelect={toggleOne}
+            onShowHistory={onShowHistory}
+            onExport={(mem) => { setExportMemory(mem); setShowExportModal(true); }}
             workspaces={workspaces}
             currentProjectKey={currentProjectKey}
+            isSelected={activeSelectedId === m.id}
+            onSelect={() => setActiveSelectedId(m.id)}
           />
-        ) : (
-          <DetailEmptyState />
-        )}
+        ))}
       </div>
+
+      {hasMore && (
+        <div ref={sentinelRef} style={{ padding: "20px", display: "flex", justifyContent: "center", alignItems: "center", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--surface2)" }}>
+          <button
+            onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
+            style={{
+              padding: "8px 16px",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              color: "var(--text-muted)",
+              fontSize: 12,
+              borderRadius: "var(--radius)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span className="spinner" style={{ width: 12, height: 12, border: "2px solid var(--text-muted)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin 1s linear infinite" }} />
+            Loading more memories...
+          </button>
+        </div>
+      )}
+
+      {!hasMore && filtered.length > 0 && (
+        <div style={{ padding: "24px 20px", textAlign: "center", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text-muted)", background: "var(--surface2)", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <span style={{ fontSize: 11, fontWeight: 500 }}>Vault list fully loaded ({filtered.length} entries)</span>
+        </div>
+      )}
+
+      {/* Details drawer overlay */}
+      {activeMemory && (
+        <div className="details-drawer-overlay" onClick={() => setActiveSelectedId(null)}>
+          <div className="details-drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="details-drawer-content">
+              <MemoryDetailPanel
+                memory={activeMemory}
+                onClose={() => setActiveSelectedId(null)}
+                workspaces={workspaces}
+                currentProjectKey={currentProjectKey}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {showExportModal && exportMemory && (
         <ExportMemoryModal
