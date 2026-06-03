@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Label, Input, Textarea, Select } from "./ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from "./ui/dialog";
+import { FIELD_OPTIONS, DEFAULT_STACK_PREFERENCES } from "~/lib/stackFields";
 
 interface TemplateFormModalProps {
   isOpen: boolean;
@@ -19,21 +20,6 @@ const CATEGORY_OPTIONS = [
   { value: "compliance", label: "Compliance & Security" },
   { value: "documentation", label: "Technical Docs" },
 ];
-
-const FIELD_OPTIONS: Record<string, string[]> = {
-  language: ["TypeScript", "JavaScript", "Python", "Go", "Rust", "Ruby", "Java", "C#", "C++", "PHP"],
-  frontend: ["React / TanStack", "Next.js", "Remix", "Vue / Nuxt", "Svelte / SvelteKit", "Astro", "SolidJS", "Angular", "Node.js / Express", "HTML/JS"],
-  hosting: ["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Google Cloud Run", "Azure App Service", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS"],
-  database: ["Cloudflare D1", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "Redis", "Supabase (Postgres)", "Neon (Postgres)", "PlanetScale", "Prisma Postgres", "Azure SQL Database", "Google Cloud SQL"],
-  orm: ["Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "Entity Framework Core", "SQL (Raw)", "None"],
-  auth: ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Microsoft Entra ID", "Kinde", "Lucia", "Custom", "None"],
-  styling: ["Vanilla CSS", "Tailwind CSS", "Bootstrap", "Material Design", "CSS Modules", "Styled Components", "Sass/SCSS", "Tailwind + CSS Modules"],
-  stateCache: ["TanStack Store", "Cloudflare KV", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "Redis Cache", "None"],
-  storage: ["Cloudflare R2", "AWS S3", "Supabase Storage", "Vercel Blob", "Firebase Storage", "Azure Blob Storage", "Google Cloud Storage", "Local Filesystem", "None"],
-  search: ["Fuse.js", "Algolia", "Meilisearch", "Elasticsearch", "None"],
-  vector: ["Cloudflare Vectorize", "Pinecone", "pgvector", "Supabase Vector", "Qdrant", "None"],
-  componentLibrary: ["shadcn/ui", "MUI (Material UI)", "Chakra UI", "Radix UI", "DaisyUI", "PrimeReact", "None"],
-};
 
 export function TemplateFormModal({ isOpen, onClose, editingTemplate }: TemplateFormModalProps) {
   const queryClient = useQueryClient();
@@ -54,19 +40,19 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
   const [newVarDefault, setNewVarDefault] = React.useState("");
 
   // STEP 2 (stack): Config Properties
-  const [stackLanguage, setStackLanguage] = React.useState("TypeScript");
-  const [stackFrontend, setStackFrontend] = React.useState("React / TanStack");
-  const [stackHosting, setStackHosting] = React.useState("Cloudflare Edge");
-  const [stackDatabase, setStackDatabase] = React.useState("Cloudflare D1");
-  const [stackOrm, setStackOrm] = React.useState("Drizzle ORM");
-  const [stackAuth, setStackAuth] = React.useState("Better Auth");
-  const [stackStyling, setStackStyling] = React.useState("Vanilla CSS");
-  const [stackSearch, setStackSearch] = React.useState("None");
-  const [stackVector, setStackVector] = React.useState("Cloudflare Vectorize");
-  const [stackStorage, setStackStorage] = React.useState("Cloudflare R2");
-  const [stackStateCache, setStackStateCache] = React.useState("TanStack Store");
-  const [stackComponentLibrary, setStackComponentLibrary] = React.useState("None");
-  const [bannedProviders, setBannedProviders] = React.useState<string[]>([]);
+  const [stackLanguage, setStackLanguage] = React.useState(DEFAULT_STACK_PREFERENCES.language);
+  const [stackFrontend, setStackFrontend] = React.useState(DEFAULT_STACK_PREFERENCES.frontend);
+  const [stackHosting, setStackHosting] = React.useState(DEFAULT_STACK_PREFERENCES.hosting);
+  const [stackDatabase, setStackDatabase] = React.useState(DEFAULT_STACK_PREFERENCES.database);
+  const [stackOrm, setStackOrm] = React.useState(DEFAULT_STACK_PREFERENCES.orm);
+  const [stackAuth, setStackAuth] = React.useState(DEFAULT_STACK_PREFERENCES.auth);
+  const [stackStyling, setStackStyling] = React.useState(DEFAULT_STACK_PREFERENCES.styling);
+  const [stackSearch, setStackSearch] = React.useState(DEFAULT_STACK_PREFERENCES.search);
+  const [stackVector, setStackVector] = React.useState(DEFAULT_STACK_PREFERENCES.vector);
+  const [stackStorage, setStackStorage] = React.useState(DEFAULT_STACK_PREFERENCES.storage);
+  const [stackStateCache, setStackStateCache] = React.useState(DEFAULT_STACK_PREFERENCES.stateCache);
+  const [stackComponentLibrary, setStackComponentLibrary] = React.useState(DEFAULT_STACK_PREFERENCES.componentLibrary);
+  const [bannedProviders, setBannedProviders] = React.useState<string[]>(DEFAULT_STACK_PREFERENCES.bannedProviders);
 
   // STEP 3: Guidelines Rules
   const [rules, setRules] = React.useState<string[]>([]);
@@ -84,19 +70,19 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
         setRules(payload.rules || []);
         
         if (editingTemplate.category === "stack") {
-          setStackLanguage(payload.language || "TypeScript");
-          setStackFrontend(payload.frontend || "React / TanStack");
-          setStackHosting(payload.hosting || "Cloudflare Edge");
-          setStackDatabase(payload.database || "Cloudflare D1");
-          setStackOrm(payload.orm || "Drizzle ORM");
-          setStackAuth(payload.auth || "Better Auth");
-          setStackStyling(payload.styling || "Vanilla CSS");
-          setStackSearch(payload.search || "None");
-          setStackVector(payload.vector || "Cloudflare Vectorize");
-          setStackStorage(payload.storage || "Cloudflare R2");
-          setStackStateCache(payload.stateCache || "TanStack Store");
-          setStackComponentLibrary(payload.componentLibrary || "None");
-          setBannedProviders(payload.bannedProviders || []);
+          setStackLanguage(payload.language || DEFAULT_STACK_PREFERENCES.language);
+          setStackFrontend(payload.frontend || DEFAULT_STACK_PREFERENCES.frontend);
+          setStackHosting(payload.hosting || DEFAULT_STACK_PREFERENCES.hosting);
+          setStackDatabase(payload.database || DEFAULT_STACK_PREFERENCES.database);
+          setStackOrm(payload.orm || DEFAULT_STACK_PREFERENCES.orm);
+          setStackAuth(payload.auth || DEFAULT_STACK_PREFERENCES.auth);
+          setStackStyling(payload.styling || DEFAULT_STACK_PREFERENCES.styling);
+          setStackSearch(payload.search || DEFAULT_STACK_PREFERENCES.search);
+          setStackVector(payload.vector || DEFAULT_STACK_PREFERENCES.vector);
+          setStackStorage(payload.storage || DEFAULT_STACK_PREFERENCES.storage);
+          setStackStateCache(payload.stateCache || DEFAULT_STACK_PREFERENCES.stateCache);
+          setStackComponentLibrary(payload.componentLibrary || DEFAULT_STACK_PREFERENCES.componentLibrary);
+          setBannedProviders(payload.bannedProviders || DEFAULT_STACK_PREFERENCES.bannedProviders);
         } else {
           setVariables(payload.variables || []);
         }
@@ -109,7 +95,19 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
       setFormCategory("governance");
       setRules([]);
       setVariables([]);
-      setBannedProviders([]);
+      setBannedProviders(DEFAULT_STACK_PREFERENCES.bannedProviders);
+      setStackLanguage(DEFAULT_STACK_PREFERENCES.language);
+      setStackFrontend(DEFAULT_STACK_PREFERENCES.frontend);
+      setStackHosting(DEFAULT_STACK_PREFERENCES.hosting);
+      setStackDatabase(DEFAULT_STACK_PREFERENCES.database);
+      setStackOrm(DEFAULT_STACK_PREFERENCES.orm);
+      setStackAuth(DEFAULT_STACK_PREFERENCES.auth);
+      setStackStyling(DEFAULT_STACK_PREFERENCES.styling);
+      setStackSearch(DEFAULT_STACK_PREFERENCES.search);
+      setStackVector(DEFAULT_STACK_PREFERENCES.vector);
+      setStackStorage(DEFAULT_STACK_PREFERENCES.storage);
+      setStackStateCache(DEFAULT_STACK_PREFERENCES.stateCache);
+      setStackComponentLibrary(DEFAULT_STACK_PREFERENCES.componentLibrary);
       setCurrentStep(1);
     }
   }, [editingTemplate, isOpen]);

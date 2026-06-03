@@ -3203,6 +3203,8 @@ export const analyzeProjectRequirements = createServerFn({ method: "POST" })
     database: string;
     storage: string;
     search: string;
+    vector: string;
+    componentLibrary: string;
     orm: string;
     auth: string;
     styling: string;
@@ -3214,16 +3216,18 @@ export const analyzeProjectRequirements = createServerFn({ method: "POST" })
 
     const prompt = `You are an AI system analyzer. A developer will describe their project requirements.
 Based on the description, recommend the most appropriate options for their tech stack from the following choices:
-- Preferred Language: "TypeScript", "JavaScript", "Go", "Python", "Rust", "C# / .NET"
-- Frontend Ecosystem / Framework: "React / TanStack", "Next.js", "Vue / Nuxt", "Svelte", "Solid", "Vanilla JS"
-- Hosting / Runtime Environment: "Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "GCP Cloud Run", "Azure Functions", "VPS / Docker"
-- Database: "Cloudflare D1", "PostgreSQL", "Aurora PostgreSQL", "Azure SQL", "Cloud Spanner", "MySQL", "SQLite", "MongoDB", "DynamoDB"
-- Blob/Object Storage: "Cloudflare R2", "AWS S3", "Google Cloud Storage", "Azure Blob Storage", "Local"
-- Search / Vector Index: "Cloudflare Vectorize", "Pinecone", "Supabase Vector", "Azure AI Search", "Vertex AI Vector Search", "Qdrant", "None"
-- ORM / DB Access: "Drizzle ORM", "Prisma", "Kysely", "SQL (Raw)", "SQLAlchemy", "Prisma Client Python", "None"
-- Authentication: "Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Custom JWT", "None"
-- CSS / Styling: "Tailwind CSS", "CSS Modules", "Styled Components", "Vanilla CSS", "Panda CSS"
-- Client State / Cache: "TanStack Store", "Zustand", "Redux", "React Context", "Redis", "Cloudflare KV", "None"
+- Preferred Language: "TypeScript", "JavaScript", "Python", "Go", "Rust", "Ruby", "Java", "C#", "C++", "PHP"
+- Frontend Ecosystem / Framework: "React / TanStack", "Next.js", "Remix", "Vue / Nuxt", "Svelte / SvelteKit", "Astro", "SolidJS", "Angular", "Node.js / Express", "HTML/JS"
+- Hosting / Runtime Environment: "Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Google Cloud Run", "Azure App Service", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS"
+- Database: "Cloudflare D1", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "Redis", "Supabase (Postgres)", "Neon (Postgres)", "PlanetScale", "Prisma Postgres", "Azure SQL Database", "Google Cloud SQL"
+- ORM / DB Access: "Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "Entity Framework Core", "SQL (Raw)", "None"
+- Authentication: "Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Microsoft Entra ID", "Kinde", "Lucia", "Custom", "None"
+- CSS / Styling: "Vanilla CSS", "Tailwind CSS", "Bootstrap", "Material Design", "CSS Modules", "Styled Components", "Sass/SCSS", "Tailwind + CSS Modules"
+- Client State / Cache: "TanStack Store", "Cloudflare KV", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "Redis Cache", "None"
+- Blob/Object Storage: "Cloudflare R2", "AWS S3", "Supabase Storage", "Vercel Blob", "Firebase Storage", "Azure Blob Storage", "Google Cloud Storage", "Local Filesystem", "None"
+- Search Index: "Fuse.js", "Algolia", "Meilisearch", "Elasticsearch", "None"
+- Vector Index: "Cloudflare Vectorize", "Pinecone", "pgvector", "Supabase Vector", "Qdrant", "None"
+- UI Component Library: "shadcn/ui", "MUI (Material UI)", "Chakra UI", "Radix UI", "DaisyUI", "PrimeReact", "None"
 - Banned Providers/Services: Recommend any cloud providers (like "AWS", "Google Cloud", "Azure", "Atlassian/Jira") that should be explicitly banned if the user expresses privacy or competitor concerns. Choose from: "AWS", "Google Cloud", "Azure", "Atlassian/Jira".
 
 Respond with ONLY a JSON object conforming to the following format. Do not include explanation, markdown code fences, or any other text.
@@ -3234,6 +3238,8 @@ Respond with ONLY a JSON object conforming to the following format. Do not inclu
   "database": string,
   "storage": string,
   "search": string,
+  "vector": string,
+  "componentLibrary": string,
   "orm": string,
   "auth": string,
   "styling": string,
@@ -3260,7 +3266,9 @@ Project Description:
           hosting: String(parsed.hosting || "Cloudflare Edge"),
           database: String(parsed.database || "Cloudflare D1"),
           storage: String(parsed.storage || "Cloudflare R2"),
-          search: String(parsed.search || "Cloudflare Vectorize"),
+          search: String(parsed.search || "None"),
+          vector: String(parsed.vector || "Cloudflare Vectorize"),
+          componentLibrary: String(parsed.componentLibrary || "None"),
           orm: String(parsed.orm || "Drizzle ORM"),
           auth: String(parsed.auth || "Better Auth"),
           styling: String(parsed.styling || "Tailwind CSS"),
@@ -3279,7 +3287,9 @@ Project Description:
       hosting: "Cloudflare Edge",
       database: "Cloudflare D1",
       storage: "Cloudflare R2",
-      search: "Cloudflare Vectorize",
+      search: "None",
+      vector: "Cloudflare Vectorize",
+      componentLibrary: "None",
       orm: "Drizzle ORM",
       auth: "Better Auth",
       styling: "Vanilla CSS",
@@ -3296,6 +3306,8 @@ export const generateStackRecommendation = createServerFn({ method: "POST" })
     database: string;
     storage: string;
     search: string;
+    vector: string;
+    componentLibrary: string;
     orm: string;
     auth: string;
     styling: string;
@@ -3310,6 +3322,8 @@ export const generateStackRecommendation = createServerFn({ method: "POST" })
       database: String(d.database || ""),
       storage: String(d.storage || ""),
       search: String(d.search || ""),
+      vector: String(d.vector || ""),
+      componentLibrary: String(d.componentLibrary || ""),
       orm: String(d.orm || ""),
       auth: String(d.auth || ""),
       styling: String(d.styling || ""),
@@ -3333,7 +3347,9 @@ Preferences:
 - Hosting / Runtime Environment: ${data.hosting}
 - Database: ${data.database}
 - Blob/Object Storage: ${data.storage}
-- Search / Vector Index: ${data.search}
+- Search Index: ${data.search}
+- Vector Index: ${data.vector}
+- Component Library: ${data.componentLibrary}
 - ORM / DB Access: ${data.orm}
 - Authentication: ${data.auth}
 - CSS / Styling: ${data.styling}
@@ -3384,7 +3400,9 @@ Please return your response in raw JSON format (no markdown code blocks, no expl
         `Enforce ${data.styling} for styling user interface components.`,
         `Enforce ${data.stateCache} for client-side state / server-side caching.`,
         `Enforce ${data.storage} for object storage.`,
-        `Enforce ${data.search} for search/embeddings.`,
+        `Enforce ${data.search} for search indexing.`,
+        `Enforce ${data.vector} for vector database indexing.`,
+        `Enforce ${data.componentLibrary} for UI component library.`,
         ...data.bannedProviders.map(p => `Strict negative constraint: ${p} services are explicitly banned.`)
       ]
     };

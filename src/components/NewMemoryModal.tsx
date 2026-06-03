@@ -31,7 +31,9 @@ const PRESET_ARCHETYPES = [
       hosting: "Cloudflare Edge",
       database: "Cloudflare D1",
       storage: "Cloudflare R2",
-      search: "Cloudflare Vectorize",
+      search: "None",
+      vector: "Cloudflare Vectorize",
+      componentLibrary: "None",
       orm: "Drizzle ORM",
       auth: "Better Auth",
       styling: "Vanilla CSS",
@@ -48,7 +50,9 @@ const PRESET_ARCHETYPES = [
       hosting: "AWS Lambda",
       database: "Aurora PostgreSQL",
       storage: "AWS S3",
-      search: "Pinecone",
+      search: "None",
+      vector: "Pinecone",
+      componentLibrary: "None",
       orm: "Prisma",
       auth: "Clerk",
       styling: "Tailwind CSS",
@@ -65,7 +69,9 @@ const PRESET_ARCHETYPES = [
       hosting: "Netlify",
       database: "PostgreSQL",
       storage: "Supabase Storage",
-      search: "Supabase Vector",
+      search: "None",
+      vector: "Supabase Vector",
+      componentLibrary: "None",
       orm: "Kysely",
       auth: "Supabase Auth",
       styling: "Tailwind CSS",
@@ -74,20 +80,7 @@ const PRESET_ARCHETYPES = [
     },
   },
 ];
-
-const FIELD_OPTIONS: Record<string, string[]> = {
-  language: ["TypeScript", "JavaScript", "Python", "Go", "Rust", "Ruby", "Java", "C#", "C++", "PHP"],
-  frontend: ["React / TanStack", "Next.js", "Remix", "Vue / Nuxt", "Svelte / SvelteKit", "Astro", "SolidJS", "Angular", "Node.js / Express", "HTML/JS"],
-  hosting: ["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Google Cloud Run", "Azure App Service", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS"],
-  database: ["Cloudflare D1", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "Redis", "Supabase (Postgres)", "Neon (Postgres)", "PlanetScale", "Prisma Postgres", "Azure SQL Database", "Google Cloud SQL"],
-  orm: ["Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "Entity Framework Core", "SQL (Raw)", "None"],
-  auth: ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Microsoft Entra ID", "Kinde", "Lucia", "Custom", "None"],
-  styling: ["Vanilla CSS", "Tailwind CSS", "Bootstrap", "Material Design", "CSS Modules", "Styled Components", "Sass/SCSS", "Tailwind + CSS Modules"],
-  stateCache: ["TanStack Store", "Cloudflare KV", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "Redis Cache", "None"],
-  storage: ["Cloudflare R2", "AWS S3", "Supabase Storage", "Vercel Blob", "Firebase Storage", "Azure Blob Storage", "Google Cloud Storage", "Local Filesystem", "None"],
-  search: ["Fuse.js", "Algolia", "Meilisearch", "Elasticsearch", "None"],
-  vector: ["Cloudflare Vectorize", "Pinecone", "pgvector", "Supabase Vector", "Qdrant", "None"],
-};
+import { FIELD_OPTIONS, DEFAULT_STACK_PREFERENCES } from "~/lib/stackFields";
 
 function downloadFile(content: string, filename: string, contentType: string) {
   const blob = new Blob([content], { type: contentType });
@@ -145,17 +138,7 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
   const [interviewPrompt, setInterviewPrompt] = React.useState("");
   const [analyzingPrompt, setAnalyzingPrompt] = React.useState(false);
   const [preferences, setPreferences] = React.useState({
-    language: "TypeScript",
-    frontend: "React / TanStack",
-    hosting: "Cloudflare Edge",
-    database: "Cloudflare D1",
-    storage: "Cloudflare R2",
-    search: "Cloudflare Vectorize",
-    orm: "Drizzle ORM",
-    auth: "Better Auth",
-    styling: "Vanilla CSS",
-    stateCache: "TanStack Store",
-    bannedProviders: [] as string[],
+    ...DEFAULT_STACK_PREFERENCES
   });
 
   const [recommendation, setRecommendation] = React.useState<{
@@ -186,17 +169,19 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
     try {
       const res = await analyzeProjectRequirements({ data: { description: interviewPrompt } });
       setPreferences({
-        language: res.language || "TypeScript",
-        frontend: res.frontend || "React / TanStack",
-        hosting: res.hosting || "Cloudflare Edge",
-        database: res.database || "Cloudflare D1",
-        storage: res.storage || "Cloudflare R2",
-        search: res.search || "Cloudflare Vectorize",
-        orm: res.orm || "Drizzle ORM",
-        auth: res.auth || "Better Auth",
-        styling: res.styling || "Tailwind CSS",
-        stateCache: res.stateCache || "TanStack Store",
-        bannedProviders: res.bannedProviders || [],
+        language: res.language || DEFAULT_STACK_PREFERENCES.language,
+        frontend: res.frontend || DEFAULT_STACK_PREFERENCES.frontend,
+        hosting: res.hosting || DEFAULT_STACK_PREFERENCES.hosting,
+        database: res.database || DEFAULT_STACK_PREFERENCES.database,
+        storage: res.storage || DEFAULT_STACK_PREFERENCES.storage,
+        search: res.search || DEFAULT_STACK_PREFERENCES.search,
+        vector: res.vector || DEFAULT_STACK_PREFERENCES.vector,
+        componentLibrary: res.componentLibrary || DEFAULT_STACK_PREFERENCES.componentLibrary,
+        orm: res.orm || DEFAULT_STACK_PREFERENCES.orm,
+        auth: res.auth || DEFAULT_STACK_PREFERENCES.auth,
+        styling: res.styling || DEFAULT_STACK_PREFERENCES.styling,
+        stateCache: res.stateCache || DEFAULT_STACK_PREFERENCES.stateCache,
+        bannedProviders: res.bannedProviders || DEFAULT_STACK_PREFERENCES.bannedProviders,
       });
     } catch (e) {
       alert("Failed to analyze requirements: " + String(e));
@@ -255,7 +240,7 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
     setSavingStack(true);
     setStackError("");
     try {
-      const factText = `# ${recommendation.name}\n${recommendation.description}\n\n## Stack Preferences:\n- Language: ${preferences.language}\n- Frontend: ${preferences.frontend}\n- Hosting: ${preferences.hosting}\n- Database: ${preferences.database}\n- ORM/DB Access: ${preferences.orm}\n- Authentication: ${preferences.auth}\n- Styling: ${preferences.styling}\n- State/Cache: ${preferences.stateCache}\n- Storage: ${preferences.storage}\n- Search/Vector: ${preferences.search}\n- Banned Providers: ${preferences.bannedProviders.join(", ") || "None"}\n\n## Architectural Rules:\n${mergedRules.map((r) => `- ${r}`).join("\n")}`;
+      const factText = `# ${recommendation.name}\n${recommendation.description}\n\n## Stack Preferences:\n- Language: ${preferences.language}\n- Frontend: ${preferences.frontend}\n- Hosting: ${preferences.hosting}\n- Database: ${preferences.database}\n- ORM/DB Access: ${preferences.orm}\n- Authentication: ${preferences.auth}\n- Styling: ${preferences.styling}\n- State/Cache: ${preferences.stateCache}\n- Storage: ${preferences.storage}\n- Search Index: ${preferences.search}\n- Vector Database: ${preferences.vector}\n- Component Library: ${preferences.componentLibrary}\n- Banned Providers: ${preferences.bannedProviders.join(", ") || "None"}\n\n## Architectural Rules:\n${mergedRules.map((r) => `- ${r}`).join("\n")}`;
 
       await addMemory({
         data: {
