@@ -955,13 +955,13 @@ enabled = true`,
         return (
           <div>
             <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>System Overview</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
               Locker is a secure, long-term personal and team memory vault built for artificial intelligence workflows. 
               It provides a standardized, encrypted location for AI clients to store and retrieve technical context, 
               coding rules, team preferences, and project specifications.
             </p>
             
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 28 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 32 }}>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
                 <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
                   ⚡ Semantic Retrieval
@@ -980,13 +980,74 @@ enabled = true`,
               </div>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Core Capabilities</h3>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, display: "flex", flexDirection: "column", gap: 6 }}>
-              <li><strong>Zero-Plaintext Storage:</strong> Database logs, D1 backups, and indices are completely encrypted and unreadable without server-side keys.</li>
-              <li><strong>Granular Authorization:</strong> API tokens are created with strict permissions, allowing you to define read-only or read-write access for different clients.</li>
-              <li><strong>Collaborative Vaults:</strong> Share specific technical documentation or project notes with your team by configuring Organization hubs.</li>
-              <li><strong>Recommendation Queue:</strong> Review proposed memory additions submitted by AI models mid-session before committing them to the permanent vault.</li>
-            </ul>
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>Key Features & Workflows</h3>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 32 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: 14, fontWeight: 600, color: "var(--text)" }}>🧠 Memory Ingestion & Management</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Create, update, and manage long-term facts either through the visual browser-based dashboard or directly via connected LLMs using programmatic MCP interfaces. Suggest new rules during conversation sessions and approve them in the recommendations queue.
+                </p>
+                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
+                  <button onClick={() => setActiveSection("managing-memories")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                    Manage Memories Guide →
+                  </button>
+                  <span style={{ color: "var(--border)" }}>|</span>
+                  <button onClick={() => setActiveSection("import-memories")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                    Import & Ingestion Prompt Guide →
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: 14, fontWeight: 600, color: "var(--text)" }}>🛠️ Tech Stack Blueprinting</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Build custom constraints for 12 technology stack categories (Languages, Frameworks, DBs, ORMs, styling strategy) using the Stack Creator wizard. Save standard profiles as reusable templates to skip regenerations and maintain consistency.
+                </p>
+                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
+                  <button onClick={() => setActiveSection("stack-creator")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                    Tech Stack Creator Guide →
+                  </button>
+                  <span style={{ color: "var(--border)" }}>|</span>
+                  <button onClick={() => setActiveSection("templates")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                    Blueprint Templates Guide →
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: 14, fontWeight: 600, color: "var(--text)" }}>💾 Multi-Agent Rule Compilation</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Translate stored technical guidelines into formatted instructions for specific AI developer agents. Downloads are supported in the UI for CLAUDE.md, .cursorrules, copilot-instructions.md, GEMINI.md, AGENTS.md, and .agents/rules/rules.md. Synchronize files automatically inside local project directories via MCP.
+                </p>
+                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
+                  <button onClick={() => setActiveSection("export-rules")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                    Rules Exporting & Sync Guide →
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: 14, fontWeight: 600, color: "var(--text)" }}>👥 Team Governance & Security</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Leverage Organization settings to govern billing seats, isolate sub-teams, and restrict scoped memories to specific project workspace keys. Locker enforces a strict security protocol, ephemeral V8 Workers sandboxing, and cryptographically hashed tokens.
+                </p>
+                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
+                  <button onClick={() => setActiveSection("team-collaboration")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                    Team Collaboration Guide →
+                  </button>
+                  <span style={{ color: "var(--border)" }}>|</span>
+                  <button onClick={() => setActiveSection("security-privacy")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                    Security Architecture & Pillars →
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Core Security Model</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+              All database items are encrypted using AES-256-GCM. Relational queries, D1 logs, and semantic vector database indices are fully anonymized. Read/write capabilities are regulated via cryptographically signed API token scopes, allowing developers to safely hook up external clients such as Claude, ChatGPT, Cursor, and Gemini.
+            </p>
           </div>
         );
       case "connection-auth":
