@@ -604,9 +604,13 @@ const STACK_PRESETS = [
     search: "None",
     vector: "Cloudflare Vectorize",
     componentLibrary: "shadcn/ui",
+    icon: "cloudflare",
+    description: "Ultra-fast global deployments at the edge with Cloudflare Workers/Pages.",
+    badges: ["Edge", "D1 + R2", "KV Cache"],
+    themeColor: "#F38020"
   },
   {
-    name: "Next.js + Supabase",
+    name: "Vercel Modern Stack",
     language: "TypeScript",
     frontend: "Next.js",
     hosting: "Vercel",
@@ -619,9 +623,89 @@ const STACK_PRESETS = [
     search: "None",
     vector: "Supabase Vector",
     componentLibrary: "shadcn/ui",
+    icon: "vercel",
+    description: "Industry-standard serverless React application with Supabase integration.",
+    badges: ["Serverless", "Next.js", "Supabase"],
+    themeColor: "#E2E2E2"
   },
   {
-    name: "T3 Stack",
+    name: "AWS Serverless Stack",
+    language: "TypeScript",
+    frontend: "Next.js",
+    hosting: "AWS Lambda",
+    database: "PostgreSQL",
+    orm: "Prisma",
+    auth: "Clerk",
+    styling: "Tailwind CSS",
+    stateCache: "Zustand",
+    storage: "AWS S3",
+    search: "None",
+    vector: "Pinecone",
+    componentLibrary: "shadcn/ui",
+    icon: "aws",
+    description: "Enterprise scale serverless infrastructure built on AWS Lambda & S3.",
+    badges: ["Lambda", "PostgreSQL", "S3 Storage"],
+    themeColor: "#FF9900"
+  },
+  {
+    name: "Google Cloud Run Stack",
+    language: "Python",
+    frontend: "FastAPI",
+    hosting: "Google Cloud Run",
+    database: "Google Cloud SQL",
+    orm: "SQLAlchemy",
+    auth: "Firebase Auth",
+    styling: "Jinja2 + Tailwind",
+    stateCache: "Redis Cache",
+    storage: "Google Cloud Storage",
+    search: "None",
+    vector: "Qdrant",
+    componentLibrary: "None",
+    icon: "gcp",
+    description: "Containerized Python API with rapid autoscaling on GCP Cloud Run.",
+    badges: ["FastAPI", "Cloud Run", "GCP SQL"],
+    themeColor: "#34A853"
+  },
+  {
+    name: "Azure Enterprise Stack",
+    language: "C#",
+    frontend: "ASP.NET Core",
+    hosting: "Azure App Service",
+    database: "Azure SQL Database",
+    orm: "Entity Framework Core",
+    auth: "Microsoft Entra ID",
+    styling: "Tailwind CSS",
+    stateCache: "Redis Cache",
+    storage: "Azure Blob Storage",
+    search: "None",
+    vector: "None",
+    componentLibrary: "MUI (Material UI)",
+    icon: "azure",
+    description: "Enterprise-grade C# App with EF Core, Azure SQL, and Entra ID.",
+    badges: ["ASP.NET", "EF Core", "Azure SQL"],
+    themeColor: "#0078D4"
+  },
+  {
+    name: "Netlify Jamstack",
+    language: "TypeScript",
+    frontend: "Astro",
+    hosting: "Netlify",
+    database: "Neon (Postgres)",
+    orm: "Drizzle ORM",
+    auth: "Clerk",
+    styling: "Tailwind CSS",
+    stateCache: "React Context",
+    storage: "Vercel Blob",
+    search: "Fuse.js",
+    vector: "None",
+    componentLibrary: "Radix UI",
+    icon: "netlify",
+    description: "High-performance static-first website generated with Astro.",
+    badges: ["Astro", "Netlify Edge", "Fuse.js"],
+    themeColor: "#00AD9F"
+  },
+  {
+    name: "T3 Stack (Vercel)",
     language: "TypeScript",
     frontend: "Next.js",
     hosting: "Vercel",
@@ -634,9 +718,13 @@ const STACK_PRESETS = [
     search: "None",
     vector: "Pinecone",
     componentLibrary: "shadcn/ui",
+    icon: "t3",
+    description: "Type-safe Next.js setup focusing on fullstack simplicity.",
+    badges: ["tRPC-Ready", "Prisma", "Auth.js"],
+    themeColor: "#5E1DAD"
   },
   {
-    name: "MERN Stack",
+    name: "MERN Stack (Legacy)",
     language: "JavaScript",
     frontend: "React / TanStack",
     hosting: "Render",
@@ -646,40 +734,101 @@ const STACK_PRESETS = [
     styling: "CSS Modules",
     stateCache: "Redux Toolkit",
     storage: "AWS S3",
-    search: "MongoDB Atlas Search",
+    search: "None",
     vector: "None",
     componentLibrary: "None",
-  },
-  {
-    name: "FastAPI + React",
-    language: "Python",
-    frontend: "React / TanStack",
-    hosting: "Fly.io",
-    database: "PostgreSQL",
-    orm: "SQLAlchemy",
-    auth: "Custom",
-    styling: "Tailwind CSS",
-    stateCache: "Zustand",
-    storage: "AWS S3",
-    search: "None",
-    vector: "Qdrant",
-    componentLibrary: "None",
+    icon: "mern",
+    description: "Classic Mongo, Express, React, Node fullstack stack.",
+    badges: ["MongoDB", "Express", "Redux"],
+    themeColor: "#4DB33D"
   }
 ];
 
 const FIELD_OPTIONS: Record<string, string[]> = {
   language: ["TypeScript", "JavaScript", "Python", "Go", "Rust", "Ruby", "Java", "C#", "C++", "PHP"],
   frontend: ["React / TanStack", "Next.js", "Remix", "Vue / Nuxt", "Svelte / SvelteKit", "Astro", "SolidJS", "Angular", "Node.js / Express", "HTML/JS"],
-  hosting: ["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS"],
-  database: ["Cloudflare D1", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "Redis", "Supabase (Postgres)", "Neon (Postgres)", "PlanetScale", "Prisma Postgres"],
-  orm: ["Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "SQL (Raw)", "None"],
-  auth: ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Kinde", "Lucia", "Custom", "None"],
+  hosting: ["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Google Cloud Run", "Azure App Service", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS"],
+  database: ["Cloudflare D1", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "Redis", "Supabase (Postgres)", "Neon (Postgres)", "PlanetScale", "Prisma Postgres", "Azure SQL Database", "Google Cloud SQL"],
+  orm: ["Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "Entity Framework Core", "SQL (Raw)", "None"],
+  auth: ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Microsoft Entra ID", "Kinde", "Lucia", "Custom", "None"],
   styling: ["Vanilla CSS", "Tailwind CSS", "Bootstrap", "Material Design", "CSS Modules", "Styled Components", "Sass/SCSS", "Tailwind + CSS Modules"],
-  stateCache: ["TanStack Store", "Cloudflare KV", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "None"],
-  storage: ["Cloudflare R2", "AWS S3", "Supabase Storage", "Vercel Blob", "Firebase Storage", "Local Filesystem", "None"],
+  stateCache: ["TanStack Store", "Cloudflare KV", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "Redis Cache", "None"],
+  storage: ["Cloudflare R2", "AWS S3", "Supabase Storage", "Vercel Blob", "Firebase Storage", "Azure Blob Storage", "Google Cloud Storage", "Local Filesystem", "None"],
   search: ["Fuse.js", "Algolia", "Meilisearch", "Elasticsearch", "None"],
   vector: ["Cloudflare Vectorize", "Pinecone", "pgvector", "Supabase Vector", "Qdrant", "None"],
   componentLibrary: ["shadcn/ui", "MUI (Material UI)", "Chakra UI", "Radix UI", "DaisyUI", "PrimeReact", "None"],
+};
+
+const renderPresetIcon = (icon: string) => {
+  switch (icon) {
+    case "cloudflare":
+      return (
+        <svg viewBox="0 0 24 24" width="20" height="20" strokeLinecap="round" strokeLinejoin="round" style={{ fill: "currentColor" }}>
+          <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+        </svg>
+      );
+    case "vercel":
+      return (
+        <svg viewBox="0 0 24 24" width="20" height="20" style={{ fill: "currentColor" }}>
+          <polygon points="12,2 22,22 2,22" />
+        </svg>
+      );
+    case "aws":
+      return (
+        <svg viewBox="0 0 24 24" width="20" height="20" style={{ fill: "currentColor" }}>
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5V13c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v4.5zm-1.5-7c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
+        </svg>
+      );
+    case "gcp":
+      return (
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path d="M12,2 L21,7 L21,17 L12,22 L3,17 L3,7 Z" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <circle cx="12" cy="12" r="4.5" fill="currentColor" />
+          <line x1="12" y1="2" x2="12" y2="7.5" stroke="currentColor" strokeWidth="2" />
+          <line x1="3" y1="7" x2="8" y2="10" stroke="currentColor" strokeWidth="2" />
+          <line x1="21" y1="7" x2="16" y2="10" stroke="currentColor" strokeWidth="2" />
+        </svg>
+      );
+    case "azure":
+      return (
+        <svg viewBox="0 0 24 24" width="20" height="20" style={{ fill: "currentColor" }}>
+          <path d="M5,15 C5,9 9,6 14,8 C17,5 21,8 21,11 C23,11 25,13 25,15 C25,18 22,20 19,20 L5,20 Z" />
+          <path d="M2,16 C2,12 5,9 9,11 C12,8 16,10 16,13" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.8" />
+        </svg>
+      );
+    case "netlify":
+      return (
+        <svg viewBox="0 0 24 24" width="20" height="20" style={{ fill: "currentColor" }}>
+          <polygon points="12,2 20,9 12,16 4,9" />
+          <polygon points="12,10 17.5,14.5 12,19 6.5,14.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      );
+    case "t3":
+      return (
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <ellipse cx="12" cy="12" rx="9" ry="3.5" fill="none" stroke="currentColor" strokeWidth="1.5" transform="rotate(30, 12, 12)" />
+          <ellipse cx="12" cy="12" rx="9" ry="3.5" fill="none" stroke="currentColor" strokeWidth="1.5" transform="rotate(90, 12, 12)" />
+          <ellipse cx="12" cy="12" rx="9" ry="3.5" fill="none" stroke="currentColor" strokeWidth="1.5" transform="rotate(150, 12, 12)" />
+          <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+        </svg>
+      );
+    case "mern":
+      return (
+        <svg viewBox="0 0 24 24" width="20" height="20" style={{ fill: "currentColor" }}>
+          <path d="M12,2 C12,2 5,7 5,13 C5,18 8,21 12,21 C16,21 19,18 19,13 C19,7 12,2 12,2 Z" />
+          <path d="M12,2 L12,21" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" />
+        </svg>
+      );
+    default:
+      return (
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="2" y="2" width="20" height="8" rx="2" />
+          <rect x="2" y="14" width="20" height="8" rx="2" />
+          <line x1="6" y1="6" x2="6.01" y2="6" strokeWidth="3" strokeLinecap="round" />
+          <line x1="6" y1="18" x2="6.01" y2="18" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      );
+  }
 };
 
 
@@ -1007,8 +1156,69 @@ function TemplatesPage() {
     }
   };
 
-  const getDynamicFieldOptions = (field: string, lang: string): string[] => {
+  const handleLanguageChange = (newLang: string) => {
+    setStackLanguage(newLang);
+    
+    // 1. Reconcile frontend framework first, as other fields depend on it
+    let targetFrontend = stackFrontend;
+    const validFrontendOptions = getDynamicFieldOptions("frontend", newLang, "");
+    const frontendLower = stackFrontend.toLowerCase();
+    const isFrontendValid = validFrontendOptions.some(opt => opt.toLowerCase() === frontendLower);
+    
+    if (!isFrontendValid && validFrontendOptions.length > 0) {
+      const noneOption = validFrontendOptions.find(opt => opt.toLowerCase() === "none");
+      targetFrontend = noneOption || validFrontendOptions[0];
+      setStackFrontend(targetFrontend);
+    }
+
+    // 2. Reconcile all other dependent fields based on the new language and the (potentially updated) framework
+    const fieldsToVerify = [
+      { name: "orm", value: stackOrm, setter: setStackOrm },
+      { name: "auth", value: stackAuth, setter: setStackAuth },
+      { name: "statecache", value: stackStateCache, setter: setStackStateCache },
+      { name: "styling", value: stackStyling, setter: setStackStyling },
+      { name: "componentLibrary", value: stackComponentLibrary, setter: setStackComponentLibrary },
+      { name: "hosting", value: stackHosting, setter: setStackHosting }
+    ];
+
+    fieldsToVerify.forEach(({ name, value, setter }) => {
+      const validOptions = getDynamicFieldOptions(name, newLang, targetFrontend);
+      const valueLower = value.toLowerCase();
+      const isValid = validOptions.some(opt => opt.toLowerCase() === valueLower);
+      
+      if (!isValid && validOptions.length > 0) {
+        const noneOption = validOptions.find(opt => opt.toLowerCase() === "none");
+        setter(noneOption || validOptions[0]);
+      }
+    });
+  };
+
+  const handleFrontendChange = (newFrontend: string) => {
+    setStackFrontend(newFrontend);
+    
+    // Check and reset ORM, Auth, Styling, and Component Library based on the new framework
+    const fieldsToVerify = [
+      { name: "orm", value: stackOrm, setter: setStackOrm },
+      { name: "auth", value: stackAuth, setter: setStackAuth },
+      { name: "styling", value: stackStyling, setter: setStackStyling },
+      { name: "componentLibrary", value: stackComponentLibrary, setter: setStackComponentLibrary }
+    ];
+
+    fieldsToVerify.forEach(({ name, value, setter }) => {
+      const validOptions = getDynamicFieldOptions(name, stackLanguage, newFrontend);
+      const valueLower = value.toLowerCase();
+      const isValid = validOptions.some(opt => opt.toLowerCase() === valueLower);
+      
+      if (!isValid && validOptions.length > 0) {
+        const noneOption = validOptions.find(opt => opt.toLowerCase() === "none");
+        setter(noneOption || validOptions[0]);
+      }
+    });
+  };
+
+  const getDynamicFieldOptions = (field: string, lang: string, framework: string): string[] => {
     const langLower = lang.toLowerCase();
+    const frameLower = framework.toLowerCase();
     
     if (field === "frontend") {
       if (langLower === "typescript" || langLower === "javascript") {
@@ -1038,11 +1248,37 @@ function TemplatesPage() {
       return ["React / TanStack", "Next.js", "Django", "FastAPI", "Gin", "Laravel", "Ruby on Rails", "Spring Boot", "ASP.NET Core", "Actix-web", "None"];
     }
 
+    if (field === "database") {
+      if (langLower === "c#") {
+        return ["Azure SQL Database", "PostgreSQL", "MySQL", "SQLite", "None"];
+      }
+      if (langLower === "python") {
+        return ["Google Cloud SQL", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "None"];
+      }
+      return FIELD_OPTIONS.database || [];
+    }
+
+    if (field === "storage") {
+      if (langLower === "c#") {
+        return ["Azure Blob Storage", "Local Filesystem", "None"];
+      }
+      if (langLower === "python") {
+        return ["Google Cloud Storage", "AWS S3", "Local Filesystem", "None"];
+      }
+      return FIELD_OPTIONS.storage || [];
+    }
+
     if (field === "orm") {
       if (langLower === "typescript" || langLower === "javascript") {
+        if (frameLower.includes("next.js") || frameLower.includes("remix")) {
+          return ["Drizzle ORM", "Prisma", "Kysely", "SQL (Raw)", "None"];
+        }
         return ["Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "SQL (Raw)", "None"];
       }
       if (langLower === "python") {
+        if (frameLower.includes("django")) {
+          return ["Django ORM", "SQLAlchemy", "SQL (Raw)", "None"];
+        }
         return ["SQLAlchemy", "SQLModel", "Django ORM", "Tortoise ORM", "PyMongo", "SQL (Raw)", "None"];
       }
       if (langLower === "go") {
@@ -1061,6 +1297,9 @@ function TemplatesPage() {
         return ["Entity Framework Core", "None"];
       }
       if (langLower === "php") {
+        if (frameLower.includes("laravel")) {
+          return ["Eloquent", "Doctrine", "None"];
+        }
         return ["Eloquent", "Doctrine", "None"];
       }
       return ["Drizzle ORM", "SQLAlchemy", "GORM", "Active Record", "Entity Framework Core", "SQL (Raw)", "None"];
@@ -1068,10 +1307,30 @@ function TemplatesPage() {
 
     if (field === "auth") {
       if (langLower === "typescript" || langLower === "javascript") {
+        if (frameLower.includes("next.js")) {
+          return ["Auth.js (NextAuth)", "Clerk", "Better Auth", "Supabase Auth", "Kinde", "None"];
+        }
+        if (frameLower.includes("remix")) {
+          return ["Better Auth", "Clerk", "Supabase Auth", "Lucia", "None"];
+        }
         return ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Kinde", "Lucia", "Custom", "None"];
       }
       if (langLower === "python") {
-        return ["FastAPI Users", "Django Auth", "Clerk", "Supabase Auth", "Firebase Auth", "Auth0", "Custom", "None"];
+        if (frameLower.includes("django")) {
+          return ["Django Auth", "Clerk", "Supabase Auth", "Custom", "None"];
+        }
+        if (frameLower.includes("fastapi")) {
+          return ["FastAPI Users", "Clerk", "Supabase Auth", "Firebase Auth", "Custom", "None"];
+        }
+        return ["Clerk", "Supabase Auth", "Firebase Auth", "Auth0", "Custom", "None"];
+      }
+      if (langLower === "php") {
+        if (frameLower.includes("laravel")) {
+          return ["Laravel Breeze / Jetstream", "Clerk", "Supabase Auth", "Custom", "None"];
+        }
+      }
+      if (langLower === "c#") {
+        return ["Microsoft Entra ID", "Custom", "None"];
       }
       if (langLower === "go" || langLower === "rust") {
         return ["Clerk", "Auth0", "Supabase Auth", "Firebase Auth", "Custom", "None"];
@@ -1088,9 +1347,92 @@ function TemplatesPage() {
 
     if (field === "hosting") {
       if (langLower === "typescript" || langLower === "javascript") {
-        return ["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS"];
+        return ["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS", "None"];
       }
-      return ["AWS Lambda", "Google Cloud Run", "Fly.io", "Cloudflare Edge", "Vercel", "Heroku", "Railway", "Render", "Self-Hosted VPS"];
+      if (langLower === "c#") {
+        return ["Azure App Service", "Self-Hosted VPS", "None"];
+      }
+      return ["AWS Lambda", "Google Cloud Run", "Azure App Service", "Fly.io", "Cloudflare Edge", "Vercel", "Netlify", "Heroku", "Railway", "Render", "Self-Hosted VPS", "None"];
+    }
+
+    if (field === "styling") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        if (frameLower.includes("angular")) {
+          return ["Sass/SCSS", "Tailwind CSS", "Vanilla CSS", "None"];
+        }
+        return ["Vanilla CSS", "Tailwind CSS", "Bootstrap", "Material Design", "CSS Modules", "Styled Components", "Sass/SCSS", "Tailwind + CSS Modules"];
+      }
+      if (langLower === "python") {
+        if (frameLower.includes("django")) {
+          return ["Django Templates + Tailwind", "Django Templates + Bootstrap", "Vanilla CSS", "None"];
+        }
+        if (frameLower.includes("fastapi") || frameLower.includes("flask") || frameLower.includes("mkdocs")) {
+          return ["Jinja2 + Tailwind", "Jinja2 + Bootstrap", "Vanilla CSS", "None"];
+        }
+        if (frameLower.includes("streamlit")) {
+          return ["Streamlit Theme", "None"];
+        }
+        return ["Jinja2 + Tailwind", "Jinja2 + Bootstrap", "Vanilla CSS", "None"];
+      }
+      if (langLower === "php") {
+        if (frameLower.includes("laravel")) {
+          return ["Blade + Tailwind", "Blade + Bootstrap", "Vanilla CSS", "None"];
+        }
+        return ["Blade + Tailwind", "Twig + Tailwind", "Blade + Bootstrap", "Vanilla CSS", "None"];
+      }
+      if (langLower === "go") {
+        return ["Go HTML Templates + Tailwind", "Templ + Tailwind", "Go HTML Templates + Bootstrap", "Vanilla CSS", "None"];
+      }
+      if (langLower === "ruby") {
+        return ["ERB + Tailwind", "ERB + Bootstrap", "Vanilla CSS", "None"];
+      }
+      return ["Tailwind CSS", "Bootstrap", "Vanilla CSS", "None"];
+    }
+
+    if (field === "componentLibrary") {
+      if (langLower === "typescript" || langLower === "javascript") {
+        if (frameLower.includes("angular")) {
+          return ["Angular Material", "PrimeNG", "NG-ZORRO", "None"];
+        }
+        if (frameLower.includes("vue / nuxt")) {
+          return ["Vuetify", "PrimeVue", "Element Plus", "DaisyUI", "None"];
+        }
+        if (frameLower.includes("svelte")) {
+          return ["Svelte UX", "Flowbite Svelte", "DaisyUI", "None"];
+        }
+        return ["shadcn/ui", "MUI (Material UI)", "Chakra UI", "Radix UI", "DaisyUI", "PrimeReact", "None"];
+      }
+      if (langLower === "python") {
+        if (frameLower.includes("django")) {
+          return ["Django Cotton (Reusable Templates)", "Django Unicorn (Reactive)", "None"];
+        }
+        if (frameLower.includes("dash")) {
+          return ["Dash Mantine Components", "Dash Bootstrap Components", "None"];
+        }
+        if (frameLower.includes("reflex")) {
+          return ["Reflex UI (Radix/Chakra)", "None"];
+        }
+        if (frameLower.includes("flet")) {
+          return ["Flet (Flutter UI)", "None"];
+        }
+        return ["Django Cotton (Reusable Templates)", "Django Unicorn (Reactive)", "None"];
+      }
+      if (langLower === "php") {
+        if (frameLower.includes("laravel")) {
+          return ["Laravel Livewire", "Blade Components", "None"];
+        }
+        return ["Laravel Livewire", "Blade Components", "Twig Components", "None"];
+      }
+      if (langLower === "go") {
+        return ["Templ Components", "Hugo Components", "None"];
+      }
+      if (langLower === "rust") {
+        return ["Leptos Components", "Yew Components", "None"];
+      }
+      if (langLower === "ruby") {
+        return ["ViewComponent (Rails)", "Phlex", "None"];
+      }
+      return ["None"];
     }
 
     return FIELD_OPTIONS[field] || [];
@@ -1858,50 +2200,144 @@ function TemplatesPage() {
                 {currentStep === 2 && formCategory === "stack" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     {/* Stack Quick Load Presets */}
-                    <div style={{ background: "rgba(168,85,247,0.03)", border: "1px solid rgba(168,85,247,0.12)", borderRadius: "var(--radius)", padding: 14 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Quick Load Stack Presets</span>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {STACK_PRESETS.map((preset) => (
-                          <button
-                            key={preset.name}
-                            type="button"
-                            onClick={() => {
-                              setStackLanguage(preset.language);
-                              setStackFrontend(preset.frontend);
-                              setStackHosting(preset.hosting);
-                              setStackDatabase(preset.database);
-                              setStackOrm(preset.orm);
-                              setStackAuth(preset.auth);
-                              setStackStyling(preset.styling);
-                              setStackSearch(preset.search);
-                              setStackVector(preset.vector || "None");
-                              setStackStorage(preset.storage);
-                              setStackSearch(preset.search);
-                              setStackComponentLibrary(preset.componentLibrary || "None");
-                            }}
-                            style={{
-                              padding: "6px 12px",
-                              background: "var(--tag-bg)",
-                              border: "1px solid var(--tag-border)",
-                              color: "var(--text)",
-                              fontSize: 11.5,
-                              fontWeight: 600,
-                              borderRadius: 6,
-                              cursor: "pointer",
-                              transition: "all 0.15s",
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.borderColor = "var(--accent)";
-                              e.currentTarget.style.background = "var(--accent-dim)";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.borderColor = "var(--tag-border)";
-                              e.currentTarget.style.background = "var(--tag-bg)";
-                            }}
-                          >
-                            {preset.name}
-                          </button>
-                        ))}
+                    <div style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "16px", padding: "20px" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 14, letterSpacing: "0.05em" }}>Quick Load Stack Presets</span>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+                        {STACK_PRESETS.map((preset) => {
+                          const isCurrentlySelected = 
+                            stackLanguage === preset.language &&
+                            stackFrontend === preset.frontend &&
+                            stackHosting === preset.hosting &&
+                            stackDatabase === preset.database &&
+                            stackOrm === preset.orm &&
+                            stackAuth === preset.auth &&
+                            stackStyling === preset.styling &&
+                            stackStorage === preset.storage &&
+                            stackComponentLibrary === preset.componentLibrary;
+                            
+                          return (
+                            <div
+                              key={preset.name}
+                              onClick={() => {
+                                setStackLanguage(preset.language);
+                                setStackFrontend(preset.frontend);
+                                setStackHosting(preset.hosting);
+                                setStackDatabase(preset.database);
+                                setStackOrm(preset.orm);
+                                setStackAuth(preset.auth);
+                                setStackStyling(preset.styling);
+                                setStackSearch(preset.search);
+                                setStackVector(preset.vector || "None");
+                                setStackStorage(preset.storage);
+                                setStackStateCache(preset.stateCache || "None");
+                                setStackComponentLibrary(preset.componentLibrary || "None");
+                              }}
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                padding: "16px",
+                                background: isCurrentlySelected ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.015)",
+                                border: isCurrentlySelected ? `2px solid ${preset.themeColor}` : "1px solid rgba(255,255,255,0.08)",
+                                borderRadius: "12px",
+                                cursor: "pointer",
+                                transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+                                position: "relative",
+                                overflow: "hidden",
+                                boxShadow: isCurrentlySelected ? `0 0 20px ${preset.themeColor}15` : "none"
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = "translateY(-4px)";
+                                e.currentTarget.style.borderColor = preset.themeColor;
+                                e.currentTarget.style.boxShadow = `0 8px 24px rgba(0,0,0,0.2), 0 0 15px ${preset.themeColor}20`;
+                                e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = "none";
+                                e.currentTarget.style.borderColor = isCurrentlySelected ? preset.themeColor : "rgba(255,255,255,0.08)";
+                                e.currentTarget.style.boxShadow = isCurrentlySelected ? `0 0 20px ${preset.themeColor}15` : "none";
+                                e.currentTarget.style.background = isCurrentlySelected ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.015)";
+                              }}
+                            >
+                              {/* Background Glow */}
+                              <div style={{
+                                position: "absolute",
+                                top: "-30px",
+                                right: "-30px",
+                                width: "80px",
+                                height: "80px",
+                                borderRadius: "50%",
+                                background: preset.themeColor,
+                                opacity: 0.08,
+                                filter: "blur(20px)",
+                                pointerEvents: "none"
+                              }} />
+                              
+                              {/* Header */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                                <div style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  width: "36px",
+                                  height: "36px",
+                                  borderRadius: "10px",
+                                  background: `linear-gradient(135deg, ${preset.themeColor}1a, ${preset.themeColor}33)`,
+                                  border: `1px solid ${preset.themeColor}4d`,
+                                  color: preset.themeColor
+                                }}>
+                                  {renderPresetIcon(preset.icon)}
+                                </div>
+                                <span style={{
+                                  fontSize: "9px",
+                                  fontWeight: 700,
+                                  textTransform: "uppercase",
+                                  padding: "2px 8px",
+                                  borderRadius: "10px",
+                                  background: "rgba(255,255,255,0.06)",
+                                  color: "var(--text-muted)",
+                                  border: "1px solid rgba(255,255,255,0.05)"
+                                }}>
+                                  {preset.language}
+                                </span>
+                              </div>
+                              
+                              {/* Title & Description */}
+                              <div style={{ marginBottom: 12 }}>
+                                <div style={{ fontSize: "13px", fontWeight: 650, color: "var(--text)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                                  {preset.name}
+                                  {isCurrentlySelected && (
+                                    <span style={{
+                                      width: "6px",
+                                      height: "6px",
+                                      borderRadius: "50%",
+                                      background: "var(--accent)"
+                                    }} />
+                                  )}
+                                </div>
+                                <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: "1.4" }}>
+                                  {preset.description}
+                                </div>
+                              </div>
+                              
+                              {/* Badges/Highlights */}
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: "auto" }}>
+                                {preset.badges.map(b => (
+                                  <span key={b} style={{
+                                    fontSize: "9.5px",
+                                    fontWeight: 500,
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                    background: "rgba(255,255,255,0.03)",
+                                    border: "1px solid rgba(255,255,255,0.04)",
+                                    color: "rgba(255,255,255,0.6)"
+                                  }}>
+                                    {b}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -1924,12 +2360,12 @@ function TemplatesPage() {
                           </svg>
                           <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Frontend & Client Stack</span>
                         </div>
-                        <Combobox label="Language" value={stackLanguage} onChange={setStackLanguage} options={FIELD_OPTIONS.language} placeholder="e.g. TypeScript" />
-                        <Combobox label="Frontend Framework" value={stackFrontend} onChange={setStackFrontend} options={getDynamicFieldOptions("frontend", stackLanguage)} placeholder="e.g. Next.js" />
-                        <Combobox label="Styling" value={stackStyling} onChange={setStackStyling} options={FIELD_OPTIONS.styling} placeholder="e.g. Vanilla CSS" />
-                        <Combobox label="Component Library" value={stackComponentLibrary} onChange={setStackComponentLibrary} options={FIELD_OPTIONS.componentLibrary} placeholder="e.g. shadcn/ui" />
-                        <Combobox label="Auth" value={stackAuth} onChange={setStackAuth} options={getDynamicFieldOptions("auth", stackLanguage)} placeholder="e.g. Better Auth" />
-                        <Combobox label="State / Client Cache" value={stackStateCache} onChange={setStackStateCache} options={getDynamicFieldOptions("statecache", stackLanguage)} placeholder="e.g. Zustand" />
+                        <Combobox label="Language" value={stackLanguage} onChange={handleLanguageChange} options={FIELD_OPTIONS.language} placeholder="e.g. TypeScript" />
+                        <Combobox label="Frontend Framework" value={stackFrontend} onChange={handleFrontendChange} options={getDynamicFieldOptions("frontend", stackLanguage, "")} placeholder="e.g. Next.js" />
+                        <Combobox label="Styling / Templating" value={stackStyling} onChange={setStackStyling} options={getDynamicFieldOptions("styling", stackLanguage, stackFrontend)} placeholder="e.g. Tailwind CSS" />
+                        <Combobox label="Component Library" value={stackComponentLibrary} onChange={setStackComponentLibrary} options={getDynamicFieldOptions("componentLibrary", stackLanguage, stackFrontend)} placeholder="e.g. shadcn/ui" />
+                        <Combobox label="Auth" value={stackAuth} onChange={setStackAuth} options={getDynamicFieldOptions("auth", stackLanguage, stackFrontend)} placeholder="e.g. Better Auth" />
+                        <Combobox label="State / Client Cache" value={stackStateCache} onChange={setStackStateCache} options={getDynamicFieldOptions("statecache", stackLanguage, stackFrontend)} placeholder="e.g. Zustand" />
                         <Combobox label="Full-Text Search (Lexical)" value={stackSearch} onChange={setStackSearch} options={FIELD_OPTIONS.search} placeholder="e.g. Fuse.js" />
                       </div>
 
@@ -1951,9 +2387,9 @@ function TemplatesPage() {
                           </svg>
                           <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Backend & Infrastructure</span>
                         </div>
-                        <Combobox label="Hosting Runtime" value={stackHosting} onChange={setStackHosting} options={getDynamicFieldOptions("hosting", stackLanguage)} placeholder="e.g. Cloudflare Pages" />
+                        <Combobox label="Hosting Runtime" value={stackHosting} onChange={setStackHosting} options={getDynamicFieldOptions("hosting", stackLanguage, stackFrontend)} placeholder="e.g. Cloudflare Pages" />
                         <Combobox label="Database" value={stackDatabase} onChange={setStackDatabase} options={FIELD_OPTIONS.database} placeholder="e.g. Cloudflare D1" />
-                        <Combobox label="ORM / DB Client" value={stackOrm} onChange={setStackOrm} options={getDynamicFieldOptions("orm", stackLanguage)} placeholder="e.g. Drizzle ORM" />
+                        <Combobox label="ORM / DB Client" value={stackOrm} onChange={setStackOrm} options={getDynamicFieldOptions("orm", stackLanguage, stackFrontend)} placeholder="e.g. Drizzle ORM" />
                         <Combobox label="Storage (Buckets)" value={stackStorage} onChange={setStackStorage} options={FIELD_OPTIONS.storage} placeholder="e.g. Cloudflare R2" />
                         <Combobox label="Vector Database (Semantic)" value={stackVector} onChange={setStackVector} options={FIELD_OPTIONS.vector} placeholder="e.g. Cloudflare Vectorize" />
                       </div>
