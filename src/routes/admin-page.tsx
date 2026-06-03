@@ -32,6 +32,8 @@ import {
   rebuildVectorizeIndex,
   getOrgAuditLogs,
   exportAuditLogsCsv,
+  getSiteAuditLogs,
+  exportSiteAuditLogsCsv,
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
 import { MyUsageSection, MyBillingSection, OrgBillingSection, useBillingData } from "~/routes/billing";
@@ -63,27 +65,188 @@ const modalBox: React.CSSProperties = {
   borderRadius: "12px", width: "100%", maxWidth: "450px",
   boxShadow: "0 20px 25px -5px rgba(0,0,0,0.3)", padding: "24px",
 };
+// ── Audit action metadata ───────────────────────────────────────────────────────
+const ACTION_META: Record<string, { label: string; icon: string; color: string; bg: string }> = {
+  recall_context:           { label: "Recall Context",          icon: "🔍", color: "#60a5fa", bg: "rgba(96,165,250,0.1)" },
+  search_memories:          { label: "Search Memories",         icon: "🔎", color: "#818cf8", bg: "rgba(129,140,248,0.1)" },
+  get_memory_summary:       { label: "Memory Summary",          icon: "📊", color: "#818cf8", bg: "rgba(129,140,248,0.1)" },
+  commit_memory:            { label: "Commit Memory",           icon: "✍️",  color: "#34d399", bg: "rgba(52,211,153,0.1)" },
+  update_memory:            { label: "Update Memory",           icon: "📝", color: "#fbbf24", bg: "rgba(251,191,36,0.1)" },
+  delete_memory:            { label: "Delete Memory",           icon: "🗑️", color: "#f87171", bg: "rgba(248,113,113,0.1)" },
+  import_memories:          { label: "Import Memories",         icon: "📥", color: "#a78bfa", bg: "rgba(167,139,250,0.1)" },
+  revert_version:           { label: "Revert Version",          icon: "↩️", color: "#fbbf24", bg: "rgba(251,191,36,0.1)" },
+  approve_recommendation:   { label: "Approve Recommendation",  icon: "✅", color: "#34d399", bg: "rgba(52,211,153,0.1)" },
+  reject_recommendation:    { label: "Reject Recommendation",   icon: "❌", color: "#f87171", bg: "rgba(248,113,113,0.1)" },
+  sync_workspace_agent_configs: { label: "Export Agent Config", icon: "📤", color: "#c084fc", bg: "rgba(192,132,252,0.1)" },
+  create_template:          { label: "Create Template",         icon: "🧩", color: "#34d399", bg: "rgba(52,211,153,0.1)" },
+  update_template:          { label: "Update Template",         icon: "🔧", color: "#fbbf24", bg: "rgba(251,191,36,0.1)" },
+  delete_template:          { label: "Delete Template",         icon: "🗑️", color: "#f87171", bg: "rgba(248,113,113,0.1)" },
+  list_accessible_scopes:   { label: "List Scopes",             icon: "📎", color: "#94a3b8", bg: "rgba(148,163,184,0.1)" },
+};
+
+function getActionMeta(action: string) {
+  return ACTION_META[action] ?? { label: action, icon: "⚙️", color: "var(--text-muted)", bg: "var(--surface2)" };
+}
+
+function MetadataDisplay({ metaStr }: { metaStr: string | null }) {
+  if (!metaStr) return null;
+  let meta: Record<string, unknown>;
+  try { meta = JSON.parse(metaStr); } catch { return null; }
+  if (!meta || Object.keys(meta).length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: 6 }}>
+      {Object.entries(meta).map(([k, v]) => (
+        <span key={k} style={{
+          fontSize: 10, padding: "2px 7px", borderRadius: 12,
+          background: "var(--surface)", border: "1px solid var(--border)",
+          color: "var(--text-muted)", fontFamily: "monospace",
+        }}>
+          <span style={{ color: "var(--text)", fontWeight: 600 }}>{k}</span>: {String(v ?? "").slice(0, 60)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function AuditLogRow({ log, showOrg = false }: { log: any; showOrg?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const meta = getActionMeta(log.action);
+  return (
+    <div style={{
+      background: "var(--surface2)", border: "1px solid var(--border)",
+      borderRadius: 10, overflow: "hidden",
+      transition: "border-color 0.15s ease",
+    }}>
+      <div
+        onClick={() => setExpanded((p) => !p)}
+        style={{ padding: "12px 14px", cursor: "pointer", display: "flex", gap: 12, alignItems: "flex-start" }}
+      >
+        {/* Action badge */}
+        <div style={{
+          flexShrink: 0, display: "flex", alignItems: "center", gap: 5,
+          background: meta.bg, color: meta.color,
+          padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+          border: `1px solid ${meta.color}33`, whiteSpace: "nowrap",
+        }}>
+          <span style={{ fontSize: 12 }}>{meta.icon}</span>
+          {meta.label}
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* User + token */}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
+              {log.userName ?? "Unknown User"}
+            </span>
+            {log.userEmail && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{log.userEmail}</span>
+            )}
+            {log.tokenName && (
+              <span style={{
+                fontSize: 10, padding: "1px 6px", borderRadius: 8,
+                background: "rgba(168,85,247,0.1)", color: "var(--accent)",
+                border: "1px solid rgba(168,85,247,0.2)", fontWeight: 600,
+              }}>
+                🔑 {log.tokenName}
+              </span>
+            )}
+            {showOrg && log.orgName && (
+              <span style={{
+                fontSize: 10, padding: "1px 6px", borderRadius: 8,
+                background: "rgba(16,185,129,0.08)", color: "#34d399",
+                border: "1px solid rgba(16,185,129,0.2)", fontWeight: 600,
+              }}>
+                🏢 {log.orgName}
+              </span>
+            )}
+          </div>
+
+          {/* Memory snippet */}
+          {log.memorySnippet && (
+            <div style={{
+              fontSize: 11, color: "var(--text-muted)", fontStyle: "italic",
+              marginBottom: 4, borderLeft: "2px solid var(--border)", paddingLeft: 8,
+            }}>
+              {log.memorySnippet}
+            </div>
+          )}
+
+          {/* Parsed metadata chips */}
+          <MetadataDisplay metaStr={log.metadata} />
+        </div>
+
+        {/* Timestamp + expand hint */}
+        <div style={{ flexShrink: 0, textAlign: "right" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            {new Date(log.timestamp).toLocaleString()}
+          </div>
+          {log.ipAddress && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>IP: {log.ipAddress}</div>
+          )}
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{expanded ? "▲" : "▼"}</div>
+        </div>
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div style={{
+          borderTop: "1px solid var(--border)", padding: "10px 14px",
+          background: "var(--surface)", fontSize: 11, display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <span><span style={{ color: "var(--text-muted)" }}>User ID:</span> <code style={{ fontSize: 10 }}>{log.userId}</code></span>
+            {log.tokenId && <span><span style={{ color: "var(--text-muted)" }}>Token ID:</span> <code style={{ fontSize: 10 }}>{log.tokenId}</code></span>}
+            {log.memoryId && <span><span style={{ color: "var(--text-muted)" }}>Memory ID:</span> <code style={{ fontSize: 10 }}>{log.memoryId}</code></span>}
+            {log.orgId && <span><span style={{ color: "var(--text-muted)" }}>Org ID:</span> <code style={{ fontSize: 10 }}>{log.orgId}</code></span>}
+          </div>
+          {log.userAgent && (
+            <div style={{ color: "var(--text-muted)", wordBreak: "break-all" }}>UA: {log.userAgent}</div>
+          )}
+          {log.metadata && (
+            <pre style={{
+              margin: 0, fontSize: 10, background: "var(--surface2)",
+              border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px",
+              overflowX: "auto", color: "var(--text-muted)",
+            }}>{(() => { try { return JSON.stringify(JSON.parse(log.metadata), null, 2); } catch { return log.metadata; } })()}</pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ALL_ACTIONS = [
+  "recall_context", "search_memories", "get_memory_summary",
+  "commit_memory", "update_memory", "delete_memory",
+  "import_memories", "revert_version",
+  "approve_recommendation", "reject_recommendation",
+  "sync_workspace_agent_configs",
+  "create_template", "update_template", "delete_template",
+  "list_accessible_scopes",
+];
+
 function AuditLogsSection() {
-  const [limit, setLimit] = useState(50);
+  const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
   const [actionFilter, setActionFilter] = useState("");
-  const [userIdFilter, setUserIdFilter] = useState("");
+  const [userFilter, setUserFilter] = useState("");
   const [exporting, setExporting] = useState(false);
 
-  const { data: logs, isLoading } = useQuery({
-    queryKey: ["audit-logs", limit, offset, actionFilter, userIdFilter],
-    queryFn: () => getOrgAuditLogs({ data: { limit, offset, action: actionFilter || undefined, userId: userIdFilter || undefined } }),
+  const { data: logsData, isLoading, error } = useQuery({
+    queryKey: ["audit-logs", limit, offset, actionFilter, userFilter],
+    queryFn: () => getOrgAuditLogs({ data: { limit, offset, action: actionFilter || undefined, userId: userFilter || undefined } }),
   });
 
   const handleExportCsv = async () => {
     setExporting(true);
     try {
-      const result = await exportAuditLogsCsv({ data: { action: actionFilter || undefined, userId: userIdFilter || undefined } });
+      const result = await exportAuditLogsCsv({ data: { action: actionFilter || undefined, userId: userFilter || undefined } });
       const blob = new Blob([result.csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `audit-logs-${new Date().toISOString().split("T")[0]}.csv`;
+      a.download = `org-audit-logs-${new Date().toISOString().split("T")[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } finally {
@@ -91,117 +254,209 @@ function AuditLogsSection() {
     }
   };
 
-  const handleFilterChange = () => {
-    setOffset(0); // Reset to first page when filters change
-  };
-
   return (
-    <OrgAdminSection title="Audit Logs" description="Track all actions taken in your organization" icon="📋">
-      {isLoading ? (
-        <p>Loading audit logs...</p>
-      ) : (
-        <>
-          {/* Filters */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-            <select
-              value={actionFilter}
-              onChange={(e) => {
-                setActionFilter(e.target.value);
-                handleFilterChange();
-              }}
-              style={{
-                padding: "6px 10px",
-                fontSize: 12,
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius)",
-                color: "var(--text)",
-              }}
-            >
-              <option value="">All actions</option>
-              <option value="commit_memory">commit_memory</option>
-              <option value="update_memory">update_memory</option>
-              <option value="delete_memory">delete_memory</option>
-              <option value="recall_context">recall_context</option>
-              <option value="search_memories">search_memories</option>
-            </select>
+    <OrgAdminSection title="Audit Logs" description="All actions taken within your organization" icon="📋">
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+        <select
+          value={actionFilter}
+          onChange={(e) => { setActionFilter(e.target.value); setOffset(0); }}
+          style={{ padding: "6px 10px", fontSize: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+        >
+          <option value="">All actions</option>
+          {ALL_ACTIONS.map((a) => (
+            <option key={a} value={a}>{getActionMeta(a).icon} {getActionMeta(a).label}</option>
+          ))}
+        </select>
 
-            <input
-              type="text"
-              placeholder="Filter by user ID"
-              value={userIdFilter}
-              onChange={(e) => {
-                setUserIdFilter(e.target.value);
-                handleFilterChange();
-              }}
-              style={{
-                padding: "6px 10px",
-                fontSize: 12,
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius)",
-                color: "var(--text)",
-                width: 200,
-              }}
-            />
+        <input
+          type="text"
+          placeholder="Filter by User ID"
+          value={userFilter}
+          onChange={(e) => { setUserFilter(e.target.value); setOffset(0); }}
+          style={{ padding: "6px 10px", fontSize: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", width: 200 }}
+        />
 
-            <button
-              onClick={handleExportCsv}
-              disabled={exporting}
-              style={{
-                padding: "6px 12px",
-                fontSize: 12,
-                background: "var(--accent)",
-                color: "#fff",
-                border: "none",
-                borderRadius: "var(--radius)",
-                cursor: exporting ? "default" : "pointer",
-                fontWeight: 600,
-              }}
-            >
-              {exporting ? "Exporting…" : "Export CSV"}
+        <button
+          onClick={handleExportCsv}
+          disabled={exporting}
+          style={{ padding: "6px 12px", fontSize: 12, background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius)", cursor: exporting ? "default" : "pointer", fontWeight: 600, marginLeft: "auto" }}
+        >
+          {exporting ? "Exporting…" : "⬇️ Export CSV"}
+        </button>
+      </div>
+
+      {isLoading && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-muted)", padding: "20px 0" }}>
+          <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span>
+          Loading audit logs…
+        </div>
+      )}
+
+      {error && (
+        <div style={{ color: "var(--error)", fontSize: 13, padding: "12px 14px", background: "rgba(239,68,68,0.08)", borderRadius: 8 }}>
+          Failed to load audit logs. You must be an org admin to view this.
+        </div>
+      )}
+
+      {!isLoading && !error && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {!logsData?.logs || logsData.logs.length === 0 ? (
+            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No audit logs matching filters.</p>
+          ) : (
+            logsData.logs.map((log: any) => <AuditLogRow key={log.id} log={log} />)
+          )}
+        </div>
+      )}
+
+      {logsData && logsData.total > 0 && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)" }}>
+          <span>Showing {offset + 1}–{Math.min(offset + limit, logsData.total)} of {logsData.total} logs</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0}
+              style={{ padding: "4px 10px", background: offset === 0 ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset === 0 ? "default" : "pointer", fontSize: 11 }}>
+              ← Previous
+            </button>
+            <button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= logsData.total}
+              style={{ padding: "4px 10px", background: offset + limit >= logsData.total ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset + limit >= logsData.total ? "default" : "pointer", fontSize: 11 }}>
+              Next →
             </button>
           </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {!logs?.logs || logs.logs.length === 0 ? (
-              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No audit logs matching filters</p>
-            ) : (
-              logs.logs.map((log: any) => (
-                <div key={log.id} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontSize: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontWeight: 600, color: "var(--text)" }}>{log.action}</span>
-                    <span style={{ color: "var(--text-muted)" }}>{new Date(log.timestamp).toLocaleString()}</span>
-                  </div>
-                  <div style={{ color: "var(--text-muted)", fontSize: 11, display: "flex", gap: 12 }}>
-                    <span>User: {log.userId}</span>
-                    {log.tokenId && <span>Token: {log.tokenId}</span>}
-                    {log.memoryId && <span>Memory: {log.memoryId}</span>}
-                    {log.ipAddress && <span>IP: {log.ipAddress}</span>}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {logs && logs.total > 0 && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)" }}>
-              <span>Showing {offset + 1}-{Math.min(offset + limit, logs.total)} of {logs.total} logs</span>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0} style={{ padding: "4px 10px", background: offset === 0 ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset === 0 ? "default" : "pointer", fontSize: 11 }}>
-                  Previous
-                </button>
-                <button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= logs.total} style={{ padding: "4px 10px", background: offset + limit >= logs.total ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset + limit >= logs.total ? "default" : "pointer", fontSize: 11 }}>
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+        </div>
       )}
     </OrgAdminSection>
   );
 }
+
+function SiteAuditLogsSection() {
+  const [limit] = useState(50);
+  const [offset, setOffset] = useState(0);
+  const [actionFilter, setActionFilter] = useState("");
+  const [userFilter, setUserFilter] = useState("");
+  const [orgFilter, setOrgFilter] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  const { data: logsData, isLoading, error } = useQuery({
+    queryKey: ["site-audit-logs", limit, offset, actionFilter, userFilter, orgFilter],
+    queryFn: () => getSiteAuditLogs({ data: {
+      limit, offset,
+      action: actionFilter || undefined,
+      userId: userFilter || undefined,
+      orgId: orgFilter || undefined,
+    }}),
+  });
+
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      const result = await exportSiteAuditLogsCsv({ data: {
+        action: actionFilter || undefined,
+        userId: userFilter || undefined,
+        orgId: orgFilter || undefined,
+      }});
+      const blob = new Blob([result.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `site-audit-logs-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <SiteAdminSection title="All Organization Logs" description="Site-wide audit log across all organizations — site admin access only" icon="🔒">
+      {/* Security notice */}
+      <div style={{
+        marginBottom: 16, padding: "10px 14px", borderRadius: 8,
+        background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)",
+        fontSize: 12, color: "#f87171", display: "flex", alignItems: "center", gap: 8,
+      }}>
+        <span>🔒</span>
+        <span><strong>Site Admin Only.</strong> This view is protected server-side by <code>requireAdmin()</code> — user ID must match <code>ADMIN_USER_ID</code> env var. The UI guard is a secondary layer only.</span>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+        <select
+          value={actionFilter}
+          onChange={(e) => { setActionFilter(e.target.value); setOffset(0); }}
+          style={{ padding: "6px 10px", fontSize: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+        >
+          <option value="">All actions</option>
+          {ALL_ACTIONS.map((a) => (
+            <option key={a} value={a}>{getActionMeta(a).icon} {getActionMeta(a).label}</option>
+          ))}
+        </select>
+
+        <input
+          type="text"
+          placeholder="Filter by User ID"
+          value={userFilter}
+          onChange={(e) => { setUserFilter(e.target.value); setOffset(0); }}
+          style={{ padding: "6px 10px", fontSize: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", width: 180 }}
+        />
+
+        <input
+          type="text"
+          placeholder="Filter by Org ID"
+          value={orgFilter}
+          onChange={(e) => { setOrgFilter(e.target.value); setOffset(0); }}
+          style={{ padding: "6px 10px", fontSize: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", width: 180 }}
+        />
+
+        <button
+          onClick={handleExportCsv}
+          disabled={exporting}
+          style={{ padding: "6px 12px", fontSize: 12, background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius)", cursor: exporting ? "default" : "pointer", fontWeight: 600, marginLeft: "auto" }}
+        >
+          {exporting ? "Exporting…" : "⬇️ Export CSV"}
+        </button>
+      </div>
+
+      {isLoading && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-muted)", padding: "20px 0" }}>
+          <span>⏳</span> Loading all org logs…
+        </div>
+      )}
+
+      {error && (
+        <div style={{ color: "var(--error)", fontSize: 13, padding: "12px 14px", background: "rgba(239,68,68,0.08)", borderRadius: 8 }}>
+          🔒 Access denied. Only the configured site admin can view this page.
+        </div>
+      )}
+
+      {!isLoading && !error && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {!logsData?.logs || logsData.logs.length === 0 ? (
+            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No audit logs matching filters.</p>
+          ) : (
+            logsData.logs.map((log: any) => <AuditLogRow key={log.id} log={log} showOrg={true} />)
+          )}
+        </div>
+      )}
+
+      {logsData && logsData.total > 0 && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)" }}>
+          <span>Showing {offset + 1}–{Math.min(offset + limit, logsData.total)} of {logsData.total} total logs</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0}
+              style={{ padding: "4px 10px", background: offset === 0 ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset === 0 ? "default" : "pointer", fontSize: 11 }}>
+              ← Previous
+            </button>
+            <button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= logsData.total}
+              style={{ padding: "4px 10px", background: offset + limit >= logsData.total ? "var(--surface2)" : "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: offset + limit >= logsData.total ? "default" : "pointer", fontSize: 11 }}>
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
+    </SiteAdminSection>
+  );
+}
+
 
 function AdminPage() {
   const [activeSection, setActiveSection] = useState<AdminSection>("personal-account");
@@ -1220,6 +1475,9 @@ function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* ── SITE AUDIT LOGS (site admin only) ──────────────────────────────── */}
+      {activeSection === "site-audit-logs" && <SiteAuditLogsSection />}
 
     </AdminLayout>
   );

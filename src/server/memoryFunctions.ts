@@ -3040,55 +3040,116 @@ export const revokeAllSessions = createServerFn({ method: "POST" }).handler(
 
 // ── Audit Log Viewer (SEC-12) ──────────────────────────────────────────────
 
+// Shared helper: enrich raw audit log rows with user name/email, token name, memory snippet
+async function enrichAuditLogs(
+  db: ReturnType<typeof drizzle>,
+  logs: Array<{ userId: string; tokenId: string | null; memoryId: string | null; metadata: string | null; [key: string]: unknown }>
+) {
+  // Collect unique IDs to batch-fetch
+  const userIds = [...new Set(logs.map((l) => l.userId).filter(Boolean))] as string[];
+  const tokenIds = [...new Set(logs.map((l) => l.tokenId).filter((t): t is string => !!t && t !== "session"))];
+  const memoryIds = [...new Set(logs.map((l) => l.memoryId).filter((m): m is string => !!m))];
+
+  const [userRows, tokenRows, memoryRows] = await Promise.all([
+    userIds.length > 0
+      ? db.select({ id: users.id, name: users.name, email: users.email }).from(users)
+          .where(sql`${users.id} IN (${sql.join(userIds.map((uid) => sql`${uid}`), sql`, `)})`)
+          .all()
+      : Promise.resolve([] as { id: string; name: string; email: string }[]),
+    tokenIds.length > 0
+      ? db.select({ id: apiTokens.id, name: apiTokens.name }).from(apiTokens)
+          .where(sql`${apiTokens.id} IN (${sql.join(tokenIds.map((tid) => sql`${tid}`), sql`, `)})`)
+          .all()
+      : Promise.resolve([] as { id: string; name: string }[]),
+    memoryIds.length > 0
+      ? db.select({ id: memories.id, fact: memories.fact }).from(memories)
+          .where(sql`${memories.id} IN (${sql.join(memoryIds.map((mid) => sql`${mid}`), sql`, `)})`)
+          .all()
+      : Promise.resolve([] as { id: string; fact: string }[]),
+  ]);
+
+  const userMap = new Map(userRows.map((u) => [u.id, u]));
+  const tokenMap = new Map(tokenRows.map((t) => [t.id, t.name]));
+  const memoryMap = new Map(memoryRows.map((m) => [m.id, m.fact]));
+
+  return logs.map((log) => {
+    const userInfo = userMap.get(log.userId);
+    const tokenName = log.tokenId && log.tokenId !== "session"
+      ? (tokenMap.get(log.tokenId) ?? log.tokenId.slice(0, 8) + "…")
+      : (log.tokenId === "session" ? "Session" : null);
+    const rawFact = log.memoryId ? (memoryMap.get(log.memoryId) ?? null) : null;
+    const memorySnippet = rawFact ? rawFact.slice(0, 100) + (rawFact.length > 100 ? "…" : "") : null;
+    return {
+      ...log,
+      userName: userInfo?.name ?? null,
+      userEmail: userInfo?.email ?? null,
+      tokenName,
+      memorySnippet,
+    };
+  });
+}
+
 export const getOrgAuditLogs = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { limit?: number; offset?: number; memoryId?: string; action?: string; userId?: string } => {
-    const d = data as { limit?: number; offset?: number; memoryId?: string; action?: string; userId?: string };
+  .inputValidator((data: unknown): {
+    limit?: number;
+    offset?: number;
+    memoryId?: string;
+    action?: string;
+    userId?: string;
+    dateFrom?: number;
+    dateTo?: number;
+  } => {
+    const d = data as any;
     return {
       limit: typeof d?.limit === "number" ? d.limit : undefined,
       offset: typeof d?.offset === "number" ? d.offset : undefined,
       memoryId: typeof d?.memoryId === "string" ? d.memoryId : undefined,
       action: typeof d?.action === "string" ? d.action : undefined,
       userId: typeof d?.userId === "string" ? d.userId : undefined,
+      dateFrom: typeof d?.dateFrom === "number" ? d.dateFrom : undefined,
+      dateTo: typeof d?.dateTo === "number" ? d.dateTo : undefined,
     };
   })
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
-    const db = drizzle(env.DB, { schema: { auditLogs, organizations, organizationMembers } });
+    const db = drizzle(env.DB);
 
-    // Only org admins can view audit logs
+    // ── Programmatic guard: user must be admin/owner of at least one org ────
     const orgMember = await db
-      .select()
+      .select({ orgId: organizationMembers.orgId, role: organizationMembers.role })
       .from(organizationMembers)
       .where(eq(organizationMembers.userId, user.id))
-      .limit(1)
       .all();
 
     if (!orgMember.length) {
       throw new Response(JSON.stringify({ error: "No organization access" }), { status: 403 });
     }
 
-    const orgId = orgMember[0].orgId;
-    const isAdmin = orgMember[0].role === "admin" || orgMember[0].role === "owner";
-    if (!isAdmin) {
-      throw new Response(JSON.stringify({ error: "Admin access required" }), { status: 403 });
+    // Find all orgs where the user is admin/owner
+    const adminOrgIds = orgMember
+      .filter((m) => m.role === "admin" || m.role === "owner")
+      .map((m) => m.orgId);
+
+    if (!adminOrgIds.length) {
+      throw new Response(JSON.stringify({ error: "Admin or owner access required" }), { status: 403 });
     }
+
+    // Use the first (primary) admin org for scoping
+    const orgId = adminOrgIds[0];
 
     const limit = Math.min(data.limit ?? 50, 100);
     const offset = data.offset ?? 0;
 
-    const conditions = [eq(auditLogs.orgId, orgId)];
-    if (data.memoryId) {
-      conditions.push(eq(auditLogs.memoryId, data.memoryId));
-    }
-    if (data.action) {
-      conditions.push(eq(auditLogs.action, data.action));
-    }
-    if (data.userId) {
-      conditions.push(eq(auditLogs.userId, data.userId));
-    }
+    // Build conditions — scoped to this org only
+    const conditions: ReturnType<typeof eq>[] = [eq(auditLogs.orgId, orgId)];
+    if (data.memoryId) conditions.push(eq(auditLogs.memoryId, data.memoryId));
+    if (data.action) conditions.push(eq(auditLogs.action, data.action));
+    if (data.userId) conditions.push(eq(auditLogs.userId, data.userId));
+    if (data.dateFrom) conditions.push(sql`${auditLogs.timestamp} >= ${data.dateFrom}` as any);
+    if (data.dateTo) conditions.push(sql`${auditLogs.timestamp} <= ${data.dateTo}` as any);
 
-    const logs = await db
+    const rawLogs = await db
       .select()
       .from(auditLogs)
       .where(and(...conditions))
@@ -3097,23 +3158,17 @@ export const getOrgAuditLogs = createServerFn({ method: "POST" })
       .offset(offset)
       .all();
 
-    const countConditions = [eq(auditLogs.orgId, orgId)];
-    if (data.action) {
-      countConditions.push(eq(auditLogs.action, data.action));
-    }
-    if (data.userId) {
-      countConditions.push(eq(auditLogs.userId, data.userId));
-    }
-
-    const total = await db
+    const countResult = await db
       .select({ count: sql<number>`count(*)` })
       .from(auditLogs)
-      .where(and(...countConditions))
+      .where(and(...conditions))
       .all();
 
+    const enriched = await enrichAuditLogs(db, rawLogs as any);
+
     return {
-      logs,
-      total: total[0]?.count ?? 0,
+      logs: enriched,
+      total: countResult[0]?.count ?? 0,
       limit,
       offset,
     };
@@ -3130,36 +3185,30 @@ export const exportAuditLogsCsv = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
-    const db = drizzle(env.DB, { schema: { auditLogs, organizationMembers } });
+    const db = drizzle(env.DB);
 
-    // Only org admins can export audit logs
+    // ── Programmatic guard: user must be admin/owner of an org ──────────────
     const orgMember = await db
-      .select()
+      .select({ orgId: organizationMembers.orgId, role: organizationMembers.role })
       .from(organizationMembers)
       .where(eq(organizationMembers.userId, user.id))
-      .limit(1)
       .all();
 
     if (!orgMember.length) {
       throw new Response(JSON.stringify({ error: "No organization access" }), { status: 403 });
     }
-
-    const orgId = orgMember[0].orgId;
-    const isAdmin = orgMember[0].role === "admin" || orgMember[0].role === "owner";
-    if (!isAdmin) {
+    const adminOrgEntry = orgMember.find((m) => m.role === "admin" || m.role === "owner");
+    if (!adminOrgEntry) {
       throw new Response(JSON.stringify({ error: "Admin access required" }), { status: 403 });
     }
+    const orgId = adminOrgEntry.orgId;
 
-    const conditions = [eq(auditLogs.orgId, orgId)];
-    if (data.action) {
-      conditions.push(eq(auditLogs.action, data.action));
-    }
-    if (data.userId) {
-      conditions.push(eq(auditLogs.userId, data.userId));
-    }
+    const conditions: ReturnType<typeof eq>[] = [eq(auditLogs.orgId, orgId)];
+    if (data.action) conditions.push(eq(auditLogs.action, data.action));
+    if (data.userId) conditions.push(eq(auditLogs.userId, data.userId));
 
     // Fetch up to 5000 rows
-    const logs = await db
+    const rawLogs = await db
       .select()
       .from(auditLogs)
       .where(and(...conditions))
@@ -3167,13 +3216,26 @@ export const exportAuditLogsCsv = createServerFn({ method: "POST" })
       .limit(5000)
       .all();
 
-    // Build CSV manually
-    const headers = ["Timestamp", "Action", "User ID", "Token ID", "Memory ID", "IP Address", "User Agent", "Metadata"];
-    const rows = logs.map((log) => [
+    // Enrich with human-readable fields
+    const enriched = await enrichAuditLogs(db, rawLogs as any);
+
+    // Build CSV with enriched columns
+    const headers = [
+      "Timestamp", "Action",
+      "User Name", "User Email", "User ID",
+      "Token Name", "Token ID",
+      "Memory Snippet", "Memory ID",
+      "IP Address", "User Agent", "Metadata",
+    ];
+    const rows = enriched.map((log: any) => [
       new Date(log.timestamp).toISOString(),
       log.action,
+      log.userName || "",
+      log.userEmail || "",
       log.userId,
+      log.tokenName || "",
       log.tokenId || "",
+      log.memorySnippet || "",
       log.memoryId || "",
       log.ipAddress || "",
       log.userAgent || "",
@@ -3182,7 +3244,157 @@ export const exportAuditLogsCsv = createServerFn({ method: "POST" })
 
     const csv = [
       headers.map((h) => `"${h}"`).join(","),
-      ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")),
+      ...rows.map((row: string[]) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")),
+    ].join("\n");
+
+    return { csv };
+  });
+
+// ── Site-Level Audit Log (site admin only) ─────────────────────────────────
+export const getSiteAuditLogs = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): {
+    limit?: number;
+    offset?: number;
+    action?: string;
+    userId?: string;
+    orgId?: string;
+    dateFrom?: number;
+    dateTo?: number;
+  } => {
+    const d = data as any;
+    return {
+      limit: typeof d?.limit === "number" ? d.limit : undefined,
+      offset: typeof d?.offset === "number" ? d.offset : undefined,
+      action: typeof d?.action === "string" ? d.action : undefined,
+      userId: typeof d?.userId === "string" ? d.userId : undefined,
+      orgId: typeof d?.orgId === "string" ? d.orgId : undefined,
+      dateFrom: typeof d?.dateFrom === "number" ? d.dateFrom : undefined,
+      dateTo: typeof d?.dateTo === "number" ? d.dateTo : undefined,
+    };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    // ── Hard server-side guard: ONLY the configured site admin ─────────────
+    await requireAdmin(env);
+
+    const db = drizzle(env.DB);
+    const limit = Math.min(data.limit ?? 50, 100);
+    const offset = data.offset ?? 0;
+
+    // Build filter conditions across all orgs
+    const conditions: any[] = [];
+    if (data.orgId) conditions.push(eq(auditLogs.orgId, data.orgId));
+    if (data.action) conditions.push(eq(auditLogs.action, data.action));
+    if (data.userId) conditions.push(eq(auditLogs.userId, data.userId));
+    if (data.dateFrom) conditions.push(sql`${auditLogs.timestamp} >= ${data.dateFrom}`);
+    if (data.dateTo) conditions.push(sql`${auditLogs.timestamp} <= ${data.dateTo}`);
+
+    const rawLogs = await db
+      .select()
+      .from(auditLogs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(auditLogs.timestamp))
+      .limit(limit)
+      .offset(offset)
+      .all();
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(auditLogs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .all();
+
+    // Enrich logs and also resolve orgId -> org name
+    const enriched = await enrichAuditLogs(db, rawLogs as any);
+
+    // Collect unique orgIds for org name resolution
+    const orgIds = [...new Set(rawLogs.map((l) => l.orgId).filter((o): o is string => !!o))];
+    const orgRows = orgIds.length > 0
+      ? await db.select({ id: organizations.id, name: organizations.name }).from(organizations)
+          .where(sql`${organizations.id} IN (${sql.join(orgIds.map((o) => sql`${o}`), sql`, `)})`)
+          .all()
+      : [];
+    const orgNameMap = new Map(orgRows.map((o) => [o.id, o.name]));
+
+    const logsWithOrg = (enriched as any[]).map((log) => ({
+      ...log,
+      orgName: log.orgId ? (orgNameMap.get(log.orgId) ?? log.orgId) : null,
+    }));
+
+    return {
+      logs: logsWithOrg,
+      total: countResult[0]?.count ?? 0,
+      limit,
+      offset,
+    };
+  });
+
+export const exportSiteAuditLogsCsv = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { action?: string; userId?: string; orgId?: string } => {
+    const d = data as any;
+    return {
+      action: typeof d?.action === "string" ? d.action : undefined,
+      userId: typeof d?.userId === "string" ? d.userId : undefined,
+      orgId: typeof d?.orgId === "string" ? d.orgId : undefined,
+    };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    // ── Hard server-side guard: ONLY the configured site admin ─────────────
+    await requireAdmin(env);
+
+    const db = drizzle(env.DB);
+    const conditions: any[] = [];
+    if (data.orgId) conditions.push(eq(auditLogs.orgId, data.orgId));
+    if (data.action) conditions.push(eq(auditLogs.action, data.action));
+    if (data.userId) conditions.push(eq(auditLogs.userId, data.userId));
+
+    const rawLogs = await db
+      .select()
+      .from(auditLogs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(auditLogs.timestamp))
+      .limit(5000)
+      .all();
+
+    const enriched = await enrichAuditLogs(db, rawLogs as any);
+
+    const orgIds = [...new Set(rawLogs.map((l) => l.orgId).filter((o): o is string => !!o))];
+    const orgRows = orgIds.length > 0
+      ? await db.select({ id: organizations.id, name: organizations.name }).from(organizations)
+          .where(sql`${organizations.id} IN (${sql.join(orgIds.map((o) => sql`${o}`), sql`, `)})`)
+          .all()
+      : [];
+    const orgNameMap = new Map(orgRows.map((o) => [o.id, o.name]));
+
+    const headers = [
+      "Timestamp", "Action",
+      "Org Name", "Org ID",
+      "User Name", "User Email", "User ID",
+      "Token Name", "Token ID",
+      "Memory Snippet", "Memory ID",
+      "IP Address", "User Agent", "Metadata",
+    ];
+    const rows = (enriched as any[]).map((log) => [
+      new Date(log.timestamp).toISOString(),
+      log.action,
+      log.orgId ? (orgNameMap.get(log.orgId) ?? "") : "",
+      log.orgId || "",
+      log.userName || "",
+      log.userEmail || "",
+      log.userId,
+      log.tokenName || "",
+      log.tokenId || "",
+      log.memorySnippet || "",
+      log.memoryId || "",
+      log.ipAddress || "",
+      log.userAgent || "",
+      log.metadata ? JSON.stringify(log.metadata) : "",
+    ]);
+
+    const csv = [
+      headers.map((h) => `"${h}"`).join(","),
+      ...rows.map((row: string[]) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")),
     ].join("\n");
 
     return { csv };
@@ -3439,7 +3651,7 @@ export const createMemoryTemplate = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
-    await requireSession(env);
+    const user = await requireSession(env);
     const db = drizzle(env.DB);
     const id = crypto.randomUUID();
     const result = await db.insert(memoryTemplates).values({
@@ -3450,6 +3662,14 @@ export const createMemoryTemplate = createServerFn({ method: "POST" })
       configPayload: data.configPayload,
       createdAt: Math.floor(Date.now() / 1000),
     }).returning();
+    // Audit log: template created
+    await logAudit(db, {
+      orgId: null,
+      userId: user.id,
+      tokenId: "session",
+      action: "create_template",
+      metadata: { templateId: id, name: data.name, category: data.category },
+    });
     return result[0];
   });
 
@@ -3479,7 +3699,7 @@ export const updateMemoryTemplate = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
-    await requireSession(env);
+    const user = await requireSession(env);
     const db = drizzle(env.DB);
     const result = await db.update(memoryTemplates)
       .set({
@@ -3490,6 +3710,14 @@ export const updateMemoryTemplate = createServerFn({ method: "POST" })
       })
       .where(eq(memoryTemplates.id, data.id))
       .returning();
+    // Audit log: template updated
+    await logAudit(db, {
+      orgId: null,
+      userId: user.id,
+      tokenId: "session",
+      action: "update_template",
+      metadata: { templateId: data.id, name: data.name },
+    });
     return result[0];
   });
 
@@ -3501,8 +3729,16 @@ export const deleteMemoryTemplate = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
-    await requireSession(env);
+    const user = await requireSession(env);
     const db = drizzle(env.DB);
     await db.delete(memoryTemplates).where(eq(memoryTemplates.id, data.id)).run();
+    // Audit log: template deleted
+    await logAudit(db, {
+      orgId: null,
+      userId: user.id,
+      tokenId: "session",
+      action: "delete_template",
+      metadata: { templateId: data.id },
+    });
     return { success: true };
   });

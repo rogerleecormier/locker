@@ -17,7 +17,8 @@ export type AdminSection =
   // Site
   | "system"
   | "site-config"
-  | "billing-manage";
+  | "billing-manage"
+  | "site-audit-logs";
 
 interface MenuItem {
   id: AdminSection;
@@ -43,6 +44,7 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "system", label: "System Overview", icon: "⚙️", category: "site" },
   { id: "site-config", label: "Configuration", icon: "🔧", category: "site" },
   { id: "billing-manage", label: "Billing Management", icon: "📊", category: "site" },
+  { id: "site-audit-logs", label: "All Org Logs", icon: "🔒", category: "site" },
 ];
 
 const SECTIONS = [
