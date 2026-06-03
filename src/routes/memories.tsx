@@ -1820,158 +1820,7 @@ function NewMemoryModal({
         </div>
       </div>
       
-      {/* Keyframe spinner animation style block */}
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideInRight {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-        .memories-grid-container {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-          gap: 20px;
-          align-items: start;
-        }
-        @media (max-width: 640px) {
-          .memories-grid-container {
-            grid-template-columns: 1fr;
-          }
-        }
-        .details-drawer-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.4);
-          backdrop-filter: blur(4px);
-          z-index: 1000;
-          animation: fadeIn 0.2s ease-out;
-          display: flex;
-          justify-content: flex-end;
-        }
-        .details-drawer {
-          position: fixed;
-          right: 0;
-          top: 0;
-          width: 480px;
-          max-width: 100%;
-          height: 100vh;
-          background: var(--surface);
-          border-left: 1px solid var(--border);
-          box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
-          z-index: 1001;
-          display: flex;
-          flex-direction: column;
-          animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .details-drawer-content {
-          padding: 24px;
-          overflow-y: auto;
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-        .stat-card {
-          background: linear-gradient(135deg, rgba(168,85,247,0.03) 0%, rgba(139,92,246,0.01) 100%);
-          border: 1px solid rgba(168,85,247,0.12);
-          border-radius: 12px;
-          padding: 16px 18px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-          cursor: pointer;
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-          position: relative;
-          overflow: hidden;
-          width: 100%;
-          outline: none;
-        }
-        .stat-card:hover {
-          transform: translateY(-2px);
-          border-color: rgba(168,85,247,0.35);
-          box-shadow: 0 8px 24px rgba(168,85,247,0.08);
-        }
-        .stat-card.active {
-          background: linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(139,92,246,0.03) 100%);
-          border-color: var(--accent);
-          box-shadow: 0 0 16px rgba(168,85,247,0.15);
-        }
-        .stat-card::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: radial-gradient(circle at 50% 50%, rgba(168,85,247,0.08) 0%, transparent 60%);
-          opacity: 0;
-          transition: opacity 0.3s;
-          pointer-events: none;
-        }
-        .stat-card:hover::after {
-          opacity: 1;
-        }
-        .search-input-wrapper {
-          position: relative;
-          flex: 1;
-        }
-        .search-input-wrapper input {
-          width: 100%;
-          padding: 8px 12px 8px 32px;
-          background: var(--surface2);
-          border: 1px solid var(--border);
-          border-radius: var(--radius);
-          color: var(--text);
-          transition: all 0.2s;
-          outline: none;
-        }
-        .search-input-wrapper input:focus {
-          border-color: var(--accent);
-          box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.15);
-          background: var(--surface);
-        }
-        .memory-item-card {
-          padding: 18px;
-          border-radius: 12px;
-          border: 1px solid var(--border);
-          background: var(--surface);
-          cursor: pointer;
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-          min-height: 220px;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          box-sizing: border-box;
-        }
-        .memory-item-card:hover {
-          transform: translateY(-4px);
-          border-color: rgba(168,85,247,0.35);
-          box-shadow: 0 10px 30px rgba(168,85,247,0.08);
-          background: var(--surface2);
-        }
-        .memory-item-card.selected {
-          background: rgba(168, 85, 247, 0.04) !important;
-          border: 1.5px solid var(--accent) !important;
-          box-shadow: 0 0 16px rgba(168, 85, 247, 0.15) !important;
-        }
-        .memory-item-card-body {
-          font-size: 13.5px;
-          line-height: 1.5;
-          color: var(--text);
-          overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 5;
-          -webkit-box-orient: vertical;
-          margin: 0 0 12px 0;
-          word-break: break-word;
-          opacity: 0.9;
-        }
-      `}</style>
+
     </div>
   );
 }
@@ -3464,6 +3313,157 @@ function Dashboard() {
 
   return (
     <div>
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        .memories-grid-container {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: 20px;
+          align-items: start;
+        }
+        @media (max-width: 640px) {
+          .memories-grid-container {
+            grid-template-columns: 1fr;
+          }
+        }
+        .details-drawer-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(4px);
+          z-index: 1000;
+          animation: fadeIn 0.2s ease-out;
+          display: flex;
+          justify-content: flex-end;
+        }
+        .details-drawer {
+          position: fixed;
+          right: 0;
+          top: 0;
+          width: 480px;
+          max-width: 100%;
+          height: 100vh;
+          background: var(--surface);
+          border-left: 1px solid var(--border);
+          box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
+          z-index: 1001;
+          display: flex;
+          flex-direction: column;
+          animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .details-drawer-content {
+          padding: 24px;
+          overflow-y: auto;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .stat-card {
+          background: linear-gradient(135deg, rgba(168,85,247,0.03) 0%, rgba(139,92,246,0.01) 100%);
+          border: 1px solid rgba(168,85,247,0.12);
+          border-radius: 12px;
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+          overflow: hidden;
+          width: 100%;
+          outline: none;
+        }
+        .stat-card:hover {
+          transform: translateY(-2px);
+          border-color: rgba(168,85,247,0.35);
+          box-shadow: 0 8px 24px rgba(168,85,247,0.08);
+        }
+        .stat-card.active {
+          background: linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(139,92,246,0.03) 100%);
+          border-color: var(--accent);
+          box-shadow: 0 0 16px rgba(168,85,247,0.15);
+        }
+        .stat-card::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(circle at 50% 50%, rgba(168,85,247,0.08) 0%, transparent 60%);
+          opacity: 0;
+          transition: opacity 0.3s;
+          pointer-events: none;
+        }
+        .stat-card:hover::after {
+          opacity: 1;
+        }
+        .search-input-wrapper {
+          position: relative;
+          flex: 1;
+        }
+        .search-input-wrapper input {
+          width: 100%;
+          padding: 8px 12px 8px 32px;
+          background: var(--surface2);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          color: var(--text);
+          transition: all 0.2s;
+          outline: none;
+        }
+        .search-input-wrapper input:focus {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.15);
+          background: var(--surface);
+        }
+        .memory-item-card {
+          padding: 18px;
+          border-radius: 12px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          min-height: 220px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          box-sizing: border-box;
+        }
+        .memory-item-card:hover {
+          transform: translateY(-4px);
+          border-color: rgba(168,85,247,0.35);
+          box-shadow: 0 10px 30px rgba(168,85,247,0.08);
+          background: var(--surface2);
+        }
+        .memory-item-card.selected {
+          background: rgba(168, 85, 247, 0.04) !important;
+          border: 1.5px solid var(--accent) !important;
+          box-shadow: 0 0 16px rgba(168, 85, 247, 0.15) !important;
+        }
+        .memory-item-card-body {
+          font-size: 13.5px;
+          line-height: 1.5;
+          color: var(--text);
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 5;
+          -webkit-box-orient: vertical;
+          margin: 0 0 12px 0;
+          word-break: break-word;
+          opacity: 0.9;
+        }
+      `}</style>
       {/* Page header bar */}
       <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
         <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
