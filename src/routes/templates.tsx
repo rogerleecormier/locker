@@ -1211,6 +1211,7 @@ function TemplateFormModal({
   onSuccess: () => void;
 }) {
   const queryClient = useQueryClient();
+  const presetsScrollRef = useRef<HTMLDivElement>(null);
 
   // Form State
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
@@ -1726,6 +1727,17 @@ function TemplateFormModal({
 
   const isLast = hasVariables ? currentStep === 4 : currentStep === 3;
 
+  const scrollPresets = (direction: "left" | "right") => {
+    if (presetsScrollRef.current) {
+      const cardWidth = presetsScrollRef.current.firstElementChild?.clientWidth || 250;
+      const scrollAmount = (cardWidth + 16) * (direction === "left" ? -1 : 1);
+      presetsScrollRef.current.scrollBy({
+        left: scrollAmount,
+        behavior: "smooth",
+      });
+    }
+  };
+
   const handleNext = () => {
     if (currentStep === 1) {
       setCurrentStep(formCategory === "stack" ? 2 : 3);
@@ -1765,7 +1777,7 @@ function TemplateFormModal({
         border: "1px solid var(--border)",
         borderRadius: "var(--radius)",
         width: "100%",
-        maxWidth: currentStep >= 3 ? 840 : 680,
+        maxWidth: currentStep === 1 ? 680 : currentStep === 2 ? 960 : 840,
         maxHeight: "90vh",
         display: "flex",
         flexDirection: "column",
@@ -1887,7 +1899,7 @@ function TemplateFormModal({
           {currentStep === 2 && formCategory === "stack" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {/* Stack Quick Load Presets */}
-              <div style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "16px", padding: "20px" }}>
+              <div style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "16px", padding: "20px", position: "relative" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 14, letterSpacing: "0.05em" }}>Quick Load Stack Presets</span>
                 
                 <style>{`
@@ -1920,151 +1932,209 @@ function TemplateFormModal({
                   }
                 `}</style>
                 
-                <div className="presets-scroll-container">
-                  {STACK_PRESETS.map((preset) => {
-                    const isCurrentlySelected = 
-                      stackLanguage === preset.language &&
-                      stackFrontend === preset.frontend &&
-                      stackHosting === preset.hosting &&
-                      stackDatabase === preset.database &&
-                      stackOrm === preset.orm &&
-                      stackAuth === preset.auth &&
-                      stackStyling === preset.styling &&
-                      stackStorage === preset.storage &&
-                      stackComponentLibrary === preset.componentLibrary;
-                      
-                    return (
-                      <div
-                        key={preset.name}
-                        onClick={() => {
-                          setStackLanguage(preset.language);
-                          setStackFrontend(preset.frontend);
-                          setStackHosting(preset.hosting);
-                          setStackDatabase(preset.database);
-                          setStackOrm(preset.orm);
-                          setStackAuth(preset.auth);
-                          setStackStyling(preset.styling);
-                          setStackSearch(preset.search);
-                          setStackVector(preset.vector || "None");
-                          setStackStorage(preset.storage);
-                          setStackStateCache(preset.stateCache || "None");
-                          setStackComponentLibrary(preset.componentLibrary || "None");
-                        }}
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          padding: "16px",
-                          background: isCurrentlySelected ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.015)",
-                          border: isCurrentlySelected ? `2px solid ${preset.themeColor}` : "1px solid rgba(255,255,255,0.08)",
-                          borderRadius: "12px",
-                          cursor: "pointer",
-                          transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-                          position: "relative",
-                          overflow: "hidden",
-                          boxShadow: isCurrentlySelected ? `0 0 20px ${preset.themeColor}15` : "none",
-                          flexShrink: 0,
-                          width: "290px",
-                          scrollSnapAlign: "start"
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = "translateY(-4px)";
-                          e.currentTarget.style.borderColor = preset.themeColor;
-                          e.currentTarget.style.boxShadow = `0 8px 24px rgba(0,0,0,0.2), 0 0 15px ${preset.themeColor}20`;
-                          e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = "none";
-                          e.currentTarget.style.borderColor = isCurrentlySelected ? preset.themeColor : "rgba(255,255,255,0.08)";
-                          e.currentTarget.style.boxShadow = isCurrentlySelected ? `0 0 20px ${preset.themeColor}15` : "none";
-                          e.currentTarget.style.background = isCurrentlySelected ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.015)";
-                        }}
-                      >
-                        {/* Background Glow */}
-                        <div style={{
-                          position: "absolute",
-                          top: "-30px",
-                          right: "-30px",
-                          width: "80px",
-                          height: "80px",
-                          borderRadius: "50%",
-                          background: preset.themeColor,
-                          opacity: 0.08,
-                          filter: "blur(20px)",
-                          pointerEvents: "none"
-                        }} />
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  {/* Left Scroll Arrow */}
+                  <button
+                    type="button"
+                    onClick={() => scrollPresets("left")}
+                    style={{
+                      position: "absolute",
+                      left: "-12px",
+                      zIndex: 10,
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "50%",
+                      background: "var(--surface2)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--accent-dim)";
+                      e.currentTarget.style.borderColor = "var(--accent)";
+                      e.currentTarget.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "var(--surface2)";
+                      e.currentTarget.style.borderColor = "var(--border)";
+                      e.currentTarget.style.color = "var(--text)";
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m15 18-6-6 6-6"/>
+                    </svg>
+                  </button>
+
+                  {/* Scrollable Presets Grid */}
+                  <div ref={presetsScrollRef} className="presets-scroll-container" style={{ width: "100%" }}>
+                    {STACK_PRESETS.map((preset) => {
+                      const isCurrentlySelected = 
+                        stackLanguage === preset.language &&
+                        stackFrontend === preset.frontend &&
+                        stackHosting === preset.hosting &&
+                        stackDatabase === preset.database &&
+                        stackOrm === preset.orm &&
+                        stackAuth === preset.auth &&
+                        stackStyling === preset.styling &&
+                        stackStorage === preset.storage &&
+                        stackComponentLibrary === preset.componentLibrary;
                         
-                        {/* Header */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                          <div style={{
+                      return (
+                        <div
+                          key={preset.name}
+                          onClick={() => {
+                            setStackLanguage(preset.language);
+                            setStackFrontend(preset.frontend);
+                            setStackHosting(preset.hosting);
+                            setStackDatabase(preset.database);
+                            setStackOrm(preset.orm);
+                            setStackAuth(preset.auth);
+                            setStackStyling(preset.styling);
+                            setStackSearch(preset.search);
+                            setStackVector(preset.vector || "None");
+                            setStackStorage(preset.storage);
+                            setStackStateCache(preset.stateCache || "None");
+                            setStackComponentLibrary(preset.componentLibrary || "None");
+                          }}
+                          style={{
                             display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: "36px",
-                            height: "36px",
-                            borderRadius: "10px",
-                            background: `linear-gradient(135deg, ${preset.themeColor}1a, ${preset.themeColor}33)`,
-                            border: `1px solid ${preset.themeColor}4d`,
-                            color: preset.themeColor
-                          }}>
-                            {renderPresetIcon(preset.icon)}
-                          </div>
-                          <span style={{
-                            fontSize: "9px",
-                            fontWeight: 700,
-                            textTransform: "uppercase",
-                            padding: "2px 8px",
-                            borderRadius: "10px",
-                            background: "rgba(255,255,255,0.06)",
-                            color: "var(--text-muted)",
-                            border: "1px solid rgba(255,255,255,0.05)"
-                          }}>
-                            {preset.language}
-                          </span>
-                        </div>
-                        
-                        {/* Title & Description */}
-                        <div style={{ marginBottom: 12 }}>
-                          <div style={{ fontSize: "13px", fontWeight: 650, color: "var(--text)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                            {preset.name}
-                            {isCurrentlySelected && (
-                              <span style={{
-                                width: "6px",
-                                height: "6px",
-                                borderRadius: "50%",
-                                background: "var(--accent)"
-                              }} />
-                            )}
-                          </div>
-                          <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: "1.4" }}>
-                            {preset.description}
-                          </div>
-                        </div>
-                        
-                        {/* Badges/Highlights */}
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: "auto" }}>
-                          {preset.badges.map(b => (
-                            <span key={b} style={{
-                              fontSize: "9.5px",
-                              fontWeight: 500,
-                              padding: "2px 6px",
-                              borderRadius: "4px",
-                              background: "rgba(255,255,255,0.03)",
-                              border: "1px solid rgba(255,255,255,0.04)",
-                              color: "rgba(255,255,255,0.6)"
+                            flexDirection: "column",
+                            padding: "16px",
+                            background: isCurrentlySelected ? `${preset.themeColor}12` : "var(--surface2)",
+                            border: isCurrentlySelected ? `2px solid ${preset.themeColor}` : "1px solid var(--border)",
+                            borderRadius: "12px",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                            position: "relative",
+                            flexShrink: 0,
+                            width: "calc((100% - 32px) / 3)",
+                            minWidth: "250px",
+                            scrollSnapAlign: "start"
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = preset.themeColor;
+                            e.currentTarget.style.background = isCurrentlySelected ? `${preset.themeColor}1c` : "rgba(255,255,255,0.03)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = isCurrentlySelected ? preset.themeColor : "var(--border)";
+                            e.currentTarget.style.background = isCurrentlySelected ? `${preset.themeColor}12` : "var(--surface2)";
+                          }}
+                        >
+                          {/* Header */}
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                            <div style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: "36px",
+                              height: "36px",
+                              borderRadius: "10px",
+                              background: `linear-gradient(135deg, ${preset.themeColor}1a, ${preset.themeColor}33)`,
+                              border: `1px solid ${preset.themeColor}4d`,
+                              color: preset.themeColor
                             }}>
-                              {b}
+                              {renderPresetIcon(preset.icon)}
+                            </div>
+                            <span style={{
+                              fontSize: "9px",
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              padding: "2px 8px",
+                              borderRadius: "10px",
+                              background: "rgba(255,255,255,0.06)",
+                              color: "var(--text-muted)",
+                              border: "1px solid rgba(255,255,255,0.05)"
+                            }}>
+                              {preset.language}
                             </span>
-                          ))}
+                          </div>
+                          
+                          {/* Title & Description */}
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: "13px", fontWeight: 650, color: "var(--text)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                              {preset.name}
+                              {isCurrentlySelected && (
+                                <span style={{
+                                  width: "6px",
+                                  height: "6px",
+                                  borderRadius: "50%",
+                                  background: "var(--accent)"
+                                }} />
+                              )}
+                            </div>
+                            <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: "1.4" }}>
+                              {preset.description}
+                            </div>
+                          </div>
+                          
+                          {/* Badges/Highlights */}
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: "auto" }}>
+                            {preset.badges.map(b => (
+                              <span key={b} style={{
+                                fontSize: "9.5px",
+                                fontWeight: 500,
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                background: "rgba(255,255,255,0.03)",
+                                border: "1px solid rgba(255,255,255,0.04)",
+                                color: "rgba(255,255,255,0.6)"
+                              }}>
+                                {b}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+
+                  {/* Right Scroll Arrow */}
+                  <button
+                    type="button"
+                    onClick={() => scrollPresets("right")}
+                    style={{
+                      position: "absolute",
+                      right: "-12px",
+                      zIndex: 10,
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "50%",
+                      background: "var(--surface2)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--accent-dim)";
+                      e.currentTarget.style.borderColor = "var(--accent)";
+                      e.currentTarget.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "var(--surface2)";
+                      e.currentTarget.style.borderColor = "var(--border)";
+                      e.currentTarget.style.color = "var(--text)";
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m9 18 6-6-6-6"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
 
               {/* Stack Fields */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, paddingBottom: 140 }}>
-                {/* Column 1: Frontend & Client Stack */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, paddingBottom: 160 }}>
+                {/* Column 1: Frontend & Language */}
                 <div style={{
                   background: "var(--surface2)",
                   border: "1px solid var(--border)",
@@ -2079,18 +2149,36 @@ function TemplateFormModal({
                       <rect width="18" height="18" x="3" y="3" rx="2" />
                       <path d="M7 8h10M7 12h10M7 16h6" />
                     </svg>
-                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Frontend & Client Stack</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Frontend & Language</span>
                   </div>
                   <Combobox label="Language" value={stackLanguage} onChange={handleLanguageChange} options={FIELD_OPTIONS.language} placeholder="e.g. TypeScript" />
                   <Combobox label="Frontend Framework" value={stackFrontend} onChange={handleFrontendChange} options={getDynamicFieldOptions("frontend", stackLanguage, "")} placeholder="e.g. Next.js" />
                   <Combobox label="Styling / Templating" value={stackStyling} onChange={setStackStyling} options={getDynamicFieldOptions("styling", stackLanguage, stackFrontend)} placeholder="e.g. Tailwind CSS" />
                   <Combobox label="Component Library" value={stackComponentLibrary} onChange={setStackComponentLibrary} options={getDynamicFieldOptions("componentLibrary", stackLanguage, stackFrontend)} placeholder="e.g. shadcn/ui" />
-                  <Combobox label="Auth" value={stackAuth} onChange={setStackAuth} options={getDynamicFieldOptions("auth", stackLanguage, stackFrontend)} placeholder="e.g. Better Auth" />
-                  <Combobox label="State / Client Cache" value={stackStateCache} onChange={setStackStateCache} options={getDynamicFieldOptions("statecache", stackLanguage, stackFrontend)} placeholder="e.g. Zustand" />
-                  <Combobox label="Full-Text Search (Lexical)" value={stackSearch} onChange={setStackSearch} options={FIELD_OPTIONS.search} placeholder="e.g. Fuse.js" />
                 </div>
 
-                {/* Column 2: Backend & Infrastructure */}
+                {/* Column 2: Services & Security */}
+                <div style={{
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "12px",
+                  padding: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 8, marginBottom: 4 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>Services & Security</span>
+                  </div>
+                  <Combobox label="Auth / Identity" value={stackAuth} onChange={setStackAuth} options={getDynamicFieldOptions("auth", stackLanguage, stackFrontend)} placeholder="e.g. Better Auth" />
+                  <Combobox label="Full-Text Search (Lexical)" value={stackSearch} onChange={setStackSearch} options={FIELD_OPTIONS.search} placeholder="e.g. Fuse.js" />
+                  <Combobox label="Vector Database (Semantic)" value={stackVector} onChange={setStackVector} options={FIELD_OPTIONS.vector} placeholder="e.g. Cloudflare Vectorize" />
+                </div>
+
+                {/* Column 3: Backend & Infrastructure */}
                 <div style={{
                   background: "var(--surface2)",
                   border: "1px solid var(--border)",
@@ -2112,7 +2200,7 @@ function TemplateFormModal({
                   <Combobox label="Database" value={stackDatabase} onChange={setStackDatabase} options={FIELD_OPTIONS.database} placeholder="e.g. Cloudflare D1" />
                   <Combobox label="ORM / DB Client" value={stackOrm} onChange={setStackOrm} options={getDynamicFieldOptions("orm", stackLanguage, stackFrontend)} placeholder="e.g. Drizzle ORM" />
                   <Combobox label="Storage (Buckets)" value={stackStorage} onChange={setStackStorage} options={FIELD_OPTIONS.storage} placeholder="e.g. Cloudflare R2" />
-                  <Combobox label="Vector Database (Semantic)" value={stackVector} onChange={setStackVector} options={FIELD_OPTIONS.vector} placeholder="e.g. Cloudflare Vectorize" />
+                  <Combobox label="State / Client Cache" value={stackStateCache} onChange={setStackStateCache} options={getDynamicFieldOptions("statecache", stackLanguage, stackFrontend)} placeholder="e.g. Cloudflare KV" />
                 </div>
               </div>
             </div>
