@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { InfoTooltip } from "~/components/InfoTooltip";
 import {
   listMemoryTemplates,
   createMemoryTemplate,
@@ -39,14 +40,852 @@ type ParsedPayload = {
   bannedProviders?: string[];
 };
 
+const CATEGORY_COLORS: Record<string, string> = {
+  stack: "#a855f7",
+  governance: "#22c55e",
+  devops: "#3b82f6",
+  compliance: "#ef4444",
+  documentation: "#f97316",
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  stack: "Stack",
+  governance: "Governance",
+  devops: "DevOps",
+  compliance: "Compliance",
+  documentation: "Docs",
+};
+
+function CategoryBadge({ category }: { category: string }) {
+  const color = CATEGORY_COLORS[category] ?? "#7b80a0";
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 20,
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: "0.04em",
+        color,
+        background: `${color}18`,
+        border: `1px solid ${color}40`,
+        textTransform: "uppercase",
+      }}
+    >
+      {CATEGORY_LABELS[category] ?? category}
+    </span>
+  );
+}
+
+function VariableChip({ name, desc }: { name: string; desc: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "1px 6px",
+        borderRadius: 4,
+        fontSize: 10.5,
+        background: "var(--tag-bg)",
+        border: "1px solid var(--tag-border)",
+        color: "var(--text-muted)",
+        marginRight: 4,
+        marginBottom: 2,
+        fontFamily: "monospace",
+      }}
+      title={desc}
+    >
+      {name}
+    </span>
+  );
+}
+
+function downloadFile(content: string, filename: string, contentType: string) {
+  const blob = new Blob([content], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportTemplatesToJson(templatesToExport: any[]) {
+  const data = templatesToExport.map(({ id, name, description, category, configPayload, createdAt }) => ({
+    id,
+    name,
+    description,
+    category,
+    configPayload,
+    createdAt,
+  }));
+  return JSON.stringify(data, null, 2);
+}
+
+function TemplateRow({
+  template,
+  selected,
+  onToggleSelect,
+  onImport,
+  onEdit,
+  onDelete,
+}: {
+  template: any;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
+  onImport: (tmpl: any) => void;
+  onEdit: (tmpl: any) => void;
+  onDelete: (tmpl: any) => void;
+}) {
+  let payload: ParsedPayload = { rules: [] };
+  try {
+    payload = JSON.parse(template.configPayload);
+  } catch (e) {}
+
+  const rules = payload.rules || [];
+  const variables = payload.variables || [];
+
+  return (
+    <div
+      style={{
+        padding: "14px 18px",
+        borderBottom: "1px solid var(--border)",
+        display: "grid",
+        gridTemplateColumns: "auto 1fr auto",
+        gap: "8px 16px",
+        alignItems: "start",
+        background: selected ? "rgba(168,85,247,0.05)" : undefined,
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={() => onToggleSelect(template.id)}
+        style={{ marginTop: 3, cursor: "pointer", accentColor: "var(--accent)" }}
+      />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+          <span
+            onClick={() => onEdit(template)}
+            style={{ fontWeight: 700, fontSize: 15, color: "var(--text)", cursor: "pointer", transition: "color 0.15s" }}
+            onMouseEnter={(e) => {
+              const el = e.currentTarget as HTMLSpanElement;
+              el.style.color = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget as HTMLSpanElement;
+              el.style.color = "var(--text)";
+            }}
+          >
+            {template.name}
+          </span>
+          {rules.length > 0 && (
+            <span style={{
+              fontSize: 10,
+              fontWeight: 600,
+              padding: "1px 6px",
+              background: "rgba(59,130,246,0.1)",
+              color: "#3b82f6",
+              borderRadius: 4,
+            }}>
+              {rules.length} Rule{rules.length !== 1 ? "s" : ""}
+            </span>
+          )}
+          {variables.length > 0 && (
+            <span style={{
+              fontSize: 10,
+              fontWeight: 600,
+              padding: "1px 6px",
+              background: "rgba(168,85,247,0.1)",
+              color: "var(--accent)",
+              borderRadius: 4,
+            }}>
+              {variables.length} Var{variables.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+        <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5, wordBreak: "break-word" }}>
+          {template.description}
+        </p>
+        {variables.length > 0 && (
+          <div style={{ display: "flex", gap: 2, flexWrap: "wrap", marginTop: 8 }}>
+            {variables.map((v) => (
+              <VariableChip key={v.key} name={v.key} desc={v.description} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, minWidth: 110 }}>
+        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <CategoryBadge category={template.category} />
+        </div>
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          {new Date(template.createdAt).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </span>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button
+            onClick={() => onImport(template)}
+            style={{
+              padding: "3px 8px",
+              background: "transparent",
+              border: "1px solid transparent",
+              color: "var(--text-muted)",
+              fontSize: 11,
+              borderRadius: "var(--radius)",
+              opacity: 0.5,
+              transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              const b = e.currentTarget as HTMLButtonElement;
+              b.style.opacity = "1";
+              b.style.borderColor = "rgba(168,85,247,0.4)";
+              b.style.color = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              const b = e.currentTarget as HTMLButtonElement;
+              b.style.opacity = "0.5";
+              b.style.borderColor = "transparent";
+              b.style.color = "var(--text-muted)";
+            }}
+          >
+            Import
+          </button>
+          <button
+            onClick={() => onEdit(template)}
+            style={{
+              padding: "3px 8px",
+              background: "transparent",
+              border: "1px solid transparent",
+              color: "var(--text-muted)",
+              fontSize: 11,
+              borderRadius: "var(--radius)",
+              opacity: 0.5,
+              transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              const b = e.currentTarget as HTMLButtonElement;
+              b.style.opacity = "1";
+              b.style.borderColor = "rgba(168,85,247,0.4)";
+              b.style.color = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              const b = e.currentTarget as HTMLButtonElement;
+              b.style.opacity = "0.5";
+              b.style.borderColor = "transparent";
+              b.style.color = "var(--text-muted)";
+            }}
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => onDelete(template)}
+            style={{
+              padding: "3px 8px",
+              background: "transparent",
+              border: "1px solid transparent",
+              color: "var(--text-muted)",
+              fontSize: 11,
+              borderRadius: "var(--radius)",
+              opacity: 0.5,
+              transition: "opacity 0.15s, border-color 0.15s, color 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              const b = e.currentTarget as HTMLButtonElement;
+              b.style.opacity = "1";
+              b.style.borderColor = "rgba(239,68,68,0.4)";
+              b.style.color = "var(--error)";
+            }}
+            onMouseLeave={(e) => {
+              const b = e.currentTarget as HTMLButtonElement;
+              b.style.opacity = "0.5";
+              b.style.borderColor = "transparent";
+              b.style.color = "var(--text-muted)";
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplateTable({
+  templates,
+  activeTab,
+  filter,
+  sortBy,
+  onImport,
+  onEdit,
+  onDelete,
+}: {
+  templates: any[];
+  activeTab: string;
+  filter: string;
+  sortBy: 'newest' | 'oldest' | 'alphabetical';
+  onImport: (tmpl: any) => void;
+  onEdit: (tmpl: any) => void;
+  onDelete: (tmpl: any) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map(id => deleteMemoryTemplate({ data: { id } })));
+    },
+    onMutate: () => {
+      setSelected(new Set());
+      setBulkConfirming(false);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+    },
+  });
+
+  const filtered = useMemo(() => {
+    const q = filter.toLowerCase();
+    let results = templates.filter((t) => {
+      const matchesTab = activeTab === "all" || t.category === activeTab;
+      const matchesSearch =
+        !q ||
+        t.name.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.category.toLowerCase().includes(q);
+      return matchesTab && matchesSearch;
+    });
+
+    if (sortBy === 'newest') {
+      results.sort((a, b) => b.createdAt - a.createdAt);
+    } else if (sortBy === 'oldest') {
+      results.sort((a, b) => a.createdAt - b.createdAt);
+    } else if (sortBy === 'alphabetical') {
+      results.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    return results;
+  }, [templates, activeTab, filter, sortBy]);
+
+  const filteredIds = useMemo(() => new Set(filtered.map((t) => t.id)), [filtered]);
+  const allSelected = filtered.length > 0 && filtered.every((t) => selected.has(t.id));
+  const someSelected = filtered.some((t) => selected.has(t.id));
+  const selectedInView = filtered.filter((t) => selected.has(t.id));
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filteredIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filteredIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function handleExport(itemsToExport: any[]) {
+    const jsonContent = exportTemplatesToJson(itemsToExport);
+    downloadFile(jsonContent, `locker_templates_${new Date().toISOString().split("T")[0]}.json`, "application/json");
+  }
+
+  if (filtered.length === 0) {
+    return (
+      <div
+        style={{
+          textAlign: "center",
+          padding: "48px 24px",
+          color: "var(--text-muted)",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+        }}
+      >
+        {templates.length === 0 ? "No templates stored yet." : "No templates match your filters."}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: "10px 18px",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          background: "var(--surface2)",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={allSelected}
+          ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+          onChange={toggleSelectAll}
+          style={{ cursor: "pointer", accentColor: "var(--accent)" }}
+        />
+        {someSelected ? (
+          <>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {selectedInView.length} selected
+            </span>
+            {bulkConfirming ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+                <span style={{ fontSize: 12, color: "var(--error)" }}>
+                  Delete {selectedInView.length} template{selectedInView.length !== 1 ? "s" : ""}?
+                </span>
+                <button
+                  onClick={() => bulkDeleteMutation.mutate(selectedInView.map((t) => t.id))}
+                  disabled={bulkDeleteMutation.isPending}
+                  style={{
+                    padding: "4px 12px",
+                    background: "rgba(239,68,68,0.15)",
+                    border: "1px solid rgba(239,68,68,0.4)",
+                    color: "var(--error)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                  }}
+                >
+                  {bulkDeleteMutation.isPending ? "Deleting…" : "Yes, delete"}
+                </button>
+                <button
+                  onClick={() => setBulkConfirming(false)}
+                  disabled={bulkDeleteMutation.isPending}
+                  style={{
+                    padding: "4px 10px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-muted)",
+                    fontSize: 12,
+                    borderRadius: "var(--radius)",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                <button
+                  onClick={() => handleExport(selectedInView)}
+                  style={{
+                    padding: "4.5px 12px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--accent)";
+                    b.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--border)";
+                    b.style.color = "var(--text)";
+                  }}
+                >
+                  Export JSON
+                </button>
+                <button
+                  onClick={() => setBulkConfirming(true)}
+                  style={{
+                    padding: "4.5px 12px",
+                    background: "rgba(239,68,68,0.1)",
+                    border: "1px solid rgba(239,68,68,0.3)",
+                    color: "var(--error)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                  }}
+                >
+                  Delete selected
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {filtered.length} template{filtered.length !== 1 ? "s" : ""}
+            </span>
+            {filtered.length > 0 && (
+              <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                <button
+                  onClick={() => handleExport(filtered)}
+                  style={{
+                    padding: "4.5px 12px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: "var(--radius)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--accent)";
+                    b.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const b = e.currentTarget as HTMLButtonElement;
+                    b.style.borderColor = "var(--border)";
+                    b.style.color = "var(--text)";
+                  }}
+                >
+                  Export All (JSON)
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {filtered.map((tmpl) => (
+        <TemplateRow
+          key={tmpl.id}
+          template={tmpl}
+          selected={selected.has(tmpl.id)}
+          onToggleSelect={toggleOne}
+          onImport={onImport}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      ))}
+    </div>
+  );
+}
+
+const STACK_PRESETS = [
+  {
+    name: "Cloudflare Edge (Best Practice)",
+    language: "TypeScript",
+    frontend: "React / TanStack",
+    hosting: "Cloudflare Edge",
+    database: "Cloudflare D1",
+    orm: "Drizzle ORM",
+    auth: "Better Auth",
+    styling: "Vanilla CSS",
+    stateCache: "TanStack Store",
+    storage: "Cloudflare R2",
+    search: "Cloudflare Vectorize",
+  },
+  {
+    name: "Next.js + Supabase",
+    language: "TypeScript",
+    frontend: "Next.js",
+    hosting: "Vercel",
+    database: "Supabase (Postgres)",
+    orm: "Drizzle ORM",
+    auth: "Supabase Auth",
+    styling: "Tailwind CSS",
+    stateCache: "Zustand",
+    storage: "Supabase Storage",
+    search: "Supabase Vector",
+  },
+  {
+    name: "T3 Stack",
+    language: "TypeScript",
+    frontend: "Next.js",
+    hosting: "Vercel",
+    database: "PostgreSQL",
+    orm: "Prisma",
+    auth: "Auth.js (NextAuth)",
+    styling: "Tailwind CSS",
+    stateCache: "Zustand",
+    storage: "AWS S3",
+    search: "Pinecone",
+  },
+  {
+    name: "MERN Stack",
+    language: "JavaScript",
+    frontend: "React / TanStack",
+    hosting: "Render",
+    database: "MongoDB",
+    orm: "Mongoose",
+    auth: "Custom",
+    styling: "CSS Modules",
+    stateCache: "Redux Toolkit",
+    storage: "AWS S3",
+    search: "MongoDB Atlas Search",
+  },
+  {
+    name: "FastAPI + React",
+    language: "Python",
+    frontend: "React / TanStack",
+    hosting: "Fly.io",
+    database: "PostgreSQL",
+    orm: "SQLAlchemy",
+    auth: "Custom",
+    styling: "Tailwind CSS",
+    stateCache: "Zustand",
+    storage: "AWS S3",
+    search: "Qdrant",
+  }
+];
+
+const FIELD_OPTIONS: Record<string, string[]> = {
+  language: ["TypeScript", "JavaScript", "Python", "Go", "Rust", "Ruby", "Java", "C#", "C++", "PHP"],
+  frontend: ["React / TanStack", "Next.js", "Remix", "Vue / Nuxt", "Svelte / SvelteKit", "Astro", "SolidJS", "HTML/JS"],
+  hosting: ["Cloudflare Edge", "Vercel", "Netlify", "AWS Lambda", "Fly.io", "Heroku", "Railway", "Render", "Self-Hosted VPS"],
+  database: ["Cloudflare D1", "PostgreSQL", "MySQL", "SQLite", "MongoDB", "Redis", "Supabase (Postgres)", "Neon (Postgres)", "PlanetScale", "Prisma Postgres"],
+  orm: ["Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "SQL (Raw)", "None"],
+  auth: ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Kinde", "Lucia", "Custom", "None"],
+  styling: ["Vanilla CSS", "Tailwind CSS", "CSS Modules", "Styled Components", "Sass/SCSS", "Tailwind + CSS Modules"],
+  stateCache: ["TanStack Store", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "None"],
+  storage: ["Cloudflare R2", "AWS S3", "Supabase Storage", "Vercel Blob", "Firebase Storage", "Local Filesystem", "None"],
+  search: ["Cloudflare Vectorize", "Pinecone", "pgvector", "Supabase Vector", "Qdrant", "Meilisearch", "Elasticsearch", "Algolia", "None"],
+};
+
+const RULE_PRESETS = [
+  {
+    category: "Coding Standards",
+    rules: [
+      "Always use TypeScript strict mode with strictNullChecks enabled.",
+      "Prefer const over let, and never use var.",
+      "Use interfaces for public APIs and types for internal data structures.",
+      "Avoid using any; use unknown or specific types instead.",
+      "Use async/await instead of .then() chains for promise handling."
+    ]
+  },
+  {
+    category: "Performance",
+    rules: [
+      "Optimize rendering performance; minimize re-renders and use memoization (useMemo, useCallback) where appropriate.",
+      "Implement lazy loading for heavy routes and components.",
+      "Ensure all image tags include explicit width/height and loading='lazy'.",
+      "Avoid N+1 query patterns in database access layer.",
+      "Perform database querying inside server components/functions or edge middleware."
+    ]
+  },
+  {
+    category: "Security",
+    rules: [
+      "Sanitize all user inputs to prevent SQL Injection and XSS vulnerabilities.",
+      "Never expose sensitive API keys or credentials in client-side code; use server-only environment variables.",
+      "Enforce strict CORS configuration and secure cookies for authentication.",
+      "Hash passwords using strong algorithms like bcrypt or argon2 before saving."
+    ]
+  },
+  {
+    category: "Testing",
+    rules: [
+      "Write unit tests for core utilities, helpers, and custom hooks.",
+      "Ensure test coverage is at least 80% for new business logic.",
+      "Include integration or E2E tests using Playwright/Cypress for critical user flows."
+    ]
+  }
+];
+
+const VARIABLE_PRESETS = [
+  {
+    key: "DB_BINDING",
+    description: "The Cloudflare D1 Database binding name.",
+    default: "DB"
+  },
+  {
+    key: "PROJECT_NAME",
+    description: "The baseline name of the repository or project.",
+    default: "locker"
+  },
+  {
+    key: "API_KEY_ENV",
+    description: "The environment variable for third-party API key.",
+    default: "API_KEY"
+  },
+  {
+    key: "KV_NAMESPACE",
+    description: "Cloudflare KV namespace binding name.",
+    default: "KV"
+  },
+  {
+    key: "R2_BUCKET",
+    description: "Cloudflare R2 Bucket binding name.",
+    default: "BUCKET"
+  },
+  {
+    key: "CORS_ORIGIN",
+    description: "Allowed origin for CORS requests.",
+    default: "*"
+  }
+];
+
+function Combobox({
+  value,
+  onChange,
+  options,
+  placeholder,
+  label,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+  placeholder?: string;
+  label?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState(value);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSearch(value);
+  }, [value]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        onChange(search);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [search, onChange]);
+
+  const filteredOptions = useMemo(() => {
+    const q = search.toLowerCase();
+    return options.filter((o) => o.toLowerCase().includes(q));
+  }, [search, options]);
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", display: "flex", flexDirection: "column", width: "100%" }}>
+      {label && (
+        <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 6, fontWeight: 600 }}>
+          {label}
+        </label>
+      )}
+      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            onChange(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          style={{ width: "100%", padding: "8px 12px", paddingRight: "30px" }}
+        />
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            bottom: 0,
+            background: "none",
+            border: "none",
+            color: "var(--text-muted)",
+            padding: "0 10px",
+            display: "flex",
+            alignItems: "center",
+            cursor: "pointer",
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+            <path d="m6 9 6 6 6-6"/>
+          </svg>
+        </button>
+      </div>
+
+      {isOpen && (
+        <div style={{
+          position: "absolute",
+          top: "100%",
+          left: 0,
+          right: 0,
+          marginTop: 4,
+          background: "var(--surface2)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          maxHeight: 180,
+          overflowY: "auto",
+          zIndex: 1000,
+          boxShadow: "0 10px 20px rgba(0,0,0,0.4)",
+        }}>
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((opt) => (
+              <div
+                key={opt}
+                onClick={() => {
+                  onChange(opt);
+                  setSearch(opt);
+                  setIsOpen(false);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  fontSize: 12.5,
+                  color: value === opt ? "var(--accent)" : "var(--text)",
+                  background: value === opt ? "rgba(168,85,247,0.08)" : "transparent",
+                  textAlign: "left",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--accent-dim)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = value === opt ? "rgba(168,85,247,0.08)" : "transparent";
+                }}
+              >
+                {opt}
+              </div>
+            ))
+          ) : (
+            <div style={{ padding: "8px 12px", fontSize: 12.5, color: "var(--text-muted)", fontStyle: "italic", textAlign: "left" }}>
+              Custom value
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TemplatesPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"all" | TemplateCategory>("all");
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [importingTemplate, setImportingTemplate] = useState<any>(null);
+  const [filter, setFilter] = useState("");
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'alphabetical'>('newest');
 
   // Form State
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formCategory, setFormCategory] = useState<TemplateCategory>("stack");
@@ -118,6 +957,7 @@ function TemplatesPage() {
   });
 
   const resetForm = () => {
+    setCurrentStep(1);
     setFormName("");
     setFormDesc("");
     setFormCategory("stack");
@@ -138,6 +978,7 @@ function TemplatesPage() {
 
   const handleEdit = (tmpl: any) => {
     setEditingTemplate(tmpl);
+    setCurrentStep(1);
     setFormName(tmpl.name);
     setFormDesc(tmpl.description);
     setFormCategory(tmpl.category);
@@ -199,6 +1040,22 @@ function TemplatesPage() {
     }
   };
 
+  const addRuleFromPreset = (presetText: string) => {
+    setFormRules((prev) => {
+      const filtered = prev.filter((r) => r.trim() !== "");
+      return [...filtered, presetText];
+    });
+  };
+
+  const addVariableFromPreset = (preset: { key: string; description: string; default: string }) => {
+    setFormVariables((prev) => {
+      if (prev.some((v) => v.key === preset.key)) {
+        return prev;
+      }
+      return [...prev, { ...preset }];
+    });
+  };
+
   const startImport = (tmpl: any) => {
     setImportingTemplate(tmpl);
     let payload: ParsedPayload = { rules: [] };
@@ -221,7 +1078,6 @@ function TemplatesPage() {
       payload = JSON.parse(importingTemplate.configPayload);
     } catch (e) {}
 
-    // Replace variables in rules
     const instantiatedRules = (payload.rules || []).map((rule) => {
       let finalRule = rule;
       Object.entries(importVariables).forEach(([k, v]) => {
@@ -262,428 +1118,686 @@ function TemplatesPage() {
     });
   };
 
-  const getCategoryTheme = (cat: TemplateCategory) => {
-    switch (cat) {
-      case "stack":
-        return { color: "#a855f7", bg: "rgba(168,85,247,0.12)", border: "rgba(168,85,247,0.3)" };
-      case "governance":
-        return { color: "#22c55e", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.3)" };
-      case "devops":
-        return { color: "#3b82f6", bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.3)" };
-      case "compliance":
-        return { color: "#ef4444", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.3)" };
-      case "documentation":
-        return { color: "#f97316", bg: "rgba(249,115,22,0.12)", border: "rgba(249,115,22,0.3)" };
+  const totalByCategory = useMemo(() => {
+    const counts: Record<string, number> = { stack: 0, governance: 0, devops: 0, compliance: 0, documentation: 0 };
+    for (const t of templates) {
+      if (counts[t.category] !== undefined) {
+        counts[t.category]++;
+      }
     }
-  };
-
-  const filteredTemplates = templates.filter(
-    (t) => activeTab === "all" || t.category === activeTab
-  );
+    return counts;
+  }, [templates]);
 
   return (
-    <div style={{ maxWidth: 1040, margin: "0 auto", padding: "40px 24px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
-        <div>
-          <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--text)" }}>Memory Templates</h1>
-          <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 4 }}>
-            Create and manage guidelines templates that you can import into your workspaces or use as stack presets.
-          </p>
+    <div>
+      {/* Page header bar */}
+      <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
+        <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+              </svg>
+              <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Memory Templates</h1>
+              <InfoTooltip text="Templates used to pre-populate stack preferences or import standardized guidelines (governance, DevOps, compliance, documentation) into memories." />
+              <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
+                {templates.length} templates
+              </span>
+            </div>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
+              Create, customize, and instantiate guideline blueprints into your locker vaults.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <button
+              onClick={() => {
+                resetForm();
+                setShowCreateModal(true);
+              }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 16px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, borderRadius: "var(--radius)" }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              New Template
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => {
-            resetForm();
-            setShowCreateModal(true);
-          }}
-          style={{
-            padding: "10px 18px",
-            background: "var(--accent)",
-            color: "white",
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          <span>＋</span> New Template
-        </button>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 12, marginBottom: 28, overflowX: "auto" }}>
-        {(["all", "stack", "governance", "devops", "compliance", "documentation"] as const).map((tab) => {
-          const isActive = activeTab === tab;
-          return (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
+        
+        {/* Stats grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 28 }}>
+          {[
+            { label: "Total", value: templates.length, color: "var(--text)" },
+            { label: "Stacks", value: totalByCategory.stack, color: CATEGORY_COLORS.stack },
+            { label: "Governance", value: totalByCategory.governance, color: CATEGORY_COLORS.governance },
+            { label: "DevOps", value: totalByCategory.devops, color: CATEGORY_COLORS.devops },
+            { label: "Compliance", value: totalByCategory.compliance, color: CATEGORY_COLORS.compliance },
+            { label: "Docs", value: totalByCategory.documentation, color: CATEGORY_COLORS.documentation },
+          ].map(({ label, value, color }) => (
+            <div
+              key={label}
               style={{
-                padding: "6px 14px",
-                background: isActive ? "var(--surface2)" : "transparent",
-                color: isActive ? "var(--text)" : "var(--text-muted)",
-                border: "1px solid " + (isActive ? "var(--border)" : "transparent"),
-                borderRadius: "var(--radius)",
-                textTransform: "capitalize",
-                fontWeight: isActive ? 600 : 500,
+                background: "linear-gradient(135deg, rgba(168,85,247,0.03) 0%, rgba(139,92,246,0.01) 100%)",
+                border: "1px solid rgba(168,85,247,0.12)",
+                borderRadius: 12,
+                padding: "16px 18px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                textAlign: "center",
               }}
             >
-              {tab === "all" ? "All Templates" : tab}
-            </button>
-          );
-        })}
-      </div>
-
-      {isLoading ? (
-        <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-muted)" }}>Loading templates...</div>
-      ) : filteredTemplates.length === 0 ? (
-        <div style={{
-          padding: "80px 20px",
-          textAlign: "center",
-          border: "2px dashed var(--border)",
-          borderRadius: 12,
-          background: "var(--surface)",
-        }}>
-          <span style={{ fontSize: 32 }}>📁</span>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginTop: 12, marginBottom: 4 }}>No templates found</h3>
-          <p style={{ color: "var(--text-muted)", fontSize: 13, maxWidth: 300, margin: "0 auto 16px" }}>
-            Create a custom preset template for devops, documentation, stack baselines, or compliance policies.
-          </p>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
+                {label}
+              </div>
+              <div style={{ fontSize: 32, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+            </div>
+          ))}
         </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 20 }}>
-          {filteredTemplates.map((tmpl) => {
-            const theme = getCategoryTheme(tmpl.category as TemplateCategory);
-            let payload: ParsedPayload = { rules: [] };
-            try {
-              payload = JSON.parse(tmpl.configPayload);
-            } catch (e) {}
 
+        {/* Tabs switcher */}
+        <div style={{ marginBottom: 20, display: "flex", gap: 2, borderBottom: "1px solid var(--border)", alignItems: "flex-end", overflowX: "auto" }}>
+          <InfoTooltip text="Filter blueprints by category: Stacks govern technical setup, while Governance, DevOps, Compliance, and Docs govern repository standards." />
+          {(["all", "stack", "governance", "devops", "compliance", "documentation"] as const).map((tab) => {
+            const isActive = activeTab === tab;
+            const count = tab === "all" ? templates.length : templates.filter((t) => t.category === tab).length;
             return (
-              <div
-                key={tmpl.id}
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
                 style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  padding: 20,
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  transition: "border-color 0.2s",
+                  padding: "8px 16px",
+                  background: isActive ? "var(--surface)" : "transparent",
+                  border: "none",
+                  borderTop: isActive ? "3px solid var(--accent)" : "3px solid transparent",
+                  borderLeft: isActive ? "1px solid var(--border)" : "1px solid transparent",
+                  borderRight: isActive ? "1px solid var(--border)" : "1px solid transparent",
+                  borderBottom: isActive ? "1px solid var(--surface)" : "none",
+                  color: isActive ? "var(--text)" : "var(--text-muted)",
+                  fontSize: 13,
+                  fontWeight: isActive ? 600 : 400,
+                  cursor: "pointer",
+                  marginBottom: -1,
+                  borderRadius: "4px 4px 0 0",
+                  textTransform: "capitalize",
+                  whiteSpace: "nowrap",
                 }}
               >
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                    <span style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      color: theme?.color,
-                      background: theme?.bg,
-                      border: "1px solid " + theme?.border,
-                      padding: "2px 8px",
-                      borderRadius: 20,
-                      letterSpacing: "0.04em",
-                    }}>
-                      {tmpl.category}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      {new Date(tmpl.createdAt * 1000).toLocaleDateString()}
-                    </span>
-                  </div>
-
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{tmpl.name}</h3>
-                  <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 16 }}>{tmpl.description}</p>
-
-                  {payload.variables && payload.variables.length > 0 && (
-                    <div style={{ marginBottom: 16 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Variables:</span>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {payload.variables.map((v) => (
-                          <span key={v.key} style={{ fontSize: 11, color: "var(--text)", background: "var(--surface2)", padding: "2px 6px", borderRadius: 4, fontFamily: "monospace" }}>
-                            {v.key}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: "flex", gap: 8, marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
-                  <button
-                    onClick={() => startImport(tmpl)}
-                    style={{
-                      flex: 1,
-                      padding: "6px 12px",
-                      background: "var(--accent-dim)",
-                      color: "var(--accent)",
-                      border: "1px solid rgba(168,85,247,0.3)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Import to Locker
-                  </button>
-                  <button
-                    onClick={() => handleEdit(tmpl)}
-                    style={{
-                      padding: "6px 10px",
-                      background: "var(--surface2)",
-                      border: "1px solid var(--border)",
-                      color: "var(--text-muted)",
-                    }}
-                    title="Edit Template"
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm("Are you sure you want to delete this template?")) {
-                        deleteMut.mutate(tmpl.id);
-                      }
-                    }}
-                    style={{
-                      padding: "6px 10px",
-                      background: "rgba(239,68,68,0.08)",
-                      border: "1px solid rgba(239,68,68,0.2)",
-                      color: "var(--error)",
-                    }}
-                    title="Delete Template"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </div>
+                {tab === "all" ? "All Templates" : tab} {count > 0 && <span style={{ marginLeft: 4, fontSize: 11, opacity: 0.7 }}>({count})</span>}
+              </button>
             );
           })}
         </div>
-      )}
+
+        {/* Filter / Search Bar */}
+        <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{ position: "relative", flex: 1 }}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--text-muted)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Search templates by name, description, or keyword…"
+              style={{ width: "100%", padding: "8px 12px 8px 32px" }}
+            />
+          </div>
+
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'newest' | 'oldest' | 'alphabetical')}
+            style={{ padding: "8px 12px", minWidth: 140 }}
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="alphabetical">Alphabetical</option>
+          </select>
+
+          {(filter || sortBy !== 'newest') && (
+            <button
+              onClick={() => { setFilter(""); setSortBy('newest'); }}
+              style={{
+                padding: "8px 12px",
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                fontSize: 12,
+              }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+
+        {isLoading ? (
+          <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-muted)" }}>Loading templates...</div>
+        ) : (
+          <TemplateTable
+            templates={templates}
+            activeTab={activeTab}
+            filter={filter}
+            sortBy={sortBy}
+            onImport={startImport}
+            onEdit={handleEdit}
+            onDelete={(t) => {
+              if (confirm(`Are you sure you want to delete "${t.name}"?`)) {
+                deleteMut.mutate(t.id);
+              }
+            }}
+          />
+        )}
+
+      </div>
 
       {/* CREATE/EDIT MODAL */}
-      {(showCreateModal || editingTemplate) && (
-        <div style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.6)",
-          backdropFilter: "blur(8px)",
-          zIndex: 100,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 20,
-        }}>
+      {(showCreateModal || editingTemplate) && (() => {
+        const stepsList = formCategory === "stack"
+          ? [
+              { id: 1, label: "Info" },
+              { id: 2, label: "Stack" },
+              { id: 3, label: "Rules" },
+              { id: 4, label: "Variables" }
+            ]
+          : [
+              { id: 1, label: "Info" },
+              { id: 3, label: "Rules" },
+              { id: 4, label: "Variables" }
+            ];
+
+        const isLast = currentStep === 4;
+
+        const handleNext = () => {
+          if (currentStep === 1) {
+            setCurrentStep(formCategory === "stack" ? 2 : 3);
+          } else if (currentStep === 2) {
+            setCurrentStep(3);
+          } else if (currentStep === 3) {
+            setCurrentStep(4);
+          }
+        };
+
+        const handleBack = () => {
+          if (currentStep === 4) {
+            setCurrentStep(3);
+          } else if (currentStep === 3) {
+            setCurrentStep(formCategory === "stack" ? 2 : 1);
+          } else if (currentStep === 2) {
+            setCurrentStep(1);
+          }
+        };
+
+        return (
           <div style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-            width: "100%",
-            maxWidth: 680,
-            maxHeight: "90vh",
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(8px)",
+            zIndex: 100,
             display: "flex",
-            flexDirection: "column",
-            boxShadow: "0 24px 48px rgba(0,0,0,0.5)",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
           }}>
-            <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 700, fontSize: 16 }}>{editingTemplate ? "Edit Template" : "New Memory Template"}</span>
-              <button onClick={() => {
-                setShowCreateModal(false);
-                setEditingTemplate(null);
-                resetForm();
-              }} style={{ background: "none", color: "var(--text-muted)", fontSize: 20 }}>×</button>
-            </div>
-
-            <div style={{ padding: 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Template Name</label>
-                  <input
-                    type="text"
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g. Next.js Stack Preset"
-                    style={{ width: "100%", padding: "8px 12px" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Category</label>
-                  <select
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value as TemplateCategory)}
-                    style={{ width: "100%", padding: "8px 12px", background: "var(--surface2)" }}
-                    disabled={!!editingTemplate}
-                  >
-                    <option value="stack">Stack (Tech Stack Blueprint)</option>
-                    <option value="governance">Governance (Git, Branching, PRs)</option>
-                    <option value="devops">DevOps (CI/CD Pipeline)</option>
-                    <option value="compliance">Compliance (GDPR, Privacy)</option>
-                    <option value="documentation">Documentation (API, Style)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Description</label>
-                <textarea
-                  value={formDesc}
-                  onChange={(e) => setFormDesc(e.target.value)}
-                  placeholder="Summarize what guidelines this template governs..."
-                  style={{ width: "100%", padding: "8px 12px", minHeight: 60, resize: "vertical" }}
-                />
-              </div>
-
-              {formCategory === "stack" && (
-                <div style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16, background: "var(--surface2)" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 12 }}>Stack Dropdown Configuration</span>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Language</label>
-                      <input type="text" value={stackLanguage} onChange={(e) => setStackLanguage(e.target.value)} style={{ width: "100%", padding: 6, fontSize: 12 }} />
-                    </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Frontend Framework</label>
-                      <input type="text" value={stackFrontend} onChange={(e) => setStackFrontend(e.target.value)} style={{ width: "100%", padding: 6, fontSize: 12 }} />
-                    </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Hosting Runtime</label>
-                      <input type="text" value={stackHosting} onChange={(e) => setStackHosting(e.target.value)} style={{ width: "100%", padding: 6, fontSize: 12 }} />
-                    </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Database</label>
-                      <input type="text" value={stackDatabase} onChange={(e) => setStackDatabase(e.target.value)} style={{ width: "100%", padding: 6, fontSize: 12 }} />
-                    </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>ORM</label>
-                      <input type="text" value={stackOrm} onChange={(e) => setStackOrm(e.target.value)} style={{ width: "100%", padding: 6, fontSize: 12 }} />
-                    </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Auth</label>
-                      <input type="text" value={stackAuth} onChange={(e) => setStackAuth(e.target.value)} style={{ width: "100%", padding: 6, fontSize: 12 }} />
-                    </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Styling</label>
-                      <input type="text" value={stackStyling} onChange={(e) => setStackStyling(e.target.value)} style={{ width: "100%", padding: 6, fontSize: 12 }} />
-                    </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>State / Cache</label>
-                      <input type="text" value={stackStateCache} onChange={(e) => setStackStateCache(e.target.value)} style={{ width: "100%", padding: 6, fontSize: 12 }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Template Rules List */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Guidelines / Rules</label>
-                  <button onClick={() => setFormRules([...formRules, ""])} style={{ padding: "2px 8px", background: "var(--border)", fontSize: 11 }}>＋ Add Rule</button>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {formRules.map((rule, idx) => (
-                    <div key={idx} style={{ display: "flex", gap: 8 }}>
-                      <input
-                        type="text"
-                        value={rule}
-                        onChange={(e) => {
-                          const list = [...formRules];
-                          list[idx] = e.target.value;
-                          setFormRules(list);
-                        }}
-                        placeholder="Define a constraint rule (you can inject variables using {{MY_VAR}})..."
-                        style={{ flex: 1, padding: "6px 10px" }}
-                      />
-                      {formRules.length > 1 && (
-                        <button
-                          onClick={() => setFormRules(formRules.filter((_, i) => i !== idx))}
-                          style={{ padding: "0 10px", background: "rgba(239,68,68,0.1)", color: "var(--error)" }}
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Variables builder */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Variables Mapping</label>
-                  <button onClick={() => setFormVariables([...formVariables, { key: "", description: "", default: "" }])} style={{ padding: "2px 8px", background: "var(--border)", fontSize: 11 }}>＋ Add Variable</button>
-                </div>
-                {formVariables.length === 0 ? (
-                  <span style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>No variables defined. Use variables to allow parameters interpolation during import.</span>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {formVariables.map((v, idx) => (
-                      <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <input
-                          type="text"
-                          value={v.key}
-                          onChange={(e) => {
-                            const list = [...formVariables];
-                            list[idx].key = e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "");
-                            setFormVariables(list);
-                          }}
-                          placeholder="KEY (e.g. DB_BINDING)"
-                          style={{ width: "30%", padding: 6 }}
-                        />
-                        <input
-                          type="text"
-                          value={v.description}
-                          onChange={(e) => {
-                            const list = [...formVariables];
-                            list[idx].description = e.target.value;
-                            setFormVariables(list);
-                          }}
-                          placeholder="Description"
-                          style={{ flex: 1, padding: 6 }}
-                        />
-                        <input
-                          type="text"
-                          value={v.default}
-                          onChange={(e) => {
-                            const list = [...formVariables];
-                            list[idx].default = e.target.value;
-                            setFormVariables(list);
-                          }}
-                          placeholder="Default"
-                          style={{ width: "20%", padding: 6 }}
-                        />
-                        <button
-                          onClick={() => setFormVariables(formVariables.filter((_, i) => i !== idx))}
-                          style={{ padding: "0 10px", background: "rgba(239,68,68,0.1)", color: "var(--error)", height: 28 }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button
-                onClick={() => {
+            <div style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              width: "100%",
+              maxWidth: currentStep >= 3 ? 840 : 680,
+              maxHeight: "90vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 24px 48px rgba(0,0,0,0.5)",
+              transition: "max-width 0.2s ease-in-out",
+            }}>
+              {/* Modal Header */}
+              <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: 700, fontSize: 16 }}>
+                  {editingTemplate ? "Edit Template" : "New Memory Template"}
+                </span>
+                <button onClick={() => {
                   setShowCreateModal(false);
                   setEditingTemplate(null);
                   resetForm();
-                }}
-                style={{ padding: "8px 16px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)" }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={!formName.trim() || createMut.isPending || updateMut.isPending}
-                style={{ padding: "8px 20px", background: "var(--accent)", color: "white", fontWeight: 600 }}
-              >
-                {createMut.isPending || updateMut.isPending ? "Saving..." : "Save Template"}
-              </button>
+                }} style={{ background: "none", color: "var(--text-muted)", fontSize: 20 }}>×</button>
+              </div>
+
+              {/* Progress Indicator */}
+              <div style={{ padding: "20px 24px 0 24px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px" }}>
+                  {stepsList.map((s, index) => {
+                    const isCompleted = currentStep > s.id;
+                    const isActive = currentStep === s.id;
+                    return (
+                      <div key={s.id} style={{ display: "flex", alignItems: "center", flex: index < stepsList.length - 1 ? 1 : "initial" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <button
+                            type="button"
+                            disabled={!formName.trim() && s.id !== 1}
+                            onClick={() => {
+                              if (formName.trim()) {
+                                setCurrentStep(s.id as 1 | 2 | 3 | 4);
+                              }
+                            }}
+                            style={{
+                              width: 24,
+                              height: 24,
+                              borderRadius: "50%",
+                              background: isActive ? "var(--accent)" : isCompleted ? "var(--success)" : "var(--surface2)",
+                              border: `1px solid ${isActive ? "var(--accent)" : isCompleted ? "var(--success)" : "var(--border)"}`,
+                              color: isActive || isCompleted ? "#fff" : "var(--text-muted)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              padding: 0,
+                            }}
+                          >
+                            {isCompleted ? "✓" : index + 1}
+                          </button>
+                          <span style={{ fontSize: 12, fontWeight: isActive ? 600 : 400, color: isActive ? "var(--text)" : "var(--text-muted)" }}>
+                            {s.label}
+                          </span>
+                        </div>
+                        {index < stepsList.length - 1 && (
+                          <div style={{
+                            flex: 1,
+                            height: 2,
+                            background: isCompleted ? "var(--success)" : "var(--border)",
+                            margin: "0 16px",
+                            minWidth: 20,
+                          }} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div style={{ padding: 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16 }}>
+                
+                {/* STEP 1: General Info */}
+                {currentStep === 1 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Template Name</label>
+                        <input
+                          type="text"
+                          value={formName}
+                          onChange={(e) => setFormName(e.target.value)}
+                          placeholder="e.g. Next.js Stack Preset"
+                          style={{ width: "100%", padding: "8px 12px" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Category</label>
+                        <select
+                          value={formCategory}
+                          onChange={(e) => {
+                            setFormCategory(e.target.value as TemplateCategory);
+                          }}
+                          style={{ width: "100%", padding: "8px 12px", background: "var(--surface2)" }}
+                          disabled={!!editingTemplate}
+                        >
+                          <option value="stack">Stack (Tech Stack Blueprint)</option>
+                          <option value="governance">Governance (Git, Branching, PRs)</option>
+                          <option value="devops">DevOps (CI/CD Pipeline)</option>
+                          <option value="compliance">Compliance (GDPR, Privacy)</option>
+                          <option value="documentation">Documentation (API, Style)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Description</label>
+                      <textarea
+                        value={formDesc}
+                        onChange={(e) => setFormDesc(e.target.value)}
+                        placeholder="Summarize what guidelines this template governs..."
+                        style={{ width: "100%", padding: "8px 12px", minHeight: 80, resize: "vertical" }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 2: Stack Settings */}
+                {currentStep === 2 && formCategory === "stack" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    {/* Stack Quick Load Presets */}
+                    <div style={{ background: "rgba(168,85,247,0.03)", border: "1px solid rgba(168,85,247,0.12)", borderRadius: "var(--radius)", padding: 14 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Quick Load Stack Presets</span>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {STACK_PRESETS.map((preset) => (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            onClick={() => {
+                              setStackLanguage(preset.language);
+                              setStackFrontend(preset.frontend);
+                              setStackHosting(preset.hosting);
+                              setStackDatabase(preset.database);
+                              setStackOrm(preset.orm);
+                              setStackAuth(preset.auth);
+                              setStackStyling(preset.styling);
+                              setStackStateCache(preset.stateCache);
+                              setStackStorage(preset.storage);
+                              setStackSearch(preset.search);
+                            }}
+                            style={{
+                              padding: "6px 12px",
+                              background: "var(--tag-bg)",
+                              border: "1px solid var(--tag-border)",
+                              color: "var(--text)",
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              transition: "all 0.15s",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = "var(--accent)";
+                              e.currentTarget.style.background = "var(--accent-dim)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = "var(--tag-border)";
+                              e.currentTarget.style.background = "var(--tag-bg)";
+                            }}
+                          >
+                            {preset.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Stack Fields */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                      <Combobox label="Language" value={stackLanguage} onChange={setStackLanguage} options={FIELD_OPTIONS.language} placeholder="e.g. TypeScript" />
+                      <Combobox label="Frontend Framework" value={stackFrontend} onChange={setStackFrontend} options={FIELD_OPTIONS.frontend} placeholder="e.g. Next.js" />
+                      <Combobox label="Hosting Runtime" value={stackHosting} onChange={setStackHosting} options={FIELD_OPTIONS.hosting} placeholder="e.g. Cloudflare Pages" />
+                      <Combobox label="Database" value={stackDatabase} onChange={setStackDatabase} options={FIELD_OPTIONS.database} placeholder="e.g. Cloudflare D1" />
+                      <Combobox label="ORM" value={stackOrm} onChange={setStackOrm} options={FIELD_OPTIONS.orm} placeholder="e.g. Drizzle ORM" />
+                      <Combobox label="Auth" value={stackAuth} onChange={setStackAuth} options={FIELD_OPTIONS.auth} placeholder="e.g. Better Auth" />
+                      <Combobox label="Styling" value={stackStyling} onChange={setStackStyling} options={FIELD_OPTIONS.styling} placeholder="e.g. Vanilla CSS" />
+                      <Combobox label="State / Cache" value={stackStateCache} onChange={setStackStateCache} options={FIELD_OPTIONS.stateCache} placeholder="e.g. Zustand" />
+                      <Combobox label="Storage" value={stackStorage} onChange={setStackStorage} options={FIELD_OPTIONS.storage} placeholder="e.g. Cloudflare R2" />
+                      <Combobox label="Search / Vector" value={stackSearch} onChange={setStackSearch} options={FIELD_OPTIONS.search} placeholder="e.g. Cloudflare Vectorize" />
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 3: Guidelines & Rules */}
+                {currentStep === 3 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 20 }}>
+                    {/* Left Column: Rules Builder */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Guidelines / Rules</label>
+                        <button onClick={() => setFormRules([...formRules, ""])} style={{ padding: "4px 10px", background: "var(--border)", color: "var(--text)", fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>＋</span> Add Rule
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "40vh", overflowY: "auto", paddingRight: 4 }}>
+                        {formRules.map((rule, idx) => (
+                          <div key={idx} style={{ display: "flex", gap: 8 }}>
+                            <input
+                              type="text"
+                              value={rule}
+                              onChange={(e) => {
+                                const list = [...formRules];
+                                list[idx] = e.target.value;
+                                setFormRules(list);
+                              }}
+                              placeholder="Define a constraint rule (you can inject variables like {{MY_VAR}})..."
+                              style={{ flex: 1, padding: "6px 10px" }}
+                            />
+                            {formRules.length > 1 && (
+                              <button
+                                onClick={() => setFormRules(formRules.filter((_, i) => i !== idx))}
+                                style={{ padding: "0 10px", background: "rgba(239,68,68,0.1)", color: "var(--error)", border: "1px solid rgba(239,68,68,0.2)" }}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Right Column: Key Rule Presets */}
+                    <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+                      <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Rule Presets</label>
+                      <div style={{ maxHeight: "40vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingRight: 4 }}>
+                        {RULE_PRESETS.map((group) => (
+                          <div key={group.category}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{group.category}</span>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              {group.rules.map((ruleText) => {
+                                const isAdded = formRules.includes(ruleText);
+                                return (
+                                  <div
+                                    key={ruleText}
+                                    onClick={() => !isAdded && addRuleFromPreset(ruleText)}
+                                    style={{
+                                      padding: "6px 10px",
+                                      background: isAdded ? "rgba(34,197,94,0.06)" : "var(--surface2)",
+                                      border: `1px solid ${isAdded ? "rgba(34,197,94,0.2)" : "var(--border)"}`,
+                                      borderRadius: 6,
+                                      fontSize: 11,
+                                      color: isAdded ? "var(--success)" : "var(--text)",
+                                      cursor: isAdded ? "default" : "pointer",
+                                      transition: "all 0.15s",
+                                      textAlign: "left",
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (!isAdded) {
+                                        e.currentTarget.style.borderColor = "var(--accent)";
+                                        e.currentTarget.style.background = "var(--accent-dim)";
+                                      }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (!isAdded) {
+                                        e.currentTarget.style.borderColor = "var(--border)";
+                                        e.currentTarget.style.background = "var(--surface2)";
+                                      }
+                                    }}
+                                  >
+                                    {ruleText} {isAdded && <span style={{ marginLeft: 4 }}>✓</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 4: Variables Mapping */}
+                {currentStep === 4 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 20 }}>
+                    {/* Left Column: Variables Mapping Builder */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Variables Mapping</label>
+                        <button onClick={() => setFormVariables([...formVariables, { key: "", description: "", default: "" }])} style={{ padding: "4px 10px", background: "var(--border)", color: "var(--text)", fontSize: 11.5, display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>＋</span> Add Variable
+                        </button>
+                      </div>
+                      
+                      {formVariables.length === 0 ? (
+                        <div style={{ padding: "30px 10px", textAlign: "center", color: "var(--text-muted)", fontSize: 12, border: "1px dashed var(--border)", borderRadius: "var(--radius)" }}>
+                          No variables defined. Click presets on the right or Add Variable above to define custom parameters.
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "40vh", overflowY: "auto", paddingRight: 4 }}>
+                          {formVariables.map((v, idx) => (
+                            <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <input
+                                type="text"
+                                value={v.key}
+                                onChange={(e) => {
+                                  const list = [...formVariables];
+                                  list[idx].key = e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "");
+                                  setFormVariables(list);
+                                }}
+                                placeholder="KEY (e.g. DB)"
+                                style={{ width: "30%", padding: 6 }}
+                              />
+                              <input
+                                type="text"
+                                value={v.description}
+                                onChange={(e) => {
+                                  const list = [...formVariables];
+                                  list[idx].description = e.target.value;
+                                  setFormVariables(list);
+                                }}
+                                placeholder="Description"
+                                style={{ flex: 1, padding: 6 }}
+                              />
+                              <input
+                                type="text"
+                                value={v.default}
+                                onChange={(e) => {
+                                  const list = [...formVariables];
+                                  list[idx].default = e.target.value;
+                                  setFormVariables(list);
+                                }}
+                                placeholder="Default"
+                                style={{ width: "20%", padding: 6 }}
+                              />
+                              <button
+                                onClick={() => setFormVariables(formVariables.filter((_, i) => i !== idx))}
+                                style={{ padding: "0 10px", background: "rgba(239,68,68,0.1)", color: "var(--error)", border: "1px solid rgba(239,68,68,0.2)", height: 28 }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Column: Variable Presets */}
+                    <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+                      <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Variable Presets</label>
+                      <div style={{ maxHeight: "40vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, paddingRight: 4 }}>
+                        {VARIABLE_PRESETS.map((v) => {
+                          const isAdded = formVariables.some((existing) => existing.key === v.key);
+                          return (
+                            <div
+                              key={v.key}
+                              onClick={() => !isAdded && addVariableFromPreset(v)}
+                              style={{
+                                padding: "8px 12px",
+                                background: isAdded ? "rgba(34,197,94,0.06)" : "var(--surface2)",
+                                border: `1px solid ${isAdded ? "rgba(34,197,94,0.2)" : "var(--border)"}`,
+                                borderRadius: 6,
+                                cursor: isAdded ? "default" : "pointer",
+                                fontSize: 11,
+                                color: isAdded ? "var(--success)" : "var(--text)",
+                                transition: "all 0.15s",
+                                textAlign: "left",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isAdded) {
+                                  e.currentTarget.style.borderColor = "var(--accent)";
+                                  e.currentTarget.style.background = "var(--accent-dim)";
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isAdded) {
+                                  e.currentTarget.style.borderColor = "var(--border)";
+                                  e.currentTarget.style.background = "var(--surface2)";
+                                }
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span style={{ fontWeight: 700, fontFamily: "monospace" }}>{v.key}</span>
+                                {isAdded ? (
+                                  <span>✓</span>
+                                ) : (
+                                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Default: {v.default}</span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{v.description}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+
+              {/* Modal Footer */}
+              <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <button
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setEditingTemplate(null);
+                      resetForm();
+                    }}
+                    style={{ padding: "10px 18px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                
+                <div style={{ display: "flex", gap: 10 }}>
+                  {currentStep > 1 && (
+                    <button
+                      onClick={handleBack}
+                      style={{ padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
+                    >
+                      Back
+                    </button>
+                  )}
+                  
+                  {!isLast ? (
+                    <button
+                      onClick={handleNext}
+                      disabled={!formName.trim()}
+                      style={{ padding: "10px 22px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: !formName.trim() ? "default" : "pointer" }}
+                    >
+                      Next
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleSave}
+                      disabled={!formName.trim() || createMut.isPending || updateMut.isPending}
+                      style={{ padding: "10px 22px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: (!formName.trim() || createMut.isPending || updateMut.isPending) ? "default" : "pointer" }}
+                    >
+                      {createMut.isPending || updateMut.isPending ? "Saving..." : "Save Template"}
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* IMPORT MODAL */}
       {importingTemplate && (
@@ -721,12 +1835,11 @@ function TemplatesPage() {
                 <select
                   value={importWorkspace}
                   onChange={(e) => setImportWorkspace(e.target.value)}
-                  style={{ width: "100%", padding: "8px 12px", background: "var(--surface2)" }}
+                  style={{ width: "100%", padding: "10px 12px", fontSize: 13, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none" }}
                 >
-                  <option value="personal">Personal Vault</option>
                   {workspaces.map((w: any) => (
                     <option key={w.key} value={w.key}>
-                      {w.name} ({w.type === "org" ? "Org Locker" : "Team Locker"})
+                      {w.label}
                     </option>
                   ))}
                 </select>
@@ -769,14 +1882,14 @@ function TemplatesPage() {
                   setImportingTemplate(null);
                   setImportVariables({});
                 }}
-                style={{ padding: "8px 16px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)" }}
+                style={{ padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, borderRadius: "var(--radius)", cursor: "pointer" }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleImportSubmit}
                 disabled={importMut.isPending}
-                style={{ padding: "8px 20px", background: "var(--accent)", color: "white", fontWeight: 600 }}
+                style={{ padding: "10px 22px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, border: "none", borderRadius: "var(--radius)", cursor: importMut.isPending ? "default" : "pointer" }}
               >
                 {importMut.isPending ? "Importing..." : "Confirm Import"}
               </button>
