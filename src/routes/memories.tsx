@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { InfoTooltip } from "~/components/InfoTooltip";
 import {
   getMemories,
@@ -311,7 +311,7 @@ function MemoryRow({
                         onClick={() => { setMenuOpen(false); onSelect?.(); }}
                         style={{ background: "none", border: "none", color: "var(--text)", padding: "5px 10px", textAlign: "left", fontSize: 11, cursor: "pointer", width: "100%" }}
                       >
-                        Edit / History
+                        Manage
                       </button>
                       {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
                         <button
@@ -933,7 +933,6 @@ function NewMemoryModal({
               <div>
                 <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
                   Fact
-                  <InfoTooltip text="A discrete piece of information your AI assistant should remember — a preference, rule, project detail, or reference." size={12} />
                 </label>
                 <textarea
                   autoFocus
@@ -949,7 +948,6 @@ function NewMemoryModal({
                 <div style={{ flex: 1 }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
                     Category
-                    <InfoTooltip text="Rules: coding conventions and preferences. Projects: context about specific projects. References: links, contacts, or factual lookups." size={12} />
                   </label>
                   <select
                     value={category}
@@ -965,7 +963,6 @@ function NewMemoryModal({
                 <div style={{ flex: 1 }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
                     Tags
-                    <InfoTooltip text="Comma-separated keywords used to group and filter memories. Tags help you find related entries quickly." size={12} />
                   </label>
                   <input
                     type="text"
@@ -980,7 +977,6 @@ function NewMemoryModal({
               <div>
                 <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
                   Target Locker
-                  <InfoTooltip text="Choose the vault/locker where this memory should be saved." size={12} />
                 </label>
                 <select
                   value={singleLocker}
@@ -1129,7 +1125,6 @@ function NewMemoryModal({
                   <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
                     <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
                       AI Prompt Input (Interview / Goal Box)
-                      <InfoTooltip text="Describe your goals (e.g. 'A low-latency real-time chat site built on edge platforms with no AWS'). The AI will auto-populate stack options." size={12} />
                     </label>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
                       <textarea
@@ -1453,7 +1448,6 @@ function NewMemoryModal({
                   <div>
                     <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
                       Save To Locker
-                      <InfoTooltip text="Select the target locker/vault where this blueprint memory should be saved." size={12} />
                     </label>
                     <select
                       value={targetLocker}
@@ -2663,27 +2657,26 @@ function MemoryTable({
 
   const hasMore = visibleCount < filtered.length;
 
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!hasMore) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => prev + PAGE_SIZE);
-        }
-      },
-      { threshold: 0.1, rootMargin: "150px" }
-    );
-    const currentSentinel = sentinelRef.current;
-    if (currentSentinel) {
-      observer.observe(currentSentinel);
-    }
-    return () => {
-      if (currentSentinel) {
-        observer.unobserve(currentSentinel);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
       }
-    };
-  }, [hasMore, visibleCount]);
+      if (node && hasMore) {
+        observerRef.current = new IntersectionObserver(
+          (entries) => {
+            if (entries[0].isIntersecting) {
+              setVisibleCount((prev) => prev + PAGE_SIZE);
+            }
+          },
+          { threshold: 0.1, rootMargin: "150px" }
+        );
+        observerRef.current.observe(node);
+      }
+    },
+    [hasMore]
+  );
 
   const filteredIds = useMemo(() => new Set(filtered.map((m) => m.id)), [filtered]);
   const allSelected = filtered.length > 0 && filtered.every((m) => selected.has(m.id));
@@ -3330,7 +3323,7 @@ function Dashboard() {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
           gap: 20px;
-          align-items: start;
+          align-items: stretch;
         }
         @media (max-width: 640px) {
           .memories-grid-container {
@@ -3435,6 +3428,7 @@ function Dashboard() {
           cursor: pointer;
           transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
           min-height: 220px;
+          height: 100%;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
@@ -3454,14 +3448,14 @@ function Dashboard() {
         .memory-item-card-body {
           font-size: 13.5px;
           line-height: 1.5;
-          color: var(--text);
+          color: var(--text-muted);
           overflow: hidden;
           display: -webkit-box;
           -webkit-line-clamp: 5;
           -webkit-box-orient: vertical;
           margin: 0 0 12px 0;
           word-break: break-word;
-          opacity: 0.9;
+          opacity: 0.95;
         }
       `}</style>
       {/* Page header bar */}
@@ -3474,7 +3468,6 @@ function Dashboard() {
                 <path d="M3 9h18M9 21V9" />
               </svg>
               <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Memory Locker</h1>
-              <InfoTooltip text="Your personal memory store. Facts saved here are retrieved automatically by your AI assistant during sessions via the MCP endpoint." />
               <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
                 {memories.length} entries
               </span>
@@ -3505,7 +3498,6 @@ function Dashboard() {
             )}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-            <InfoTooltip text="Switch between your personal vault and any org/team vaults you belong to. Each vault is retrieved separately during AI sessions." />
             <select
               value={projectKey}
               onChange={(e) => setProjectKey(e.target.value)}
@@ -3618,7 +3610,6 @@ function Dashboard() {
 
       {/* Memory tabs */}
       <div style={{ marginBottom: 20, display: "flex", gap: 2, borderBottom: "1px solid var(--border)", alignItems: "flex-end" }}>
-        <InfoTooltip text="Active memories are injected into AI sessions. Archived memories are retained but not retrieved unless restored." />
         <button
           onClick={() => setMemoryTab("active")}
           style={{
