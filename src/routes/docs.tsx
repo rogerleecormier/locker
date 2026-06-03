@@ -1061,6 +1061,87 @@ enabled = true`,
             </ol>
           </div>
         );
+      case "import-memories":
+        return (
+          <div>
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Importing & Migrating</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+              Migrating your personal context, rules, and inferred preferences from existing platforms is a simple two-step process in Locker. You can copy custom extraction prompts for major LLMs and batch ingest them using our AI parsing tool.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Workflow</h3>
+            <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              <li>Open the <strong>Import</strong> tab in the navigation bar.</li>
+              <li>Select your source platform (ChatGPT, Claude, Perplexity, Gemini, Grok, or Microsoft Copilot).</li>
+              <li>Locker displays a custom prompt tailored to extract that chatbot's internal memory store and custom instructions. Click <strong>Copy Prompt</strong> (or <strong>Deep Link Search</strong>).</li>
+              <li>Paste the prompt into your chat session with that LLM. The AI will output all its saved memories and inferred preferences in a structured code block.</li>
+              <li>Paste the output code block into the Locker import panel and select a project workspace scope.</li>
+              <li>Click <strong>Parse with AI</strong>. Locker will automatically deduplicate, categorize (rules, projects, or references), and tag the raw dump.</li>
+              <li>Verify the parsed facts on screen and click <strong>Batch Import Memories</strong> to encrypt and save them.</li>
+            </ol>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Supported Platforms</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 14 }}>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>ChatGPT & Claude</h4>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>Extracts both explicit saved memory slots, custom system instructions, and implicit behavioral inferences.</p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 14 }}>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Perplexity & Gemini</h4>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>Pulls details from Perplexity personalization slots and Gemini "Saved Info" panels verbatim.</p>
+              </div>
+            </div>
+          </div>
+        );
+      case "team-collaboration":
+        return (
+          <div>
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Team Collaboration</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+              Establish shared coding standards and stack specifications for your entire development team. Group members, assign roles, and connect shared workspace keys to eliminate drift across local developer environments.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Organizations & Teams</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+              Locker enforces clean hierarchical boundaries to govern shared memories:
+            </p>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              <li><strong>Organizations:</strong> Billing hubs that manage member seat allocations, subscription quotas, and general workspace keys.</li>
+              <li><strong>Teams:</strong> Granular sub-groups (e.g. <code>frontend-team</code>, <code>devops-team</code>). You can restrict memory blocks or project scopes to specific teams so developers only receive context relevant to their work.</li>
+            </ul>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>User Roles & Governance</h3>
+            <div style={{ overflowX: "auto", marginBottom: 24 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                <thead>
+                  <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                    <th style={{ padding: "8px 12px", color: "var(--text)" }}>Role</th>
+                    <th style={{ padding: "8px 12px", color: "var(--text)" }}>Permissions & Access Boundaries</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px 12px", fontWeight: "bold", color: "var(--accent)" }}>Owner</td>
+                    <td style={{ padding: "10px 12px", color: "var(--text-muted)", lineHeight: 1.5 }}>Full billing control, seat upgrades, organization deletion, role modification, and member pruning.</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px 12px", fontWeight: "bold", color: "var(--accent)" }}>Admin</td>
+                    <td style={{ padding: "10px 12px", color: "var(--text-muted)", lineHeight: 1.5 }}>Create teams, issue email invitations, delete/update shared organization memories, and edit general team lists.</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px 12px", fontWeight: "bold", color: "var(--text)" }}>Member</td>
+                    <td style={{ padding: "10px 12px", color: "var(--text-muted)", lineHeight: 1.5 }}>Read-only access or read-write access to specific scoped memory cards based on team memberships.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Inviting Members</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+              Owners and Admins can invite new developers from the <strong>Organization</strong> view by typing their email. Locker generates a cryptographically signed magic link valid for 48 hours and sends an invitation email using Cloudflare's built-in Email Worker bindings.
+            </p>
+          </div>
+        );
       case "managing-memories":
         return (
           <div>
@@ -1534,6 +1615,8 @@ enabled = true`,
           </optgroup>
           <optgroup label="Features & Workflows">
             <option value="managing-memories">Managing Memories</option>
+            <option value="import-memories">Importing & Migrating</option>
+            <option value="team-collaboration">Team Collaboration</option>
             <option value="stack-creator">Tech Stack Creator</option>
             <option value="templates">Blueprint Templates</option>
             <option value="export-rules">Exporting Agent Rules</option>
@@ -1589,6 +1672,12 @@ enabled = true`,
                   <div className="sidebar-section-title">Features & Workflows</div>
                   <button onClick={() => setActiveSection("managing-memories")} className={`sidebar-button ${activeSection === "managing-memories" ? "active" : ""}`}>
                     <span>🧠</span> Managing Memories
+                  </button>
+                  <button onClick={() => setActiveSection("import-memories")} className={`sidebar-button ${activeSection === "import-memories" ? "active" : ""}`}>
+                    <span>📥</span> Importing & Migrating
+                  </button>
+                  <button onClick={() => setActiveSection("team-collaboration")} className={`sidebar-button ${activeSection === "team-collaboration" ? "active" : ""}`}>
+                    <span>👥</span> Team Collaboration
                   </button>
                   <button onClick={() => setActiveSection("stack-creator")} className={`sidebar-button ${activeSection === "stack-creator" ? "active" : ""}`}>
                     <span>🛠️</span> Tech Stack Creator
