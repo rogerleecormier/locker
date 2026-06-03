@@ -1,10 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { PLANS, PLAN_ORDER, resolvePlan, type PlanId } from "~/lib/plans";
-import { PlanCard, PlanBadge, AdminUpgradeButton } from "~/components/PaywallGate";
+import { PlanCard, PlanBadge } from "~/components/PaywallGate";
 import { getUserEffectivePlan, getUserUsageStats } from "~/server/planGate";
 import { requireSession } from "~/server/session";
 import { createCheckoutSession, createPortalSession } from "~/server/billing";
@@ -16,12 +16,15 @@ import {
   organizationMembers,
   orgQuotas,
   tokenUsages,
-  teams,
-  teamMembers,
   userPlans,
   oauthAccessTokensV2,
 } from "~/db/schema";
 import { eq, sql, and } from "drizzle-orm";
+import { PageContainer } from "~/components/PageContainer";
+import { PageHeader } from "~/components/PageHeader";
+import { Button } from "~/components/ui/button";
+import { Badge } from "~/components/ui/badge";
+import { Select } from "~/components/ui/input";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
@@ -29,12 +32,10 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
   async ({ context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
-    const db = drizzle(env.DB, { schema: { memories, apiTokens, organizations, organizationMembers, orgQuotas, tokenUsages, teams, teamMembers, userPlans, oauthAccessTokensV2 } });
+    const db = drizzle(env.DB, { schema: { memories, apiTokens, organizations, organizationMembers, orgQuotas, tokenUsages, userPlans, oauthAccessTokensV2 } });
 
     const { planId, orgId } = await getUserEffectivePlan(db, user.id);
 
-    // Personal plan is what the user directly subscribed to, independent of
-    // any org membership. Used to show the correct upgrade options in My Billing.
     const personalPlanRow = await db
       .select({ plan: userPlans.plan })
       .from(userPlans)
@@ -111,7 +112,6 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
       .all();
     const hasBillingCustomer = !!userPlanRow[0]?.billingCustomerId;
 
-    // Orgs where the user is owner or admin — these can be billed
     const managedOrgsRaw = await db
       .select({
         id: organizations.id,
@@ -129,7 +129,6 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
       )
       .all();
 
-    // Get seat count for each org
     const managedOrgs = await Promise.all(
       managedOrgsRaw.map(async (org) => {
         const activeMembers = await db
@@ -148,8 +147,8 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
     );
 
     return {
-      planId,        // effective plan (highest of personal + orgs)
-      personalPlanId, // what the user personally subscribes to
+      planId,
+      personalPlanId,
       orgId,
       userId: user.id,
       hasBillingCustomer,
@@ -176,20 +175,21 @@ export function UsageBar({ label, current, max }: { label: string; current: numb
   const pct = max === Infinity ? 0 : Math.min(100, (current / max) * 100);
   const isNearLimit = pct >= 80;
   const isAtLimit = pct >= 100;
-  const color = isAtLimit ? "var(--error)" : isNearLimit ? "#f59e0b" : "var(--accent)";
+  const colorClass = isAtLimit ? "bg-error" : isNearLimit ? "bg-amber-500" : "bg-accent";
+  const textClass = isAtLimit ? "text-error font-semibold" : "text-text font-semibold";
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-        <span style={{ color: "var(--text-muted)" }}>{label}</span>
-        <span style={{ color: isAtLimit ? "var(--error)" : "var(--text)", fontWeight: 600 }}>
+    <div className="flex flex-col gap-1.5 select-none">
+      <div className="flex justify-between text-xs md:text-sm">
+        <span className="text-text-muted">{label}</span>
+        <span className={textClass}>
           {current.toLocaleString()}
           {max !== Infinity && ` / ${max.toLocaleString()}`}
           {max === Infinity && " / ∞"}
         </span>
       </div>
       {max !== Infinity && (
-        <div style={{ height: 5, background: "var(--surface2)", borderRadius: 3, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.4s ease" }} />
+        <div className="h-1.5 bg-surface2 border border-border/40 rounded-full overflow-hidden">
+          <div className={`h-full ${colorClass} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
         </div>
       )}
     </div>
@@ -204,12 +204,12 @@ function TokenUsageChart({ tokenName, dailyBreakdown }: {
   const last14 = dailyBreakdown.slice(-14);
   const totalTokens = dailyBreakdown.reduce((sum, d) => sum + d.tokens, 0);
   return (
-    <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "14px 16px" }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="bg-surface2 border border-border rounded-xl p-4 flex flex-col gap-3 shadow-3xs select-none">
+      <div className="text-xs font-bold text-text flex justify-between items-center uppercase tracking-wider">
         <span>{tokenName}</span>
-        <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>Tokens: {totalTokens.toLocaleString()}</span>
+        <span className="text-[10px] text-text-muted normal-case font-medium">Tokens: {totalTokens.toLocaleString()}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: "3px", height: "60px" }}>
+      <div className="flex items-end gap-1 h-[60px]">
         {last14.map((d) => {
           const total = d.recalls + d.commits;
           const height = Math.max(2, (total / Math.max(...last14.map((x) => x.recalls + x.commits), 1)) * 56);
@@ -217,19 +217,19 @@ function TokenUsageChart({ tokenName, dailyBreakdown }: {
           const commitH = (d.commits / Math.max(total, 1)) * height;
           return (
             <div key={d.date} title={`${d.date}\nRecalls: ${d.recalls}\nCommits: ${d.commits}\nTokens: ${d.tokens}`}
-              style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: "1px" }}>
-              <div style={{ height: `${recallH}px`, background: "var(--accent)", borderRadius: "2px 2px 0 0", minHeight: d.recalls > 0 ? "2px" : "0px" }} />
-              <div style={{ height: `${commitH}px`, background: "#34d399", borderRadius: d.recalls > 0 ? 0 : "2px 2px 0 0", minHeight: d.commits > 0 ? "2px" : "0px" }} />
+              className="flex-1 flex flex-col justify-end gap-0.5">
+              <div className="bg-accent rounded-t-xs min-h-[2px] transition-all duration-300" style={{ height: d.recalls > 0 ? `${recallH}px` : "0px" }} />
+              <div className="bg-emerald-400 rounded-t-xs min-h-[2px] transition-all duration-300" style={{ height: d.commits > 0 ? `${commitH}px` : "0px", borderRadius: d.recalls > 0 ? "0px" : "2px 2px 0 0" }} />
             </div>
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--text-muted)" }}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: "var(--accent)" }} /> Recalls
+      <div className="flex gap-4 mt-1">
+        <div className="flex items-center gap-1.5 text-[10px] text-text-muted font-bold uppercase tracking-wider">
+          <div className="w-2.5 h-2.5 rounded-sm bg-accent" /> Recalls
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--text-muted)" }}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: "#34d399" }} /> Commits
+        <div className="flex items-center gap-1.5 text-[10px] text-text-muted font-bold uppercase tracking-wider">
+          <div className="w-2.5 h-2.5 rounded-sm bg-emerald-400" /> Commits
         </div>
       </div>
     </div>
@@ -249,19 +249,19 @@ export function MyUsageSection() {
   const currentPlan: PlanId = billing?.planId ?? "free";
   const limits = PLANS[currentPlan].limits;
 
-  if (isLoading) return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>;
+  if (isLoading) return <p className="text-text-muted text-xs animate-pulse font-medium">Loading…</p>;
 
   return (
-    <>
-      <section style={card}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+    <div className="flex flex-col gap-6">
+      <section className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+        <div className="flex items-center justify-between gap-4 select-none">
           <div>
-            <h2 style={sectionTitle}>Current Usage</h2>
-            <p style={sectionDesc}>Your personal resource consumption this billing period.</p>
+            <h2 className="text-base font-bold text-text">Current Usage</h2>
+            <p className="text-xs text-text-muted mt-0.5 leading-relaxed">Your personal resource consumption this billing period.</p>
           </div>
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Resets monthly</span>
+          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Resets monthly</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <UsageBar label="Personal Memories" current={billing?.usage.memories ?? 0} max={limits.maxMemories} />
           <UsageBar label="API Tokens" current={billing?.usage.apiTokens ?? 0} max={limits.maxApiTokens} />
           <UsageBar label="Monthly Recalls (MCP)" current={billing?.usage.monthlyRecalls ?? 0} max={limits.maxMonthlyRecalls} />
@@ -271,26 +271,26 @@ export function MyUsageSection() {
       </section>
 
       {currentPlan !== "free" && billing?.usageStats && (
-        <section style={card}>
-          <h2 style={{ ...sectionTitle, marginBottom: 16 }}>
+        <section className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+          <h2 className="text-base font-bold text-text select-none">
             Token Usage Analytics{" "}
-            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>(Last 30 days)</span>
+            <span className="text-xs font-normal text-text-muted normal-case tracking-normal">(Last 30 days)</span>
           </h2>
           {billing.usageStats.length > 0 ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {billing.usageStats.map((s) => (
                 <TokenUsageChart key={s.tokenId} tokenName={s.tokenName} dailyBreakdown={s.dailyBreakdown} />
               ))}
             </div>
           ) : (
-            <div style={{ padding: "32px 24px", textAlign: "center", background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.15)", borderRadius: 8 }}>
-              <div style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 4 }}>No usage recorded yet</div>
-              <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Make your first MCP call to see token usage data here.</div>
+            <div className="py-10 text-center bg-accent/5 border border-accent/15 rounded-xl select-none">
+              <div className="text-text-muted text-xs font-semibold">No usage recorded yet</div>
+              <div className="text-text-muted text-[11px] mt-1">Make your first MCP call to see token usage data here.</div>
             </div>
           )}
         </section>
       )}
-    </>
+    </div>
   );
 }
 
@@ -341,100 +341,114 @@ export function MyBillingSection() {
     }
   }
 
-  if (isLoading) return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>;
+  if (isLoading) return <p className="text-text-muted text-xs animate-pulse font-medium">Loading…</p>;
 
-  // personalPlanId = what the user directly subscribes to
-  // planId = effective plan (may be elevated by org membership)
   const personalPlan: PlanId = billing?.personalPlanId ?? "free";
   const effectivePlan: PlanId = billing?.planId ?? "free";
   const elevatedByOrg = effectivePlan !== personalPlan;
 
   return (
-    <>
-      {successMsg && <div style={alertSuccess}>{successMsg}</div>}
-      {cancelMsg && <div style={alertWarn}>{cancelMsg}</div>}
-      {stripeError && <div style={alertError}>{stripeError}</div>}
+    <div className="flex flex-col gap-6">
+      {successMsg && (
+        <div className="p-3 bg-success/10 border border-success/30 rounded-xl text-success text-xs font-semibold select-none flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+          {successMsg}
+        </div>
+      )}
+      {cancelMsg && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-xs font-semibold select-none flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {cancelMsg}
+        </div>
+      )}
+      {stripeError && (
+        <div className="p-3 bg-error/10 border border-error/30 rounded-xl text-error text-xs font-semibold select-none flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {stripeError}
+        </div>
+      )}
 
-      {/* If org is covering this user, show a clear explainer instead of upgrade prompts */}
       {elevatedByOrg ? (
-        <section style={card}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-            <h2 style={{ ...sectionTitle, margin: 0 }}>My Billing</h2>
+        <section className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+          <div className="flex items-center gap-2.5 select-none">
+            <h2 className="text-base font-bold text-text">My Billing</h2>
             <PlanBadge plan={effectivePlan} />
           </div>
-          <div style={{ padding: "14px 16px", background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8, fontSize: 13, lineHeight: 1.6, color: "var(--text-muted)" }}>
-            <div style={{ fontWeight: 600, color: "var(--success)", marginBottom: 6 }}>
+          <div className="p-4 bg-success/5 border border-success/15 rounded-xl text-xs md:text-sm leading-relaxed text-text-muted select-none">
+            <div className="font-bold text-success mb-1 flex items-center gap-1.5">
               ✓ Your {effectivePlan} features come from your organization
             </div>
-            You currently have full <strong style={{ color: "var(--text)" }}>{effectivePlan}</strong> access through your org seat.
-            Your personal subscription is <strong style={{ color: "var(--text)" }}>{personalPlan}</strong> — if you lose your org seat
+            You currently have full <strong className="text-text font-bold">{effectivePlan}</strong> access through your org seat.
+            Your personal subscription is <strong className="text-text font-bold">{personalPlan}</strong> — if you lose your org seat
             (leave, get removed, or the org downgrades), you would immediately fall back to your personal plan's limits and features.
           </div>
           {billing?.hasBillingCustomer && (
-            <div style={{ marginTop: 12 }}>
-              <button onClick={handlePortal} disabled={portalLoading} style={{ ...btnOutline, fontSize: 12 }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <div>
+              <Button onClick={handlePortal} disabled={portalLoading} className="font-semibold text-xs h-8 select-none gap-1.5" variant="outline">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                 {portalLoading ? "Opening…" : "Manage Personal Subscription"}
-              </button>
+              </Button>
             </div>
           )}
         </section>
       ) : (
         <>
-          <section style={card}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                  <h2 style={{ ...sectionTitle, margin: 0 }}>My Plan</h2>
-                  <PlanBadge plan={personalPlan} />
-                </div>
-                <p style={sectionDesc}>Your personal subscription tier.</p>
+          <section className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+            <div className="flex items-center justify-between gap-4 flex-wrap select-none">
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-base font-bold text-text">My Plan</h2>
+                <PlanBadge plan={personalPlan} />
               </div>
               {billing?.hasBillingCustomer && (
-                <button onClick={handlePortal} disabled={portalLoading} style={btnOutline}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <Button onClick={handlePortal} disabled={portalLoading} variant="outline" className="h-8 text-xs font-semibold gap-1.5 select-none">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                   {portalLoading ? "Opening…" : "Manage Subscription"}
-                </button>
+                </Button>
               )}
             </div>
+            <p className="text-xs text-text-muted -mt-2 leading-relaxed">Your personal subscription tier.</p>
 
             {personalPlan === "free" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+              <div className="flex flex-col gap-3">
+                <p className="text-xs md:text-sm text-text-muted leading-relaxed">
                   You're on the free plan. Upgrade to unlock more memories, recalls, and advanced analytics.
                 </p>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button onClick={handleUpgrade} disabled={upgradingId !== null} style={btnPrimary}>
+                <div className="flex gap-2.5 flex-wrap mt-1">
+                  <Button onClick={handleUpgrade} disabled={upgradingId !== null} className="font-bold text-xs select-none h-9 px-4">
                     {upgradingId === "personal" ? "Redirecting to Checkout…" : "Upgrade to Business"}
-                  </button>
-                  <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Contact Sales for Enterprise</a>
+                  </Button>
+                  <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none">
+                    Contact Sales for Enterprise
+                  </a>
                 </div>
               </div>
             )}
 
             {personalPlan === "business" && (
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Upgrade to Enterprise</a>
+              <div className="flex gap-2.5 flex-wrap items-center mt-1">
+                <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none">
+                  Upgrade to Enterprise
+                </a>
                 {billing?.hasBillingCustomer && (
-                  <button onClick={handlePortal} disabled={portalLoading} style={{ ...btnOutline, fontSize: 12 }}>
+                  <Button onClick={handlePortal} disabled={portalLoading} variant="ghost" className="h-9 text-xs text-error hover:text-error hover:bg-error/5 hover:border-error/25 px-3">
                     {portalLoading ? "Opening…" : "Downgrade / Cancel"}
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
 
             {personalPlan === "enterprise" && (
-              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+              <p className="text-xs md:text-sm text-text-muted leading-relaxed">
                 You're on the Enterprise plan. Contact{" "}
-                <a href="mailto:enterprise@locker.rcormier.dev" style={{ color: "var(--accent)" }}>enterprise@locker.rcormier.dev</a>
+                <a href="mailto:enterprise@locker.rcormier.dev" className="text-accent hover:underline font-semibold">enterprise@locker.rcormier.dev</a>
                 {" "}to make changes to your contract.
               </p>
             )}
           </section>
 
-          <section style={{ marginBottom: 24 }}>
-            <h2 style={{ ...sectionTitle, marginBottom: 16 }}>Available Plans</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          <section className="flex flex-col gap-4">
+            <h2 className="text-base font-bold text-text select-none">Available Plans</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {PLAN_ORDER.map((planId) => (
                 <PlanCard
                   key={planId}
@@ -446,23 +460,22 @@ export function MyBillingSection() {
             </div>
           </section>
 
-          <div style={enterpriseCta}>
+          <div className="p-5 bg-amber-500/5 border border-amber-500/10 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 select-none">
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 3 }}>Need Enterprise?</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Unlimited memories, SAML SSO, custom contracts, dedicated support.</div>
+              <div className="text-xs md:text-sm font-bold text-text mb-0.5">Need Enterprise?</div>
+              <div className="text-[11px] text-text-muted leading-relaxed">Unlimited memories, SAML SSO, custom contracts, dedicated support.</div>
             </div>
-            <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Contact Sales</a>
+            <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-5 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none flex-shrink-0">
+              Contact Sales
+            </a>
           </div>
         </>
       )}
-    </>
+    </div>
   );
 }
 
 // ── exported section: Org Billing (org admin view) ─────────────────────────
-// Security note: upgrade/downgrade actions call createCheckoutSession /
-// createPortalSession which both call verifyOrgAdmin server-side before
-// creating any Stripe session. UI gating here is UX only.
 
 export function OrgBillingSection() {
   const { data: billing, isLoading } = useBillingData();
@@ -496,13 +509,13 @@ export function OrgBillingSection() {
     }
   }
 
-  if (isLoading) return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>;
+  if (isLoading) return <p className="text-text-muted text-xs animate-pulse font-medium">Loading…</p>;
 
   if (!billing?.managedOrgs?.length) {
     return (
-      <section style={card}>
-        <h2 style={sectionTitle}>Organization Billing</h2>
-        <p style={{ ...sectionDesc, margin: 0 }}>
+      <section className="bg-surface border border-border rounded-2xl p-5 shadow-xs">
+        <h2 className="text-base font-bold text-text mb-1 select-none">Organization Billing</h2>
+        <p className="text-xs text-text-muted leading-relaxed">
           You are not an owner or admin of any organization. Join or create an organization to manage its billing.
         </p>
       </section>
@@ -510,16 +523,23 @@ export function OrgBillingSection() {
   }
 
   return (
-    <>
-      {stripeError && <div style={{ ...alertError, marginBottom: 16 }}>{stripeError}</div>}
+    <div className="flex flex-col gap-6">
+      {stripeError && (
+        <div className="p-3 bg-error/10 border border-error/30 rounded-xl text-error text-xs font-semibold select-none flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {stripeError}
+        </div>
+      )}
 
-      <section style={card}>
-        <h2 style={{ ...sectionTitle, marginBottom: 4 }}>Organization Billing</h2>
-        <p style={{ ...sectionDesc, marginBottom: 20 }}>
-          Seat-based billing for organizations you manage. Only owners and admins can make billing changes.
-        </p>
+      <section className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+        <div>
+          <h2 className="text-base font-bold text-text select-none">Organization Billing</h2>
+          <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+            Seat-based billing for organizations you manage. Only owners and admins can make billing changes.
+          </p>
+        </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="flex flex-col gap-4">
           {billing.managedOrgs.map((org: any) => {
             const orgPlan = resolvePlan(org.plan);
             const isUpgrading = upgradingId === org.id;
@@ -530,56 +550,55 @@ export function OrgBillingSection() {
             const seatsAvailable = billedSeats - activeSeatCount;
 
             return (
-              <div key={org.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "16px 18px", background: "var(--surface2)" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{org.name}</span>
+              <div key={org.id} className="border border-border rounded-xl p-4 bg-surface2 shadow-3xs">
+                <div className="flex items-start justify-between gap-4 flex-wrap md:flex-nowrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap select-none">
+                      <span className="font-semibold text-sm md:text-base text-text">{org.name}</span>
                       <PlanBadge plan={orgPlan} />
-                      <span style={{
-                        fontSize: 10, fontWeight: 600, textTransform: "uppercase",
-                        padding: "1px 6px", borderRadius: 10,
-                        background: org.role === "owner" ? "rgba(239,68,68,0.1)" : "rgba(168,85,247,0.1)",
-                        color: org.role === "owner" ? "var(--error)" : "var(--accent)",
-                      }}>
+                      <Badge variant={org.role === "owner" ? "error" : "accent"} className="h-5 text-[9px] px-2 font-bold tracking-normal normal-case">
                         {org.role}
-                      </span>
+                      </Badge>
                     </div>
-                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "6px 0 0 0" }}>ID: {org.id}</p>
-                    <div style={{ fontSize: 12, color: "var(--text)", marginTop: 8, padding: "8px 12px", background: "rgba(168,85,247,0.08)", borderRadius: 6, border: "1px solid rgba(168,85,247,0.15)" }}>
-                      <div style={{ fontWeight: 600, marginBottom: 2 }}>Seat Usage</div>
-                      <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                    <p className="text-[10px] text-text-muted mt-1 select-all font-medium">ID: {org.id}</p>
+                    <div className="text-xs text-text mt-3 p-3 bg-accent/5 border border-accent/15 rounded-xl max-w-sm select-none">
+                      <div className="font-bold text-[11px] uppercase tracking-wider mb-1">Seat Usage</div>
+                      <div className="text-text-muted text-[11px] font-medium">
                         {activeSeatCount} active / {billedSeats} billed
                         {seatsAvailable > 0 && (
-                          <span style={{ color: "var(--success)", fontWeight: 500 }}> • {seatsAvailable} available</span>
+                          <span className="text-success font-semibold"> • {seatsAvailable} available</span>
                         )}
                         {seatsAvailable <= 0 && (
-                          <span style={{ color: "var(--error)", fontWeight: 500 }}> • No seats available</span>
+                          <span className="text-error font-semibold"> • No seats available</span>
                         )}
                       </div>
                     </div>
                   </div>
 
                   {canManage && (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <div className="flex gap-2 flex-wrap justify-end self-start md:self-auto select-none mt-2 md:mt-0">
                       {orgPlan === "free" && (
                         <>
-                          <button onClick={() => handleOrgUpgrade(org.id)} disabled={isUpgrading || upgradingId !== null} style={btnPrimary}>
+                          <Button onClick={() => handleOrgUpgrade(org.id)} disabled={isUpgrading || upgradingId !== null} className="h-9 px-4 font-bold text-xs">
                             {isUpgrading ? "Redirecting…" : "Upgrade to Business"}
-                          </button>
-                          <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Enterprise</a>
+                          </Button>
+                          <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center">
+                            Enterprise
+                          </a>
                         </>
                       )}
                       {orgPlan === "business" && (
                         <>
-                          <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Upgrade to Enterprise</a>
-                          <button onClick={() => handleOrgPortal(org.id)} disabled={isPortaling} style={{ ...btnOutline, fontSize: 12 }}>
+                          <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center">
+                            Upgrade to Enterprise
+                          </a>
+                          <Button onClick={() => handleOrgPortal(org.id)} disabled={isPortaling} variant="outline" className="h-9 px-4 font-semibold text-xs">
                             {isPortaling ? "Opening…" : "Manage / Downgrade"}
-                          </button>
+                          </Button>
                         </>
                       )}
                       {orgPlan === "enterprise" && (
-                        <a href="mailto:enterprise@locker.rcormier.dev" style={btnOutline}>
+                        <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-border text-text hover:border-text-muted hover:bg-surface2 text-xs font-semibold transition-all text-center">
                           Contact Sales to Change Plan
                         </a>
                       )}
@@ -592,24 +611,25 @@ export function OrgBillingSection() {
         </div>
       </section>
 
-      {/* Available plans for context */}
-      <section style={{ marginBottom: 24 }}>
-        <h2 style={{ ...sectionTitle, marginBottom: 16 }}>Available Organization Plans</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+      <section className="flex flex-col gap-4">
+        <h2 className="text-base font-bold text-text select-none">Available Organization Plans</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {PLAN_ORDER.map((planId) => (
             <PlanCard key={planId} plan={PLANS[planId]} isCurrentPlan={false} />
           ))}
         </div>
       </section>
 
-      <div style={enterpriseCta}>
+      <div className="p-5 bg-amber-500/5 border border-amber-500/10 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 select-none">
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 3 }}>Need Enterprise for your org?</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Unlimited seats, SAML SSO, custom contracts, SLA support.</div>
+          <div className="text-xs md:text-sm font-bold text-text mb-0.5">Need Enterprise for your org?</div>
+          <div className="text-[11px] text-text-muted leading-relaxed">Unlimited seats, SAML SSO, custom contracts, SLA support.</div>
         </div>
-        <a href="mailto:enterprise@locker.rcormier.dev" style={btnEnterprise}>Contact Sales</a>
+        <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-5 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center flex-shrink-0">
+          Contact Sales
+        </a>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -617,73 +637,32 @@ export function OrgBillingSection() {
 
 export function PersonalBillingSection() {
   return (
-    <>
+    <div className="flex flex-col gap-6">
       <MyBillingSection />
-      <div style={{ marginTop: 32 }}>
-        <h2 style={{ ...sectionTitle, marginBottom: 20 }}>Organization Billing</h2>
+      <div className="flex flex-col gap-4 mt-4">
+        <h2 className="text-lg font-bold text-text select-none">Organization Details</h2>
         <OrgBillingSection />
-      </div>
-    </>
-  );
-}
-
-function BillingPage() {
-  return (
-    <div>
-      <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-              <line x1="1" y1="10" x2="23" y2="10" />
-            </svg>
-            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Plan & Billing</h1>
-          </div>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Manage your plan, track usage, and view available features.</p>
-        </div>
-      </div>
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
-        <PersonalBillingSection />
       </div>
     </div>
   );
 }
 
-// ── shared styles ──────────────────────────────────────────────────────────
-
-const card: React.CSSProperties = {
-  background: "var(--surface)", border: "1px solid var(--border)",
-  borderRadius: 12, padding: "20px 22px", marginBottom: 24,
-};
-const sectionTitle: React.CSSProperties = { fontSize: 15, fontWeight: 600, color: "var(--text)", margin: "0 0 6px 0" };
-const sectionDesc: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px 0" };
-const btnPrimary: React.CSSProperties = {
-  padding: "8px 16px", background: "var(--accent)", color: "#fff",
-  fontWeight: 600, fontSize: 13, borderRadius: 7, border: "none", cursor: "pointer",
-};
-const btnOutline: React.CSSProperties = {
-  padding: "8px 16px", background: "transparent", border: "1px solid var(--border)",
-  color: "var(--text)", fontWeight: 600, fontSize: 13, borderRadius: 7, cursor: "pointer",
-  display: "flex", alignItems: "center", gap: 6, textDecoration: "none",
-};
-const btnEnterprise: React.CSSProperties = {
-  padding: "8px 16px", background: "transparent", border: "1px solid rgba(245,158,11,0.4)",
-  color: "#f59e0b", fontWeight: 600, fontSize: 13, borderRadius: 7, cursor: "pointer",
-  textDecoration: "none", display: "inline-block",
-};
-const enterpriseCta: React.CSSProperties = {
-  padding: "16px 20px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)",
-  borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
-};
-const alertSuccess: React.CSSProperties = {
-  padding: "12px 16px", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)",
-  color: "#10b981", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500,
-};
-const alertWarn: React.CSSProperties = {
-  padding: "12px 16px", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)",
-  color: "#f59e0b", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500,
-};
-const alertError: React.CSSProperties = {
-  padding: "12px 16px", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)",
-  color: "var(--error)", borderRadius: 8, fontSize: 13, marginBottom: 20, fontWeight: 500,
-};
+function BillingPage() {
+  return (
+    <div className="flex-1 min-h-screen bg-background">
+      <PageHeader
+        title="Plan & Billing"
+        icon={
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+            <line x1="1" y1="10" x2="23" y2="10" />
+          </svg>
+        }
+        description="Manage your plan, track usage, and view available features."
+      />
+      <PageContainer>
+        <PersonalBillingSection />
+      </PageContainer>
+    </div>
+  );
+}

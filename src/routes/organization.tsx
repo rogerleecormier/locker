@@ -2,6 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { InfoTooltip } from "~/components/InfoTooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PageHeader } from "~/components/PageHeader";
+import { PageContainer } from "~/components/PageContainer";
+import { Button } from "~/components/ui/button";
+import { Badge } from "~/components/ui/badge";
+import { Label, Input, Select, Textarea } from "~/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "~/components/ui/dialog";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { drizzle } from "drizzle-orm/d1";
@@ -345,36 +351,57 @@ export function MemberRow({ member, onUpdateRole, onRemove, roles, isUpdating, i
   const [confirming, setConfirming] = useState(false);
   const isReadOnly = currentUserRole === "member";
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        <span style={{ fontSize: 13, fontWeight: 600 }}>{member.name || "–"}</span>
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{member.email}</span>
+    <div className="flex justify-between items-center p-3 md:p-3.5 bg-surface2 rounded-xl border border-border">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs md:text-sm font-semibold text-text">{member.name || "–"}</span>
+        <span className="text-[10px] md:text-xs text-text-muted font-medium">{member.email}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="flex items-center gap-2 select-none">
         {isReadOnly ? (
-          <span style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "capitalize", paddingRight: 8 }}>{member.role}</span>
+          <Badge variant="secondary" className="px-2.5 py-0.5 text-[9px] md:text-[10px]">{member.role}</Badge>
         ) : (
           <>
-            <select value={member.role} onChange={(e) => onUpdateRole(member.userId, e.target.value)} disabled={isUpdating}
-              style={{ padding: "4px 6px", fontSize: 11, background: "var(--surface)" }}>
-              {roles.map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
-            </select>
+            <Select
+              value={member.role}
+              onChange={(e) => onUpdateRole(member.userId, e.target.value)}
+              disabled={isUpdating}
+              className="h-7 text-xs px-2 min-w-[90px] cursor-pointer"
+            >
+              {roles.map((r) => (
+                <option key={r} value={r}>
+                  {r.charAt(0).toUpperCase() + r.slice(1)}
+                </option>
+              ))}
+            </Select>
             {confirming ? (
-              <>
-                <button onClick={() => onRemove(member.userId)} disabled={isRemoving}
-                  style={{ padding: "3px 8px", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "var(--error)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  onClick={() => onRemove(member.userId)}
+                  disabled={isRemoving}
+                  size="sm"
+                  className="h-7 text-xs bg-error/15 border-error/30 text-error hover:bg-error/25 hover:border-error/50 font-semibold"
+                  variant="outline"
+                >
                   {isRemoving ? "…" : "Yes"}
-                </button>
-                <button onClick={() => setConfirming(false)}
-                  style={{ padding: "3px 8px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 11, cursor: "pointer" }}>
+                </Button>
+                <Button
+                  onClick={() => setConfirming(false)}
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                >
                   No
-                </button>
-              </>
+                </Button>
+              </div>
             ) : (
-              <button onClick={() => setConfirming(true)}
-                style={{ padding: "3px 8px", background: "transparent", color: "var(--error)", border: "1px solid transparent", fontSize: 11, cursor: "pointer" }}>
+              <Button
+                onClick={() => setConfirming(true)}
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-error hover:text-error hover:bg-error/5"
+              >
                 Remove
-              </button>
+              </Button>
             )}
           </>
         )}
@@ -384,53 +411,93 @@ export function MemberRow({ member, onUpdateRole, onRemove, roles, isUpdating, i
 }
 
 export function InviteForm({ label, email, setEmail, role, setRole, roles, onSubmit, loading }: {
-  label: string; email: string; setEmail: (v: string) => void;
-  role: string; setRole: (v: string) => void; roles: string[];
-  onSubmit: () => void; loading: boolean;
+  label: string;
+  email: string;
+  setEmail: (v: string) => void;
+  role: string;
+  setRole: (v: string) => void;
+  roles: string[];
+  onSubmit: () => void;
+  loading: boolean;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "var(--surface2)", padding: "12px", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-      <span style={{ fontSize: "11px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase" }}>{label}</span>
-      <div style={{ display: "flex", gap: "8px" }}>
-        <input type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)}
-          style={{ flex: 1, padding: "6px 10px", fontSize: "13px" }} />
+    <div className="flex flex-col gap-2.5 bg-surface2 p-4 rounded-xl border border-border select-none">
+      <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{label}</span>
+      <div className="flex gap-2">
+        <Input
+          type="email"
+          placeholder="user@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="flex-1 h-9 text-xs"
+        />
         {roles.length > 0 && (
-          <select value={role} onChange={(e) => setRole(e.target.value)} style={{ padding: "6px 8px", fontSize: "12px" }}>
-            {roles.map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
-          </select>
+          <Select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="h-9 text-xs min-w-[95px] cursor-pointer"
+          >
+            {roles.map((r) => (
+              <option key={r} value={r}>
+                {r.charAt(0).toUpperCase() + r.slice(1)}
+              </option>
+            ))}
+          </Select>
         )}
-        <button onClick={onSubmit} disabled={loading || !email.trim()}
-          style={{ padding: "6px 14px", background: "var(--accent)", color: "white", fontSize: "12px", fontWeight: "bold", border: "none", borderRadius: "var(--radius)", cursor: "pointer" }}>
+        <Button
+          onClick={onSubmit}
+          disabled={loading || !email.trim()}
+          className="h-9 px-4 font-bold text-xs select-none"
+        >
           {loading ? "…" : "Add"}
-        </button>
+        </Button>
       </div>
     </div>
   );
 }
 
 export function CreateOrgModal({ onClose, onSubmit, loading, nameValue, onNameChange }: {
-  onClose: () => void; onSubmit: (name: string) => void;
-  loading: boolean; nameValue: string; onNameChange: (v: string) => void;
+  onClose: () => void;
+  onSubmit: (name: string) => void;
+  loading: boolean;
+  nameValue: string;
+  onNameChange: (v: string) => void;
 }) {
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "24px", width: "100%", maxWidth: "420px", boxShadow: "0 24px 48px rgba(0,0,0,0.4)", display: "flex", flexDirection: "column", gap: "16px" }}>
-        <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "bold" }}>Create Organization</h3>
-        <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>You will be automatically added as the Owner.</p>
-        <div>
-          <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Organization Name</label>
-          <input type="text" value={nameValue} onChange={(e) => onNameChange(e.target.value)} placeholder="e.g. Acme Corporation"
-            style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius)" }} autoFocus />
+    <Dialog open={true} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Create Organization</DialogTitle>
+          <DialogDescription>You will be automatically added as the Owner.</DialogDescription>
+        </DialogHeader>
+
+        <div className="py-2 flex flex-col gap-3 select-none">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-org-name">Organization Name</Label>
+            <Input
+              id="new-org-name"
+              type="text"
+              value={nameValue}
+              onChange={(e) => onNameChange(e.target.value)}
+              placeholder="e.g. Acme Corporation"
+              autoFocus
+            />
+          </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-          <button onClick={onClose} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer", fontSize: "13px", borderRadius: "var(--radius)" }}>Cancel</button>
-          <button onClick={() => onSubmit(nameValue)} disabled={loading || !nameValue.trim()}
-            style={{ padding: "8px 20px", background: "var(--accent)", color: "white", border: "none", fontWeight: "bold", cursor: "pointer", fontSize: "13px", borderRadius: "var(--radius)" }}>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onSubmit(nameValue)}
+            disabled={loading || !nameValue.trim()}
+          >
             {loading ? "Creating..." : "Create"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -448,95 +515,140 @@ function OrganizationPage() {
   const currentOrgId = selectedOrgId || orgs[0]?.id;
   const currentOrg = orgs.find((o) => o.id === currentOrgId);
 
-  const orgPageHeader = (
-    <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
-      <div style={{ maxWidth: 960, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Org Hub</h1>
-              <InfoTooltip text="Org Hub is the shared workspace for your organization — add authoritative memories all members' AI sessions will inherit, review member-submitted recommendations, and manage who has access." />
-          <span style={{ fontSize: 11, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
-            Team
-          </span>
-        </div>
-        <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-          Authoritative knowledge, team recommendations, and member management for your organization.
-        </p>
-      </div>
-    </div>
+  const orgIcon = (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
   );
 
-  if (isLoading) return <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>;
+  if (isLoading) {
+    return (
+      <div className="flex-grow flex items-center justify-center min-h-[400px]">
+        <div className="text-text-muted font-medium animate-pulse">Loading…</div>
+      </div>
+    );
+  }
 
   if (planId === "free") {
     return (
-      <div>
-        {orgPageHeader}
-        <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
-          <PaywallGate feature="organizations" currentPlan="free" requiredPlan="business"><></></PaywallGate>
-          <div style={{ marginTop: 32 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>What you get with Business</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="flex-1 min-h-screen bg-background">
+        <PageHeader
+          title="Org Hub"
+          icon={orgIcon}
+          description="Authoritative knowledge, team recommendations, and member management for your organization."
+        />
+        <PageContainer>
+          <PaywallGate feature="organizations" currentPlan="free" requiredPlan="business">
+            <></>
+          </PaywallGate>
+          <div className="mt-8 select-none">
+            <h2 className="text-base font-semibold mb-4 text-text">What you get with Business</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
                 { icon: "🏢", title: "Organizations", desc: "Shared workspace with role-based access" },
                 { icon: "👥", title: "Teams", desc: "Sub-teams with scoped memory vaults" },
                 { icon: "📚", title: "Shared Vaults", desc: "AI sessions access shared context automatically" },
                 { icon: "📊", title: "Usage Analytics", desc: "Track MCP usage per API token" },
               ].map(({ icon, title, desc }) => (
-                <div key={title} style={{ padding: "16px", background: "linear-gradient(135deg, rgba(34,197,94,0.03) 0%, rgba(16,185,129,0.01) 100%)", border: "1px solid rgba(34,197,94,0.12)", borderRadius: 12 }}>
-                  <div style={{ fontSize: 16, marginBottom: 6 }}>{icon} <span style={{ fontWeight: 600 }}>{title}</span></div>
-                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>{desc}</p>
+                <div
+                  key={title}
+                  className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl"
+                >
+                  <div className="text-sm font-semibold mb-1 text-text">
+                    <span className="mr-1.5">{icon}</span> {title}
+                  </div>
+                  <p className="text-xs text-text-muted leading-relaxed">{desc}</p>
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 20, textAlign: "center" }}>
-              <Link to="/admin" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 24px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 14, borderRadius: 10, textDecoration: "none" }}>
+            <div className="mt-6 text-center">
+              <Link
+                to="/admin"
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-accent hover:bg-accent-hover text-white font-semibold text-sm rounded-lg transition-colors"
+              >
                 View Plans & Pricing →
               </Link>
             </div>
           </div>
-        </div>
+        </PageContainer>
       </div>
     );
   }
 
   if (orgs.length === 0) {
     return (
-      <div>
-        {orgPageHeader}
-        <div style={{ maxWidth: 960, margin: "0 auto", padding: "60px 24px", textAlign: "center" }}>
-          <h2 style={{ fontSize: "24px", fontWeight: "800", letterSpacing: "-0.03em", marginBottom: "8px" }}>No organizations yet</h2>
-          <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "24px", lineHeight: "1.6" }}>
-            Ask your site administrator to create an organization and add you as a member.
-          </p>
-          <Link to="/admin" style={{ padding: "10px 24px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, borderRadius: "var(--radius)", textDecoration: "none" }}>
-            Go to Admin →
-          </Link>
-        </div>
+      <div className="flex-1 min-h-screen bg-background">
+        <PageHeader
+          title="Org Hub"
+          icon={orgIcon}
+          description="Authoritative knowledge, team recommendations, and member management for your organization."
+        />
+        <PageContainer>
+          <div className="py-16 text-center max-w-md mx-auto flex flex-col items-center gap-4 select-none">
+            <div className="text-4xl">🏢</div>
+            <h2 className="text-xl font-bold tracking-tight text-text">No organizations yet</h2>
+            <p className="text-sm text-text-muted leading-relaxed">
+              Ask your site administrator to create an organization and add you as a member.
+            </p>
+            <Link
+              to="/admin"
+              className="px-5 py-2 bg-accent hover:bg-accent-hover text-white font-semibold text-sm rounded-lg transition-colors"
+            >
+              Go to Admin →
+            </Link>
+          </div>
+        </PageContainer>
       </div>
     );
   }
 
   return (
-    <div>
-      {orgPageHeader}
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
-
-      {orgs.length > 1 && (
-        <div style={{ display: "flex", gap: "12px", alignItems: "center", padding: "14px 16px", background: "linear-gradient(135deg, rgba(34,197,94,0.03) 0%, rgba(16,185,129,0.01) 100%)", border: "1px solid rgba(34,197,94,0.15)", borderRadius: "12px", marginBottom: "24px" }}>
-          <label style={{ fontSize: "12px", fontWeight: "bold", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>Organization:</label>
-          <select value={currentOrgId} onChange={(e) => setSelectedOrgId(e.target.value)}
-            style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", flex: 1, fontWeight: 600 }}>
-            {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-          </select>
+    <div className="flex-1 min-h-screen bg-background">
+      <PageHeader
+        title="Org Hub"
+        icon={orgIcon}
+        description="Authoritative knowledge, team recommendations, and member management for your organization."
+      >
+        <div className="flex items-center gap-2 mt-2">
+          <InfoTooltip text="Org Hub is the shared workspace for your organization — add authoritative memories all members' AI sessions will inherit, review member-submitted recommendations, and manage who has access." />
+          <Badge variant="projects" className="normal-case font-semibold tracking-normal">
+            Team
+          </Badge>
         </div>
-      )}
+      </PageHeader>
 
-      {currentOrg && <OrgVaultView org={currentOrg} onRefetch={refetch} />}
-      </div>
+      <PageContainer>
+        {orgs.length > 1 && (
+          <div className="flex gap-3 items-center p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl mb-2 select-none">
+            <label className="text-xs font-bold text-text-muted uppercase tracking-wider whitespace-nowrap">
+              Organization:
+            </label>
+            <Select
+              value={currentOrgId}
+              onChange={(e) => setSelectedOrgId(e.target.value)}
+              className="cursor-pointer font-semibold"
+            >
+              {orgs.map((o: any) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+
+        {currentOrg && <OrgVaultView org={currentOrg} onRefetch={refetch} />}
+      </PageContainer>
     </div>
   );
 }
@@ -576,25 +688,44 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
 
   const submitRecMut = useMutation({
     mutationFn: (data: any) => submitMemoryRecommendation({ data }),
-    onSuccess: () => { setRecFact(""); setRecTags(""); setRecProjectKey(""); refetchRecs(); alert("Recommendation submitted for review!"); },
+    onSuccess: () => {
+      setRecFact("");
+      setRecTags("");
+      setRecProjectKey("");
+      refetchRecs();
+      alert("Recommendation submitted for review!");
+    },
     onError: (err: Error) => alert(err.message),
   });
 
   const addDirectMemoryMut = useMutation({
     mutationFn: (data: any) => addMemory({ data }),
-    onSuccess: () => { setDirectFact(""); setDirectTags(""); setDirectProjectKey(""); refetchOrgMemories(); queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] }); alert("Authoritative memory added!"); },
+    onSuccess: () => {
+      setDirectFact("");
+      setDirectTags("");
+      setDirectProjectKey("");
+      refetchOrgMemories();
+      queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] });
+      alert("Authoritative memory added!");
+    },
     onError: (err: Error) => alert(err.message),
   });
 
   const deleteMemoryMut = useMutation({
     mutationFn: (data: { id: string }) => deleteMemory({ data }),
-    onSuccess: () => { refetchOrgMemories(); queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] }); },
+    onSuccess: () => {
+      refetchOrgMemories();
+      queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] });
+    },
     onError: (err: Error) => alert(err.message),
   });
 
   const reviewRecMut = useMutation({
     mutationFn: (data: any) => reviewMemoryRecommendation({ data }),
-    onSuccess: () => { refetchRecs(); queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] }); },
+    onSuccess: () => {
+      refetchRecs();
+      queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] });
+    },
     onError: (err: Error) => alert(err.message),
   });
 
@@ -603,24 +734,11 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
     return (
       <button
         onClick={() => setActiveTab(id)}
-        style={{
-          padding: "8px 16px",
-          background: active ? "var(--surface)" : "transparent",
-          border: "none",
-          borderTop: active ? "3px solid var(--accent)" : "3px solid transparent",
-          borderLeft: active ? "1px solid var(--border)" : "1px solid transparent",
-          borderRight: active ? "1px solid var(--border)" : "1px solid transparent",
-          borderBottom: active ? "1px solid var(--surface)" : "none",
-          color: active ? "var(--text)" : "var(--text-muted)",
-          fontWeight: active ? 600 : 400,
-          fontSize: 13,
-          cursor: "pointer",
-          marginBottom: -1,
-          borderRadius: "4px 4px 0 0",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 5,
-        }}
+        className={`px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 whitespace-nowrap transition-colors -mb-[1px] rounded-t-md hover:bg-surface2/40 uppercase tracking-wider text-[11px] flex items-center gap-1.5 ${
+          active
+            ? "border-accent text-accent bg-surface"
+            : "border-transparent text-text-muted hover:text-text"
+        }`}
       >
         {label}
         {tooltip && <InfoTooltip text={tooltip} size={12} />}
@@ -629,237 +747,469 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <div style={{ padding: "20px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px" }}>
-        <h2 style={{ fontSize: "20px", fontWeight: "bold", margin: "0 0 4px 0" }}>{org.name}</h2>
-        <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>{org.members.length} members · {org.teams.length} teams · Role: <strong>{org.role}</strong></p>
+    <div className="flex flex-col gap-6">
+      <div className="p-5 bg-surface border border-border rounded-xl shadow-xs select-none">
+        <h2 className="text-lg font-bold text-text mb-1">{org.name}</h2>
+        <p className="text-xs text-text-muted">
+          {org.members.length} members · {org.teams.length} teams · Role:{" "}
+          <strong className="text-accent font-semibold">{org.role}</strong>
+        </p>
       </div>
 
-      <div style={{ display: "flex", borderBottom: "1px solid var(--border)", gap: 2, alignItems: "flex-end" }}>
-        {tabBtn("vault", "Vault", "Org-approved memories that are automatically included in every member's AI sessions. Only admins can add entries directly.")}
-        {tabBtn("recommendations", isAdmin ? "Review Recommendations" : "Recommendations", isAdmin ? "Member-submitted memory suggestions pending your approval. Approved entries are promoted to the Vault." : "Submit memories for org admin review. Approved entries will be promoted to the Vault and shared with all members.")}
-        {isAdmin && tabBtn("members", "Members", "View current org members and pending invitations. To invite someone new, use Admin → Organizations.")}
+      <div className="flex border-b border-border gap-1 overflow-x-auto no-scrollbar select-none">
+        {tabBtn(
+          "vault",
+          "Vault",
+          "Org-approved memories that are automatically included in every member's AI sessions. Only admins can add entries directly."
+        )}
+        {tabBtn(
+          "recommendations",
+          isAdmin ? "Review Recommendations" : "Recommendations",
+          isAdmin
+            ? "Member-submitted memory suggestions pending your approval. Approved entries are promoted to the Vault."
+            : "Submit memories for org admin review. Approved entries will be promoted to the Vault and shared with all members."
+        )}
+        {isAdmin &&
+          tabBtn(
+            "members",
+            "Members",
+            "View current org members and pending invitations. To invite someone new, use Admin → Organizations."
+          )}
       </div>
 
       {activeTab === "vault" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0, display: "flex", alignItems: "center", gap: 6 }}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-xs">
+            <h3 className="text-sm font-bold text-text flex items-center gap-1.5 uppercase tracking-wider select-none">
               Add Authoritative Memory
-              <InfoTooltip text="Authoritative memories are locked org facts — coding standards, architectural decisions, team norms — that override individual member memories during AI sessions." size={13} />
+              <InfoTooltip
+                text="Authoritative memories are locked org facts — coding standards, architectural decisions, team norms — that override individual member memories during AI sessions."
+                size={13}
+              />
             </h3>
             {isAdmin ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>FACT</label>
-                  <textarea placeholder="e.g. Always use camelCase for folder structure" value={directFact} onChange={(e) => setDirectFact(e.target.value)} style={{ width: "100%", height: "80px", padding: "8px 10px", resize: "none" }} />
+              <div className="flex flex-col gap-3.5">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="direct-fact" className="text-[10px]">
+                    Fact
+                  </Label>
+                  <Textarea
+                    id="direct-fact"
+                    placeholder="e.g. Always use camelCase for folder structure"
+                    value={directFact}
+                    onChange={(e) => setDirectFact(e.target.value)}
+                    rows={3}
+                  />
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>CATEGORY</label>
-                    <select value={directCategory} onChange={(e: any) => setDirectCategory(e.target.value)} style={{ width: "100%", padding: "6px 8px" }}>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="direct-cat" className="text-[10px]">
+                      Category
+                    </Label>
+                    <Select
+                      id="direct-cat"
+                      value={directCategory}
+                      onChange={(e: any) => setDirectCategory(e.target.value)}
+                    >
                       <option value="rules">Rules</option>
                       <option value="projects">Projects</option>
                       <option value="references">References</option>
-                    </select>
+                    </Select>
                   </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>SCOPE</label>
-                    <select value={directProjectKey} onChange={(e) => setDirectProjectKey(e.target.value)} style={{ width: "100%", padding: "6px 8px" }}>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="direct-scope" className="text-[10px]">
+                      Scope
+                    </Label>
+                    <Select
+                      id="direct-scope"
+                      value={directProjectKey}
+                      onChange={(e) => setDirectProjectKey(e.target.value)}
+                    >
                       <option value="">Whole Organization</option>
-                      {org.teams.map((t: any) => <option key={t.id} value={`team:${t.id}`}>Team: {t.name}</option>)}
-                    </select>
+                      {org.teams.map((t: any) => (
+                        <option key={t.id} value={`team:${t.id}`}>
+                          Team: {t.name}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
                 </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>TAGS</label>
-                  <input type="text" placeholder="e.g. guidelines, styles" value={directTags} onChange={(e) => setDirectTags(e.target.value)} style={{ width: "100%", padding: "6px 10px" }} />
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="direct-tags" className="text-[10px]">
+                    Tags
+                  </Label>
+                  <Input
+                    id="direct-tags"
+                    type="text"
+                    placeholder="e.g. guidelines, styles"
+                    value={directTags}
+                    onChange={(e) => setDirectTags(e.target.value)}
+                  />
                 </div>
-                <button onClick={() => addDirectMemoryMut.mutate({ fact: directFact, category: directCategory, tags: directTags, projectKey: directProjectKey || `org:${org.id}`, isLocked: true, authorityType: "authoritative" })}
+                <Button
+                  onClick={() =>
+                    addDirectMemoryMut.mutate({
+                      fact: directFact,
+                      category: directCategory,
+                      tags: directTags,
+                      projectKey: directProjectKey || `org:${org.id}`,
+                      isLocked: true,
+                      authorityType: "authoritative",
+                    })
+                  }
                   disabled={addDirectMemoryMut.isPending || !directFact.trim()}
-                  style={{ padding: "8px 16px", background: "var(--accent)", color: "#fff", fontWeight: "bold", borderRadius: "var(--radius)", border: "none", cursor: "pointer" }}>
+                  className="mt-1 font-bold text-xs select-none"
+                >
                   {addDirectMemoryMut.isPending ? "Creating..." : "Add Authoritative Memory"}
-                </button>
+                </Button>
               </div>
             ) : (
-              <div style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic", padding: "20px", background: "var(--surface2)", borderRadius: "var(--radius)", border: "1px solid var(--border)", textAlign: "center" }}>
+              <div className="text-xs text-text-muted italic p-5 bg-surface2 border border-border rounded-xl text-center select-none">
                 Only owners/admins can add authoritative memories directly.
               </div>
             )}
           </div>
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Vault Entries</h3>
-            {memoriesLoading ? <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>Loading...</div>
-              : orgMemories.length === 0 ? <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0", fontSize: 12 }}>No memories in vault.</div>
-              : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", maxHeight: "350px" }}>
-                  {orgMemories.map((m: any) => (
-                    <div key={m.id} style={{ padding: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                        <p style={{ fontSize: 12, margin: 0, lineHeight: 1.4, flex: 1 }}>"{m.fact}"</p>
-                        {isAdmin && <button onClick={() => { if (confirm("Delete this memory?")) deleteMemoryMut.mutate({ id: m.id }); }} disabled={deleteMemoryMut.isPending} style={{ background: "transparent", color: "var(--error)", border: "none", fontSize: 10, padding: "2px 4px", cursor: "pointer" }}>Delete</button>}
-                      </div>
-                      <div style={{ fontSize: 9, color: "var(--text-muted)", display: "flex", gap: 6 }}>
-                        <span style={{ background: m.isLocked ? "rgba(168,85,247,0.15)" : "transparent", color: m.isLocked ? "var(--accent)" : "var(--text-muted)", padding: "1px 4px", borderRadius: 3, fontWeight: m.isLocked ? "bold" : "normal" }}>{m.authorityType}</span>
-                        <span>· {m.category}</span>
-                        {m.tags && <span>· {m.tags}</span>}
-                      </div>
+          <div className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-xs">
+            <h3 className="text-sm font-bold text-text uppercase tracking-wider select-none">
+              Vault Entries
+            </h3>
+            {memoriesLoading ? (
+              <div className="text-text-muted text-center py-6 animate-pulse font-medium text-sm">
+                Loading...
+              </div>
+            ) : orgMemories.length === 0 ? (
+              <div className="text-text-muted text-center py-6 text-xs italic select-none">
+                No memories in vault.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 overflow-y-auto max-h-[380px] no-scrollbar pr-1">
+                {orgMemories.map((m: any) => (
+                  <div
+                    key={m.id}
+                    className="p-3.5 bg-surface2 border border-border rounded-xl flex flex-col gap-2 shadow-2xs hover:border-border-hover transition-colors"
+                  >
+                    <div className="flex justify-between items-start gap-3">
+                      <p className="text-xs text-text font-medium leading-relaxed flex-1">
+                        "{m.fact}"
+                      </p>
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            if (confirm("Delete this memory?")) deleteMemoryMut.mutate({ id: m.id });
+                          }}
+                          disabled={deleteMemoryMut.isPending}
+                          className="h-5 px-1.5 text-[10px] text-error hover:bg-error/5 hover:text-error hover:border-error/20"
+                        >
+                          Delete
+                        </Button>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant={m.isLocked ? "accent" : "secondary"} className="h-4 text-[9px] px-1.5 py-0">
+                        {m.authorityType}
+                      </Badge>
+                      <Badge variant={m.category} className="h-4 text-[9px] px-1.5 py-0">
+                        {m.category}
+                      </Badge>
+                      {m.tags && (
+                        <span className="text-[10px] text-text-muted bg-tag-bg border border-tag-border px-1.5 rounded-sm font-mono leading-none">
+                          {m.tags}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {activeTab === "recommendations" && (
-        <div style={{ display: "grid", gridTemplateColumns: isAdmin ? "1fr" : "1fr 1fr", gap: "24px" }}>
+        <div className={`grid gap-6 ${isAdmin ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-2"}`}>
           {!isAdmin && (
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-              <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Recommend Entry for Org Vault</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>FACT</label>
-                  <textarea placeholder="Recommend a rule or fact" value={recFact} onChange={(e) => setRecFact(e.target.value)} style={{ width: "100%", height: "80px", padding: "8px 10px", resize: "none" }} />
+            <div className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-xs">
+              <h3 className="text-sm font-bold text-text uppercase tracking-wider select-none">
+                Recommend Entry for Org Vault
+              </h3>
+              <div className="flex flex-col gap-3.5">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="rec-fact" className="text-[10px]">
+                    Fact
+                  </Label>
+                  <Textarea
+                    id="rec-fact"
+                    placeholder="Recommend a rule or fact"
+                    value={recFact}
+                    onChange={(e) => setRecFact(e.target.value)}
+                    rows={3}
+                  />
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>CATEGORY</label>
-                    <select value={recCategory} onChange={(e: any) => setRecCategory(e.target.value)} style={{ width: "100%", padding: "6px 8px" }}>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="rec-cat" className="text-[10px]">
+                      Category
+                    </Label>
+                    <Select
+                      id="rec-cat"
+                      value={recCategory}
+                      onChange={(e: any) => setRecCategory(e.target.value)}
+                    >
                       <option value="rules">Rules</option>
                       <option value="projects">Projects</option>
                       <option value="references">References</option>
-                    </select>
+                    </Select>
                   </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>SCOPE</label>
-                    <select value={recProjectKey} onChange={(e) => setRecProjectKey(e.target.value)} style={{ width: "100%", padding: "6px 8px" }}>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="rec-scope" className="text-[10px]">
+                      Scope
+                    </Label>
+                    <Select
+                      id="rec-scope"
+                      value={recProjectKey}
+                      onChange={(e) => setRecProjectKey(e.target.value)}
+                    >
                       <option value="">Whole Organization</option>
-                      {org.teams.map((t: any) => <option key={t.id} value={`team:${t.id}`}>Team: {t.name}</option>)}
-                    </select>
+                      {org.teams.map((t: any) => (
+                        <option key={t.id} value={`team:${t.id}`}>
+                          Team: {t.name}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
                 </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>TAGS</label>
-                  <input type="text" placeholder="e.g. guidelines, styles" value={recTags} onChange={(e) => setRecTags(e.target.value)} style={{ width: "100%", padding: "6px 10px" }} />
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="rec-tags" className="text-[10px]">
+                    Tags
+                  </Label>
+                  <Input
+                    id="rec-tags"
+                    type="text"
+                    placeholder="e.g. guidelines, styles"
+                    value={recTags}
+                    onChange={(e) => setRecTags(e.target.value)}
+                  />
                 </div>
-                <button onClick={() => submitRecMut.mutate({ orgId: org.id, fact: recFact, category: recCategory, tags: recTags, projectKey: recProjectKey || undefined })}
+                <Button
+                  onClick={() =>
+                    submitRecMut.mutate({
+                      orgId: org.id,
+                      fact: recFact,
+                      category: recCategory,
+                      tags: recTags,
+                      projectKey: recProjectKey || undefined,
+                    })
+                  }
                   disabled={submitRecMut.isPending || !recFact.trim()}
-                  style={{ padding: "8px 16px", background: "var(--accent)", color: "#fff", fontWeight: "bold", borderRadius: "var(--radius)", border: "none", cursor: "pointer" }}>
+                  className="mt-1 font-bold text-xs select-none"
+                >
                   {submitRecMut.isPending ? "Submitting..." : "Submit Recommendation"}
-                </button>
+                </Button>
               </div>
             </div>
           )}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>{isAdmin ? "Review Queue" : "My Submission History"}</h3>
-            {recsLoading ? <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>Loading...</div>
-              : recs.length === 0 ? <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0", fontSize: 12 }}>No recommendations found.</div>
-              : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", maxHeight: "350px" }}>
-                  {recs.map((r: any) => {
-                    const c = { pending: { bg: "rgba(234,179,8,0.1)", text: "#eab308", border: "rgba(234,179,8,0.3)" }, approved: { bg: "rgba(34,197,94,0.1)", text: "#22c55e", border: "rgba(34,197,94,0.3)" }, rejected: { bg: "rgba(239,68,68,0.1)", text: "#ef4444", border: "rgba(239,68,68,0.3)" } }[r.status as "pending" | "approved" | "rejected"] ?? { bg: "rgba(234,179,8,0.1)", text: "#eab308", border: "rgba(234,179,8,0.3)" };
-                    return (
-                      <div key={r.id} style={{ padding: 12, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", display: "flex", flexDirection: "column", gap: 6 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: 10, fontWeight: "bold", textTransform: "uppercase", padding: "2px 6px", borderRadius: 4, background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>{r.status}</span>
-                          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{new Date(r.createdAt).toLocaleDateString()}</span>
-                        </div>
-                        <p style={{ fontSize: 12, margin: 0, lineHeight: 1.4 }}>"{r.fact}"</p>
-                        <div style={{ fontSize: 9, color: "var(--text-muted)", display: "flex", gap: 4 }}><span>Category: {r.category}</span>{r.tags && <span>· {r.tags}</span>}</div>
-                        {r.reviewNotes && <div style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface)", padding: "6px 8px", borderRadius: 4, borderLeft: `2px solid ${c.text}` }}><strong>Notes:</strong> {r.reviewNotes}</div>}
-                        {isAdmin && r.status === "pending" && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
-                            <input type="text" placeholder="Review notes (optional)" value={notesMap[r.id] ?? ""} onChange={(e) => setNotesMap({ ...notesMap, [r.id]: e.target.value })} style={{ padding: "6px 10px", fontSize: 11, width: "100%", background: "var(--surface)" }} />
-                            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                              <button onClick={() => reviewRecMut.mutate({ id: r.id, action: "reject", reviewNotes: notesMap[r.id] })} disabled={reviewRecMut.isPending} style={{ padding: "4px 10px", background: "rgba(239,68,68,0.1)", color: "var(--error)", border: "1px solid var(--error)", fontSize: 11, fontWeight: "bold", borderRadius: "var(--radius)", cursor: "pointer" }}>Reject</button>
-                              <button onClick={() => reviewRecMut.mutate({ id: r.id, action: "approve", reviewNotes: notesMap[r.id] })} disabled={reviewRecMut.isPending} style={{ padding: "4px 10px", background: "var(--success)", color: "white", border: "none", fontSize: 11, fontWeight: "bold", borderRadius: "var(--radius)", cursor: "pointer" }}>Approve</button>
-                            </div>
-                          </div>
-                        )}
+          <div className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-xs">
+            <h3 className="text-sm font-bold text-text uppercase tracking-wider select-none">
+              {isAdmin ? "Review Queue" : "My Submission History"}
+            </h3>
+            {recsLoading ? (
+              <div className="text-text-muted text-center py-6 animate-pulse font-medium text-sm">
+                Loading...
+              </div>
+            ) : recs.length === 0 ? (
+              <div className="text-text-muted text-center py-6 text-xs italic select-none">
+                No recommendations found.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 overflow-y-auto max-h-[380px] no-scrollbar pr-1">
+                {recs.map((r: any) => (
+                  <div
+                    key={r.id}
+                    className="p-3.5 bg-surface2 border border-border rounded-xl flex flex-col gap-3 shadow-2xs"
+                  >
+                    <div className="flex justify-between items-center flex-wrap gap-2 select-none">
+                      <span
+                        className={`text-[9px] font-bold uppercase px-2 py-0.5 border rounded-full ${
+                          r.status === "approved"
+                            ? "border-success/30 bg-success/10 text-success"
+                            : r.status === "rejected"
+                              ? "border-error/30 bg-error/10 text-error"
+                              : "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                      <span className="text-[10px] text-text-muted font-medium">
+                        {new Date(r.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <p className="text-xs text-text font-medium leading-relaxed">"{r.fact}"</p>
+                    <div className="flex items-center gap-1.5 select-none">
+                      <Badge variant={r.category} className="h-4 text-[9px] px-1.5 py-0">
+                        {r.category}
+                      </Badge>
+                      {r.tags && (
+                        <span className="text-[10px] text-text-muted bg-tag-bg border border-tag-border px-1.5 rounded-sm font-mono leading-none">
+                          {r.tags}
+                        </span>
+                      )}
+                    </div>
+                    {r.reviewNotes && (
+                      <div className="text-xs text-text-muted bg-surface p-2.5 rounded-lg border-l-2 border-accent select-none">
+                        <strong>Notes:</strong> {r.reviewNotes}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    )}
+                    {isAdmin && r.status === "pending" && (
+                      <div className="flex flex-col gap-2 mt-1 border-t border-border pt-3">
+                        <Input
+                          type="text"
+                          placeholder="Review notes (optional)"
+                          value={notesMap[r.id] ?? ""}
+                          onChange={(e) => setNotesMap({ ...notesMap, [r.id]: e.target.value })}
+                          className="h-8 text-xs"
+                        />
+                        <div className="flex gap-2 justify-end select-none">
+                          <Button
+                            onClick={() =>
+                              reviewRecMut.mutate({
+                                id: r.id,
+                                action: "reject",
+                                reviewNotes: notesMap[r.id],
+                              })
+                            }
+                            disabled={reviewRecMut.isPending}
+                            className="h-7 text-xs bg-error/10 border-error/20 text-error hover:bg-error/20 hover:border-error/40 font-semibold"
+                            variant="outline"
+                          >
+                            Reject
+                          </Button>
+                          <Button
+                            onClick={() =>
+                              reviewRecMut.mutate({
+                                id: r.id,
+                                action: "approve",
+                                reviewNotes: notesMap[r.id],
+                              })
+                            }
+                            disabled={reviewRecMut.isPending}
+                            className="h-7 text-xs bg-success/15 border-success/30 text-success hover:bg-success/25 hover:border-success/50 font-semibold"
+                            variant="outline"
+                          >
+                            Approve
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {activeTab === "members" && isAdmin && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        <div className="flex flex-col gap-6 select-none">
           {/* Invite callout */}
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 16px", background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 10 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+          <div className="flex items-start gap-3 p-4 bg-accent/5 border border-accent/20 rounded-xl">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-accent flex-shrink-0 mt-0.5"
+            >
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
-            <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              <strong style={{ color: "var(--text)" }}>To invite new members,</strong> go to{" "}
-              <a href="/admin" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 600 }}>Admin → Organizations</a>{" "}
-              and use the <em>Add Member by Email</em> form. Invitations are sent by email with a 48-hour acceptance window, and will appear as Pending here once sent.
+            <div className="text-xs md:text-sm text-text-muted leading-relaxed">
+              <strong className="text-text">To invite new members,</strong> go to{" "}
+              <a
+                href="/admin"
+                className="text-accent hover:underline font-semibold"
+              >
+                Admin → Organizations
+              </a>{" "}
+              and use the <em>Add Member by Email</em> form. Invitations are sent by email with a
+              48-hour acceptance window, and will appear as Pending here once sent.
             </div>
           </div>
 
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Current Members</h3>
+          <div className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-xs">
+            <h3 className="text-sm font-bold text-text uppercase tracking-wider">Current Members</h3>
             {org.members.length === 0 ? (
-              <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>No members yet.</p>
+              <p className="text-text-muted text-xs italic">No members yet.</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="flex flex-col gap-2">
                 {org.members.map((m: any) => (
-                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px", background: "var(--surface2)", borderRadius: "var(--radius)", fontSize: 12 }}>
+                  <div
+                    key={m.id}
+                    className="flex justify-between items-center p-3 bg-surface2 border border-border rounded-xl text-xs"
+                  >
                     <div>
-                      <div style={{ fontWeight: 600 }}>{m.name || m.email}</div>
-                      <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{m.email}</div>
+                      <div className="font-semibold text-text">{m.name || m.email}</div>
+                      <div className="text-text-muted text-[11px] font-medium mt-0.5">{m.email}</div>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 600, background: "rgba(168,85,247,0.1)", color: "var(--accent)", padding: "2px 8px", borderRadius: 4 }}>{m.role}</span>
+                    <Badge variant="accent" className="h-5 text-[9px] px-2.5 font-bold tracking-normal normal-case">
+                      {m.role}
+                    </Badge>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: "bold", margin: 0 }}>Pending Invitations {pendingInvitations.length > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)" }}>({pendingInvitations.length})</span>}</h3>
+          <div className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-xs">
+            <h3 className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2">
+              Pending Invitations{" "}
+              {pendingInvitations.length > 0 && (
+                <span className="text-xs font-normal text-text-muted normal-case tracking-normal">
+                  ({pendingInvitations.length})
+                </span>
+              )}
+            </h3>
             {invitationsLoading ? (
-              <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>Loading...</p>
+              <p className="text-text-muted text-xs font-medium animate-pulse">Loading...</p>
             ) : pendingInvitations.length === 0 ? (
-              <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>No pending invitations.</p>
+              <p className="text-text-muted text-xs italic">No pending invitations.</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="flex flex-col gap-2">
                 {pendingInvitations.map((inv: any) => (
-                  <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px", background: "var(--surface2)", borderRadius: "var(--radius)", fontSize: 12 }}>
+                  <div
+                    key={inv.id}
+                    className="flex justify-between items-center p-3 bg-surface2 border border-border rounded-xl text-xs"
+                  >
                     <div>
-                      <div style={{ fontWeight: 600 }}>{inv.email}</div>
-                      <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                      <div className="font-semibold text-text">{inv.email}</div>
+                      <div className="text-text-muted text-[11px] font-medium mt-0.5">
                         Expires {new Date(inv.expiresAt).toLocaleDateString()} · Role: {inv.role}
                       </div>
                     </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button
+                    <div className="flex gap-2">
+                      <Button
                         disabled
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          padding: "4px 10px",
-                          background: "rgba(168,85,247,0.1)",
-                          color: "var(--accent)",
-                          border: "1px solid rgba(168,85,247,0.3)",
-                          borderRadius: "var(--radius)",
-                          cursor: "default",
-                        }}
+                        variant="outline"
+                        className="h-6 text-[10px] px-2.5 border-accent/20 bg-accent/5 text-accent font-semibold"
                       >
                         Pending
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "12px 0 0 0", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-              Pending invitations expire after 48 hours. Use <a href="/admin" style={{ color: "var(--accent)", textDecoration: "none" }}>Admin → Organizations</a> to resend or cancel invitations.
+            <p className="text-[11px] text-text-muted mt-2 pt-3 border-t border-border leading-relaxed">
+              Pending invitations expire after 48 hours. Use{" "}
+              <a href="/admin" className="text-accent hover:underline">
+                Admin → Organizations
+              </a>{" "}
+              to resend or cancel invitations.
             </p>
           </div>
         </div>
@@ -871,3 +1221,4 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
 export const Route = createFileRoute("/organization")({
   component: OrganizationPage,
 });
+

@@ -14,6 +14,19 @@ import {
   type ApiTokenPublic,
 } from "~/server/memoryFunctions";
 import { MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE } from "~/db/schema";
+import { PageContainer } from "~/components/PageContainer";
+import { PageHeader } from "~/components/PageHeader";
+import { Button } from "~/components/ui/button";
+import { Badge } from "~/components/ui/badge";
+import { Label, Input, Select } from "~/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "~/components/ui/dialog";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -22,10 +35,10 @@ export const Route = createFileRoute("/settings")({
 // ── constants ──────────────────────────────────────────────────────────────
 
 export const TOOL_DEFS = [
-  { bit: MCP_PERM_RECALL,  label: "recall_context", desc: "Semantic search — lets AI read your memories" },
-  { bit: MCP_PERM_COMMIT,  label: "commit_memory",  desc: "Write access — lets AI store new memories" },
-  { bit: MCP_PERM_UPDATE,  label: "update_memory",  desc: "Edit access — lets AI update existing memories" },
-  { bit: MCP_PERM_DELETE,  label: "delete_memory",  desc: "Delete access — lets AI delete memories" },
+  { bit: MCP_PERM_RECALL, label: "recall_context", desc: "Semantic search — lets AI read your memories" },
+  { bit: MCP_PERM_COMMIT, label: "commit_memory", desc: "Write access — lets AI store new memories" },
+  { bit: MCP_PERM_UPDATE, label: "update_memory", desc: "Edit access — lets AI update existing memories" },
+  { bit: MCP_PERM_DELETE, label: "delete_memory", desc: "Delete access — lets AI delete memories" },
 ];
 
 function permLabel(perms: number): string {
@@ -66,61 +79,63 @@ function TokenRow({
     onUpdatePerms(token.id, next);
   }
 
-    let scopeBadges: Array<{ type: string; name: string; id: string | null }> = [];
-    if (token.scopes) {
-      try {
-        const parsedScopes = JSON.parse(token.scopes) as Array<{ type: string; id: string | null }>;
-        scopeBadges = parsedScopes.map((s) => {
-          const key = s.type === "personal" ? "personal" : `${s.type === "organization" ? "org" : "team"}:${s.id}`;
-          const w = workspaces.find((work: any) => work.key === key);
-          const name = w ? w.label.replace(/\s*\(Org\)|\s*\(Team\)/i, "") : (s.type === "personal" ? "Personal" : `${s.type} (${s.id})`);
-          return { type: s.type, name, id: s.id };
-        });
-      } catch {
-        scopeBadges = [{ type: "legacy", name: "Legacy Scope", id: null }];
-      }
-    } else {
-      const scopeKey = token.scopeType === "personal" ? "personal" : `${token.scopeType === "organization" ? "org" : "team"}:${token.scopeId}`;
-      const workspace = workspaces.find((w) => w.key === scopeKey);
-      const name = workspace ? workspace.label : (token.scopeType === "personal" ? "Personal" : `${token.scopeType} (${token.scopeId})`);
-      scopeBadges = [{ type: token.scopeType, name, id: token.scopeId || null }];
+  let scopeBadges: Array<{ type: string; name: string; id: string | null }> = [];
+  if (token.scopes) {
+    try {
+      const parsedScopes = JSON.parse(token.scopes) as Array<{ type: string; id: string | null }>;
+      scopeBadges = parsedScopes.map((s) => {
+        const key = s.type === "personal" ? "personal" : `${s.type === "organization" ? "org" : "team"}:${s.id}`;
+        const w = workspaces.find((work: any) => work.key === key);
+        const name = w ? w.label.replace(/\s*\(Org\)|\s*\(Team\)/i, "") : (s.type === "personal" ? "Personal" : `${s.type} (${s.id})`);
+        return { type: s.type, name, id: s.id };
+      });
+    } catch {
+      scopeBadges = [{ type: "legacy", name: "Legacy Scope", id: null }];
     }
+  } else {
+    const scopeKey = token.scopeType === "personal" ? "personal" : `${token.scopeType === "organization" ? "org" : "team"}:${token.scopeId}`;
+    const workspace = workspaces.find((w) => w.key === scopeKey);
+    const name = workspace ? workspace.label : (token.scopeType === "personal" ? "Personal" : `${token.scopeType} (${token.scopeId})`);
+    scopeBadges = [{ type: token.scopeType, name, id: token.scopeId || null }];
+  }
 
   return (
-    <div style={s.tokenCard}>
+    <div className="bg-surface2 border border-border rounded-xl p-4 flex flex-col gap-3 shadow-2xs">
       {/* Top Row: Name, Expiring Warning, Actions */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{token.name}</span>
+      <div className="flex justify-between items-center gap-4 flex-wrap select-none">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-sm md:text-base text-text">{token.name}</span>
           {isExpiringSoon && daysUntilExpiry !== null && (
-            <span style={{ fontSize: 11, background: "rgba(245,158,11,0.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 6, padding: "2px 8px", fontWeight: 500 }}>
+            <Badge variant="error" className="h-5 px-2 text-[9px] font-semibold border-amber-500/30 bg-amber-500/10 text-amber-400 normal-case tracking-normal">
               Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? "s" : ""}
-            </span>
+            </Badge>
           )}
         </div>
-        <div style={s.tokenActions}>
-          <button style={s.btnGhost} onClick={() => setExpanded((x) => !x)}>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setExpanded((x) => !x)}>
             {expanded ? "Hide Details" : "Permissions"}
-          </button>
+          </Button>
           {token.expiresAt && (
             renewTtl === null ? (
-              <button style={s.btnGhost} onClick={() => setRenewTtl(30)}>
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setRenewTtl(30)}>
                 Renew
-              </button>
+              </Button>
             ) : (
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <select
+              <div className="flex gap-1.5 items-center">
+                <Select
                   value={renewTtl}
                   onChange={(e) => setRenewTtl(parseInt(e.target.value))}
-                  style={{ padding: "4px 8px", fontSize: 12, background: "var(--surface2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}
+                  className="h-7 text-xs px-2 min-w-[85px] cursor-pointer"
                 >
                   <option value={7}>7 days</option>
                   <option value={30}>30 days</option>
                   <option value={90}>90 days</option>
                   <option value={365}>1 year</option>
-                </select>
-                <button
-                  style={{ ...s.btnGhost, fontSize: 12 }}
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
                   onClick={() => {
                     if (renewTtl !== null) {
                       setRenewing(true);
@@ -139,43 +154,37 @@ function TokenRow({
                   disabled={renewing}
                 >
                   {renewing ? "Renewing..." : "Renew"}
-                </button>
+                </Button>
               </div>
             )
           )}
-          <button style={{ ...s.btnGhost, color: "var(--error)", borderColor: "rgba(239,68,68,0.3)" }} onClick={() => onRevoke(token.id)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-error hover:text-error hover:bg-error/5 hover:border-error/25"
+            onClick={() => onRevoke(token.id)}
+          >
             Revoke
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Middle Row: Scopes & Allowed Tools/Permissions */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+      <div className="flex flex-col gap-2.5">
         {/* Scopes Badges */}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)", width: 75, flexShrink: 0 }}>Workspaces:</span>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-[11px] text-text-muted font-bold uppercase tracking-wider w-[80px] flex-shrink-0">Workspaces:</span>
+          <div className="flex gap-1.5 flex-wrap">
             {scopeBadges.map((badge, idx) => (
-              <span key={idx} style={{ 
-                fontSize: 11, 
-                background: "var(--surface)", 
-                border: "1px solid var(--border)", 
-                borderRadius: 6, 
-                padding: "3px 8px", 
-                color: "var(--text)", 
-                fontWeight: 500,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5
-              }}>
+              <span key={idx} className="text-[10px] md:text-xs font-semibold text-text bg-surface border border-border rounded-lg px-2.5 py-0.5 inline-flex items-center gap-1.5 select-none shadow-3xs">
                 {badge.type === "personal" ? (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.7 }}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 ) : badge.type === "organization" ? (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.7 }}><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
                 ) : badge.type === "team" ? (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.7 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 ) : (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.7 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-70"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
                 )}
                 {badge.name}
               </span>
@@ -184,44 +193,26 @@ function TokenRow({
         </div>
 
         {/* Permissions Badges */}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)", width: 75, flexShrink: 0 }}>MCP Tools:</span>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-[11px] text-text-muted font-bold uppercase tracking-wider w-[80px] flex-shrink-0">MCP Tools:</span>
+          <div className="flex gap-1.5 flex-wrap">
             {TOOL_DEFS.filter((t) => token.permissions & t.bit).map((t) => (
-              <span key={t.bit} style={{
-                fontSize: 11,
-                fontFamily: "monospace",
-                background: "rgba(168,85,247,0.06)",
-                border: "1px solid rgba(168,85,247,0.15)",
-                color: "var(--accent)",
-                borderRadius: 6,
-                padding: "2px 6px",
-              }}>
+              <Badge key={t.bit} variant="accent" className="h-5 text-[9px] px-2 font-mono tracking-normal normal-case">
                 {t.label}
-              </span>
+              </Badge>
             ))}
             {(token.permissions === 0) && (
-              <span style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>No tools enabled</span>
+              <span className="text-xs text-text-muted italic select-none">No tools enabled</span>
             )}
           </div>
         </div>
       </div>
 
       {/* Bottom Row: Metadata Dates */}
-      <div style={{ 
-        borderTop: "1px solid var(--border)", 
-        paddingTop: 10, 
-        marginTop: 12, 
-        display: "flex", 
-        justifyContent: "space-between", 
-        flexWrap: "wrap", 
-        gap: 8,
-        fontSize: 11, 
-        color: "var(--text-muted)" 
-      }}>
+      <div className="border-t border-border pt-2.5 mt-1.5 flex justify-between flex-wrap gap-2 text-[10px] text-text-muted font-medium select-none">
         <div>
           <span>Created {formatDate(token.createdAt)}</span>
-          {token.lastUsedAt && <span style={{ marginLeft: 12 }}>Last used {formatDate(token.lastUsedAt)}</span>}
+          {token.lastUsedAt && <span className="ml-3">Last used {formatDate(token.lastUsedAt)}</span>}
         </div>
         {token.expiresAt && (
           <span>Expires {formatDate(token.expiresAt)}</span>
@@ -229,13 +220,18 @@ function TokenRow({
       </div>
 
       {expanded && (
-        <div style={s.permGrid}>
+        <div className="border-t border-border pt-4 mt-2 flex flex-col gap-3 select-none">
           {TOOL_DEFS.map((tool) => (
-            <label key={tool.bit} style={s.permRow}>
-              <input type="checkbox" checked={!!(perms & tool.bit)} onChange={() => toggleBit(tool.bit)} style={{ accentColor: "var(--accent)", width: 14, height: 14 }} />
+            <label key={tool.bit} className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!(perms & tool.bit)}
+                onChange={() => toggleBit(tool.bit)}
+                className="mt-1 cursor-pointer h-4 w-4 rounded-sm border-border text-accent focus:ring-accent accent-accent"
+              />
               <div>
-                <div style={s.permToolName}>{tool.label}</div>
-                <div style={s.permToolDesc}>{tool.desc}</div>
+                <div className="text-xs font-semibold text-text font-mono">{tool.label}</div>
+                <div className="text-[10px] text-text-muted mt-0.5 leading-relaxed">{tool.desc}</div>
               </div>
             </label>
           ))}
@@ -322,109 +318,158 @@ export function NewTokenModal({ onClose, onCreate }: {
   }
 
   return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+    <Dialog open={true} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-[460px]">
         {!token ? (
           <>
-            <h2 style={s.modalTitle}>New API Token</h2>
-            <p style={s.modalSubtitle}>Tokens authenticate MCP requests. Restrict which tools each token can call.</p>
-            <div style={s.field}>
-              <label style={s.label}>Token Name</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Claude Desktop" style={{ ...s.input, width: "100%" }} autoFocus />
-            </div>
-            <div style={s.field}>
-              <label style={s.label}>Scope Constraints (Select one or more)</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", background: "var(--surface2)" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", fontWeight: 600, borderBottom: "1px solid var(--border)", paddingBottom: 6, marginBottom: 4 }}>
-                  <input
-                    type="checkbox"
-                    checked={workspaces.length > 0 && selectedScopes.length === workspaces.length}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedScopes(workspaces.map((w: any) => w.key));
-                      } else {
-                        setSelectedScopes([]);
-                      }
-                    }}
-                    style={{ accentColor: "var(--accent)" }}
-                  />
-                  <span>All Workspaces</span>
-                </label>
-                {workspaces.map((w: any) => (
-                  <label key={w.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", padding: "2px 0" }}>
+            <DialogHeader>
+              <DialogTitle>New API Token</DialogTitle>
+              <DialogDescription>
+                Tokens authenticate MCP requests. Restrict which tools each token can call.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="py-2 flex flex-col gap-4 overflow-y-auto max-h-[60vh] pr-1 select-none">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="token-name">Token Name</Label>
+                <Input
+                  id="token-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Claude Desktop"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Scope Constraints (Select one or more)</Label>
+                <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto border border-border rounded-xl p-3 bg-surface2 no-scrollbar">
+                  <label className="flex items-center gap-2.5 text-xs cursor-pointer font-bold border-b border-border/60 pb-2 mb-1.5">
                     <input
                       type="checkbox"
-                      checked={selectedScopes.includes(w.key)}
+                      checked={workspaces.length > 0 && selectedScopes.length === workspaces.length}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedScopes([...selectedScopes, w.key]);
+                          setSelectedScopes(workspaces.map((w: any) => w.key));
                         } else {
-                          setSelectedScopes(selectedScopes.filter((k) => k !== w.key));
+                          setSelectedScopes([]);
                         }
                       }}
-                      style={{ accentColor: "var(--accent)" }}
+                      className="cursor-pointer h-4 w-4 rounded-sm border-border text-accent focus:ring-accent accent-accent"
                     />
-                    <span>{w.label}</span>
+                    <span>All Workspaces</span>
                   </label>
-                ))}
+                  {workspaces.map((w: any) => (
+                    <label key={w.key} className="flex items-center gap-2.5 text-xs cursor-pointer py-0.5">
+                      <input
+                        type="checkbox"
+                        checked={selectedScopes.includes(w.key)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedScopes([...selectedScopes, w.key]);
+                          } else {
+                            setSelectedScopes(selectedScopes.filter((k) => k !== w.key));
+                          }
+                        }}
+                        className="cursor-pointer h-4 w-4 rounded-sm border-border text-accent focus:ring-accent accent-accent"
+                      />
+                      <span>{w.label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div style={s.field}>
-              <label style={s.label}>Token Expiry</label>
-              <select value={ttlDays} onChange={(e) => setTtlDays(parseInt(e.target.value))} style={s.input}>
-                <option value={7}>7 days</option>
-                <option value={30}>30 days</option>
-                <option value={90}>90 days</option>
-                <option value={180}>6 months</option>
-                <option value={365}>1 year (default)</option>
-              </select>
-            </div>
-            <div style={s.field}>
-              <label style={s.label}>Permissions</label>
-              <div style={s.permGrid}>
-                {TOOL_DEFS.map((tool) => (
-                  <label key={tool.bit} style={s.permRow}>
-                    <input type="checkbox" checked={!!(perms & tool.bit)} onChange={() => setPerms((p) => p ^ tool.bit)} style={{ accentColor: "var(--accent)", width: 14, height: 14 }} />
-                    <div>
-                      <div style={s.permToolName}>{tool.label}</div>
-                      <div style={s.permToolDesc}>{tool.desc}</div>
-                    </div>
-                  </label>
-                ))}
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="token-expiry">Token Expiry</Label>
+                <Select
+                  id="token-expiry"
+                  value={ttlDays}
+                  onChange={(e) => setTtlDays(parseInt(e.target.value))}
+                >
+                  <option value={7}>7 days</option>
+                  <option value={30}>30 days</option>
+                  <option value={90}>90 days</option>
+                  <option value={180}>6 months</option>
+                  <option value={365}>1 year (default)</option>
+                </Select>
               </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Permissions</Label>
+                <div className="flex flex-col gap-3 border border-border bg-surface2 p-3.5 rounded-xl">
+                  {TOOL_DEFS.map((tool) => (
+                    <label key={tool.bit} className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!(perms & tool.bit)}
+                        onChange={() => setPerms((p) => p ^ tool.bit)}
+                        className="mt-0.5 cursor-pointer h-4 w-4 rounded-sm border-border text-accent focus:ring-accent accent-accent"
+                      />
+                      <div>
+                        <div className="text-xs font-semibold text-text font-mono">{tool.label}</div>
+                        <div className="text-[10px] text-text-muted mt-0.5 leading-relaxed">{tool.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {error && (
+                <div className="text-xs text-error bg-error/10 border border-error/20 p-3 rounded-xl font-medium">
+                  {error}
+                </div>
+              )}
             </div>
-            {error && <div style={{ color: "var(--error)", fontSize: 12, background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", padding: "8px 10px", borderRadius: 6 }}>{error}</div>}
-            <div style={s.modalFooter}>
-              <button style={s.btnGhost} onClick={onClose}>Cancel</button>
-              <button style={s.btnPrimary} onClick={handleCreate} disabled={loading || !name.trim()}>{loading ? "Generating…" : "Generate token"}</button>
-            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreate} disabled={loading || !name.trim()}>
+                {loading ? "Generating…" : "Generate token"}
+              </Button>
+            </DialogFooter>
           </>
         ) : (
           <>
-            <div style={{ background: "rgba(168,85,247,0.08)", border: "2px solid var(--accent)", borderRadius: 8, padding: "14px 12px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>⚠ Shown once only • Disappears in {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}</span>
+            <DialogHeader>
+              <div className="flex items-center gap-2 bg-accent/5 border border-accent/20 rounded-xl p-3 mb-2 w-full">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-accent flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span className="text-[11px] font-bold text-accent uppercase tracking-wider">Shown once only • Expiring in {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}</span>
+              </div>
+              <DialogTitle>API Token Created</DialogTitle>
+              <DialogDescription>
+                Copy and save this token immediately — it will not be shown again.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="py-2 flex flex-col gap-4 select-none">
+              <div className="flex items-center gap-2.5 bg-surface2 border border-border rounded-xl p-3.5">
+                <code className="flex-1 font-mono text-xs text-accent break-all select-all">{token}</code>
+                <Button size="sm" onClick={copyToken} className="h-7 text-xs font-semibold flex-shrink-0 select-none">
+                  {copied ? "✓ Copied" : "Copy"}
+                </Button>
+              </div>
+              
+              <div className="flex items-start gap-2.5 text-xs text-text-muted bg-surface2 border border-border rounded-xl p-3.5 leading-relaxed">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>Add this token to your MCP client as a Bearer token in the Authorization header.</span>
+              </div>
             </div>
-            <h2 style={s.modalTitle}>API Token Created</h2>
-            <p style={s.modalSubtitle}>Copy and save this token immediately — it will not be shown again.</p>
-            <div style={s.tokenReveal}>
-              <code style={s.tokenCode}>{token}</code>
-              <button style={s.copyBtn} onClick={copyToken}>{copied ? "✓ Copied to clipboard" : "Copy token"}</button>
-            </div>
-            <div style={s.tokenNote}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              Add this token to your MCP client as a Bearer token in the Authorization header.
-            </div>
-            <div style={s.modalFooter}>
-              <button style={s.btnGhost} onClick={onClose}>Back</button>
-              <button style={copied ? s.btnPrimary : { ...s.btnPrimary, opacity: 0.5, cursor: "not-allowed" }} onClick={handleConfirmCopied} disabled={!copied}>
+
+            <DialogFooter>
+              <Button variant="ghost" onClick={onClose}>
+                Back
+              </Button>
+              <Button onClick={handleConfirmCopied} disabled={!copied} className={!copied ? "opacity-50 cursor-not-allowed" : ""}>
                 I've copied my token
-              </button>
-            </div>
+              </Button>
+            </DialogFooter>
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -455,34 +500,39 @@ export function ProfileSection() {
   });
 
   return (
-    <div style={s.card}>
-      <h2 style={s.cardTitle}>Profile</h2>
-      <p style={s.cardDesc}>Used to personalise how memories are phrased during import.</p>
+    <div className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+      <div>
+        <h2 className="text-base font-bold text-text">Profile</h2>
+        <p className="text-xs text-text-muted mt-0.5 leading-relaxed">Used to personalise how memories are phrased during import.</p>
+      </div>
+
       {profileQuery.isPending ? (
-        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>
+        <p className="text-text-muted text-xs animate-pulse">Loading…</p>
       ) : profileQuery.isError ? (
-        <p style={{ color: "var(--error)", fontSize: 13 }}>Failed to load profile.</p>
+        <p className="text-error text-xs font-semibold">Failed to load profile.</p>
       ) : (
-        <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate({ data: { name, location } }); }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <div style={s.field}>
-              <label style={s.label}>Preferred Name</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Roger" style={s.input} />
+        <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate({ data: { name, location } }); }} className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="profile-name">Preferred Name</Label>
+              <Input id="profile-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Roger" />
             </div>
-            <div style={s.field}>
-              <label style={s.label}>Location</label>
-              <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Florida" style={s.input} />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="profile-location">Location</Label>
+              <Input id="profile-location" type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Florida" />
             </div>
           </div>
           {savedMessage && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: "var(--radius)", color: "var(--success)", fontSize: 13 }}>
+            <div className="flex items-center gap-2 p-3 bg-success/10 border border-success/30 rounded-xl text-success text-xs font-semibold select-none">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
-              Profile saved.
+              Profile saved successfully.
             </div>
           )}
-          {saveMutation.isError && <p style={{ color: "var(--error)", fontSize: 13 }}>Failed to save: {(saveMutation.error as Error).message}</p>}
+          {saveMutation.isError && <p className="text-error text-xs font-semibold">Failed to save: {(saveMutation.error as Error).message}</p>}
           <div>
-            <button type="submit" disabled={saveMutation.isPending} style={s.btnPrimary}>{saveMutation.isPending ? "Saving…" : "Save Profile"}</button>
+            <Button type="submit" disabled={saveMutation.isPending} className="font-bold text-xs select-none h-9 px-4">
+              {saveMutation.isPending ? "Saving…" : "Save Profile"}
+            </Button>
           </div>
         </form>
       )}
@@ -518,30 +568,32 @@ export function ApiTokensSection() {
 
   return (
     <>
-      <div style={s.card}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <h2 style={{ ...s.cardTitle, margin: 0 }}>API Tokens</h2>
-            <span style={s.badge}>{tokens.length}</span>
+      <div className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+        <div className="flex items-center justify-between gap-4 select-none">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-text">API Tokens</h2>
+            <Badge variant="secondary" className="normal-case font-semibold tracking-normal">{tokens.length}</Badge>
           </div>
-          <button style={s.btnPrimary} onClick={() => setShowModal(true)}>+ New Token</button>
+          <Button onClick={() => setShowModal(true)} className="h-8 text-xs font-bold px-3">
+            + New Token
+          </Button>
         </div>
-        <p style={s.cardDesc}>Authenticate MCP calls from AI clients using Bearer tokens.</p>
+        <p className="text-xs text-text-muted -mt-1 leading-relaxed">Authenticate MCP calls from AI clients using Bearer tokens.</p>
 
-        <div style={s.infoBox}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span>Set <code style={s.code}>Authorization: Bearer &lt;token&gt;</code> in your client's headers.</span>
+        <div className="flex items-start gap-2.5 bg-accent/5 border border-accent/20 rounded-xl p-3.5 text-xs text-text-muted leading-relaxed select-none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>Set <code className="font-mono text-[10px] bg-surface border border-border px-1 py-0.5 rounded-sm text-accent select-all">Authorization: Bearer &lt;token&gt;</code> in your client's headers.</span>
         </div>
 
         {isLoading ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p>
+          <p className="text-text-muted text-xs animate-pulse">Loading…</p>
         ) : tokens.length === 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "28px 0", color: "var(--text-muted)", fontSize: 13 }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <p style={{ margin: 0 }}>No API tokens yet. Create one to connect your AI clients.</p>
+          <div className="flex flex-col items-center gap-2 py-8 text-text-muted text-xs border border-dashed border-border rounded-xl select-none">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-40"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <p className="margin-0 font-medium">No API tokens yet. Create one to connect your AI clients.</p>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+          <div className="flex flex-col gap-3 mt-1">
             {tokens.map((t) => (
               <TokenRow key={t.id} token={t} workspaces={workspaces} onRevoke={(id) => revokeMut.mutate(id)} onUpdatePerms={(id, permissions) => permsMut.mutate({ id, permissions })} />
             ))}
@@ -556,14 +608,16 @@ export function ApiTokensSection() {
 
 export function McpEndpointSection() {
   return (
-    <div style={s.card}>
-      <h2 style={s.cardTitle}>MCP Endpoint</h2>
-      <p style={s.cardDesc}>Point your AI client's MCP configuration at:</p>
-      <div style={s.endpointBox}>
-        <code style={s.endpointCode}>{typeof window !== "undefined" ? window.location.origin : ""}/api/mcp</code>
+    <div className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+      <div>
+        <h2 className="text-base font-bold text-text">MCP Endpoint</h2>
+        <p className="text-xs text-text-muted mt-0.5 leading-relaxed">Point your AI client's MCP configuration at:</p>
       </div>
-      <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 8 }}>
-        Authentication: <code style={s.code}>Authorization: Bearer lkr_&lt;your-token&gt;</code>
+      <div className="bg-surface2 border border-border rounded-xl p-3.5 font-mono text-xs text-text break-all select-all shadow-3xs">
+        <code className="text-accent">{typeof window !== "undefined" ? window.location.origin : ""}/api/mcp</code>
+      </div>
+      <p className="text-xs text-text-muted leading-relaxed select-none">
+        Authentication: <code className="font-mono text-[10px] bg-surface2 border border-border px-1 py-0.5 rounded-sm text-accent select-all">Authorization: Bearer lkr_&lt;your-token&gt;</code>
       </p>
     </div>
   );
@@ -590,28 +644,30 @@ export function TwoFactorSection() {
   });
 
   return (
-    <div style={s.card}>
-      <h2 style={s.cardTitle}>Two-Factor Authentication</h2>
-      <p style={s.cardDesc}>Add an extra layer of security to your account</p>
+    <div className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+      <div>
+        <h2 className="text-base font-bold text-text">Two-Factor Authentication</h2>
+        <p className="text-xs text-text-muted mt-0.5 leading-relaxed">Add an extra layer of security to your account</p>
+      </div>
 
       {totpStatus?.enabled ? (
-        <>
-          <div style={{ ...s.infoBox, background: "rgba(34,197,94,0.07)", borderColor: "rgba(34,197,94,0.2)" }}>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 p-3.5 bg-success/10 border border-success/20 rounded-xl text-success text-xs font-semibold select-none leading-relaxed">
             <span>✓ Two-factor authentication is enabled on your account</span>
           </div>
-          <button style={{ ...s.btnPrimary, background: "var(--error)", marginTop: 12 }} onClick={() => disableMut.mutate()}>
+          <Button variant="ghost" className="bg-error/10 hover:bg-error/20 text-error border border-error/20 hover:border-error/35 mt-1 font-bold text-xs select-none w-fit h-9 px-4" onClick={() => disableMut.mutate()}>
             Disable 2FA
-          </button>
-        </>
+          </Button>
+        </div>
       ) : (
-        <>
-          <div style={s.infoBox}>
-            Enable TOTP-based 2FA using an authenticator app like Authy, Google Authenticator, or Microsoft Authenticator.
+        <div className="flex flex-col gap-3">
+          <div className="flex items-start gap-2.5 bg-accent/5 border border-accent/20 rounded-xl p-3.5 text-xs text-text-muted leading-relaxed select-none">
+            <span>Enable TOTP-based 2FA using an authenticator app like Authy, Google Authenticator, or Microsoft Authenticator.</span>
           </div>
-          <button style={s.btnPrimary} onClick={() => setupMut.mutate()}>
+          <Button className="mt-1 font-bold text-xs select-none w-fit h-9 px-4" onClick={() => setupMut.mutate()}>
             Set Up 2FA
-          </button>
-        </>
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -640,43 +696,53 @@ export function SessionsSection() {
     onSuccess: () => { useQueryClient().invalidateQueries({ queryKey: ["active-sessions"] }); },
   });
 
-  const queryClient = useQueryClient();
-
   if (isLoading) {
-    return <div style={s.card}><p style={s.cardDesc}>Loading sessions...</p></div>;
+    return (
+      <div className="bg-surface border border-border rounded-2xl p-5 shadow-xs">
+        <p className="text-text-muted text-xs animate-pulse">Loading sessions...</p>
+      </div>
+    );
   }
 
   return (
-    <div style={s.card}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+    <div className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+      <div className="flex items-center justify-between gap-4 select-none">
         <div>
-          <h2 style={s.cardTitle}>Active Sessions</h2>
-          <p style={s.cardDesc}>Sessions on other devices and browsers</p>
+          <h2 className="text-base font-bold text-text">Active Sessions</h2>
+          <p className="text-xs text-text-muted mt-0.5 leading-relaxed">Sessions on other devices and browsers</p>
         </div>
         {sessions.length > 1 && (
-          <button style={{ ...s.btnGhost, color: "var(--error)", borderColor: "rgba(239,68,68,0.3)" }} onClick={() => revokeAllMut.mutate()}>
+          <Button
+            variant="ghost"
+            className="h-8 text-xs text-error hover:text-error hover:bg-error/5 hover:border-error/25 px-3 font-semibold"
+            onClick={() => revokeAllMut.mutate()}
+          >
             Sign Out All
-          </button>
+          </Button>
         )}
       </div>
 
       {sessions.length === 0 ? (
-        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Only this session</p>
+        <p className="text-xs text-text-muted italic select-none">Only this session active.</p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="flex flex-col gap-2.5 mt-1">
           {sessions.map((session: any) => (
-            <div key={session.id} style={{ ...s.sessionRow, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "var(--surface2)", borderRadius: 7, border: "1px solid var(--border)" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", marginBottom: 2 }}>
+            <div key={session.id} className="flex items-center justify-between p-3.5 bg-surface2 border border-border rounded-xl shadow-3xs gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-xs md:text-sm font-semibold text-text mb-0.5">
                   {session.userAgent?.includes("Chrome") ? "Chrome" : session.userAgent?.includes("Firefox") ? "Firefox" : "Browser"}
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                <div className="text-[10px] md:text-xs text-text-muted font-medium">
                   {session.ipAddress || "Unknown IP"} · {new Date(session.createdAt).toLocaleDateString()}
                 </div>
               </div>
-              <button style={{ ...s.btnGhost, color: "var(--error)", borderColor: "rgba(239,68,68,0.3)", padding: "4px 10px", fontSize: 12 }} onClick={() => revokeOneMut.mutate(session.id)}>
+              <Button
+                variant="ghost"
+                className="h-7 text-xs text-error hover:text-error hover:bg-error/5 hover:border-error/25 px-3"
+                onClick={() => revokeOneMut.mutate(session.id)}
+              >
                 Revoke
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -699,112 +765,47 @@ function SettingsPage() {
   ];
 
   return (
-    <div>
-      <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.02em", margin: 0 }}>Settings</h1>
-          </div>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Profile, API tokens, and MCP endpoint</p>
-        </div>
-      </div>
+    <div className="flex-1 min-h-screen bg-background">
+      <PageHeader
+        title="Settings"
+        icon={
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        }
+        description="Profile parameters, API tokens, security and MCP endpoints"
+      />
 
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
-        <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--border)", marginBottom: 24, alignItems: "flex-end" }}>
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                padding: "8px 16px",
-                background: tab === t.id ? "var(--surface)" : "transparent",
-                border: "none",
-                borderTop: tab === t.id ? "3px solid var(--accent)" : "3px solid transparent",
-                borderLeft: tab === t.id ? "1px solid var(--border)" : "1px solid transparent",
-                borderRight: tab === t.id ? "1px solid var(--border)" : "1px solid transparent",
-                borderBottom: tab === t.id ? "1px solid var(--surface)" : "none",
-                color: tab === t.id ? "var(--text)" : "var(--text-muted)",
-                fontWeight: tab === t.id ? 600 : 400,
-                fontSize: 14,
-                cursor: "pointer",
-                marginBottom: -1,
-                borderRadius: "4px 4px 0 0",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-            >
-              {t.label}
-              <InfoTooltip text={t.tooltip} size={12} />
-            </button>
-          ))}
+      <PageContainer>
+        <div className="flex gap-1 border-b border-border overflow-x-auto no-scrollbar select-none mb-2">
+          {tabs.map((t) => {
+            const isActive = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 whitespace-nowrap transition-colors -mb-[1px] rounded-t-md hover:bg-surface2/40 uppercase tracking-wider text-[11px] flex items-center gap-1.5 ${
+                  isActive
+                    ? "border-accent text-accent bg-surface"
+                    : "border-transparent text-text-muted hover:text-text"
+                }`}
+              >
+                {t.label}
+                <InfoTooltip text={t.tooltip} size={12} />
+              </button>
+            );
+          })}
         </div>
 
-        {tab === "profile" && <ProfileSection />}
-        {tab === "security" && <TwoFactorSection />}
-        {tab === "sessions" && <SessionsSection />}
-        {tab === "tokens" && <ApiTokensSection />}
-        {tab === "mcp" && <McpEndpointSection />}
-      </div>
+        <div>
+          {tab === "profile" && <ProfileSection />}
+          {tab === "security" && <TwoFactorSection />}
+          {tab === "sessions" && <SessionsSection />}
+          {tab === "tokens" && <ApiTokensSection />}
+          {tab === "mcp" && <McpEndpointSection />}
+        </div>
+      </PageContainer>
     </div>
   );
 }
-
-// ── styles ─────────────────────────────────────────────────────────────────
-
-const s: Record<string, React.CSSProperties> = {
-  card: {
-    background: "var(--surface)",
-    border: "1px solid var(--border)",
-    borderRadius: 10,
-    padding: "20px 22px",
-    marginBottom: 20,
-  },
-  cardTitle: { fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 6 },
-  cardDesc: { fontSize: 13, color: "var(--text-muted)", marginBottom: 14 },
-  badge: {
-    fontSize: 11, fontWeight: 600, background: "var(--surface2)", border: "1px solid var(--border)",
-    borderRadius: 20, padding: "1px 8px", color: "var(--text-muted)",
-  },
-  infoBox: {
-    display: "flex", gap: 8, alignItems: "flex-start",
-    background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.2)",
-    borderRadius: 7, padding: "9px 12px", fontSize: 12, color: "var(--text-muted)", marginBottom: 16,
-  },
-  code: { fontFamily: "monospace", fontSize: 11, background: "var(--surface2)", padding: "1px 5px", borderRadius: 4, color: "var(--accent)" },
-  endpointBox: {
-    background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7,
-    padding: "10px 14px", fontFamily: "monospace", fontSize: 13, color: "var(--text)", marginBottom: 8,
-  },
-  endpointCode: { color: "var(--accent)" },
-  tokenCard: { background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px" },
-  tokenHeader: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" },
-  tokenMeta: { flex: 1, display: "flex", flexDirection: "column", gap: 2 },
-  tokenName: { fontSize: 14, fontWeight: 600, color: "var(--text)" },
-  tokenPerms: { fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" },
-  tokenDates: { fontSize: 11, color: "var(--text-muted)" },
-  tokenActions: { display: "flex", gap: 6 },
-  permGrid: { marginTop: 12, display: "flex", flexDirection: "column", gap: 8, paddingTop: 12, borderTop: "1px solid var(--border)" },
-  permRow: { display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" },
-  permToolName: { fontSize: 12, fontWeight: 600, color: "var(--text)", fontFamily: "monospace" },
-  permToolDesc: { fontSize: 11, color: "var(--text-muted)", marginTop: 1 },
-  field: { display: "flex", flexDirection: "column", gap: 6 },
-  label: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" },
-  input: { padding: "8px 11px", borderRadius: 7, width: "100%" },
-  btnPrimary: { padding: "8px 16px", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, borderRadius: 7, border: "none", cursor: "pointer" },
-  btnGhost: { padding: "5px 10px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", borderRadius: 6, fontSize: 12, cursor: "pointer" },
-  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 24 },
-  modal: { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "28px 28px 22px", width: "100%", maxWidth: 440, display: "flex", flexDirection: "column", gap: 16 },
-  modalTitle: { fontSize: 18, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.02em" },
-  modalSubtitle: { fontSize: 13, color: "var(--text-muted)", marginTop: -8 },
-  modalFooter: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 },
-  tokenReveal: { display: "flex", alignItems: "center", gap: 8, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px" },
-  tokenCode: { flex: 1, fontFamily: "monospace", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" },
-  copyBtn: { padding: "4px 10px", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 600, borderRadius: 5, flexShrink: 0, border: "none", cursor: "pointer" },
-  tokenNote: { display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "var(--text-muted)", background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 7, padding: "9px 12px" },
-  sessionRow: {},
-};

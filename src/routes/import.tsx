@@ -3,6 +3,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { batchImportMemories, parseMemoriesWithAI } from "~/server/memoryFunctions";
 import { TEMPLATES } from "~/lib/templates";
+import { PageContainer } from "~/components/PageContainer";
+import { PageHeader } from "~/components/PageHeader";
+import { Button } from "~/components/ui/button";
+import { Badge } from "~/components/ui/badge";
+import { Select, Input } from "~/components/ui/input";
 
 export const Route = createFileRoute("/import")({
   component: ImportPage,
@@ -180,101 +185,70 @@ function PromptPanel() {
   }, [bot]);
 
   return (
-    <div style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.02) 0%, rgba(139,92,246,0.01) 100%)", border: "1px solid rgba(168,85,247,0.12)", borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 18px", borderBottom: "1px solid rgba(168,85,247,0.1)", display: "flex", alignItems: "center", gap: 10, background: "rgba(168,85,247,0.03)" }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="bg-linear-to-br from-accent/3 to-accent/1 border border-accent/10 rounded-2xl overflow-hidden shadow-xs">
+      <div className="px-5 py-4 border-b border-accent/10 flex flex-wrap items-center gap-2.5 bg-accent/3 select-none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
-        <span style={{ fontWeight: 600 }}>Step 1 — Get your memories out</span>
-        <span style={{ color: "var(--text-muted)", fontSize: 12, marginLeft: "auto" }}>
+        <span className="font-semibold text-sm text-text">Step 1 — Get your memories out</span>
+        <span className="text-text-muted text-xs md:ml-auto">
           Copy a prompt to pull memories out of each chatbot
         </span>
       </div>
 
-      <div style={{ padding: 18 }}>
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+      <div className="p-5 flex flex-col gap-4">
+        <div>
+          <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">
             Chatbot
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {CHATBOTS.map((b) => (
-              <button
-                key={b.id}
-                onClick={() => { setSelectedBot(b.id); setCopied(false); }}
-                style={{
-                  padding: "6px 14px",
-                  background: selectedBot === b.id ? `${b.color}22` : "var(--surface2)",
-                  border: `1px solid ${selectedBot === b.id ? b.color : "var(--border)"}`,
-                  color: selectedBot === b.id ? b.color : "var(--text-muted)",
-                  fontWeight: selectedBot === b.id ? 600 : 400,
-                  fontSize: 12,
-                  borderRadius: 20,
-                  transition: "all 0.15s",
-                }}
-              >
-                {b.label}
-              </button>
-            ))}
+          <div className="flex gap-2 flex-wrap select-none">
+            {CHATBOTS.map((b) => {
+              const active = selectedBot === b.id;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => { setSelectedBot(b.id); setCopied(false); }}
+                  className={`px-4.5 py-1.5 rounded-full text-xs font-semibold transition-all border cursor-pointer ${
+                    active 
+                      ? "" 
+                      : "bg-surface2 border-border text-text-muted hover:text-text hover:border-text-muted/30"
+                  }`}
+                  style={active ? { backgroundColor: `${b.color}15`, borderColor: b.color, color: b.color } : undefined}
+                >
+                  {b.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div style={{
-          background: "var(--surface2)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius)",
-          padding: "12px 14px",
-          fontFamily: "monospace",
-          fontSize: 12,
-          lineHeight: 1.7,
-          color: "var(--text)",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          marginBottom: 12,
-          maxHeight: 240,
-          overflowY: "auto",
-        }}>
+        <div className="bg-surface2 border border-border rounded-xl p-4 font-mono text-xs text-text whitespace-pre-wrap break-words leading-relaxed max-h-[240px] overflow-y-auto no-scrollbar">
           {bot.prompt}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 1 }}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <span className="text-xs text-text-muted leading-relaxed select-none">
             {bot.deeplinkUrl
               ? `Opens ${bot.label} with the prompt pre-filled`
               : `Copies prompt then opens ${bot.label} — just paste and send`}
           </span>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <button
+          <div className="flex gap-2.5 flex-shrink-0 select-none">
+            <Button
               onClick={handleCopy}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                background: copied ? "rgba(34,197,94,0.15)" : "var(--surface2)",
-                border: copied ? "1px solid rgba(34,197,94,0.4)" : "1px solid var(--border)",
-                color: copied ? "var(--success)" : "var(--text-muted)",
-                fontWeight: 500,
-                fontSize: 13,
-                transition: "all 0.2s",
-              }}
+              variant="outline"
+              className={`h-9 px-4 font-bold text-xs select-none gap-1.5 transition-all ${
+                copied 
+                  ? "border-success/40 bg-success/15 text-success hover:bg-success/25 hover:border-success/50" 
+                  : "hover:border-accent/40 hover:text-accent"
+              }`}
             >
               {copied ? <CheckIcon /> : <CopyIcon />}
-              {copied ? "Copied!" : "Copy"}
-            </button>
-            <button
+              {copied ? "Copied!" : "Copy Prompt"}
+            </Button>
+            <Button
               onClick={handleOpen}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 16px",
-                background: `${bot.color}22`,
-                border: `1px solid ${bot.color}66`,
-                color: bot.color,
-                fontWeight: 600,
-                fontSize: 13,
-                transition: "all 0.2s",
-              }}
+              className="h-9 px-4 font-bold text-xs select-none gap-1.5 transition-all"
+              style={{ backgroundColor: `${bot.color}15`, borderColor: `${bot.color}30`, color: bot.color }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
@@ -282,7 +256,7 @@ function PromptPanel() {
                 <line x1="10" y1="14" x2="21" y2="3" />
               </svg>
               Open {bot.label}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -384,19 +358,19 @@ function IngestPanel() {
   }
 
   return (
-    <div style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.02) 0%, rgba(139,92,246,0.01) 100%)", border: "1px solid rgba(168,85,247,0.12)", borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 18px", borderBottom: "1px solid rgba(168,85,247,0.1)", display: "flex", alignItems: "center", gap: 10, background: "rgba(168,85,247,0.03)" }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-xs">
+      <div className="px-5 py-4 border-b border-border flex flex-wrap items-center gap-2.5 bg-surface2 select-none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
           <path d="M12 5v14M5 12l7 7 7-7" />
         </svg>
-        <span style={{ fontWeight: 600 }}>Step 2 — Paste & import</span>
-        <span style={{ color: "var(--text-muted)", fontSize: 12, marginLeft: "auto" }}>
+        <span className="font-semibold text-sm text-text">Step 2 — Paste & import</span>
+        <span className="text-text-muted text-xs md:ml-auto">
           Paste the chatbot output — AI extracts and imports the memories
         </span>
       </div>
 
-      <div style={{ padding: 18 }}>
-        <div style={{ display: "flex", gap: 2, marginBottom: 12, borderBottom: "1px solid var(--border)", alignItems: "flex-end" }}>
+      <div className="p-5 flex flex-col gap-3">
+        <div className="flex gap-1 border-b border-border overflow-x-auto no-scrollbar select-none mb-3">
           {(["paste", "file", "templates"] as const).map((mode) => {
             const labels = { paste: "Paste Text", file: "Upload File", templates: "Templates" };
             const active = inputMode === mode;
@@ -404,21 +378,11 @@ function IngestPanel() {
               <button
                 key={mode}
                 onClick={() => setInputMode(mode)}
-                style={{
-                  padding: "8px 16px",
-                  background: active ? "var(--surface)" : "transparent",
-                  border: "none",
-                  borderTop: active ? "3px solid var(--accent)" : "3px solid transparent",
-                  borderLeft: active ? "1px solid var(--border)" : "1px solid transparent",
-                  borderRight: active ? "1px solid var(--border)" : "1px solid transparent",
-                  borderBottom: active ? "1px solid var(--surface)" : "none",
-                  color: active ? "var(--text)" : "var(--text-muted)",
-                  fontWeight: active ? 600 : 400,
-                  fontSize: 13,
-                  cursor: "pointer",
-                  marginBottom: -1,
-                  borderRadius: "4px 4px 0 0",
-                }}
+                className={`px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 whitespace-nowrap transition-colors -mb-[1px] rounded-t-md hover:bg-surface2/40 uppercase tracking-wider text-[11px] cursor-pointer ${
+                  active 
+                    ? "border-accent text-accent bg-surface" 
+                    : "border-transparent text-text-muted hover:text-text"
+                }`}
               >
                 {labels[mode]}
               </button>
@@ -433,29 +397,22 @@ function IngestPanel() {
             placeholder="Paste anything — chatbot memory exports, free-form text, structured or unstructured output. AI will extract the discrete facts."
             rows={8}
             maxLength={16000}
-            style={{ width: "100%", padding: "10px 12px", resize: "vertical", fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}
+            className="w-full bg-surface2 text-text border border-border rounded-xl p-3.5 text-xs font-mono placeholder:text-text-muted focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y"
           />
         )}
 
         {inputMode === "file" && (
-          <div style={{
-            padding: "40px 20px",
-            textAlign: "center",
-            border: "2px dashed var(--border)",
-            borderRadius: "var(--radius)",
-            background: "rgba(168,85,247,0.02)",
-            cursor: "pointer",
-            transition: "all 0.2s",
-          }}
+          <div 
+            className="py-12 px-6 text-center border-2 border-dashed border-border hover:border-accent/40 bg-accent/3 hover:bg-accent/5 rounded-2xl cursor-pointer transition-all flex flex-col items-center justify-center gap-3.5 select-none"
             onClick={() => fileInputRef.current?.click()}
           >
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 12, opacity: 0.7 }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-accent opacity-70">
               <path d="M12 5v14M5 12l7 7 7-7" />
             </svg>
-            <p style={{ margin: "8px 0 0 0", fontSize: 13, color: "var(--text-muted)" }}>
-              Click to upload or drag a <strong style={{ color: "var(--text)" }}>.json, .txt, or .md</strong> file
+            <p className="margin-0 font-medium text-xs md:text-sm text-text-muted">
+              Click to upload or drag a <strong className="text-text font-bold">.json, .txt, or .md</strong> file
             </p>
-            <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+            <p className="margin-0 text-[10px] text-text-muted">
               Supports ChatGPT/Claude export formats
             </p>
           </div>
@@ -466,18 +423,19 @@ function IngestPanel() {
           type="file"
           accept=".json,.txt,.md"
           onChange={handleFileInputChange}
-          style={{ display: "none" }}
+          className="hidden"
         />
+
         {inputMode === "paste" && (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4, marginBottom: 8 }}>
-            <span style={{ fontSize: 11, color: pasteText.length >= 16000 ? "var(--error)" : "var(--text-muted)" }}>
+          <div className="flex justify-end select-none">
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${pasteText.length >= 16000 ? "text-error" : "text-text-muted"}`}>
               {pasteText.length.toLocaleString()} / 16,000 characters
             </span>
           </div>
         )}
 
         {inputMode === "templates" && !selectedTemplate && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginTop: 8 }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 select-none">
             {TEMPLATES.map((template) => (
               <div
                 key={template.id}
@@ -485,30 +443,11 @@ function IngestPanel() {
                   setSelectedTemplate(template.id);
                   setTemplateSelection([...template.items]);
                 }}
-                style={{
-                  padding: 16,
-                  background: "var(--surface2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius)",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)";
-                  (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-                  (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
-                }}
+                className="p-4 bg-surface2 border border-border hover:border-accent rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 shadow-3xs"
               >
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: "var(--text)" }}>
-                  {template.title}
-                </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.4 }}>
-                  {template.description}
-                </div>
-                <div style={{ fontSize: 10, color: "var(--accent)", fontWeight: 500 }}>
+                <div className="text-xs md:text-sm font-bold text-text mb-1">{template.title}</div>
+                <div className="text-[11px] text-text-muted mb-3 leading-relaxed">{template.description}</div>
+                <div className="text-[10px] text-accent font-bold uppercase tracking-wider">
                   {template.items.length} item{template.items.length !== 1 ? "s" : ""}
                 </div>
               </div>
@@ -517,117 +456,75 @@ function IngestPanel() {
         )}
 
         {inputMode === "templates" && selectedTemplate && templateSelection && (
-          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-              <button
+          <div className="flex flex-col gap-3">
+            <div className="flex justify-between items-center select-none gap-4">
+              <Button
                 onClick={() => {
                   setSelectedTemplate(null);
                   setTemplateSelection(null);
                 }}
-                style={{
-                  background: "transparent",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-muted)",
-                  padding: "4px 12px",
-                  fontSize: 12,
-                  borderRadius: "var(--radius)",
-                  cursor: "pointer",
-                }}
+                variant="outline"
+                className="h-8 text-xs font-semibold"
               >
                 ← Back
-              </button>
-              <strong style={{ color: "var(--accent)", fontSize: 13 }}>Review & Import</strong>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{templateSelection.length} memor{templateSelection.length !== 1 ? "ies" : "y"}</span>
+              </Button>
+              <strong className="text-accent text-xs font-bold uppercase tracking-wider">Review & Import</strong>
+              <span className="text-xs text-text-muted font-medium">{templateSelection.length} memor{templateSelection.length !== 1 ? "ies" : "y"}</span>
             </div>
-            <div style={{
-              background: "rgba(168,85,247,0.04)",
-              border: "1px solid rgba(168,85,247,0.15)",
-              borderRadius: "var(--radius)",
-              maxHeight: 320,
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: 0
-            }}>
+            <div className="border border-accent/15 bg-accent/2 rounded-xl max-h-[320px] overflow-y-auto no-scrollbar p-1.5 flex flex-col gap-2">
               {templateSelection.map((item, idx) => (
                 <div
                   key={idx}
-                  style={{
-                    padding: "10px 12px",
-                    borderBottom: idx < templateSelection.length - 1 ? "1px solid rgba(168,85,247,0.08)" : "none",
-                    fontSize: 12,
-                  }}
+                  className="p-3 bg-surface border border-border rounded-xl flex flex-col gap-1.5 shadow-3xs"
                 >
-                  <div style={{ color: "var(--text)", marginBottom: 4 }}>{item.fact}</div>
+                  <div className="text-xs text-text font-medium leading-relaxed">{item.fact}</div>
                   {item.category && (
-                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                      {item.category}
-                      {item.tags && ` · ${item.tags}`}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5 select-none">
+                      <Badge variant={item.category as any} className="h-4 text-[9px] px-1.5 py-0">{item.category}</Badge>
+                      {item.tags && (
+                        <span className="text-[10px] text-text-muted bg-tag-bg border border-tag-border px-1.5 rounded-sm font-mono leading-none">
+                          {item.tags}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
               ))}
             </div>
-            <button
+            <Button
               onClick={() => {
                 if (templateSelection.length > 0) {
                   batchMutation.mutate({ items: templateSelection, source: "template" });
                 }
               }}
-              style={{
-                padding: "10px 16px",
-                background: "var(--accent)",
-                color: "#fff",
-                border: "none",
-                borderRadius: "var(--radius)",
-                fontWeight: 600,
-                fontSize: 13,
-                cursor: "pointer",
-                marginTop: 8,
-              }}
+              className="h-9 px-4 font-bold text-xs select-none w-fit mt-1"
             >
               Import {templateSelection.length} Item{templateSelection.length !== 1 ? "s" : ""}
-            </button>
+            </Button>
           </div>
         )}
 
         {parseError && (
-          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
+          <div className="p-3 bg-error/10 border border-error/20 rounded-xl text-error text-xs font-medium select-none">
             {parseError}
           </div>
         )}
 
         {preview && editingPreview && (
-          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-              <strong style={{ color: "var(--accent)", fontSize: 13 }}>Review & Edit</strong>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{editingPreview.length} memor{editingPreview.length !== 1 ? "ies" : "y"}</span>
+          <div className="flex flex-col gap-3">
+            <div className="flex justify-between items-center select-none gap-4">
+              <strong className="text-accent text-xs font-bold uppercase tracking-wider">Review & Edit</strong>
+              <span className="text-xs text-text-muted font-medium">{editingPreview.length} memor{editingPreview.length !== 1 ? "ies" : "y"}</span>
             </div>
-            <div style={{
-              background: "rgba(168,85,247,0.04)",
-              border: "1px solid rgba(168,85,247,0.15)",
-              borderRadius: "var(--radius)",
-              maxHeight: 320,
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: 0
-            }}>
+            <div className="border border-accent/15 bg-accent/2 rounded-xl max-h-[350px] overflow-y-auto no-scrollbar p-1.5 flex flex-col gap-2.5">
               {editingPreview.map((item, idx) => (
                 <div
                   key={idx}
-                  style={{
-                    padding: "10px 12px",
-                    borderBottom: idx < editingPreview.length - 1 ? "1px solid rgba(168,85,247,0.08)" : "none",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                    fontSize: 12,
-                  }}
+                  className="p-3 bg-surface border border-border rounded-xl flex flex-col gap-3 shadow-3xs"
                 >
-                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", justifyContent: "space-between" }}>
-                    <div style={{ flex: 1 }}>
-                      <input
+                  <div className="flex gap-3 items-start justify-between">
+                    <div className="flex-1">
+                      <Input
                         type="text"
                         value={item.fact}
                         onChange={(e) => {
@@ -635,40 +532,22 @@ function IngestPanel() {
                           updated[idx] = { ...updated[idx], fact: e.target.value };
                           setEditingPreview(updated);
                         }}
-                        style={{
-                          width: "100%",
-                          padding: "6px 8px",
-                          background: "var(--surface1)",
-                          border: "1px solid rgba(168,85,247,0.2)",
-                          borderRadius: 4,
-                          color: "var(--text)",
-                          fontFamily: "inherit",
-                          fontSize: 12,
-                          boxSizing: "border-box",
-                        }}
+                        className="h-8 text-xs font-medium"
                       />
                     </div>
-                    <button
+                    <Button
                       onClick={() => {
                         const updated = editingPreview.filter((_, i) => i !== idx);
                         setEditingPreview(updated);
                       }}
-                      style={{
-                        padding: "4px 6px",
-                        background: "rgba(239,68,68,0.1)",
-                        border: "1px solid rgba(239,68,68,0.2)",
-                        color: "var(--error)",
-                        fontSize: 11,
-                        borderRadius: 4,
-                        cursor: "pointer",
-                        fontWeight: 600,
-                      }}
+                      variant="ghost"
+                      className="h-8 text-xs text-error hover:text-error hover:bg-error/5 hover:border-error/25 font-semibold px-2.5"
                     >
                       Delete
-                    </button>
+                    </Button>
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
                       type="text"
                       placeholder="Category (optional)"
                       value={item.category || ""}
@@ -677,18 +556,9 @@ function IngestPanel() {
                         updated[idx] = { ...updated[idx], category: e.target.value || undefined };
                         setEditingPreview(updated);
                       }}
-                      style={{
-                        flex: 1,
-                        padding: "4px 8px",
-                        background: "var(--surface1)",
-                        border: "1px solid rgba(168,85,247,0.15)",
-                        borderRadius: 4,
-                        color: "var(--text-muted)",
-                        fontSize: 11,
-                        boxSizing: "border-box",
-                      }}
+                      className="h-8 text-[11px] font-medium"
                     />
-                    <input
+                    <Input
                       type="text"
                       placeholder="Tags (optional, comma-separated)"
                       value={item.tags || ""}
@@ -697,16 +567,7 @@ function IngestPanel() {
                         updated[idx] = { ...updated[idx], tags: e.target.value || undefined };
                         setEditingPreview(updated);
                       }}
-                      style={{
-                        flex: 1,
-                        padding: "4px 8px",
-                        background: "var(--surface1)",
-                        border: "1px solid rgba(168,85,247,0.15)",
-                        borderRadius: 4,
-                        color: "var(--text-muted)",
-                        fontSize: 11,
-                        boxSizing: "border-box",
-                      }}
+                      className="h-8 text-[11px] font-medium"
                     />
                   </div>
                 </div>
@@ -716,57 +577,59 @@ function IngestPanel() {
         )}
 
         {batchMutation.isError && (
-          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius)", color: "var(--error)", fontSize: 12 }}>
+          <div className="p-3 bg-error/10 border border-error/20 rounded-xl text-error text-xs font-medium select-none">
             Import failed: {(batchMutation.error as Error).message}
           </div>
         )}
 
         {importResult && (
-          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: "var(--radius)", color: "var(--success)", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div className="p-3.5 bg-success/15 border border-success/30 rounded-xl text-success text-xs font-semibold select-none flex items-center justify-between gap-4 mt-2 shadow-3xs">
             <span>
               Imported {importResult.imported} memor{importResult.imported !== 1 ? "ies" : "y"}.
               {importResult.skipped > 0 && (
-                <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+                <span className="text-text-muted font-medium ml-1.5">
                   {importResult.skipped} duplicate{importResult.skipped !== 1 ? "s" : ""} skipped.
                 </span>
               )}
             </span>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button
+            <div className="flex gap-2.5 items-center flex-shrink-0">
+              <Button
                 onClick={() => navigate({ to: "/" })}
-                style={{ padding: "4px 12px", background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.4)", color: "var(--success)", fontSize: 12, fontWeight: 600, borderRadius: "var(--radius)" }}
+                variant="outline"
+                className="h-7 text-xs border-success/30 bg-success/5 text-success hover:bg-success/15 hover:border-success/45 font-bold"
               >
                 View memories →
-              </button>
-              <button onClick={() => setImportResult(null)} style={{ background: "none", color: "var(--success)", padding: "0 2px", lineHeight: 1, fontSize: 14, opacity: 0.7 }}>×</button>
+              </Button>
+              <button onClick={() => setImportResult(null)} className="text-success hover:opacity-100 opacity-70 font-semibold text-lg cursor-pointer px-1">×</button>
             </div>
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
-          <button
+        <div className="flex gap-3 flex-wrap items-center mt-3 select-none">
+          <Button
             onClick={handleProcess}
             disabled={!pasteText.trim() || parsing || batchMutation.isPending}
-            style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text)" }}
+            variant="outline"
+            className="h-9 px-4 font-bold text-xs select-none hover:border-accent/40 hover:text-accent"
           >
             {parsing ? "Extracting…" : "Extract Memories"}
-          </button>
+          </Button>
           {preview && (
-            <button
+            <Button
               onClick={handleImport}
               disabled={batchMutation.isPending}
-              style={{ padding: "8px 16px", background: "var(--accent)", color: "#fff", fontWeight: 600 }}
+              className="h-9 px-4 font-bold text-xs select-none"
             >
               {batchMutation.isPending ? "Importing…" : `Import ${preview.length} Memor${preview.length !== 1 ? "ies" : "y"}`}
-            </button>
+            </Button>
           )}
 
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-            <label style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Source Provider:</label>
-            <select
+          <div className="ml-auto flex items-center gap-2">
+            <label className="text-xs text-text-muted font-semibold whitespace-nowrap">Source Provider:</label>
+            <Select
               value={source}
               onChange={(e) => setSource(e.target.value)}
-              style={{ padding: "6px 12px", fontSize: 13, background: "var(--surface2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}
+              className="h-8 text-xs font-semibold px-2 cursor-pointer min-w-[110px]"
             >
               <option value="chatgpt">ChatGPT</option>
               <option value="claude">Claude</option>
@@ -775,7 +638,7 @@ function IngestPanel() {
               <option value="grok">Grok</option>
               <option value="copilot">Copilot</option>
               <option value="manual">Manual</option>
-            </select>
+            </Select>
           </div>
         </div>
       </div>
@@ -785,30 +648,23 @@ function IngestPanel() {
 
 function ImportPage() {
   return (
-    <div>
-      <div style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)", padding: "20px 24px" }}>
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12l7 7 7-7" />
-            </svg>
-            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Import</h1>
-            <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
-              Memory Extraction
-            </span>
-          </div>
-          <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-            Pull your memories out of ChatGPT, Claude, Gemini, Grok, Perplexity, or Copilot — then paste the output to import them into Locker.
-          </p>
-        </div>
-      </div>
+    <div className="flex-grow min-h-screen bg-background">
+      <PageHeader
+        title="Import"
+        icon={
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12l7 7 7-7" />
+          </svg>
+        }
+        description="Pull your memories out of ChatGPT, Claude, Gemini, Grok, Perplexity, or Copilot — then paste the output to import them into Locker."
+      />
 
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "28px 24px" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <PageContainer>
+        <div className="flex flex-col gap-6">
           <PromptPanel />
           <IngestPanel />
         </div>
-      </div>
+      </PageContainer>
     </div>
   );
 }

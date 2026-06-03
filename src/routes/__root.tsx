@@ -14,6 +14,7 @@ import { PlanBadge } from "~/components/PaywallGate";
 import type { PlanId } from "~/lib/plans";
 import { type ReactNode, useState, useEffect, useRef } from "react";
 import { useSession, signOut } from "~/lib/authClient";
+import "~/global.css";
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -567,87 +568,6 @@ function RootDocument({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
-        <style>{`
-          *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-          :root {
-            --bg: #0b0914;
-            --surface: #141221;
-            --surface2: #1b182e;
-            --border: #2e254d;
-            --text: #f3f1f8;
-            --text-muted: #8e85a6;
-            --accent: #a855f7;
-            --accent-hover: #c084fc;
-            --accent-dim: rgba(168, 85, 247, 0.12);
-            --success: #22c55e;
-            --error: #ef4444;
-            --tag-bg: #1c1538;
-            --tag-border: #44357a;
-            --radius: 8px;
-            --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-          }
-          body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: var(--font);
-            font-size: 14px;
-            line-height: 1.6;
-            min-height: 100vh;
-          }
-          a { color: var(--accent); text-decoration: none; }
-          a:hover { color: var(--accent-hover); }
-          button {
-            cursor: pointer;
-            font-family: inherit;
-            font-size: 13px;
-            border: none;
-            border-radius: var(--radius);
-            transition: background 0.15s, color 0.15s, opacity 0.15s;
-          }
-          button:disabled { opacity: 0.5; cursor: not-allowed; }
-          input, textarea, select {
-            font-family: inherit;
-            font-size: 13px;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            color: var(--text);
-            outline: none;
-            transition: border-color 0.15s;
-          }
-          input:focus, textarea:focus, select:focus { border-color: var(--accent); }
-          input::placeholder, textarea::placeholder { color: var(--text-muted); }
-          @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-          }
-          .no-scrollbar::-webkit-scrollbar { display: none; }
-          .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-          @media (max-width: 768px) {
-            body { font-size: 13px; }
-            button { font-size: 12px; }
-            input, textarea, select { font-size: 12px; }
-            nav {
-              padding: 0 12px !important;
-              gap: 0 !important;
-            }
-            nav > div:nth-child(2) {
-              display: none;
-            }
-            nav > span {
-              display: none;
-            }
-            nav > button:last-of-type {
-              display: none;
-            }
-          }
-          @media (max-width: 640px) {
-            body { font-size: 12px; }
-            main {
-              padding: 12px 8px !important;
-            }
-          }
-        `}</style>
       </head>
       <body>
         {children}
