@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { InfoTooltip } from "~/components/InfoTooltip";
 import {
   getMemories,
@@ -93,6 +93,8 @@ function MemoryRow({
   onExport,
   workspaces = [],
   currentProjectKey = "personal",
+  isSelected = false,
+  onSelect,
 }: {
   memory: Memory;
   selected: boolean;
@@ -101,6 +103,8 @@ function MemoryRow({
   onExport: (memory: Memory) => void;
   workspaces?: any[];
   currentProjectKey?: string;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
@@ -254,6 +258,8 @@ function MemoryRow({
 
   return (
     <div
+      onClick={onSelect}
+      className={`memory-item-card ${isSelected ? "selected" : ""}`}
       style={{
         padding: "14px 18px",
         borderBottom: "1px solid var(--border)",
@@ -261,13 +267,17 @@ function MemoryRow({
         gridTemplateColumns: "auto 1fr auto",
         gap: "8px 16px",
         alignItems: "start",
-        background: selected ? "rgba(168,85,247,0.05)" : undefined,
+        background: isSelected ? "rgba(168,85,247,0.08)" : (selected ? "rgba(168,85,247,0.04)" : undefined),
+        borderLeft: isSelected ? "3px solid var(--accent)" : "3px solid transparent",
+        paddingLeft: isSelected ? "15px" : "18px",
+        cursor: "pointer",
       }}
     >
       <input
         type="checkbox"
         checked={selected}
-        onChange={() => onToggleSelect(memory.id)}
+        onChange={(e) => { e.stopPropagation(); onToggleSelect(memory.id); }}
+        onClick={(e) => e.stopPropagation()}
         style={{ marginTop: 3, cursor: "pointer", accentColor: "var(--accent)" }}
       />
       <div style={{ minWidth: 0 }}>
@@ -282,7 +292,10 @@ function MemoryRow({
           </div>
         )}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, minWidth: 110 }}>
+      <div 
+        onClick={(e) => e.stopPropagation()} 
+        style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, minWidth: 110 }}
+      >
         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <CategoryBadge category={memory.category} />
           {(() => {
@@ -2065,6 +2078,116 @@ function NewMemoryModal({
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+        .memories-grid-container {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 24px;
+          align-items: start;
+        }
+        @media (min-width: 1024px) {
+          .memories-grid-container {
+            grid-template-columns: 1.25fr 0.75fr;
+          }
+        }
+        .detail-pane {
+          display: none;
+        }
+        @media (min-width: 1024px) {
+          .detail-pane {
+            display: block;
+            position: sticky;
+            top: 72px;
+          }
+        }
+        .detail-panel {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: 20px;
+          max-height: calc(100vh - 100px);
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+          animation: slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes slideInRight {
+          from { transform: translateX(12px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .stat-card {
+          background: linear-gradient(135deg, rgba(168,85,247,0.03) 0%, rgba(139,92,246,0.01) 100%);
+          border: 1px solid rgba(168,85,247,0.12);
+          border-radius: 12px;
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+          overflow: hidden;
+          width: 100%;
+          outline: none;
+        }
+        .stat-card:hover {
+          transform: translateY(-2px);
+          border-color: rgba(168,85,247,0.35);
+          box-shadow: 0 8px 24px rgba(168,85,247,0.08);
+        }
+        .stat-card.active {
+          background: linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(139,92,246,0.03) 100%);
+          border-color: var(--accent);
+          box-shadow: 0 0 16px rgba(168,85,247,0.15);
+        }
+        .stat-card::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(circle at 50% 50%, rgba(168,85,247,0.08) 0%, transparent 60%);
+          opacity: 0;
+          transition: opacity 0.3s;
+          pointer-events: none;
+        }
+        .stat-card:hover::after {
+          opacity: 1;
+        }
+        .search-input-wrapper {
+          position: relative;
+          flex: 1;
+        }
+        .search-input-wrapper input {
+          width: 100%;
+          padding: 8px 12px 8px 32px;
+          background: var(--surface2);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          color: var(--text);
+          transition: all 0.2s;
+          outline: none;
+        }
+        .search-input-wrapper input:focus {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.15);
+          background: var(--surface);
+        }
+        .memory-item-card {
+          padding: 14px 18px;
+          border-bottom: 1px solid var(--border);
+          background: var(--surface);
+          transition: all 0.15s ease;
+          cursor: pointer;
+        }
+        .memory-item-card:hover {
+          background: var(--surface2);
+        }
+        .memory-item-card.selected {
+          background: rgba(168, 85, 247, 0.04) !important;
+          border-left: 3px solid var(--accent) !important;
+          padding-left: 15px !important;
+        }
       `}</style>
     </div>
   );
@@ -2345,6 +2468,479 @@ function ExportMemoryModal({
     </div>
   );
 }
+function DetailEmptyState() {
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        padding: "40px 24px",
+        textAlign: "center",
+        color: "var(--text-muted)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: 280,
+        height: "100%",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+      }}
+    >
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: "50%",
+          background: "var(--surface2)",
+          border: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 16,
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      </div>
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>No Memory Selected</h3>
+      <p style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 220, margin: "0 auto", lineHeight: 1.5 }}>
+        Select a memory entry from the list to view its complete timeline history, edit tags, or change categories.
+      </p>
+    </div>
+  );
+}
+
+function MemoryDetailPanel({
+  memory,
+  onClose,
+  workspaces = [],
+  currentProjectKey = "personal",
+}: {
+  memory: Memory;
+  onClose: () => void;
+  workspaces?: any[];
+  currentProjectKey?: string;
+}) {
+  const queryClient = useQueryClient();
+  const [editFact, setEditFact] = useState(memory.fact);
+  const [editCategory, setEditCategory] = useState(memory.category);
+  const [editTags, setEditTags] = useState(memory.tags);
+  const [targetWorkspace, setTargetWorkspace] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Sync state with memory when it changes
+  useEffect(() => {
+    setEditFact(memory.fact);
+    setEditCategory(memory.category);
+    setEditTags(memory.tags);
+    setTargetWorkspace("");
+    setConfirmDelete(false);
+  }, [memory]);
+
+  const hasChanges =
+    editFact !== memory.fact ||
+    editCategory !== memory.category ||
+    editTags !== memory.tags;
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      updateMemory({
+        data: {
+          id: memory.id,
+          fact: editFact,
+          category: editCategory,
+          tags: editTags,
+        },
+      }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
+        old ? old.map((m) => (m.id === updated.id ? updated : m)) : []
+      );
+      alert("Changes saved successfully!");
+    },
+    onError: (err: any) => {
+      alert("Failed to save changes: " + String(err.message || err));
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteMemory({ data: { id: memory.id } }),
+    onSuccess: () => {
+      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
+        old ? old.filter((m) => m.id !== memory.id) : []
+      );
+      onClose();
+    },
+    onError: (err: any) => {
+      alert("Failed to delete memory: " + String(err.message || err));
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: () => archiveMemory({ data: { id: memory.id } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      queryClient.invalidateQueries({ queryKey: ["memories-archived"] });
+      onClose();
+    },
+    onError: (err: any) => {
+      alert("Failed to archive memory: " + String(err.message || err));
+    },
+  });
+
+  const moveMutation = useMutation({
+    mutationFn: () =>
+      moveMemories({
+        data: { ids: [memory.id], targetProjectKey: targetWorkspace },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      setTargetWorkspace("");
+      onClose();
+      alert("Memory moved successfully!");
+    },
+    onError: (err: any) => {
+      alert("Failed to move memory: " + String(err.message || err));
+    },
+  });
+
+  const { data: versions = [], isLoading: isTimelineLoading } = useQuery({
+    queryKey: ["memory-timeline", memory.id],
+    queryFn: () => getMemoryTimeline({ data: { memoryId: memory.id } }),
+  });
+
+  const revertMutation = useMutation({
+    mutationFn: (versionId: string) => revertMemoryVersion({ data: { versionId } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      queryClient.invalidateQueries({ queryKey: ["memory-timeline", memory.id] });
+      alert("Reverted memory version successfully!");
+    },
+    onError: (err: any) => {
+      alert("Revert failed: " + String(err.message || err));
+    },
+  });
+
+  const tagsList = useMemo(() => {
+    return editTags
+      ? editTags.split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
+  }, [editTags]);
+
+  return (
+    <div className="detail-panel">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Memory Details</h3>
+        <button
+          onClick={onClose}
+          style={{ background: "transparent", border: "none", color: "var(--text-muted)", fontSize: 16, cursor: "pointer", padding: "0 4px" }}
+        >
+          ✕
+        </button>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+            Fact Content
+          </label>
+          <textarea
+            value={editFact}
+            onChange={(e) => setEditFact(e.target.value)}
+            rows={4}
+            style={{ width: "100%", padding: "8px 10px", fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
+          />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+              Category
+            </label>
+            <select
+              value={editCategory}
+              onChange={(e) => setEditCategory(e.target.value as any)}
+              style={{ width: "100%", padding: "6px 8px", fontSize: 12 }}
+            >
+              <option value="rules">Rules</option>
+              <option value="projects">Projects</option>
+              <option value="references">References</option>
+              <option value="stack">Stack</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+              Tags (Comma Separated)
+            </label>
+            <input
+              type="text"
+              value={editTags}
+              onChange={(e) => setEditTags(e.target.value)}
+              placeholder="e.g. manual, profile"
+              style={{ width: "100%", padding: "6px 8px", fontSize: 12 }}
+            />
+          </div>
+        </div>
+
+        {tagsList.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {tagsList.map((tag) => (
+              <span
+                key={tag}
+                style={{
+                  display: "inline-block",
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                  fontSize: 10,
+                  background: "var(--tag-bg)",
+                  border: "1px solid var(--tag-border)",
+                  color: "var(--accent)",
+                }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {hasChanges && (
+          <div style={{ display: "flex", gap: 8, padding: "8px 0" }}>
+            <button
+              onClick={() => updateMutation.mutate()}
+              disabled={updateMutation.isPending || !editFact.trim()}
+              style={{
+                flex: 1,
+                padding: "6px 12px",
+                background: "var(--accent)",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: 12,
+              }}
+            >
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </button>
+            <button
+              onClick={() => {
+                setEditFact(memory.fact);
+                setEditCategory(memory.category);
+                setEditTags(memory.tags);
+              }}
+              style={{
+                padding: "6px 12px",
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                fontSize: 12,
+              }}
+            >
+              Discard
+            </button>
+          </div>
+        )}
+
+        <div style={{ height: 1, background: "var(--border)", margin: "8px 0" }} />
+
+        {/* Workspace mover */}
+        {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+              Move to Workspace
+            </label>
+            <div style={{ display: "flex", gap: 6 }}>
+              <select
+                value={targetWorkspace}
+                onChange={(e) => setTargetWorkspace(e.target.value)}
+                style={{ flex: 1, padding: "5px 8px", fontSize: 11, background: "var(--surface2)", color: "var(--text)" }}
+              >
+                <option value="">Select workspace...</option>
+                {workspaces
+                  .filter((w) => w.key !== currentProjectKey)
+                  .map((w) => (
+                    <option key={w.key} value={w.key}>
+                      {w.label}
+                    </option>
+                  ))}
+              </select>
+              <button
+                onClick={() => moveMutation.mutate()}
+                disabled={moveMutation.isPending || !targetWorkspace}
+                style={{
+                  padding: "5px 12px",
+                  background: "var(--accent)",
+                  color: "#fff",
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                {moveMutation.isPending ? "Moving..." : "Move"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Delete & Archive actions */}
+        <div>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+            Locker Status Operations
+          </label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {confirmDelete ? (
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Confirm delete?</span>
+                <button
+                  onClick={() => deleteMutation.mutate()}
+                  disabled={deleteMutation.isPending}
+                  style={{
+                    padding: "4px 10px",
+                    background: "rgba(239,68,68,0.15)",
+                    border: "1px solid rgba(239,68,68,0.4)",
+                    color: "var(--error)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                  }}
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  style={{
+                    padding: "4px 8px",
+                    background: "var(--surface2)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-muted)",
+                    fontSize: 11,
+                  }}
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                style={{
+                  padding: "6px 12px",
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  color: "var(--error)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                Delete Memory
+              </button>
+            )}
+            <button
+              onClick={() => archiveMutation.mutate()}
+              disabled={archiveMutation.isPending}
+              style={{
+                padding: "6px 12px",
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              {archiveMutation.isPending ? "Archiving..." : "Archive Entry"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Version History Timeline */}
+      <div style={{ marginTop: 20, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+        <h4 style={{ margin: "0 0 12px 0", fontSize: 13, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 6 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          Version History
+        </h4>
+
+        {isTimelineLoading ? (
+          <div style={{ padding: 12, color: "var(--text-muted)", fontSize: 12, textAlign: "center" }}>
+            Loading history...
+          </div>
+        ) : versions.length === 0 ? (
+          <div style={{ padding: 12, color: "var(--text-muted)", fontSize: 12, textAlign: "center" }}>
+            No history found.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              position: "relative",
+              paddingLeft: 12,
+              borderLeft: "2px solid var(--border)",
+              marginLeft: 4,
+            }}
+          >
+            {versions.map((v: any, index: number) => {
+              const isLatest = index === 0;
+              return (
+                <div key={v.id} style={{ position: "relative", fontSize: 12 }}>
+                  {/* Timeline dot */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: -17,
+                      top: 4,
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: isLatest ? "var(--accent)" : "var(--border)",
+                      border: isLatest ? "2px solid var(--accent)" : "none",
+                    }}
+                  />
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: isLatest ? "var(--accent)" : "var(--text-muted)" }}>
+                      {v.changeReason || "changed"}
+                    </span>
+                    <span style={{ fontSize: 9, color: "var(--text-muted)" }}>
+                      {new Date(v.timestamp).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+
+                  <p style={{ margin: "0 0 6px 0", color: isLatest ? "var(--text)" : "var(--text-muted)", lineHeight: 1.4, wordBreak: "break-word" }}>
+                    {v.fact}
+                  </p>
+
+                  {!isLatest && (
+                    <button
+                      onClick={() => {
+                        if (confirm("Revert to this version? This will update the active memory.")) {
+                          revertMutation.mutate(v.id);
+                        }
+                      }}
+                      disabled={revertMutation.isPending}
+                      style={{
+                        padding: "2px 8px",
+                        background: "var(--surface2)",
+                        border: "1px solid var(--border)",
+                        color: "var(--accent)",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        borderRadius: 4,
+                      }}
+                    >
+                      {revertMutation.isPending ? "Reverting..." : "Revert"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function MemoryTable({
   memories,
@@ -2377,6 +2973,11 @@ function MemoryTable({
   const [exportMemory, setExportMemory] = useState<Memory | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
 
+  const [activeSelectedId, setActiveSelectedId] = useState<string | null>(null);
+
+  const PAGE_SIZE = 20;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
   function handleExport(itemsToExport: Memory[], format: "json" | "md") {
     if (format === "json") {
       const jsonContent = exportToJson(itemsToExport);
@@ -2401,11 +3002,10 @@ function MemoryTable({
       const mTime = new Date(m.timestamp).getTime();
       const matchesDate =
         (!startDate || mTime >= startDate) &&
-        (!endDate || mTime <= endDate + 86400000); // +1 day to include end date fully
+        (!endDate || mTime <= endDate + 86400000);
       return matchesCat && matchesText && matchesDate;
     });
 
-    // Apply sorting
     if (sortBy === 'newest') {
       results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     } else if (sortBy === 'oldest') {
@@ -2416,6 +3016,42 @@ function MemoryTable({
 
     return results;
   }, [memories, filter, categoryFilter, sortBy, dateStart, dateEnd]);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filter, categoryFilter, sortBy, dateStart, dateEnd]);
+
+  const visibleMemories = useMemo(() => {
+    return filtered.slice(0, visibleCount);
+  }, [filtered, visibleCount]);
+
+  const activeMemory = useMemo(() => {
+    return filtered.find((m) => m.id === activeSelectedId) || null;
+  }, [filtered, activeSelectedId]);
+
+  const hasMore = visibleCount < filtered.length;
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => prev + PAGE_SIZE);
+        }
+      },
+      { threshold: 0.1, rootMargin: "150px" }
+    );
+    const currentSentinel = sentinelRef.current;
+    if (currentSentinel) {
+      observer.observe(currentSentinel);
+    }
+    return () => {
+      if (currentSentinel) {
+        observer.unobserve(currentSentinel);
+      }
+    };
+  }, [hasMore, visibleCount]);
 
   const filteredIds = useMemo(() => new Set(filtered.map((m) => m.id)), [filtered]);
   const allSelected = filtered.length > 0 && filtered.every((m) => selected.has(m.id));
@@ -2431,6 +3067,7 @@ function MemoryTable({
       );
       setSelected(new Set());
       setBulkConfirming(false);
+      setActiveSelectedId(null);
     },
     onError: () => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
@@ -2444,6 +3081,7 @@ function MemoryTable({
       setSelected(new Set());
       setBulkMoving(false);
       setBulkTargetWorkspace("");
+      setActiveSelectedId(null);
       alert(`Successfully moved ${res.moved} memories.`);
     },
     onError: (err: Error) => {
@@ -2492,204 +3130,127 @@ function MemoryTable({
     );
   }
 
+  const percentLoaded = Math.min(100, Math.floor((visibleMemories.length / filtered.length) * 100));
+
   return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius)",
-        overflow: "hidden",
-      }}
-    >
-      {/* Table header with select-all and bulk actions */}
+    <div className="memories-grid-container">
       <div
         style={{
-          padding: "10px 18px",
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          background: "var(--surface2)",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          overflow: "hidden",
         }}
       >
-        <input
-          type="checkbox"
-          checked={allSelected}
-          ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
-          onChange={toggleSelectAll}
-          style={{ cursor: "pointer", accentColor: "var(--accent)" }}
-        />
-        {someSelected ? (
-          <>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {selectedInView.length} selected
-            </span>
-            {bulkConfirming ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
-                <span style={{ fontSize: 12, color: "var(--error)" }}>
-                  Delete {selectedInView.length} memor{selectedInView.length !== 1 ? "ies" : "y"}?
-                </span>
-                <button
-                  onClick={() => bulkDeleteMutation.mutate(selectedInView.map((m) => m.id))}
-                  disabled={bulkDeleteMutation.isPending}
-                  style={{
-                    padding: "4px 12px",
-                    background: "rgba(239,68,68,0.15)",
-                    border: "1px solid rgba(239,68,68,0.4)",
-                    color: "var(--error)",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    borderRadius: "var(--radius)",
-                  }}
-                >
-                  {bulkDeleteMutation.isPending ? "Deleting…" : "Yes, delete"}
-                </button>
-                <button
-                  onClick={() => setBulkConfirming(false)}
-                  disabled={bulkDeleteMutation.isPending}
-                  style={{
-                    padding: "4px 10px",
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text-muted)",
-                    fontSize: 12,
-                    borderRadius: "var(--radius)",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : bulkMoving ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  Move {selectedInView.length} to:
-                </span>
-                <select
-                  value={bulkTargetWorkspace}
-                  onChange={(e) => setBulkTargetWorkspace(e.target.value)}
-                  style={{ padding: "4px 8px", fontSize: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
-                >
-                  <option value="">Select workspace...</option>
-                  {workspaces
-                    .filter((w) => w.key !== currentProjectKey)
-                    .map((w) => (
-                      <option key={w.key} value={w.key}>
-                        {w.label}
-                      </option>
-                    ))}
-                </select>
-                <button
-                  onClick={() => bulkMoveMutation.mutate(selectedInView.map((m) => m.id))}
-                  disabled={bulkMoveMutation.isPending || !bulkTargetWorkspace}
-                  style={{
-                    padding: "4px 12px",
-                    background: "var(--accent)",
-                    color: "#fff",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    borderRadius: "var(--radius)",
-                  }}
-                >
-                  {bulkMoveMutation.isPending ? "Moving…" : "Move"}
-                </button>
-                <button
-                  onClick={() => { setBulkMoving(false); setBulkTargetWorkspace(""); }}
-                  disabled={bulkMoveMutation.isPending}
-                  style={{
-                    padding: "4px 10px",
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text-muted)",
-                    fontSize: 12,
-                    borderRadius: "var(--radius)",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
-                <button
-                  onClick={() => handleExport(selectedInView, "json")}
-                  style={{
-                    padding: "4.5px 12px",
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text)",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    borderRadius: "var(--radius)",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--accent)";
-                    b.style.color = "var(--accent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--border)";
-                    b.style.color = "var(--text)";
-                  }}
-                >
-                  Export JSON
-                </button>
-                <button
-                  onClick={() => handleExport(selectedInView, "md")}
-                  style={{
-                    padding: "4.5px 12px",
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text)",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    borderRadius: "var(--radius)",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--accent)";
-                    b.style.color = "var(--accent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--border)";
-                    b.style.color = "var(--text)";
-                  }}
-                >
-                  Export Markdown
-                </button>
-                <button
-                  onClick={onExportZip}
-                  style={{
-                    padding: "4.5px 12px",
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text)",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    borderRadius: "var(--radius)",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--accent)";
-                    b.style.color = "var(--accent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--border)";
-                    b.style.color = "var(--text)";
-                  }}
-                >
-                  Export Zip
-                </button>
-                {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
+        <div
+          style={{
+            padding: "10px 18px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            background: "var(--surface2)",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+            onChange={toggleSelectAll}
+            style={{ cursor: "pointer", accentColor: "var(--accent)" }}
+          />
+          {someSelected ? (
+            <>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {selectedInView.length} selected
+              </span>
+              {bulkConfirming ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+                  <span style={{ fontSize: 12, color: "var(--error)" }}>
+                    Delete {selectedInView.length} memor{selectedInView.length !== 1 ? "ies" : "y"}?
+                  </span>
                   <button
-                    onClick={() => setBulkMoving(true)}
+                    onClick={() => bulkDeleteMutation.mutate(selectedInView.map((m) => m.id))}
+                    disabled={bulkDeleteMutation.isPending}
+                    style={{
+                      padding: "4px 12px",
+                      background: "rgba(239,68,68,0.15)",
+                      border: "1px solid rgba(239,68,68,0.4)",
+                      color: "var(--error)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      borderRadius: "var(--radius)",
+                    }}
+                  >
+                    {bulkDeleteMutation.isPending ? "Deleting…" : "Yes, delete"}
+                  </button>
+                  <button
+                    onClick={() => setBulkConfirming(false)}
+                    disabled={bulkDeleteMutation.isPending}
+                    style={{
+                      padding: "4px 10px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-muted)",
+                      fontSize: 12,
+                      borderRadius: "var(--radius)",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : bulkMoving ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    Move {selectedInView.length} to:
+                  </span>
+                  <select
+                    value={bulkTargetWorkspace}
+                    onChange={(e) => setBulkTargetWorkspace(e.target.value)}
+                    style={{ padding: "4px 8px", fontSize: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)" }}
+                  >
+                    <option value="">Select workspace...</option>
+                    {workspaces
+                      .filter((w) => w.key !== currentProjectKey)
+                      .map((w) => (
+                        <option key={w.key} value={w.key}>
+                          {w.label}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    onClick={() => bulkMoveMutation.mutate(selectedInView.map((m) => m.id))}
+                    disabled={bulkMoveMutation.isPending || !bulkTargetWorkspace}
+                    style={{
+                      padding: "4px 12px",
+                      background: "var(--accent)",
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      borderRadius: "var(--radius)",
+                    }}
+                  >
+                    {bulkMoveMutation.isPending ? "Moving…" : "Move"}
+                  </button>
+                  <button
+                    onClick={() => { setBulkMoving(false); setBulkTargetWorkspace(""); }}
+                    disabled={bulkMoveMutation.isPending}
+                    style={{
+                      padding: "4px 10px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-muted)",
+                      fontSize: 12,
+                      borderRadius: "var(--radius)",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                  <button
+                    onClick={() => handleExport(selectedInView, "json")}
                     style={{
                       padding: "4.5px 12px",
                       background: "var(--surface)",
@@ -2712,146 +3273,284 @@ function MemoryTable({
                       b.style.color = "var(--text)";
                     }}
                   >
-                    Move selected
+                    Export JSON
                   </button>
-                )}
-                <button
-                  onClick={() => setBulkConfirming(true)}
-                  style={{
-                    padding: "4.5px 12px",
-                    background: "rgba(239,68,68,0.1)",
-                    border: "1px solid rgba(239,68,68,0.3)",
-                    color: "var(--error)",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    borderRadius: "var(--radius)",
-                  }}
-                >
-                  Delete selected
-                </button>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {filtered.length} memor{filtered.length !== 1 ? "ies" : "y"}
-            </span>
-            {filtered.length > 0 && (
-              <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
-                <button
-                  onClick={() => handleExport(filtered, "json")}
-                  style={{
-                    padding: "4.5px 12px",
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text)",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    borderRadius: "var(--radius)",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--accent)";
-                    b.style.color = "var(--accent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--border)";
-                    b.style.color = "var(--text)";
-                  }}
-                >
-                  Export JSON
-                </button>
-                <button
-                  onClick={() => handleExport(filtered, "md")}
-                  style={{
-                    padding: "4.5px 12px",
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text)",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    borderRadius: "var(--radius)",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--accent)";
-                    b.style.color = "var(--accent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--border)";
-                    b.style.color = "var(--text)";
-                  }}
-                >
-                  Export Markdown
-                </button>
-                <button
-                  onClick={onExportZip}
-                  style={{
-                    padding: "4.5px 12px",
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text)",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    borderRadius: "var(--radius)",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--accent)";
-                    b.style.color = "var(--accent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    const b = e.currentTarget as HTMLButtonElement;
-                    b.style.borderColor = "var(--border)";
-                    b.style.color = "var(--text)";
-                  }}
-                >
-                  Export Zip
-                </button>
-                <button
-                  onClick={() => {
-                    setSelected(new Set(filtered.map((m) => m.id)));
-                    setBulkConfirming(true);
-                  }}
-                  style={{
-                    padding: "4.5px 12.5px",
-                    background: "rgba(239,68,68,0.08)",
-                    border: "1px solid rgba(239,68,68,0.25)",
-                    color: "var(--error)",
-                    fontSize: 11,
-                    borderRadius: "var(--radius)",
-                    opacity: 0.6,
-                  }}
-                >
-                  Delete All
-                </button>
-              </div>
-            )}
-          </>
+                  <button
+                    onClick={() => handleExport(selectedInView, "md")}
+                    style={{
+                      padding: "4.5px 12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: "var(--radius)",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--accent)";
+                      b.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--border)";
+                      b.style.color = "var(--text)";
+                    }}
+                  >
+                    Export Markdown
+                  </button>
+                  <button
+                    onClick={onExportZip}
+                    style={{
+                      padding: "4.5px 12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: "var(--radius)",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--accent)";
+                      b.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--border)";
+                      b.style.color = "var(--text)";
+                    }}
+                  >
+                    Export Zip
+                  </button>
+                  {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
+                    <button
+                      onClick={() => setBulkMoving(true)}
+                      style={{
+                        padding: "4.5px 12px",
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        color: "var(--text)",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        borderRadius: "var(--radius)",
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={(e) => {
+                        const b = e.currentTarget as HTMLButtonElement;
+                        b.style.borderColor = "var(--accent)";
+                        b.style.color = "var(--accent)";
+                      }}
+                      onMouseLeave={(e) => {
+                        const b = e.currentTarget as HTMLButtonElement;
+                        b.style.borderColor = "var(--border)";
+                        b.style.color = "var(--text)";
+                      }}
+                    >
+                      Move selected
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setBulkConfirming(true)}
+                    style={{
+                      padding: "4.5px 12px",
+                      background: "rgba(239,68,68,0.1)",
+                      border: "1px solid rgba(239,68,68,0.3)",
+                      color: "var(--error)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      borderRadius: "var(--radius)",
+                    }}
+                  >
+                    Delete selected
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {filtered.length} memor{filtered.length !== 1 ? "ies" : "y"}
+              </span>
+              {filtered.length > 0 && (
+                <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+                  <button
+                    onClick={() => handleExport(filtered, "json")}
+                    style={{
+                      padding: "4.5px 12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: "var(--radius)",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--accent)";
+                      b.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--border)";
+                      b.style.color = "var(--text)";
+                    }}
+                  >
+                    Export JSON
+                  </button>
+                  <button
+                    onClick={() => handleExport(filtered, "md")}
+                    style={{
+                      padding: "4.5px 12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: "var(--radius)",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--accent)";
+                      b.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--border)";
+                      b.style.color = "var(--text)";
+                    }}
+                  >
+                    Export Markdown
+                  </button>
+                  <button
+                    onClick={onExportZip}
+                    style={{
+                      padding: "4.5px 12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: "var(--radius)",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--accent)";
+                      b.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      const b = e.currentTarget as HTMLButtonElement;
+                      b.style.borderColor = "var(--border)";
+                      b.style.color = "var(--text)";
+                    }}
+                  >
+                    Export Zip
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelected(new Set(filtered.map((m) => m.id)));
+                      setBulkConfirming(true);
+                    }}
+                    style={{
+                      padding: "4.5px 12.5px",
+                      background: "rgba(239,68,68,0.08)",
+                      border: "1px solid rgba(239,68,68,0.25)",
+                      color: "var(--error)",
+                      fontSize: 11,
+                      borderRadius: "var(--radius)",
+                      opacity: 0.6,
+                    }}
+                  >
+                    Delete All
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div style={{ padding: "8px 18px", background: "var(--surface)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
+            Showing {visibleMemories.length} of {filtered.length} entries
+          </span>
+          <div style={{ width: 80, height: 4, background: "var(--surface2)", borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ width: `${percentLoaded}%`, height: "100%", background: "var(--accent)", transition: "width 0.25s" }} />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {visibleMemories.map((m) => (
+            <MemoryRow
+              key={m.id}
+              memory={m}
+              selected={selected.has(m.id)}
+              onToggleSelect={toggleOne}
+              onShowHistory={onShowHistory}
+              onExport={(mem) => { setExportMemory(mem); setShowExportModal(true); }}
+              workspaces={workspaces}
+              currentProjectKey={currentProjectKey}
+              isSelected={activeSelectedId === m.id}
+              onSelect={() => setActiveSelectedId(m.id)}
+            />
+          ))}
+        </div>
+
+        {hasMore && (
+          <div ref={sentinelRef} style={{ padding: "20px", display: "flex", justifyContent: "center", alignItems: "center", borderTop: "1px solid var(--border)", background: "var(--surface2)" }}>
+            <button
+              onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
+              style={{
+                padding: "8px 16px",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                fontSize: 12,
+                borderRadius: "var(--radius)",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span className="spinner" style={{ width: 12, height: 12, border: "2px solid var(--text-muted)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin 1s linear infinite" }} />
+              Loading more memories...
+            </button>
+          </div>
+        )}
+
+        {!hasMore && filtered.length > 0 && (
+          <div style={{ padding: "24px 20px", textAlign: "center", borderTop: "1px solid var(--border)", color: "var(--text-muted)", background: "var(--surface2)", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <span style={{ fontSize: 11, fontWeight: 500 }}>Vault list fully loaded ({filtered.length} entries)</span>
+          </div>
         )}
       </div>
 
-      {filtered.map((m) => (
-        <MemoryRow
-          key={m.id}
-          memory={m}
-          selected={selected.has(m.id)}
-          onToggleSelect={toggleOne}
-          onShowHistory={onShowHistory}
-          onExport={(mem) => { setExportMemory(mem); setShowExportModal(true); }}
-          workspaces={workspaces}
-          currentProjectKey={currentProjectKey}
-        />
-      ))}
+      <div className="detail-pane">
+        {activeMemory ? (
+          <MemoryDetailPanel
+            memory={activeMemory}
+            onClose={() => setActiveSelectedId(null)}
+            workspaces={workspaces}
+            currentProjectKey={currentProjectKey}
+          />
+        ) : (
+          <DetailEmptyState />
+        )}
+      </div>
 
       {showExportModal && exportMemory && (
         <ExportMemoryModal
@@ -2892,6 +3591,22 @@ function Dashboard() {
 
   const [projectKey, setProjectKey] = useState<string>("personal");
   const [memoryTab, setMemoryTab] = useState<"active" | "archived">("active");
+
+  // Shortcut to focus search when pressing '/'
+  useEffect(() => {
+    const handleShortcut = (e: KeyboardEvent) => {
+      if (
+        e.key === "/" &&
+        document.activeElement?.tagName !== "INPUT" &&
+        document.activeElement?.tagName !== "TEXTAREA"
+      ) {
+        e.preventDefault();
+        document.getElementById("search-input")?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
 
   const { data: workspaces = [] } = useQuery({
     queryKey: ["workspaces"],
@@ -3092,31 +3807,26 @@ function Dashboard() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 28 }}>
         {[
-          { label: "Total", value: memories.length, color: "var(--text)" },
-          { label: "Stacks", value: totalByCategory.stack, color: CATEGORY_COLORS.stack },
-          { label: "Rules", value: totalByCategory.rules, color: CATEGORY_COLORS.rules },
-          { label: "Projects", value: totalByCategory.projects, color: CATEGORY_COLORS.projects },
-          { label: "References", value: totalByCategory.references, color: CATEGORY_COLORS.references },
-        ].map(({ label, value, color }) => (
-          <div
-            key={label}
-            style={{
-              background: "linear-gradient(135deg, rgba(168,85,247,0.03) 0%, rgba(139,92,246,0.01) 100%)",
-              border: "1px solid rgba(168,85,247,0.12)",
-              borderRadius: 12,
-              padding: "16px 18px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
-              {label}
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
-          </div>
-        ))}
+          { label: "Total", value: memories.length, color: "var(--text)", category: "" },
+          { label: "Stacks", value: totalByCategory.stack, color: CATEGORY_COLORS.stack, category: "stack" },
+          { label: "Rules", value: totalByCategory.rules, color: CATEGORY_COLORS.rules, category: "rules" },
+          { label: "Projects", value: totalByCategory.projects, color: CATEGORY_COLORS.projects, category: "projects" },
+          { label: "References", value: totalByCategory.references, color: CATEGORY_COLORS.references, category: "references" },
+        ].map(({ label, value, color, category }) => {
+          const isActive = categoryFilter === category;
+          return (
+            <button
+              key={label}
+              onClick={() => setCategoryFilter(isActive ? "" : category)}
+              className={`stat-card ${isActive ? "active" : ""}`}
+            >
+              <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, fontWeight: 600 }}>
+                {label}
+              </div>
+              <div style={{ fontSize: 32, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+            </button>
+          );
+        })}
       </div>
 
       {/* Memory tabs */}
@@ -3165,18 +3875,18 @@ function Dashboard() {
       </div>
 
       {memoryTab === "active" && (
-        <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>
-          <div style={{ position: "relative", flex: 1 }}>
+        <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="search-input-wrapper">
             <svg
               width="14"
               height="14"
               viewBox="0 0 24 24"
               fill="none"
               stroke="var(--text-muted)"
-              strokeWidth="2"
+              strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
-              style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+              style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", zIndex: 1 }}
             >
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -3185,14 +3895,32 @@ function Dashboard() {
               type="text"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter by keyword or tag…"
-              style={{ width: "100%", padding: "8px 12px 8px 32px" }}
+              placeholder="Filter by keyword or tag… (Press '/' to search)"
+              id="search-input"
             />
+            <span
+              style={{
+                position: "absolute",
+                right: 10,
+                top: "50%",
+                transform: "translateY(-50%)",
+                fontSize: 10,
+                color: "var(--text-muted)",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                padding: "2px 6px",
+                pointerEvents: "none",
+                fontWeight: 600,
+              }}
+            >
+              /
+            </span>
           </div>
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            style={{ padding: "8px 12px", minWidth: 140 }}
+            style={{ padding: "8px 12px", minWidth: 140, height: 38 }}
           >
             <option value="">All categories</option>
             <option value="stack">Stacks</option>
@@ -3204,37 +3932,52 @@ function Dashboard() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as 'newest' | 'oldest' | 'alphabetical')}
-            style={{ padding: "8px 12px", minWidth: 120 }}
+            style={{ padding: "8px 12px", minWidth: 120, height: 38 }}
           >
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="alphabetical">Alphabetical</option>
           </select>
 
-          <input
-            type="date"
-            value={dateStart}
-            onChange={(e) => setDateStart(e.target.value)}
-            title="Filter from date"
-            style={{ padding: "8px 12px", minWidth: 120 }}
-          />
-          <input
-            type="date"
-            value={dateEnd}
-            onChange={(e) => setDateEnd(e.target.value)}
-            title="Filter to date"
-            style={{ padding: "8px 12px", minWidth: 120 }}
-          />
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="date"
+              value={dateStart}
+              onChange={(e) => setDateStart(e.target.value)}
+              title="Filter from date"
+              style={{ padding: "8px 12px", minWidth: 120, height: 38 }}
+            />
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>to</span>
+            <input
+              type="date"
+              value={dateEnd}
+              onChange={(e) => setDateEnd(e.target.value)}
+              title="Filter to date"
+              style={{ padding: "8px 12px", minWidth: 120, height: 38 }}
+            />
+          </div>
 
           {(filter || categoryFilter || sortBy !== 'newest' || dateStart || dateEnd) && (
             <button
               onClick={() => { setFilter(""); setCategoryFilter(""); setSortBy('newest'); setDateStart(""); setDateEnd(""); }}
               style={{
-                padding: "8px 12px",
+                padding: "8px 16px",
                 background: "var(--surface2)",
                 border: "1px solid var(--border)",
-                color: "var(--text-muted)",
+                color: "var(--accent)",
                 fontSize: 12,
+                fontWeight: 600,
+                height: 38,
+                borderRadius: "var(--radius)",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--accent)";
+                e.currentTarget.style.background = "var(--accent-dim)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--border)";
+                e.currentTarget.style.background = "var(--surface2)";
               }}
             >
               Clear all
