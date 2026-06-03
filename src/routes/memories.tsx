@@ -138,7 +138,7 @@ function compileRulesContent({
     } else if (targetFile === ".github/copilot-instructions.md") {
       title = "Copilot Instructions";
       section = "Rules";
-    } else if (targetFile === ".geminirules") {
+    } else if (targetFile === "GEMINI.md") {
       title = "Gemini Rules";
       section = "Coding Guidelines";
     } else if (targetFile === ".antigravityrules") {
@@ -147,6 +147,9 @@ function compileRulesContent({
     } else if (targetFile === ".codexrules") {
       title = "Codex Rules";
       section = "Rules";
+    } else if (targetFile === "AGENTS.md") {
+      title = "Developer Agent Rules";
+      section = "Guidelines";
     }
 
     const sectionHeader = lines.length > 0 ? `## ${section}\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : "";
@@ -167,7 +170,7 @@ function ExportMemoryModal({
 }) {
   const [exportScope, setExportScope] = useState<"single" | "all">("single");
   const [targetFile, setTargetFile] = useState<
-    "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | ".geminirules"
+    "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | "GEMINI.md" | "AGENTS.md"
   >("CLAUDE.md");
 
   const handleDownload = () => {
@@ -246,9 +249,10 @@ function ExportMemoryModal({
               <option value="CLAUDE.md">CLAUDE.md (Claude Desktop/CLI)</option>
               <option value=".cursorrules">.cursorrules (Cursor)</option>
               <option value=".github/copilot-instructions.md">copilot-instructions.md (GitHub Copilot)</option>
+              <option value="GEMINI.md">GEMINI.md (Gemini)</option>
               <option value=".codexrules">.codexrules (Codex)</option>
               <option value=".antigravityrules">.antigravityrules (Antigravity)</option>
-              <option value=".geminirules">.geminirules (Gemini)</option>
+              <option value="AGENTS.md">AGENTS.md (General Agents)</option>
             </Select>
           </div>
         </div>

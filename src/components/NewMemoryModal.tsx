@@ -162,7 +162,7 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
 
   // CLI Downloader format state
   const [cliFormat, setCliFormat] = React.useState<
-    "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | ".geminirules"
+    "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | "GEMINI.md" | "AGENTS.md"
   >(".cursorrules");
 
   const handleAnalyzePrompt = async () => {
@@ -291,7 +291,7 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
   };
 
   const handleDownloadConfig = (
-    format: "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | ".geminirules"
+    format: "CLAUDE.md" | ".cursorrules" | ".github/copilot-instructions.md" | ".codexrules" | ".antigravityrules" | "GEMINI.md" | "AGENTS.md"
   ) => {
     if (!recommendation) return;
     let content = "";
@@ -317,7 +317,7 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
       } else if (format === ".github/copilot-instructions.md") {
         title = "Copilot Instructions";
         section = "Rules";
-      } else if (format === ".geminirules") {
+      } else if (format === "GEMINI.md") {
         title = "Gemini Rules";
         section = "Coding Guidelines";
       } else if (format === ".antigravityrules") {
@@ -326,6 +326,9 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
       } else if (format === ".codexrules") {
         title = "Codex Rules";
         section = "Rules";
+      } else if (format === "AGENTS.md") {
+        title = "Developer Agent Rules";
+        section = "Guidelines";
       }
 
       const sectionHeader = mergedRules.length > 0 ? `## ${section}\n${mergedRules.map((r) => `- ${r}`).join("\n")}\n\n` : "";
@@ -821,9 +824,10 @@ export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemo
                   <option value="CLAUDE.md">CLAUDE.md (Claude Desktop/CLI)</option>
                   <option value=".cursorrules">.cursorrules (Cursor)</option>
                   <option value=".github/copilot-instructions.md">copilot-instructions.md (GitHub Copilot)</option>
+                  <option value="GEMINI.md">GEMINI.md (Gemini)</option>
                   <option value=".codexrules">.codexrules (Codex)</option>
                   <option value=".antigravityrules">.antigravityrules (Antigravity)</option>
-                  <option value=".geminirules">.geminirules (Gemini)</option>
+                  <option value="AGENTS.md">AGENTS.md (General Agents)</option>
                 </Select>
               </div>
               <Button onClick={() => handleDownloadConfig(cliFormat)} className="w-full">

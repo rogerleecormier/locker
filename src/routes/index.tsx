@@ -106,9 +106,9 @@ function HeroStackCreatorMockup() {
         rules: rules
       }, null, 2);
     } else if (activeFormat === "claude") {
-      return `# System Prompt Constraints\n\n${rules.map(r => r).join("\n")}`;
+      return `# Claude System Instructions\n\n## Enforced Guidelines\n${rules.map(r => r).join("\n")}`;
     } else {
-      return `[Instructions]\n${rules.map(r => `rule = ${r}`).join("\n")}`;
+      return `# Gemini Rules\n\n## Coding Guidelines\n${rules.map(r => r).join("\n")}`;
     }
   };
 
@@ -264,7 +264,7 @@ function HeroStackCreatorMockup() {
                       color: activeFormat === tab ? "var(--text)" : "var(--text-muted)"
                     }}
                   >
-                    {tab === "cursor" ? ".cursorrules" : tab === "claude" ? ".claudemd" : ".geminirules"}
+                    {tab === "cursor" ? ".cursorrules" : tab === "claude" ? "CLAUDE.md" : "GEMINI.md"}
                   </button>
                 ))}
               </div>
@@ -814,7 +814,7 @@ function LandingPage() {
                 Bootstrap agent behavior from your codebase stack
               </h2>
               <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
-                Define your project's programming language, framework, database, and ORM. Locker generates optimized `.cursorrules`, `.claudemd`, `.geminirules`, and `agents.md` configurations dynamically to prevent context drift and token overhead.
+                Define your project's programming language, framework, database, and ORM. Locker generates optimized `.cursorrules`, `CLAUDE.md`, `GEMINI.md`, and `AGENTS.md` configurations dynamically to prevent context drift and token overhead.
               </p>
               <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
                 {["Tailored coding constraints generated dynamically", "Compatible with Cursor, Claude, Copilot, and Gemini", "Optimized instructions reduce context-window waste", "Download configurations directly into your repo"].map((item) => (
@@ -1017,7 +1017,7 @@ function LandingPage() {
             {[
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "End-to-end encryption", desc: "AES-256-GCM on every fact. Database rows are ciphertext only.", delay: 0 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "Semantic vector search", desc: "Cloudflare Vectorize powers fuzzy recall — find facts by meaning, not just keywords.", delay: 60 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: "Tech Stack Wizard", desc: "Instantly compile optimized .cursorrules, .claudemd, and agents.md files tailored to your development stack.", delay: 120 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: "Tech Stack Wizard", desc: "Instantly compile optimized .cursorrules, CLAUDE.md, and AGENTS.md files tailored to your development stack.", delay: 120 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>, title: "Memory Templates", desc: "Deploy pre-built coding guidelines, DevOps runbooks, and SOC2 compliance controls directly to developer agents.", delay: 180 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Review & Approval Queue", desc: "Review context suggestions made by developer agents before merging them production-wide.", delay: 240 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>, title: "Authoritative Org Vault", desc: "Lock critical standards inside organization scopes. Authoritative rules always take precedence in agent contexts.", delay: 300 },
