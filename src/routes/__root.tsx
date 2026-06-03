@@ -621,6 +621,8 @@ function RootDocument({ children }: { children: ReactNode }) {
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
           }
+          .no-scrollbar::-webkit-scrollbar { display: none; }
+          .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
           @media (max-width: 768px) {
             body { font-size: 13px; }
             button { font-size: 12px; }

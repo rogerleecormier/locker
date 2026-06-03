@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { InfoTooltip } from "~/components/InfoTooltip";
 import {
   listMemoryTemplates,
   createMemoryTemplate,
@@ -1154,7 +1153,6 @@ function TemplatesPage() {
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
               </svg>
               <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>Memory Templates</h1>
-              <InfoTooltip text="Templates used to pre-populate stack preferences or import standardized guidelines (governance, DevOps, compliance, documentation) into memories." />
               <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>
                 {templates.length} templates
               </span>
@@ -1214,8 +1212,7 @@ function TemplatesPage() {
         </div>
 
         {/* Tabs switcher */}
-        <div style={{ marginBottom: 20, display: "flex", gap: 2, borderBottom: "1px solid var(--border)", alignItems: "flex-end", overflowX: "auto" }}>
-          <InfoTooltip text="Filter blueprints by category: Stacks govern technical setup, while Governance, DevOps, Compliance, and Docs govern repository standards." />
+        <div className="no-scrollbar" style={{ marginBottom: 20, display: "flex", gap: 2, borderBottom: "1px solid var(--border)", alignItems: "flex-end", overflowX: "auto" }}>
           {(["all", "stack", "governance", "devops", "compliance", "documentation"] as const).map((tab) => {
             const isActive = activeTab === tab;
             const count = tab === "all" ? templates.length : templates.filter((t) => t.category === tab).length;
