@@ -664,7 +664,7 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   orm: ["Drizzle ORM", "Prisma", "Mongoose", "TypeORM", "Kysely", "Sequelize", "SQL (Raw)", "None"],
   auth: ["Better Auth", "Auth.js (NextAuth)", "Clerk", "Supabase Auth", "Firebase Auth", "Kinde", "Lucia", "Custom", "None"],
   styling: ["Vanilla CSS", "Tailwind CSS", "CSS Modules", "Styled Components", "Sass/SCSS", "Tailwind + CSS Modules"],
-  stateCache: ["TanStack Store", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "None"],
+  stateCache: ["TanStack Store", "Cloudflare KV", "Zustand", "Redux Toolkit", "Jotai", "Recoil", "React Context", "Pinia", "Vuex", "None"],
   storage: ["Cloudflare R2", "AWS S3", "Supabase Storage", "Vercel Blob", "Firebase Storage", "Local Filesystem", "None"],
   search: ["Cloudflare Vectorize", "Pinecone", "pgvector", "Supabase Vector", "Qdrant", "Meilisearch", "Elasticsearch", "Algolia", "None"],
 };
@@ -758,6 +758,7 @@ function Combobox({
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState(value);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setSearch(value);
@@ -776,6 +777,10 @@ function Combobox({
 
   const filteredOptions = useMemo(() => {
     const q = search.toLowerCase();
+    const isExactMatch = options.some((o) => o.toLowerCase() === q);
+    if (!search || isExactMatch) {
+      return options;
+    }
     return options.filter((o) => o.toLowerCase().includes(q));
   }, [search, options]);
 
@@ -788,6 +793,7 @@ function Combobox({
       )}
       <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
         <input
+          ref={inputRef}
           type="text"
           value={search}
           onChange={(e) => {
@@ -795,13 +801,22 @@ function Combobox({
             onChange(e.target.value);
             setIsOpen(true);
           }}
-          onFocus={() => setIsOpen(true)}
+          onFocus={(e) => {
+            setIsOpen(true);
+            e.currentTarget.select();
+          }}
           placeholder={placeholder}
           style={{ width: "100%", padding: "8px 12px", paddingRight: "30px" }}
         />
         <button
           type="button"
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => {
+            setIsOpen(!isOpen);
+            if (!isOpen && inputRef.current) {
+              inputRef.current.focus();
+              inputRef.current.select();
+            }
+          }}
           style={{
             position: "absolute",
             right: 0,
