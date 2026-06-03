@@ -668,78 +668,118 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   search: ["Cloudflare Vectorize", "Pinecone", "pgvector", "Supabase Vector", "Qdrant", "Meilisearch", "Elasticsearch", "Algolia", "None"],
 };
 
-const RULE_PRESETS = [
-  {
-    category: "Coding Standards",
-    rules: [
-      "Always use TypeScript strict mode with strictNullChecks enabled.",
-      "Prefer const over let, and never use var.",
-      "Use interfaces for public APIs and types for internal data structures.",
-      "Avoid using any; use unknown or specific types instead.",
-      "Use async/await instead of .then() chains for promise handling."
-    ]
-  },
-  {
-    category: "Performance",
-    rules: [
-      "Optimize rendering performance; minimize re-renders and use memoization (useMemo, useCallback) where appropriate.",
-      "Implement lazy loading for heavy routes and components.",
-      "Ensure all image tags include explicit width/height and loading='lazy'.",
-      "Avoid N+1 query patterns in database access layer.",
-      "Perform database querying inside server components/functions or edge middleware."
-    ]
-  },
-  {
-    category: "Security",
-    rules: [
-      "Sanitize all user inputs to prevent SQL Injection and XSS vulnerabilities.",
-      "Never expose sensitive API keys or credentials in client-side code; use server-only environment variables.",
-      "Enforce strict CORS configuration and secure cookies for authentication.",
-      "Hash passwords using strong algorithms like bcrypt or argon2 before saving."
-    ]
-  },
-  {
-    category: "Testing",
-    rules: [
-      "Write unit tests for core utilities, helpers, and custom hooks.",
-      "Ensure test coverage is at least 80% for new business logic.",
-      "Include integration or E2E tests using Playwright/Cypress for critical user flows."
-    ]
-  }
-];
+const RULE_PRESETS_BY_CATEGORY: Record<TemplateCategory, Array<{ category: string; rules: string[] }>> = {
+  stack: [
+    {
+      category: "Coding Standards",
+      rules: [
+        "Always use TypeScript strict mode with strictNullChecks enabled.",
+        "Prefer const over let, and never use var.",
+        "Use interfaces for public APIs and types for internal data structures.",
+        "Avoid using any; use unknown or specific types instead.",
+        "Use async/await instead of .then() chains for promise handling."
+      ]
+    },
+    {
+      category: "Performance",
+      rules: [
+        "Optimize rendering performance; minimize re-renders and use memoization where appropriate.",
+        "Implement lazy loading for heavy routes and components.",
+        "Ensure all image tags include explicit width/height and loading='lazy'.",
+        "Avoid N+1 query patterns in database access layer.",
+        "Perform database querying inside server components/functions or edge middleware."
+      ]
+    },
+    {
+      category: "Security",
+      rules: [
+        "Sanitize all user inputs to prevent SQL Injection and XSS vulnerabilities.",
+        "Never expose sensitive API keys or credentials in client-side code; use server-only environment variables.",
+        "Enforce strict CORS configuration and secure cookies for authentication.",
+        "Hash passwords using strong algorithms like bcrypt or argon2 before saving."
+      ]
+    },
+    {
+      category: "Testing",
+      rules: [
+        "Write unit tests for core utilities, helpers, and custom hooks.",
+        "Ensure test coverage is at least 80% for new business logic.",
+        "Include integration or E2E tests using Playwright/Cypress for critical user flows."
+      ]
+    }
+  ],
+  governance: [
+    {
+      category: "Branching & Git",
+      rules: [
+        "Follow branching naming conventions: feature/, bugfix/, hotfix/, or docs/ prefix.",
+        "Always require squash-merge for pull requests to maintain a linear commit history.",
+        "Enforce Conventional Commits styling (e.g., feat:, fix:, chore:, docs:)."
+      ]
+    },
+    {
+      category: "Code Review & PRs",
+      rules: [
+        "Require at least one peer approval before merging pull requests.",
+        "Verify that PR descriptions link to the relevant issue or ticket.",
+        "Ensure no debug logs (console.log, debugger) are left in production-bound files."
+      ]
+    }
+  ],
+  devops: [
+    {
+      category: "CI/CD & Deploy",
+      rules: [
+        "Ensure all CI tests and linters pass before code is merged into the deployment branch.",
+        "Use docker multi-stage builds to minimize production container image sizes.",
+        "Define strict health check endpoints for all production service deployments."
+      ]
+    },
+    {
+      category: "Secrets & Environments",
+      rules: [
+        "Never commit API keys, secrets, or raw .env files to the repository.",
+        "Use cloud secrets manager or encrypted variables for environment configurations."
+      ]
+    }
+  ],
+  compliance: [
+    {
+      category: "Data Privacy & GDPR",
+      rules: [
+        "Mask or sanitize PII (Personally Identifiable Information) in application logs.",
+        "Implement right-to-be-forgotten deletion cascades for user profiles.",
+        "Store passwords only as salted hashes using secure algorithms (Argon2id or bcrypt)."
+      ]
+    },
+    {
+      category: "Security Checks",
+      rules: [
+        "Enforce HTTPS/TLS 1.3 for all client communication.",
+        "Scan dependencies regularly for vulnerabilities using npm audit or Snyk."
+      ]
+    }
+  ],
+  documentation: [
+    {
+      category: "Standards",
+      rules: [
+        "Document all public functions, modules, and API routes with JSDoc comments.",
+        "Maintain an up-to-date README.md with clear installation and configuration guidelines.",
+        "Keep documentation of all system architecture choices and ADRs in a /docs folder."
+      ]
+    },
+    {
+      category: "APIs & Errors",
+      rules: [
+        "Verify that API changes update the corresponding OpenAPI / Swagger schema.",
+        "Document all custom error codes, their causes, and suggested user recovery paths."
+      ]
+    }
+  ]
+};
 
-const VARIABLE_PRESETS = [
-  {
-    key: "DB_BINDING",
-    description: "The Cloudflare D1 Database binding name.",
-    default: "DB"
-  },
-  {
-    key: "PROJECT_NAME",
-    description: "The baseline name of the repository or project.",
-    default: "locker"
-  },
-  {
-    key: "API_KEY_ENV",
-    description: "The environment variable for third-party API key.",
-    default: "API_KEY"
-  },
-  {
-    key: "KV_NAMESPACE",
-    description: "Cloudflare KV namespace binding name.",
-    default: "KV"
-  },
-  {
-    key: "R2_BUCKET",
-    description: "Cloudflare R2 Bucket binding name.",
-    default: "BUCKET"
-  },
-  {
-    key: "CORS_ORIGIN",
-    description: "Allowed origin for CORS requests.",
-    default: "*"
-  }
-];
+
 
 function Combobox({
   value,
@@ -1070,6 +1110,74 @@ function TemplatesPage() {
     });
   };
 
+  const getDynamicVariablePresets = () => {
+    if (formCategory === "devops") {
+      return [
+        { key: "DEPLOY_ENVIRONMENT", description: "Target deployment environment.", default: "production" },
+        { key: "CI_REGISTRY", description: "Docker/container registry URL.", default: "ghcr.io" },
+        { key: "AWS_REGION", description: "Target AWS region for infrastructure.", default: "us-east-1" },
+        { key: "KUBE_NAMESPACE", description: "Target Kubernetes namespace.", default: "production" },
+        { key: "SLACK_WEBHOOK_URL", description: "Slack webhook URL for deployment alerts.", default: "" }
+      ];
+    }
+    
+    if (formCategory !== "stack") {
+      return [];
+    }
+
+    const list = [
+      { key: "PROJECT_NAME", description: "Base name of the repository/project.", default: "my-app" }
+    ];
+
+    if (stackDatabase.toLowerCase().includes("d1")) {
+      list.push({ key: "D1_DATABASE_BINDING", description: "Cloudflare D1 Database binding name.", default: "DB" });
+    } else if (stackDatabase.toLowerCase().includes("postgres") || stackDatabase.toLowerCase().includes("mysql") || stackDatabase.toLowerCase().includes("supabase") || stackDatabase.toLowerCase().includes("neon")) {
+      list.push({ key: "DATABASE_URL", description: "Database connection string URL.", default: "postgresql://localhost:5432/db" });
+    } else if (stackDatabase.toLowerCase().includes("sqlite")) {
+      list.push({ key: "SQLITE_DB_PATH", description: "Local SQLite database file path.", default: "./local.db" });
+    } else if (stackDatabase.toLowerCase().includes("mongodb")) {
+      list.push({ key: "MONGODB_URI", description: "MongoDB Connection URI.", default: "mongodb://localhost:27017/app" });
+    }
+
+    if (stackStorage.toLowerCase().includes("r2")) {
+      list.push({ key: "R2_BUCKET_BINDING", description: "Cloudflare R2 Bucket binding name.", default: "BUCKET" });
+    } else if (stackStorage.toLowerCase().includes("s3")) {
+      list.push({ key: "AWS_S3_BUCKET", description: "Amazon S3 Bucket name.", default: "my-production-bucket" });
+      list.push({ key: "AWS_REGION", description: "AWS Region for S3 Bucket.", default: "us-east-1" });
+    } else if (stackStorage.toLowerCase().includes("blob")) {
+      list.push({ key: "BLOB_READ_WRITE_TOKEN", description: "Vercel Blob read/write access token.", default: "" });
+    }
+
+    if (stackAuth.toLowerCase().includes("better")) {
+      list.push({ key: "BETTER_AUTH_SECRET", description: "Secret token for Better Auth signing.", default: "" });
+      list.push({ key: "BETTER_AUTH_URL", description: "Base URL of the authentication server.", default: "http://localhost:3000" });
+    } else if (stackAuth.toLowerCase().includes("clerk")) {
+      list.push({ key: "CLERK_PUBLISHABLE_KEY", description: "Clerk publishable API key.", default: "" });
+      list.push({ key: "CLERK_SECRET_KEY", description: "Clerk secret API key.", default: "" });
+    } else if (stackAuth.toLowerCase().includes("nextauth") || stackAuth.toLowerCase().includes("auth.js")) {
+      list.push({ key: "NEXTAUTH_SECRET", description: "Auth.js (NextAuth) JWT encryption secret.", default: "" });
+    }
+
+    if (stackSearch.toLowerCase().includes("vectorize")) {
+      list.push({ key: "VECTORIZE_INDEX_BINDING", description: "Cloudflare Vectorize index binding name.", default: "VECTOR_INDEX" });
+    } else if (stackSearch.toLowerCase().includes("pinecone")) {
+      list.push({ key: "PINECONE_API_KEY", description: "Pinecone Vector database API key.", default: "" });
+      list.push({ key: "PINECONE_ENVIRONMENT", description: "Pinecone index environment.", default: "us-east-1" });
+    } else if (stackSearch.toLowerCase().includes("qdrant")) {
+      list.push({ key: "QDRANT_URL", description: "Qdrant vector search server URL.", default: "http://localhost:6333" });
+    }
+
+    if (stackStateCache.toLowerCase().includes("kv")) {
+      list.push({ key: "KV_NAMESPACE_BINDING", description: "Cloudflare KV namespace binding name.", default: "KV" });
+    }
+
+    if (list.length === 1) {
+      list.push({ key: "API_URL", description: "API Backend Server URL endpoint.", default: "http://localhost:3000/api" });
+    }
+
+    return list;
+  };
+
   const startImport = (tmpl: any) => {
     setImportingTemplate(tmpl);
     let payload: ParsedPayload = { rules: [] };
@@ -1318,20 +1426,15 @@ function TemplatesPage() {
 
       {/* CREATE/EDIT MODAL */}
       {(showCreateModal || editingTemplate) && (() => {
-        const stepsList = formCategory === "stack"
-          ? [
-              { id: 1, label: "Info" },
-              { id: 2, label: "Stack" },
-              { id: 3, label: "Rules" },
-              { id: 4, label: "Variables" }
-            ]
-          : [
-              { id: 1, label: "Info" },
-              { id: 3, label: "Rules" },
-              { id: 4, label: "Variables" }
-            ];
+        const hasVariables = formCategory === "stack" || formCategory === "devops";
+        const stepsList = [
+          { id: 1, label: "Info" },
+          ...(formCategory === "stack" ? [{ id: 2, label: "Stack" }] : []),
+          { id: 3, label: "Rules" },
+          ...(hasVariables ? [{ id: 4, label: "Variables" }] : [])
+        ];
 
-        const isLast = currentStep === 4;
+        const isLast = hasVariables ? currentStep === 4 : currentStep === 3;
 
         const handleNext = () => {
           if (currentStep === 1) {
@@ -1339,7 +1442,9 @@ function TemplatesPage() {
           } else if (currentStep === 2) {
             setCurrentStep(3);
           } else if (currentStep === 3) {
-            setCurrentStep(4);
+            if (hasVariables) {
+              setCurrentStep(4);
+            }
           }
         };
 
@@ -1598,7 +1703,7 @@ function TemplatesPage() {
                     <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 20, display: "flex", flexDirection: "column", gap: 12 }}>
                       <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Rule Presets</label>
                       <div style={{ maxHeight: "40vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingRight: 4 }}>
-                        {RULE_PRESETS.map((group) => (
+                        {(RULE_PRESETS_BY_CATEGORY[formCategory] || []).map((group) => (
                           <div key={group.category}>
                             <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{group.category}</span>
                             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1713,7 +1818,7 @@ function TemplatesPage() {
                     <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 20, display: "flex", flexDirection: "column", gap: 12 }}>
                       <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>Variable Presets</label>
                       <div style={{ maxHeight: "40vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, paddingRight: 4 }}>
-                        {VARIABLE_PRESETS.map((v) => {
+                        {getDynamicVariablePresets().map((v) => {
                           const isAdded = formVariables.some((existing) => existing.key === v.key);
                           return (
                             <div
