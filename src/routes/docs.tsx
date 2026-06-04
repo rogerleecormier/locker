@@ -324,17 +324,30 @@ function DocsPage() {
       label: "Codex CLI",
       color: "#0f9d58",
       group: "OpenAI",
-      description: "Connect the OpenAI Codex CLI to Locker via native HTTP MCP transport — no mcp-remote wrapper needed.",
+      tested: true,
+      description: "Connect the OpenAI Codex CLI to Locker via native HTTP MCP transport — no mcp-remote wrapper needed. Fully tested and working.",
       copyText: `[mcp_servers.locker]
 url = "${origin}/api/mcp"
-http_headers = { "Authorization" = "Bearer lkr_your_token_here" }
-enabled = true`,
+enabled = true
+startup_timeout_ms = 10000
+
+[mcp_servers.locker.headers]
+Authorization = "Bearer lkr_your_token_here"`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <p style={{ margin: 0, color: "var(--text-muted)" }}>
+            Locker acts as an independent AI memory layer hosted directly as a serverless Cloudflare Worker. Codex connects via Streamable HTTP.
+          </p>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Admin → API Tokens</strong> and generate a new token.</li>
-            <li>Open <code>~/.codex/config.toml</code> (create it if it doesn't exist — Codex uses TOML, not JSON).</li>
-            <li>Paste the snippet below, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Locate your global Codex configuration file on your local machine:
+              <ul style={{ paddingLeft: 20, marginTop: 4, marginBottom: 4 }}>
+                <li>Windows: <code>C:\Users\&lt;YourUsername&gt;\.codex\config.toml</code></li>
+                <li>macOS/Linux: <code>~/.codex/config.toml</code></li>
+              </ul>
+            </li>
+            <li>Open the file in your preferred text editor.</li>
+            <li>Append the configuration block below directly to the end of the file, replacing <code>lkr_your_token_here</code> with your token.</li>
             <li>Locker tools will be available in your next Codex session. Verify with <code>codex mcp list</code>.</li>
           </ol>
         </div>
@@ -345,19 +358,62 @@ enabled = true`,
       label: "Codex App",
       color: "#0c8a4f",
       group: "OpenAI",
-      description: "Connect the Codex desktop app (macOS/Windows) to Locker — it shares the same config file as the CLI.",
+      tested: true,
+      description: "Connect the Codex desktop application (macOS/Windows) to Locker. Fully tested and confirmed.",
       copyText: `[mcp_servers.locker]
 url = "${origin}/api/mcp"
-http_headers = { "Authorization" = "Bearer lkr_your_token_here" }
-enabled = true`,
+enabled = true
+startup_timeout_ms = 10000
+
+[mcp_servers.locker.headers]
+Authorization = "Bearer lkr_your_token_here"`,
       instructions: (
-        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
-          <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-            <li>Go to <strong>Admin → API Tokens</strong> and generate a new token.</li>
-            <li>In the Codex app, open the gear menu and select <strong>MCP settings → Open config.toml</strong>.</li>
-            <li>Paste the snippet below, replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>Save the file — Codex picks up the change without a restart.</li>
-          </ol>
+        <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 12 }}>
+          <p style={{ margin: 0, color: "var(--text-muted)" }}>
+            Locker acts as an independent AI memory layer hosted directly as a serverless Cloudflare Worker. Because it runs at the edge, Codex must connect using Streamable HTTP.
+          </p>
+          
+          <div style={{ borderLeft: "2px solid var(--accent)", paddingLeft: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+            <strong style={{ color: "var(--text)" }}>Method 1: Configuration via Codex Desktop UI</strong>
+            <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 3, margin: 0 }}>
+              <li>Open the Codex Desktop Application and navigate to the <strong>MCP Server Settings</strong> panel.</li>
+              <li>Select the option to add a new server, and choose <strong>HTTP / Remote</strong> as your connection type.</li>
+              <li>Enter <code>{origin}/api/mcp</code> into the URL configuration field.</li>
+              <li>Leave the <em>Bearer token env var</em> field completely blank.</li>
+              <li>Navigate down to the Headers grid and click <strong>+ Add header</strong>.</li>
+              <li>In the Key column, type <code>Authorization</code>.</li>
+              <li>In the Value column, type the word <code>Bearer</code> followed by a single space, and then paste your literal Locker token (e.g., <code>Bearer lkr_23633dbc...</code>).</li>
+              <li>Click <strong>Save</strong> in the bottom right corner of the application screen.</li>
+            </ol>
+          </div>
+
+          <div style={{ borderLeft: "2px solid var(--accent)", paddingLeft: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+            <strong style={{ color: "var(--text)" }}>Method 2: Manual Configuration via config.toml (Recommended)</strong>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
+              Because the Codex Windows app interface occasionally isolates active chat session configurations, writing directly to Codex's global configuration file ensures consistent context injection across both the CLI and Desktop clients.
+            </p>
+            <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 3, margin: 0 }}>
+              <li>Locate your global Codex configuration file on your local machine:
+                <ul style={{ paddingLeft: 20, marginTop: 2, marginBottom: 2 }}>
+                  <li>Windows: <code>C:\Users\&lt;YourUsername&gt;\.codex\config.toml</code></li>
+                  <li>macOS/Linux: <code>~/.codex/config.toml</code></li>
+                </ul>
+              </li>
+              <li>Open the file in your preferred text editor.</li>
+              <li>Append the configuration block below directly to the end of the file, replacing <code>lkr_your_token_here</code> with your token.</li>
+              <li>Save and close the file.</li>
+            </ol>
+          </div>
+
+          <div style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.15)", borderRadius: 6, padding: "10px 12px" }}>
+            <strong style={{ color: "var(--accent)", display: "block", marginBottom: 4 }}>Verifying Connection State</strong>
+            <ul style={{ paddingLeft: 16, display: "flex", flexDirection: "column", gap: 2, margin: 0, fontSize: 12 }}>
+              <li>Fully close your Codex environment. On Windows, ensure you completely terminate the background engine via the system tray or Task Manager (<code>taskkill /f /im codex.exe</code>) before restarting.</li>
+              <li>Open a fresh Codex desktop chat instance or a new terminal window.</li>
+              <li>Type the <code>/mcp</code> system command into the chat container prompt.</li>
+              <li>Verify that <code>locker</code> appears in the active servers list and that its tools are successfully exposed to the model's runtime context.</li>
+            </ul>
+          </div>
         </div>
       ),
     },
@@ -366,17 +422,24 @@ enabled = true`,
       label: "Codex Extension",
       color: "#0a7a46",
       group: "OpenAI",
-      description: "Connect the official OpenAI Codex VS Code extension to Locker — same config.toml as the CLI and app.",
+      tested: true,
+      description: "Connect the official OpenAI Codex VS Code extension to Locker — same config.toml as the CLI and app. Fully tested and working.",
       copyText: `[mcp_servers.locker]
 url = "${origin}/api/mcp"
-http_headers = { "Authorization" = "Bearer lkr_your_token_here" }
-enabled = true`,
+enabled = true
+startup_timeout_ms = 10000
+
+[mcp_servers.locker.headers]
+Authorization = "Bearer lkr_your_token_here"`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <p style={{ margin: 0, color: "var(--text-muted)" }}>
+            Connect the official OpenAI Codex VS Code extension to Locker — same <code>config.toml</code> as the CLI and app.
+          </p>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Admin → API Tokens</strong> and generate a new token.</li>
             <li>In the Codex extension sidebar, open the gear menu and select <strong>MCP settings → Open config.toml</strong>.</li>
-            <li>Paste the snippet below, replacing <code>lkr_your_token_here</code> with your token.</li>
+            <li>Append the configuration block below directly to the end of the file, replacing <code>lkr_your_token_here</code> with your token.</li>
             <li>Save — the extension reads from the same <code>~/.codex/config.toml</code> as the CLI and app.</li>
           </ol>
         </div>
