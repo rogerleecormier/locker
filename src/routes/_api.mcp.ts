@@ -822,23 +822,63 @@ export async function handleMcpRequest(
       ? Math.min(20, topK * 3)
       : Math.min(20, topK);
 
-    let matches: any[] = [];
+    // Build the D1 database conditions to query all active candidate memories for the current user & scope
+    const scopeConditions = [];
+    if (isActive !== undefined) {
+      scopeConditions.push(eq(memories.isActive, isActive));
+    }
+
+    let orgAndTeamKeys: string[] = [];
+    let allowedScopeKeys: (string | null)[] = [null, ""];
+
     if (crossWorkspaceSearch) {
-      const orgs = await db.select({ orgId: organizationMembers.orgId }).from(organizationMembers).where(eq(organizationMembers.userId, claims.userId)).all();
-      const teamsList = await db.select({ teamId: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, claims.userId)).all();
-      const orgAndTeamKeys = [
+      const [orgs, teamsList] = await Promise.all([
+        db.select({ orgId: organizationMembers.orgId }).from(organizationMembers).where(eq(organizationMembers.userId, claims.userId)).all(),
+        db.select({ teamId: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, claims.userId)).all()
+      ]);
+      orgAndTeamKeys = [
         ...orgs.map((o) => `org:${o.orgId}`),
         ...teamsList.map((t) => `team:${t.teamId}`),
       ];
+      allowedScopeKeys = [null, "", ...orgAndTeamKeys];
+      scopeConditions.push(
+        sql`(${memories.userId} = ${claims.userId} OR ${memories.projectKey} IN (${sql.join(allowedScopeKeys.map((k) => sql`${k}`), sql`, `)}))`
+      );
+    } else {
+      if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
+        scopeConditions.push(eq(memories.projectKey, projectKey));
+      } else {
+        scopeConditions.push(eq(memories.userId, claims.userId));
+        if (projectKey) {
+          scopeConditions.push(
+            sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+          );
+        } else {
+          scopeConditions.push(
+            sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
+          );
+        }
+      }
+    }
 
-      const [personalResults, orgResults] = await Promise.all([
+    // Promise 1: Query D1 database for all scope memories
+    const d1Promise = db
+      .select()
+      .from(memories)
+      .where(and(...scopeConditions))
+      .all();
+
+    // Promise 2: Query Vectorize
+    let vectorizePromise: Promise<any[]>;
+    if (crossWorkspaceSearch) {
+      vectorizePromise = Promise.all([
         env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: { userId: claims.userId }, returnMetadata: "none" }),
         orgAndTeamKeys.length > 0
           ? env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: { projectKey: { $in: orgAndTeamKeys } }, returnMetadata: "none" })
           : Promise.resolve({ matches: [] })
-      ]);
-
-      matches = [...(personalResults.matches ?? []), ...(orgResults.matches ?? [])];
+      ]).then(([personalResults, orgResults]) => {
+        return [...(personalResults.matches ?? []), ...(orgResults.matches ?? [])];
+      });
     } else {
       const filter: Record<string, any> = {};
       if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
@@ -850,92 +890,128 @@ export async function handleMcpRequest(
         }
       }
 
-      const vectorResults = await env.VECTOR_INDEX.query(embedding, {
+      vectorizePromise = env.VECTOR_INDEX.query(embedding, {
         topK: vectorTopK,
         filter,
         returnMetadata: "none",
-      });
-      matches = vectorResults.matches ?? [];
+      }).then((res) => res.matches ?? []);
     }
 
-    if (!matches.length) {
+    // Execute database and vector search queries in parallel
+    const [vectorMatches, dbRows] = await Promise.all([vectorizePromise, d1Promise]);
+
+    if (!dbRows.length) {
       await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: 0 } });
       await logTokenUsage(db, claims.tokenId, "recall", tokensConsumed);
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify([]) }] });
     }
 
-    const ids = matches.map((m) => m.id);
-    const conditions = [
-      sql`${memories.id} IN (${sql.join(ids.map((dbId) => sql`${dbId}`), sql`, `)})`
-    ];
-    if (isActive !== undefined) {
-      conditions.push(eq(memories.isActive, isActive));
-    }
-    if (crossWorkspaceSearch) {
-      const orgs = await db.select({ orgId: organizationMembers.orgId }).from(organizationMembers).where(eq(organizationMembers.userId, claims.userId)).all();
-      const teamsList = await db.select({ teamId: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, claims.userId)).all();
-      const allowedScopeKeys = [
-        null,
-        "",
-        ...orgs.map((o) => `org:${o.orgId}`),
-        ...teamsList.map((t) => `team:${t.teamId}`),
-      ];
-      conditions.push(
-        sql`(${memories.userId} = ${claims.userId} OR ${memories.projectKey} IN (${sql.join(allowedScopeKeys.map((k) => sql`${k}`), sql`, `)}))`
-      );
-    } else {
-      if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
-        conditions.push(eq(memories.projectKey, projectKey));
-      } else {
-        conditions.push(eq(memories.userId, claims.userId));
-        if (projectKey) {
-          conditions.push(
-            sql`(${memories.projectKey} = ${projectKey} OR ${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
-          );
-        } else {
-          conditions.push(
-            sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
-          );
-        }
-      }
-    }
-
-    const rows = await db
-      .select()
-      .from(memories)
-      .where(and(...conditions))
-      .all();
-
+    // Decrypt all returned memories
     const decrypted = await Promise.all(
-      rows.map(async (r) => {
+      dbRows.map(async (r) => {
         const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : claims.userId;
         const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
         return { ...r, fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY) };
       })
     );
 
-    // Filter decrypted facts
-    let filtered = decrypted;
-    if (category) {
-      filtered = filtered.filter((r) => r.category === category);
-    }
-    if (tag) {
-      const lowerTag = tag.toLowerCase().trim();
-      filtered = filtered.filter((r) =>
-        (r.tags || "").split(",").map((t) => t.trim().toLowerCase()).includes(lowerTag)
-      );
-    }
-    if (keyword) {
-      const lowerKw = keyword.toLowerCase().trim();
-      filtered = filtered.filter((r) => r.fact.toLowerCase().includes(lowerKw));
-    }
+    // Apply hard filters (category, tag, keyword)
+    const matchFilters = (m: typeof decrypted[0]): boolean => {
+      if (category && m.category !== category) return false;
+      if (tag) {
+        const lowerTag = tag.toLowerCase().trim();
+        const tagsList = (m.tags || "").split(",").map((t) => t.trim().toLowerCase());
+        if (!tagsList.includes(lowerTag)) return false;
+      }
+      if (keyword) {
+        const lowerKw = keyword.toLowerCase().trim();
+        if (!m.fact.toLowerCase().includes(lowerKw)) return false;
+      }
+      return true;
+    };
 
-    const idOrder = new Map(ids.map((dbId, i) => [dbId, i]));
-    const ranked = filtered.sort((a, b) => {
-      if (a.authorityType === "authoritative" && b.authorityType !== "authoritative") return -1;
-      if (a.authorityType !== "authoritative" && b.authorityType === "authoritative") return 1;
-      return (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999);
+    // Filter decrypted scope memories
+    const filteredDecrypted = decrypted.filter(matchFilters);
+
+    // 1. Semantic Search (Vectorize) Ranked List
+    // Map vector matches back to decrypted memories (preserving semantic ordering)
+    const decryptedMap = new Map(filteredDecrypted.map((m) => [m.id, m]));
+    const vectorRanked = vectorMatches
+      .map((vm) => decryptedMap.get(vm.id))
+      .filter((m): m is NonNullable<typeof m> => !!m);
+
+    // 2. Keyword/Full-Text Search Ranked List
+    // Score all decrypted candidate memories based on search query matching
+    const queryLower = queryTrimmed.toLowerCase();
+    const queryTokens = queryLower.split(/[^a-z0-9]+/i).filter((t) => t.length > 0);
+
+    const ftsRanked = filteredDecrypted
+      .map((m) => {
+        let score = 0;
+        const factLower = m.fact.toLowerCase();
+
+        // Exact substring match on full query
+        if (factLower.includes(queryLower)) {
+          score += 1000;
+        }
+
+        // Token match scoring
+        for (const token of queryTokens) {
+          if (factLower.includes(token)) {
+            score += 10;
+          }
+        }
+
+        // Tag matching booster
+        const tagsLower = (m.tags || "").toLowerCase();
+        for (const token of queryTokens) {
+          if (tagsLower.includes(token)) {
+            score += 5;
+          }
+        }
+
+        return { memory: m, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || b.memory.timestamp - a.memory.timestamp)
+      .map((item) => item.memory);
+
+    // 3. Reciprocal Rank Fusion (RRF)
+    // Combine both lists (semantic and FTS)
+    const rrfMap = new Map<string, { memory: typeof decrypted[0]; rrfScore: number }>();
+    const k = 60;
+
+    // Add semantic ranks
+    vectorRanked.forEach((m, idx) => {
+      const score = 1 / (k + idx + 1);
+      rrfMap.set(m.id, { memory: m, rrfScore: score });
     });
+
+    // Add FTS ranks
+    ftsRanked.forEach((m, idx) => {
+      const score = 1 / (k + idx + 1);
+      const existing = rrfMap.get(m.id);
+      if (existing) {
+        existing.rrfScore += score;
+      } else {
+        rrfMap.set(m.id, { memory: m, rrfScore: score });
+      }
+    });
+
+    // Sort RRF merged list:
+    // First, authoritative memories float to the top
+    // Second, sort by RRF score descending
+    const ranked = Array.from(rrfMap.values())
+      .sort((a, b) => {
+        const authA = a.memory.authorityType === "authoritative" ? 1 : 0;
+        const authB = b.memory.authorityType === "authoritative" ? 1 : 0;
+        if (authA !== authB) {
+          return authB - authA; // authoritative first
+        }
+        return b.rrfScore - a.rrfScore;
+      })
+      .map((item) => item.memory);
+
     const finalResults = ranked.slice(0, topK);
 
     // Audit log & token usage
