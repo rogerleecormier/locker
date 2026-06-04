@@ -83,7 +83,7 @@ export const ALL_TOOLS = [
   {
     name: "recall_context",
     description:
-      "Semantic search over stored long-term memory. Returns facts ranked by cosine similarity.",
+      "Hybrid semantic and keyword search over stored long-term memory. Combines conceptual vector search (Cloudflare Vectorize) and exact token/substring matches (SQLite) using Reciprocal Rank Fusion (RRF) to prevent zero-result keyword matches.",
     inputSchema: {
       type: "object",
       properties: {

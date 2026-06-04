@@ -342,7 +342,7 @@ Authorization = "Bearer lkr_your_token_here"`,
             <li>Go to <strong>Admin → API Tokens</strong> and generate a new token.</li>
             <li>Locate your global Codex configuration file on your local machine:
               <ul style={{ paddingLeft: 20, marginTop: 4, marginBottom: 4 }}>
-                <li>Windows: <code>C:\Users\&lt;YourUsername&gt;\.codex\config.toml</code></li>
+                <li>Windows: <code>C:\\Users\\&lt;YourUsername&gt;\\.codex\\config.toml</code></li>
                 <li>macOS/Linux: <code>~/.codex/config.toml</code></li>
               </ul>
             </li>
@@ -395,7 +395,7 @@ Authorization = "Bearer lkr_your_token_here"`,
             <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 3, margin: 0 }}>
               <li>Locate your global Codex configuration file on your local machine:
                 <ul style={{ paddingLeft: 20, marginTop: 2, marginBottom: 2 }}>
-                  <li>Windows: <code>C:\Users\&lt;YourUsername&gt;\.codex\config.toml</code></li>
+                  <li>Windows: <code>C:\\Users\\&lt;YourUsername&gt;\\.codex\\config.toml</code></li>
                   <li>macOS/Linux: <code>~/.codex/config.toml</code></li>
                 </ul>
               </li>
@@ -521,7 +521,7 @@ Authorization = "Bearer lkr_your_token_here"`,
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Admin → API Tokens</strong> and generate a new token.</li>
-            <li>Open <code>~/.codeium/windsurf/mcp_config.json</code> on macOS/Linux, or <code>%USERPROFILE%\.codeium\windsurf\mcp_config.json</code> on Windows (create if it doesn't exist).</li>
+            <li>Open <code>~/.codeium/windsurf/mcp_config.json</code> on macOS/Linux, or <code>%USERPROFILE%\\.codeium\\windsurf\\mcp_config.json</code> on Windows (create if it doesn't exist).</li>
             <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
             <li>In Windsurf, go to <strong>Settings → Cascade → MCP</strong> to enable MCP and verify the server is connected.</li>
           </ol>
@@ -602,7 +602,7 @@ Authorization = "Bearer lkr_your_token_here"`,
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Admin → API Tokens</strong> and generate a new token.</li>
-            <li>Open <code>~/.config/amp/settings.json</code> on macOS/Linux, or <code>%APPDATA%\amp\settings.json</code> on Windows. For a single project, use <code>.amp/settings.json</code> at the project root.</li>
+            <li>Open <code>~/.config/amp/settings.json</code> on macOS/Linux, or <code>%APPDATA%\\amp\\settings.json</code> on Windows. For a single project, use <code>.amp/settings.json</code> at the project root.</li>
             <li>Add the snippet below, replacing <code>lkr_your_token_here</code> with your token. Note: Amp uses <code>amp.mcpServers</code> as the top-level key.</li>
             <li>Or add via CLI: <code>amp mcp add locker --header "Authorization=Bearer lkr_your_token_here" ${origin}/api/mcp</code></li>
           </ol>
@@ -1027,10 +1027,10 @@ Authorization = "Bearer lkr_your_token_here"`,
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 32 }}>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
                 <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                  ⚡ Semantic Retrieval
+                  ⚡ Hybrid Retrieval
                 </h3>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-                  Powered by Cloudflare Vectorize. Facts are queried using vector embeddings, returning semantically relevant results in less than 50 milliseconds globally.
+                  Powered by Cloudflare Vectorize and SQLite. Combines semantic vector search and exact token/substring matches via Reciprocal Rank Fusion (RRF) to ensure high-accuracy conceptual matches without missing specific keyword tokens.
                 </p>
               </div>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
@@ -1344,7 +1344,7 @@ Authorization = "Bearer lkr_your_token_here"`,
               Locker exposes secure endpoints for AI models to retrieve and mutate memories in real time. Connected developer agents utilize these JSON-RPC commands behind the scenes:
             </p>
             <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li><strong>Reading Context:</strong> Models call <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>recall_context</button> for semantic vector searches and <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>search_memories</button> for exact tag/keyword scans.</li>
+              <li><strong>Reading Context:</strong> Models call <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>recall_context</button> for hybrid semantic and keyword search (utilizing Reciprocal Rank Fusion of vector and exact keyword/token matches) and <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>search_memories</button> for exact tag/keyword scans.</li>
               <li><strong>Mutating Store:</strong> Models use <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>commit_memory</button> to suggest facts, <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>update_memory</button> to refine facts, and <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>delete_memory</button> to remove stale data.</li>
             </ul>
             <div style={{
@@ -1533,16 +1533,29 @@ Authorization = "Bearer lkr_your_token_here"`,
           <div>
             <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Model Context Protocol (MCP)</h2>
             <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-              The Model Context Protocol (MCP) is an open-source standard created by Anthropic that allows clients (such as local AI applications, IDEs, and CLI tools) to safely communicate with external tools, APIs, and data stores through unified schemas.
+              The Model Context Protocol (MCP) is an open-source standard created by Anthropic that allows clients (such as local AI developer tools or editors) to query secure context servers. It decouples LLM logic from specialized APIs and databases.
             </p>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-              Instead of building bespoke integrations for every editor and model, MCP defines a standard JSON-RPC 2.0 protocol over HTTP or standard input/output streams. Locker uses the HTTP transport protocol, exposing a set of tools that models can invoke at any time during a conversation context.
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Protocol Architecture</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+              Locker acts as an MCP server, establishing standard bindings:
             </p>
-            <div style={{ background: "rgba(168,85,247,0.06)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16, marginTop: 24 }}>
-              <h4 style={{ margin: "0 0 6px 0", color: "var(--text)", fontSize: 13, fontWeight: 600 }}>💡 Standard JSON-RPC Format</h4>
-              <p style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5, margin: 0 }}>
-                External clients communicate with Locker using POST requests. Request payloads follow standard JSON-RPC 2.0 formatting: e.g., specifying <code>method: "tools/call"</code> along with the target tool name and parameters in the <code>params</code> argument.
-              </p>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              <li><strong>JSON-RPC 2.0 Transport:</strong> Clients make requests using the JSON-RPC format, invoking tools using <code>tools/call</code>.</li>
+              <li><strong>Edge Delivery:</strong> Because Locker runs inside Cloudflare Workers, connection speeds are exceptionally fast. HTTP stream transports route requests to the nearest edge worker.</li>
+              <li><strong>Anonymized Token Verification:</strong> Secure connection calls authorize edge decryption keys without exposing user organization boundaries or personal login credentials.</li>
+            </ul>
+
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Key Advantages</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 14 }}>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Zero Codebase Drift</h4>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>Changes made in the Locker UI are instantly loaded by all connected local IDE clients and LLM sessions.</p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 14 }}>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Shared Team Vaults</h4>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>Organizations can scope tokens to teams or workspaces, injecting consistent guidelines across all developers.</p>
+              </div>
             </div>
           </div>
         );
