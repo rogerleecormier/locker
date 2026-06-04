@@ -1520,8 +1520,8 @@ export async function handleMcpRequest(
     if (projectKey === undefined || typeof projectKey !== "string") {
       return mcpError(id, -32602, "Invalid params: projectKey is required");
     }
-    if (!formatType || !["claude", "cursor", "copilot", "gemini", "agents"].includes(formatType)) {
-      return mcpError(id, -32602, "Invalid params: formatType must be claude, cursor, copilot, gemini, or agents");
+    if (!formatType || !["claude", "cursor", "copilot", "gemini", "agents", "antigravity"].includes(formatType)) {
+      return mcpError(id, -32602, "Invalid params: formatType must be claude, cursor, copilot, gemini, agents, or antigravity");
     }
 
     if (!claims.userId) {
