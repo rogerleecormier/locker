@@ -27,7 +27,7 @@ import {
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { encrypt, decrypt, isEncrypted, hashToken, deriveUserKey } from "./crypto";
 import { requireSession, requireAdmin } from "./session";
-import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens } from "./enterprise";
+import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "./enterprise";
 import { checkMemoryLimit, checkApiTokenLimit, getUserEffectivePlan } from "./planGate";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -284,15 +284,17 @@ export const getMemories = createServerFn({ method: "GET" })
       const user = await requireSession(env);
       const db = getDb(env);
 
+      const { scopeType, scopeId } = parseScope(data?.projectKey);
+      const { allowed: vaultAllowed } = await verifyVaultAccess(db, user.id, scopeType, scopeId);
+      if (!vaultAllowed) {
+        throw new Error(`Forbidden: no access to vault scope '${data?.projectKey ?? "personal"}'`);
+      }
+
       let whereClause;
-      if (data?.projectKey) {
-        const { allowed: vaultAllowed } = await verifyVaultAccess(db, user.id, data.projectKey);
-        if (!vaultAllowed) {
-          throw new Error(`Forbidden: no access to vault scope '${data.projectKey}'`);
-        }
-        whereClause = eq(memories.projectKey, data.projectKey);
+      if (scopeType === "personal") {
+        whereClause = and(eq(memories.userId, user.id), eq(memories.scopeType, "personal"));
       } else {
-        whereClause = and(eq(memories.userId, user.id), sql`${memories.projectKey} IS NULL`);
+        whereClause = and(eq(memories.scopeType, scopeType), eq(memories.scopeId, scopeId!));
       }
 
       const rows = await db
@@ -470,30 +472,81 @@ Do not include markdown code fences or conversational text. Just the raw JSON ar
           decryptedCandidates.some((c) => c.id === id)
         );
         if (validIdsToArchive.length > 0) {
-          console.log("[contradiction] Archiving contradicted memories:", validIdsToArchive);
+          console.log("[contradiction] Enqueuing contradicted memories for review:", validIdsToArchive);
           
           const toArchiveRows = rows.filter((r: any) => validIdsToArchive.includes(r.id));
           
-          await db
-            .update(memories)
-            .set({ isActive: false })
-            .where(
-              sql`${memories.id} IN (${sql.join(validIdsToArchive.map((id) => sql`${id}`), sql`, `)})`
-            )
-            .run();
-
-          // Record new versions for archived memories
+          // Reroute to Review Queue (memoryRecommendations) instead of silent archiving
           for (const row of toArchiveRows) {
-            await db.insert(memoryVersions).values({
+            const dec = decryptedCandidates.find((c) => c.id === row.id);
+            const decryptedFact = dec ? dec.fact : "";
+
+            const { scopeType: rowScopeType, scopeId: rowScopeId } = parseScope(row.projectKey);
+
+            let orgId: string | null = null;
+            if (rowScopeType === "organization") {
+              orgId = rowScopeId;
+            } else if (rowScopeType === "team" && rowScopeId) {
+              const teamRows = await db
+                .select({ orgId: teams.orgId })
+                .from(teams)
+                .where(eq(teams.id, rowScopeId))
+                .limit(1)
+                .all();
+              orgId = teamRows[0]?.orgId ?? null;
+            }
+
+            await db.insert(memoryRecommendations).values({
               id: crypto.randomUUID(),
-              memoryId: row.id,
-              fact: row.fact, // already encrypted
+              orgId: orgId, // Nullable for personal, populated for org/team
+              userId: userId, // User who added the conflicting memory
+              fact: decryptedFact, // Old contradicted memory fact
               category: row.category,
               tags: row.tags,
-              changedBy: "system",
-              changeReason: "contradiction",
-              timestamp: Date.now(),
+              projectKey: row.projectKey,
+              scopeType: rowScopeType,
+              scopeId: rowScopeId,
+              recommendationType: "archive",
+              targetMemoryId: row.id,
+              status: "pending",
+              reviewNotes: `Superseded by new memory: "${newFact}"`,
+              createdAt: Date.now(),
             }).run();
+
+            // Create notification for conflict review
+            if (rowScopeType === "personal") {
+              await db.insert(notifications).values({
+                id: crypto.randomUUID(),
+                userId: userId,
+                title: "Memory Conflict Review",
+                message: `A new memory conflicts with an existing one. Review required.`,
+                type: "contradiction_detected",
+                status: "unread",
+                linkUrl: `/memories`,
+                createdAt: Date.now(),
+              }).run();
+            } else if (orgId) {
+              const admins = await db
+                .select({ userId: organizationMembers.userId })
+                .from(organizationMembers)
+                .where(and(
+                  eq(organizationMembers.orgId, orgId),
+                  sql`${organizationMembers.role} IN ('admin', 'owner')`
+                ))
+                .all();
+              for (const admin of admins) {
+                await db.insert(notifications).values({
+                  id: crypto.randomUUID(),
+                  userId: admin.userId,
+                  title: "Conflict Review Required",
+                  message: `A memory update conflicts with an existing vault entry. Review required.`,
+                  type: "contradiction_detected",
+                  status: "unread",
+                  linkUrl: `/organization?tab=recommendations`,
+                  createdAt: Date.now(),
+                }).run();
+              }
+            }
           }
         }
       }
@@ -536,9 +589,10 @@ export const addMemory = createServerFn({ method: "POST" })
       throw new Error("Unauthorized: userId is required for vector insert");
     }
 
-    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, data.projectKey);
+    const { scopeType, scopeId } = parseScope(data.projectKey);
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, scopeType, scopeId);
     if (!vaultAllowed) {
-      throw new Error(`Forbidden: no access to vault scope '${data.projectKey}'`);
+      throw new Error(`Forbidden: no access to vault scope '${data.projectKey ?? "personal"}'`);
     }
 
     await checkMemoryLimit(db, user.id);
@@ -551,7 +605,7 @@ export const addMemory = createServerFn({ method: "POST" })
     const id = crypto.randomUUID();
     const timestamp = Date.now();
     
-    const vaultId = (data.projectKey && (data.projectKey.startsWith("team:") || data.projectKey.startsWith("org:"))) ? data.projectKey : user.id;
+    const vaultId = (scopeType === "team" || scopeType === "organization") ? data.projectKey! : user.id;
     const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
     const encryptedFact = await encryptFact(data.fact, vaultKey);
 
@@ -581,19 +635,16 @@ export const addMemory = createServerFn({ method: "POST" })
 
     if (data.isLocked || data.authorityType === "authoritative") {
       let actualOrgId = orgId;
-      if (data.projectKey) {
-        if (data.projectKey.startsWith("org:")) {
-          actualOrgId = data.projectKey.slice(4);
-        } else if (data.projectKey.startsWith("team:")) {
-          const teamId = data.projectKey.slice(5);
-          const teamRows = await db
-            .select({ orgId: teams.orgId })
-            .from(teams)
-            .where(eq(teams.id, teamId))
-            .limit(1)
-            .all();
-          actualOrgId = teamRows[0]?.orgId ?? orgId;
-        }
+      if (scopeType === "organization") {
+        actualOrgId = scopeId;
+      } else if (scopeType === "team" && scopeId) {
+        const teamRows = await db
+          .select({ orgId: teams.orgId })
+          .from(teams)
+          .where(eq(teams.id, scopeId))
+          .limit(1)
+          .all();
+        actualOrgId = teamRows[0]?.orgId ?? orgId;
       }
       
       if (actualOrgId) {
@@ -610,18 +661,6 @@ export const addMemory = createServerFn({ method: "POST" })
         } else {
           throw new Error("Forbidden: Only organization owners/admins can create locked authoritative memories.");
         }
-      }
-    }
-
-    let scopeType: "personal" | "organization" | "team" = "personal";
-    let scopeId: string | null = null;
-    if (data.projectKey) {
-      if (data.projectKey.startsWith("org:")) {
-        scopeType = "organization";
-        scopeId = data.projectKey.slice(4);
-      } else if (data.projectKey.startsWith("team:")) {
-        scopeType = "team";
-        scopeId = data.projectKey.slice(5);
       }
     }
 
@@ -2587,92 +2626,171 @@ export const reviewMemoryRecommendation = createServerFn({ method: "POST" })
     }
     const rec = recs[0];
 
-    // 2. Verify reviewer is admin/owner
-    const reviewerMember = await db
-      .select({ role: organizationMembers.role })
-      .from(organizationMembers)
-      .where(and(eq(organizationMembers.orgId, rec.orgId), eq(organizationMembers.userId, user.id)))
-      .limit(1)
-      .all();
-    const reviewerRole = reviewerMember[0]?.role;
-    if (reviewerRole !== "owner" && reviewerRole !== "admin") {
-      throw new Error("Forbidden: Only organization owners/admins can review recommendations.");
+    // 2. Resolve orgId (if team scoped) and verify reviewer authorization
+    let orgId = rec.orgId;
+    if (!orgId && rec.scopeType === "team" && rec.scopeId) {
+      const teamRows = await db
+        .select({ orgId: teams.orgId })
+        .from(teams)
+        .where(eq(teams.id, rec.scopeId))
+        .limit(1)
+        .all();
+      orgId = teamRows[0]?.orgId ?? null;
+    }
+
+    if (rec.scopeType === "personal") {
+      if (rec.userId !== user.id) {
+        throw new Error("Forbidden: You can only review your own personal recommendations.");
+      }
+    } else {
+      if (!orgId) {
+        throw new Error("Forbidden: Recommendation does not have a valid organization ID.");
+      }
+      const reviewerMember = await db
+        .select({ role: organizationMembers.role })
+        .from(organizationMembers)
+        .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, user.id)))
+        .limit(1)
+        .all();
+      const reviewerRole = reviewerMember[0]?.role;
+      if (reviewerRole !== "owner" && reviewerRole !== "admin") {
+        throw new Error("Forbidden: Only organization owners/admins can review recommendations.");
+      }
     }
 
     const timestamp = Date.now();
 
     if (data.action === "approve") {
-      // 3. Encrypt & Save to memories
-      const projectKey = rec.projectKey || `org:${rec.orgId}`;
-      const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, projectKey);
-      const encryptedFact = await encryptFact(rec.fact, vaultKey);
+      if (rec.recommendationType === "archive") {
+        if (!rec.targetMemoryId) {
+          throw new Error("Invalid recommendation: targetMemoryId is required for archiving.");
+        }
+        const targets = await db
+          .select()
+          .from(memories)
+          .where(eq(memories.id, rec.targetMemoryId))
+          .all();
+        if (targets.length === 0) {
+          throw new Error("Target memory not found.");
+        }
+        const targetMem = targets[0];
 
-      const memId = crypto.randomUUID();
+        // Mark target memory as inactive
+        await db
+          .update(memories)
+          .set({ isActive: false })
+          .where(eq(memories.id, rec.targetMemoryId))
+          .run();
 
-      await db.insert(memories).values({
-        id: memId,
-        userId: rec.userId, // keep the recommender as the owner
-        fact: encryptedFact,
-        category: rec.category,
-        tags: rec.tags,
-        timestamp,
-        isActive: true,
-        projectKey,
-        scopeType: "organization",
-        scopeId: rec.orgId,
-        isLocked: true,
-        authorityType: "authoritative",
-      });
+        // Record new memory version for archiving
+        await db.insert(memoryVersions).values({
+          id: crypto.randomUUID(),
+          memoryId: rec.targetMemoryId,
+          fact: targetMem.fact,
+          category: targetMem.category,
+          tags: targetMem.tags,
+          changedBy: user.id,
+          changeReason: "contradiction_approved",
+          timestamp,
+        }).run();
 
-      // 4. Record Memory Version
-      await db.insert(memoryVersions).values({
-        id: crypto.randomUUID(),
-        memoryId: memId,
-        fact: encryptedFact,
-        category: rec.category,
-        tags: rec.tags,
-        changedBy: user.id, // changed by the reviewer
-        changeReason: "approved_recommendation",
-        timestamp,
-      });
+        // Update recommendation status
+        await db
+          .update(memoryRecommendations)
+          .set({
+            status: "approved",
+            reviewedBy: user.id,
+            reviewedAt: timestamp,
+            reviewNotes: data.reviewNotes,
+          })
+          .where(eq(memoryRecommendations.id, data.id));
 
-      // 5. Insert Vector Embedding
-      const embedding = await generateEmbedding(env.AI, rec.fact);
-      await env.VECTOR_INDEX.insert([{
-        id: memId,
-        values: embedding,
-        metadata: {
+        // Notify submitter/user
+        await db.insert(notifications).values({
+          id: crypto.randomUUID(),
           userId: rec.userId,
+          title: "Archive Approved!",
+          message: `Your archive request has been approved. The old memory has been archived.`,
+          type: "recommendation_actioned",
+          status: "unread",
+          createdAt: timestamp,
+        });
+
+        await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "approve_archive_recommendation", memoryId: rec.targetMemoryId, metadata: { recId: rec.id } });
+
+      } else {
+        // Standard "add" recommendation flow
+        const projectKey = rec.projectKey || (orgId ? `org:${orgId}` : "personal");
+        const vaultId = (rec.scopeType === "team" || rec.scopeType === "organization") ? projectKey : rec.userId;
+        const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+        const encryptedFact = await encryptFact(rec.fact, vaultKey);
+
+        const memId = crypto.randomUUID();
+
+        await db.insert(memories).values({
+          id: memId,
+          userId: rec.userId,
+          fact: encryptedFact,
           category: rec.category,
           tags: rec.tags,
-          projectKey,
-        } as Record<string, VectorizeVectorMetadata>,
-      }]);
+          timestamp,
+          isActive: true,
+          projectKey: rec.projectKey,
+          scopeType: rec.scopeType,
+          scopeId: rec.scopeId,
+          isLocked: rec.scopeType !== "personal",
+          authorityType: rec.scopeType !== "personal" ? "authoritative" : "contributed",
+        });
 
-      // 6. Update Recommendation Status
-      await db
-        .update(memoryRecommendations)
-        .set({
-          status: "approved",
-          reviewedBy: user.id,
-          reviewedAt: timestamp,
-          reviewNotes: data.reviewNotes,
-        })
-        .where(eq(memoryRecommendations.id, data.id));
+        // Record Memory Version
+        await db.insert(memoryVersions).values({
+          id: crypto.randomUUID(),
+          memoryId: memId,
+          fact: encryptedFact,
+          category: rec.category,
+          tags: rec.tags,
+          changedBy: user.id,
+          changeReason: "approved_recommendation",
+          timestamp,
+        });
 
-      // 7. Notify Submitter
-      await db.insert(notifications).values({
-        id: crypto.randomUUID(),
-        userId: rec.userId,
-        title: "Recommendation Approved!",
-        message: `Your memory recommendation has been approved and added to the official org vault.`,
-        type: "recommendation_actioned",
-        status: "unread",
-        createdAt: timestamp,
-      });
+        // Insert Vector Embedding
+        const embedding = await generateEmbedding(env.AI, rec.fact);
+        await env.VECTOR_INDEX.insert([{
+          id: memId,
+          values: embedding,
+          metadata: {
+            userId: rec.userId,
+            category: rec.category,
+            tags: rec.tags,
+            projectKey: projectKey === "personal" ? "" : projectKey,
+          } as Record<string, VectorizeVectorMetadata>,
+        }]);
 
-      // 8. Log Audit
-      await logAudit(db, { orgId: rec.orgId, userId: user.id, tokenId: "session", action: "approve_recommendation", memoryId: memId, metadata: { recId: rec.id } });
+        // Update Recommendation Status
+        await db
+          .update(memoryRecommendations)
+          .set({
+            status: "approved",
+            reviewedBy: user.id,
+            reviewedAt: timestamp,
+            reviewNotes: data.reviewNotes,
+          })
+          .where(eq(memoryRecommendations.id, data.id));
+
+        // Notify Submitter
+        await db.insert(notifications).values({
+          id: crypto.randomUUID(),
+          userId: rec.userId,
+          title: "Recommendation Approved!",
+          message: `Your memory recommendation has been approved and added to the vault.`,
+          type: "recommendation_actioned",
+          status: "unread",
+          createdAt: timestamp,
+        });
+
+        await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "approve_recommendation", memoryId: memId, metadata: { recId: rec.id } });
+      }
 
     } else {
       // Reject Action
@@ -2691,14 +2809,13 @@ export const reviewMemoryRecommendation = createServerFn({ method: "POST" })
         id: crypto.randomUUID(),
         userId: rec.userId,
         title: "Recommendation Rejected",
-        message: `Your memory recommendation was rejected. Notes: ${data.reviewNotes || "No details provided."}`,
+        message: `Your memory recommendation has been rejected.`,
         type: "recommendation_actioned",
         status: "unread",
         createdAt: timestamp,
       });
 
-      // Log Audit
-      await logAudit(db, { orgId: rec.orgId, userId: user.id, tokenId: "session", action: "reject_recommendation", metadata: { recId: rec.id } });
+      await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "reject_recommendation", metadata: { recId: rec.id } });
     }
 
     return { success: true };
@@ -3741,4 +3858,74 @@ export const deleteMemoryTemplate = createServerFn({ method: "POST" })
       metadata: { templateId: data.id },
     });
     return { success: true };
+  });
+
+export const setDeletionPasscode = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { passcode: string } => {
+    const d = data as { passcode: string };
+    if (!d.passcode || typeof d.passcode !== "string" || d.passcode.length < 4 || d.passcode.length > 32) {
+      throw new Error("Passcode must be between 4 and 32 characters long");
+    }
+    return { passcode: d.passcode };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const hashed = await hashToken(data.passcode);
+    await db
+      .update(users)
+      .set({ writePasscodeHash: hashed })
+      .where(eq(users.id, user.id));
+
+    return { success: true };
+  });
+
+export const removeDeletionPasscode = createServerFn({ method: "POST" })
+  .handler(async ({ context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    await db
+      .update(users)
+      .set({ writePasscodeHash: null })
+      .where(eq(users.id, user.id));
+
+    return { success: true };
+  });
+
+export const getPasscodeStatus = createServerFn({ method: "GET" })
+  .handler(async ({ context }): Promise<{ enabled: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const rows = await db
+      .select({ hash: users.writePasscodeHash })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+      .all();
+
+    return { enabled: rows.length > 0 && rows[0].hash !== null };
+  });
+
+export const listPersonalMemoryRecommendations = createServerFn({ method: "GET" })
+  .handler(async ({ context }): Promise<any[]> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    return db
+      .select()
+      .from(memoryRecommendations)
+      .where(and(
+        eq(memoryRecommendations.userId, user.id),
+        eq(memoryRecommendations.scopeType, "personal"),
+        eq(memoryRecommendations.status, "pending")
+      ))
+      .orderBy(desc(memoryRecommendations.createdAt))
+      .all();
   });

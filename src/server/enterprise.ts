@@ -49,23 +49,56 @@ export async function getUserOrg(db: any, userId: string): Promise<string | null
 }
 
 
+export function parseScope(projectKey: string | undefined | null): {
+  scopeType: "personal" | "organization" | "team";
+  scopeId: string | null;
+} {
+  if (!projectKey || projectKey === "personal") {
+    return { scopeType: "personal", scopeId: null };
+  }
+  if (projectKey.startsWith("org:")) {
+    const orgId = projectKey.slice(4).trim();
+    if (!orgId) throw new Error("Invalid organization scope key");
+    return { scopeType: "organization", scopeId: orgId };
+  }
+  if (projectKey.startsWith("team:")) {
+    const teamId = projectKey.slice(5).trim();
+    if (!teamId) throw new Error("Invalid team scope key");
+    return { scopeType: "team", scopeId: teamId };
+  }
+  throw new Error(`Invalid workspace scope key: ${projectKey}`);
+}
+
 // Verify vault scoping access and return the organization ID
 export async function verifyVaultAccess(
   db: any,
   userId: string,
-  projectKey: string | undefined | null
+  scopeTypeOrProjectKey: "personal" | "organization" | "team" | string | null | undefined,
+  scopeId?: string | null
 ): Promise<{ allowed: boolean; orgId: string | null }> {
-  if (!projectKey || projectKey === "personal") {
+  let scopeType: "personal" | "organization" | "team";
+  let finalScopeId: string | null = null;
+
+  if (scopeId !== undefined) {
+    scopeType = scopeTypeOrProjectKey as "personal" | "organization" | "team";
+    finalScopeId = scopeId;
+  } else {
+    const parsed = parseScope(scopeTypeOrProjectKey);
+    scopeType = parsed.scopeType;
+    finalScopeId = parsed.scopeId;
+  }
+
+  if (scopeType === "personal") {
     const orgId = await getUserOrg(db, userId);
     return { allowed: true, orgId };
   }
 
-  if (projectKey.startsWith("team:")) {
-    const teamId = projectKey.slice(5);
+  if (scopeType === "team") {
+    if (!finalScopeId) return { allowed: false, orgId: null };
     const rows = await db
       .select()
       .from(teamMembers)
-      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
+      .where(and(eq(teamMembers.teamId, finalScopeId), eq(teamMembers.userId, userId)))
       .limit(1)
       .all();
     
@@ -74,24 +107,23 @@ export async function verifyVaultAccess(
     const teamRows = await db
       .select({ orgId: teams.orgId })
       .from(teams)
-      .where(eq(teams.id, teamId))
+      .where(eq(teams.id, finalScopeId))
       .limit(1)
       .all();
     return { allowed: true, orgId: teamRows[0]?.orgId ?? null };
   }
 
-  if (projectKey.startsWith("org:")) {
-    const orgId = projectKey.slice(4);
+  if (scopeType === "organization") {
+    if (!finalScopeId) return { allowed: false, orgId: null };
     const rows = await db
       .select()
       .from(organizationMembers)
-      .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)))
+      .where(and(eq(organizationMembers.orgId, finalScopeId), eq(organizationMembers.userId, userId)))
       .limit(1)
       .all();
-    return { allowed: rows.length > 0, orgId: rows.length > 0 ? orgId : null };
+    return { allowed: rows.length > 0, orgId: rows.length > 0 ? finalScopeId : null };
   }
 
-  // Reject arbitrary free-text projectKeys: only allow explicit scopes (org:, team:, personal, null/undefined)
   return { allowed: false, orgId: null };
 }
 

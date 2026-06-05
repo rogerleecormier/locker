@@ -1,12 +1,13 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
 import { encrypt } from "~/server/crypto";
-import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens } from "~/server/enterprise";
+import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "~/server/enterprise";
+import { verifyTOTP } from "~/server/totp";
 import { PLANS } from "~/lib/plans";
 import { getUserEffectivePlan } from "~/server/planGate";
 
@@ -140,7 +141,7 @@ export const ALL_TOOLS = [
   },
   {
     name: "update_memory",
-    description: "Update an existing memory fact, category, or tags by its unique ID.",
+    description: "Update an existing memory fact, category, or tags by its unique ID. Warning: This is a destructive/modifying action and requires confirmation and potentially MFA verification.",
     inputSchema: {
       type: "object",
       properties: {
@@ -148,19 +149,25 @@ export const ALL_TOOLS = [
         fact: { type: "string", description: "The updated factual statement." },
         category: { type: "string", enum: ["rules", "projects", "references"], description: "Optional updated category." },
         tags: { type: "string", description: "Optional updated comma-separated keywords/tags." },
+        confirm: { type: "boolean", description: "Must be explicitly set to true by human-in-the-loop action." },
+        totpCode: { type: "string", description: "6-digit Authenticator TOTP code (required if 2FA is enabled)." },
+        passcode: { type: "string", description: "Locker deletion passcode (required if set and 2FA is disabled)." },
       },
-      required: ["id", "fact"],
+      required: ["id", "fact", "confirm"],
     },
   },
   {
     name: "delete_memory",
-    description: "Delete an existing memory by its unique ID.",
+    description: "Delete an existing memory by its unique ID. Warning: This is a destructive action and requires confirmation and potentially MFA verification.",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "string", description: "The unique ID of the memory to delete." },
+        confirm: { type: "boolean", description: "Must be explicitly set to true by human-in-the-loop action." },
+        totpCode: { type: "string", description: "6-digit Authenticator TOTP code (required if 2FA is enabled)." },
+        passcode: { type: "string", description: "Locker deletion passcode (required if set and 2FA is disabled)." },
       },
-      required: ["id"],
+      required: ["id", "confirm"],
     },
   },
   {
@@ -1330,6 +1337,47 @@ export async function handleMcpRequest(
       throw new Error("Unauthorized: userId is required for vector upsert");
     }
 
+    const confirm = args.confirm as boolean | undefined;
+    if (confirm !== true) {
+      return mcpError(id, -32602, "Invalid params: confirm must be set to true");
+    }
+
+    // MFA / Passcode verification
+    const totpRows = await db
+      .select()
+      .from(totpSecrets)
+      .where(and(eq(totpSecrets.userId, claims.userId), eq(totpSecrets.verified, true)))
+      .all();
+
+    if (totpRows.length > 0) {
+      const totpCode = args.totpCode as string | undefined;
+      if (!totpCode || typeof totpCode !== "string") {
+        return mcpError(id, -32024, "MFA Verification Required: Please provide a valid 6-digit TOTP code.");
+      }
+      const userKey = await deriveUserKey(env.ENCRYPTION_KEY, claims.userId);
+      const decryptedSecret = await decrypt(totpRows[0].secret, userKey);
+      const verified = await verifyTOTP(decryptedSecret, totpCode);
+      if (!verified) {
+        return mcpError(id, -32024, "MFA Verification Failed: Invalid TOTP code.");
+      }
+    } else {
+      const userRows = await db
+        .select({ writePasscodeHash: users.writePasscodeHash })
+        .from(users)
+        .where(eq(users.id, claims.userId))
+        .all();
+      if (userRows.length > 0 && userRows[0].writePasscodeHash) {
+        const passcode = args.passcode as string | undefined;
+        if (!passcode || typeof passcode !== "string") {
+          return mcpError(id, -32025, "Passcode Verification Required: Please provide your deletion passcode.");
+        }
+        const hashed = await hashToken(passcode);
+        if (hashed !== userRows[0].writePasscodeHash) {
+          return mcpError(id, -32025, "Passcode Verification Failed: Invalid deletion passcode.");
+        }
+      }
+    }
+
     // Fetch existing memory to check scoping
     const rows = await db
       .select()
@@ -1486,6 +1534,47 @@ export async function handleMcpRequest(
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required");
+    }
+
+    const confirm = args.confirm as boolean | undefined;
+    if (confirm !== true) {
+      return mcpError(id, -32602, "Invalid params: confirm must be set to true");
+    }
+
+    // MFA / Passcode verification
+    const totpRows = await db
+      .select()
+      .from(totpSecrets)
+      .where(and(eq(totpSecrets.userId, claims.userId), eq(totpSecrets.verified, true)))
+      .all();
+
+    if (totpRows.length > 0) {
+      const totpCode = args.totpCode as string | undefined;
+      if (!totpCode || typeof totpCode !== "string") {
+        return mcpError(id, -32024, "MFA Verification Required: Please provide a valid 6-digit TOTP code.");
+      }
+      const userKey = await deriveUserKey(env.ENCRYPTION_KEY, claims.userId);
+      const decryptedSecret = await decrypt(totpRows[0].secret, userKey);
+      const verified = await verifyTOTP(decryptedSecret, totpCode);
+      if (!verified) {
+        return mcpError(id, -32024, "MFA Verification Failed: Invalid TOTP code.");
+      }
+    } else {
+      const userRows = await db
+        .select({ writePasscodeHash: users.writePasscodeHash })
+        .from(users)
+        .where(eq(users.id, claims.userId))
+        .all();
+      if (userRows.length > 0 && userRows[0].writePasscodeHash) {
+        const passcode = args.passcode as string | undefined;
+        if (!passcode || typeof passcode !== "string") {
+          return mcpError(id, -32025, "Passcode Verification Required: Please provide your deletion passcode.");
+        }
+        const hashed = await hashToken(passcode);
+        if (hashed !== userRows[0].writePasscodeHash) {
+          return mcpError(id, -32025, "Passcode Verification Failed: Invalid deletion passcode.");
+        }
+      }
     }
 
     // Fetch existing memory to check scoping

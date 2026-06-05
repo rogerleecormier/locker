@@ -37,7 +37,7 @@ import {
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
 import { MyUsageSection, MyBillingSection, OrgBillingSection, useBillingData } from "~/routes/billing";
-import { ProfileSection, ApiTokensSection, McpEndpointSection } from "~/routes/settings";
+import { ProfileSection, ApiTokensSection, McpEndpointSection, TwoFactorSection, PasscodeSection, SessionsSection } from "~/routes/settings";
 import {
   getUserOrgsAndTeams,
   createOrganizationSelfServe,
@@ -725,6 +725,17 @@ function AdminPage() {
 
       {/* ── PERSONAL ACCOUNT ────────────────────────────────────────────── */}
       {activeSection === "personal-account" && <ProfileSection />}
+
+      {/* ── SECURITY ────────────────────────────────────────────────────── */}
+      {activeSection === "personal-security" && (
+        <div className="flex flex-col gap-6">
+          <TwoFactorSection />
+          <PasscodeSection />
+        </div>
+      )}
+
+      {/* ── SESSIONS ────────────────────────────────────────────────────── */}
+      {activeSection === "personal-sessions" && <SessionsSection />}
 
       {/* ── API TOKENS ──────────────────────────────────────────────────── */}
       {activeSection === "personal-tokens" && <ApiTokensSection />}

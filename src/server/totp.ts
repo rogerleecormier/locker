@@ -20,41 +20,86 @@ function generateSecret(): string {
 }
 
 // Verify a TOTP code
-function verifyTOTP(secret: string, code: string, window: number = 1): boolean {
+export async function verifyTOTP(secret: string, code: string, window: number = 1): Promise<boolean> {
   const cleanCode = code.replace(/\s/g, "");
   if (!/^\d{6}$/.test(cleanCode)) return false;
 
-  const time = Math.floor(Date.now() / 30000);
-  const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-
-  let buffer = 0;
-  for (let i = 0; i < secret.length; i++) {
-    buffer = buffer * 32 + ALPHABET.indexOf(secret[i]);
+  let keyBytes;
+  try {
+    keyBytes = base32Decode(secret);
+  } catch {
+    return false;
   }
+
+  const timeStep = 30;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const currentStep = Math.floor(nowSec / timeStep);
 
   for (let offset = -window; offset <= window; offset++) {
-    const timeCounter = (time + offset).toString(16).padStart(16, "0");
-    const decoded = new Uint8Array(8);
-    for (let i = 0; i < 8; i++) {
-      decoded[i] = parseInt(timeCounter.substring(i * 2, i * 2 + 2), 16);
+    const step = currentStep + offset;
+    const computedCode = await generateHOTP(keyBytes, step);
+    if (cleanCode === computedCode) {
+      return true;
     }
-
-    const hmac = new Uint8Array(20);
-    const bufferArray = new Uint8Array(8);
-    bufferArray[0] = (buffer >>> 56) & 0xff;
-    bufferArray[1] = (buffer >>> 48) & 0xff;
-    bufferArray[2] = (buffer >>> 40) & 0xff;
-    bufferArray[3] = (buffer >>> 32) & 0xff;
-    bufferArray[4] = (buffer >>> 24) & 0xff;
-    bufferArray[5] = (buffer >>> 16) & 0xff;
-    bufferArray[6] = (buffer >>> 8) & 0xff;
-    bufferArray[7] = buffer & 0xff;
-
-    // This is a simplified check — in production use a proper HMAC-SHA1 library
-    // For now, we'll use a basic implementation
-    return cleanCode === String((buffer * 1000000 + offset) % 1000000).padStart(6, "0");
   }
   return false;
+}
+
+function base32Decode(base32: string): Uint8Array {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const clean = base32.toUpperCase().replace(/=/g, "");
+  const length = clean.length;
+  const bits = length * 5;
+  const bytes = new Uint8Array(Math.floor(bits / 8));
+  
+  let val = 0;
+  let valBits = 0;
+  let byteIdx = 0;
+  
+  for (let i = 0; i < length; i++) {
+    const char = clean[i];
+    const idx = alphabet.indexOf(char);
+    if (idx === -1) throw new Error("Invalid base32 character");
+    
+    val = (val << 5) | idx;
+    valBits += 5;
+    
+    if (valBits >= 8) {
+      bytes[byteIdx++] = (val >>> (valBits - 8)) & 255;
+      valBits -= 8;
+    }
+  }
+  return bytes;
+}
+
+async function generateHOTP(keyBytes: Uint8Array, step: number): Promise<string> {
+  const msg = new Uint8Array(8);
+  let temp = step;
+  for (let i = 7; i >= 0; i--) {
+    msg[i] = temp & 0xff;
+    temp = temp >>> 8;
+  }
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyBytes as any,
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+
+  const hmacBuffer = await crypto.subtle.sign("HMAC", cryptoKey, msg);
+  const hmac = new Uint8Array(hmacBuffer);
+
+  const offset = hmac[hmac.length - 1] & 0xf;
+  const binary =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+
+  const otp = binary % 1000000;
+  return String(otp).padStart(6, "0");
 }
 
 // Hash a backup code
@@ -97,7 +142,7 @@ export const verifyAndSaveTOTP = createServerFn({ method: "POST" })
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
 
-    if (!verifyTOTP(data.secret, data.code)) {
+    if (!(await verifyTOTP(data.secret, data.code))) {
       return { success: false, message: "Invalid TOTP code" };
     }
 

@@ -1029,22 +1029,37 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
                     className="p-3.5 bg-surface2 border border-border rounded-xl flex flex-col gap-3 shadow-2xs"
                   >
                     <div className="flex justify-between items-center flex-wrap gap-2 select-none">
-                      <span
-                        className={`text-[9px] font-bold uppercase px-2 py-0.5 border rounded-full ${
-                          r.status === "approved"
-                            ? "border-success/30 bg-success/10 text-success"
-                            : r.status === "rejected"
-                              ? "border-error/30 bg-error/10 text-error"
-                              : "border-amber-500/30 bg-amber-500/10 text-amber-400"
-                        }`}
-                      >
-                        {r.status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[9px] font-bold uppercase px-2 py-0.5 border rounded-full ${
+                            r.status === "approved"
+                              ? "border-success/30 bg-success/10 text-success"
+                              : r.status === "rejected"
+                                ? "border-error/30 bg-error/10 text-error"
+                                : "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                          }`}
+                        >
+                          {r.status}
+                        </span>
+                        {r.recommendationType === "archive" && (
+                          <span className="text-[9px] font-bold uppercase px-2 py-0.5 border rounded-full border-red-500/35 bg-red-500/15 text-red-400">
+                            Archive Proposal
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-text-muted font-medium">
                         {new Date(r.createdAt).toLocaleDateString()}
                       </span>
                     </div>
-                    <p className="text-xs text-text font-medium leading-relaxed">"{r.fact}"</p>
+                    <p className="text-xs text-text font-medium leading-relaxed">
+                      {r.recommendationType === "archive" ? (
+                        <span>
+                          Proposing to archive existing memory: <span className="text-red-400 italic">"{r.fact}"</span>
+                        </span>
+                      ) : (
+                        <span>"{r.fact}"</span>
+                      )}
+                    </p>
                     <div className="flex items-center gap-1.5 select-none">
                       <Badge variant={r.category} className="h-4 text-[9px] px-1.5 py-0">
                         {r.category}

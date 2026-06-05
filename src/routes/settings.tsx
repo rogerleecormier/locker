@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { InfoTooltip } from "~/components/InfoTooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
+import { getTOTPStatus, setupTOTP, disableTOTP, verifyAndSaveTOTP } from "~/server/totp";
 import {
   listApiTokens,
   createApiToken,
@@ -11,6 +12,9 @@ import {
   getProfile,
   saveProfile,
   getUserWorkspaces,
+  setDeletionPasscode,
+  removeDeletionPasscode,
+  getPasscodeStatus,
   type ApiTokenPublic,
 } from "~/server/memoryFunctions";
 import { MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE } from "~/db/schema";
@@ -624,51 +628,353 @@ export function McpEndpointSection() {
 }
 
 export function TwoFactorSection() {
-  const { data: totpStatus } = useQuery({ queryKey: ["totp-status"], queryFn: async () => {
-    const response = await fetch("/api/2fa/status");
-    return response.json() as Promise<{ enabled: boolean }>;
-  }});
+  const queryClient = useQueryClient();
+  const [setupData, setSetupData] = useState<{ secret: string; uri: string; backupCodes: string[] } | null>(null);
+  const [code, setCode] = useState("");
+  const [verificationError, setVerificationError] = useState("");
+  const [showBackupCodes, setShowBackupCodes] = useState(false);
+  const [copiedBackup, setCopiedBackup] = useState(false);
+
+  const { data: totpStatus, refetch: refetchStatus } = useQuery({
+    queryKey: ["totp-status"],
+    queryFn: () => getTOTPStatus(),
+  });
 
   const setupMut = useMutation({
-    mutationFn: async () => {
-      const response = await fetch("/api/2fa/setup", { method: "POST" });
-      return response.json();
+    mutationFn: () => setupTOTP(),
+    onSuccess: (data) => {
+      setSetupData(data);
+      setCode("");
+      setVerificationError("");
+      setShowBackupCodes(false);
+    },
+  });
+
+  const verifyMut = useMutation({
+    mutationFn: (vars: { secret: string; code: string; backupCodes: string[] }) =>
+      verifyAndSaveTOTP({ data: vars }),
+    onSuccess: (res) => {
+      if (res.success) {
+        queryClient.invalidateQueries({ queryKey: ["totp-status"] });
+        refetchStatus();
+        setShowBackupCodes(true);
+        setVerificationError("");
+      } else {
+        setVerificationError(res.message || "Invalid verification code.");
+      }
+    },
+    onError: (err: any) => {
+      setVerificationError(err.message || "Failed to verify code.");
     },
   });
 
   const disableMut = useMutation({
-    mutationFn: async () => {
-      const response = await fetch("/api/2fa/disable", { method: "POST" });
-      return response.json();
+    mutationFn: () => disableTOTP(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["totp-status"] });
+      refetchStatus();
+      setSetupData(null);
+      setShowBackupCodes(false);
     },
   });
+
+  const handleVerifySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!setupData) return;
+    if (!/^\d{6}$/.test(code.trim())) {
+      setVerificationError("Verification code must be exactly 6 digits.");
+      return;
+    }
+    verifyMut.mutate({
+      secret: setupData.secret,
+      code: code.trim(),
+      backupCodes: setupData.backupCodes,
+    });
+  };
+
+  const handleCopyBackup = () => {
+    if (!setupData) return;
+    navigator.clipboard.writeText(setupData.backupCodes.join("\n"));
+    setCopiedBackup(true);
+    setTimeout(() => setCopiedBackup(false), 2000);
+  };
 
   return (
     <div className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
       <div>
         <h2 className="text-base font-bold text-text">Two-Factor Authentication</h2>
-        <p className="text-xs text-text-muted mt-0.5 leading-relaxed">Add an extra layer of security to your account</p>
+        <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+          Add an extra layer of security to your account using TOTP.
+        </p>
       </div>
 
       {totpStatus?.enabled ? (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 p-3.5 bg-success/10 border border-success/20 rounded-xl text-success text-xs font-semibold select-none leading-relaxed">
-            <span>✓ Two-factor authentication is enabled on your account</span>
+            <span>✓ Two-factor authentication is enabled on your account.</span>
           </div>
-          <Button variant="ghost" className="bg-error/10 hover:bg-error/20 text-error border border-error/20 hover:border-error/35 mt-1 font-bold text-xs select-none w-fit h-9 px-4" onClick={() => disableMut.mutate()}>
+          <Button
+            variant="ghost"
+            className="bg-error/10 hover:bg-error/20 text-error border border-error/20 hover:border-error/35 mt-1 font-bold text-xs select-none w-fit h-9 px-4"
+            onClick={() => {
+              if (confirm("Are you sure you want to disable 2FA?")) {
+                disableMut.mutate();
+              }
+            }}
+            disabled={disableMut.isPending}
+          >
             Disable 2FA
           </Button>
         </div>
+      ) : setupData ? (
+        showBackupCodes ? (
+          <div className="flex flex-col gap-4 border-t border-border pt-4 animate-in fade-in duration-200">
+            <div className="bg-success/10 border border-success/25 rounded-xl p-4 flex flex-col gap-1.5">
+              <h3 className="text-xs font-bold text-success uppercase tracking-wider">
+                ✓ 2FA Enabled Successfully!
+              </h3>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Save your backup codes. You will need them if you lose access to your authenticator app.
+              </p>
+            </div>
+
+            <div className="bg-surface2 border border-border rounded-xl p-4 flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-2.5 font-mono text-xs text-text select-all">
+                {setupData.backupCodes.map((code, idx) => (
+                  <div key={idx} className="flex gap-1.5 items-center">
+                    <span className="text-[10px] text-text-muted">{idx + 1}.</span>
+                    <span>{code}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between items-center gap-3 border-t border-border pt-3 mt-1.5">
+                <Button
+                  onClick={handleCopyBackup}
+                  variant="outline"
+                  className="h-8 text-xs font-semibold"
+                >
+                  {copiedBackup ? "✓ Copied" : "Copy All Codes"}
+                </Button>
+                <Button
+                  onClick={() => setSetupData(null)}
+                  className="h-8 text-xs font-bold"
+                >
+                  Finished
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4 border-t border-border pt-4 animate-in fade-in duration-200">
+            <h3 className="text-xs font-bold text-text uppercase tracking-wider">
+              Setup Authenticator
+            </h3>
+            
+            <div className="flex flex-col md:flex-row gap-5 items-start">
+              <div className="flex-1 flex flex-col gap-3">
+                <p className="text-xs text-text-muted leading-relaxed">
+                  Scan the QR code with your authenticator app, or manually enter the secret key shown below:
+                </p>
+                <div className="bg-surface2 border border-border rounded-xl p-3.5 flex flex-col gap-2 shadow-3xs">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[9px] uppercase font-bold text-text-muted">Secret Key</span>
+                    <code className="text-accent text-xs font-mono select-all tracking-wider break-all">{setupData.secret}</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleVerifySubmit} className="flex flex-col gap-3 border-t border-border pt-4">
+              <div className="flex flex-col gap-1.5 max-w-[240px]">
+                <Label htmlFor="verification-code" className="text-[10px]">
+                  Verification Code
+                </Label>
+                <Input
+                  id="verification-code"
+                  type="text"
+                  placeholder="Enter 6-digit code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="h-9 text-xs font-mono"
+                  maxLength={6}
+                />
+              </div>
+
+              {verificationError && (
+                <p className="text-xs text-error font-medium">{verificationError}</p>
+              )}
+
+              <div className="flex gap-2.5 select-none">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSetupData(null)}
+                  className="h-9 text-xs font-semibold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={verifyMut.isPending || code.length !== 6}
+                  className="h-9 text-xs font-bold"
+                >
+                  {verifyMut.isPending ? "Verifying..." : "Verify & Enable"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        )
       ) : (
         <div className="flex flex-col gap-3">
           <div className="flex items-start gap-2.5 bg-accent/5 border border-accent/20 rounded-xl p-3.5 text-xs text-text-muted leading-relaxed select-none">
             <span>Enable TOTP-based 2FA using an authenticator app like Authy, Google Authenticator, or Microsoft Authenticator.</span>
           </div>
-          <Button className="mt-1 font-bold text-xs select-none w-fit h-9 px-4" onClick={() => setupMut.mutate()}>
-            Set Up 2FA
+          <Button
+            className="mt-1 font-bold text-xs select-none w-fit h-9 px-4"
+            onClick={() => setupMut.mutate()}
+            disabled={setupMut.isPending}
+          >
+            {setupMut.isPending ? "Setting up..." : "Set Up 2FA"}
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+export function PasscodeSection() {
+  const queryClient = useQueryClient();
+  const [passcode, setPasscode] = useState("");
+  const [confirmPasscode, setConfirmPasscode] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+
+  const { data: status } = useQuery({
+    queryKey: ["passcode-status"],
+    queryFn: () => getPasscodeStatus(),
+  });
+
+  const setMut = useMutation({
+    mutationFn: (p: string) => setDeletionPasscode({ data: { passcode: p } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["passcode-status"] });
+      setPasscode("");
+      setConfirmPasscode("");
+      setErrorMsg("");
+      setSuccessMsg("Deletion passcode successfully updated!");
+      setTimeout(() => setSuccessMsg(""), 5000);
+    },
+    onError: (err: any) => {
+      setErrorMsg(err.message || "Failed to set passcode.");
+    },
+  });
+
+  const removeMut = useMutation({
+    mutationFn: () => removeDeletionPasscode(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["passcode-status"] });
+      setErrorMsg("");
+      setSuccessMsg("Deletion passcode successfully removed.");
+      setTimeout(() => setSuccessMsg(""), 5000);
+    },
+    onError: (err: any) => {
+      setErrorMsg(err.message || "Failed to remove passcode.");
+    },
+  });
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passcode.length < 4 || passcode.length > 32) {
+      setErrorMsg("Passcode must be between 4 and 32 characters long.");
+      return;
+    }
+    if (passcode !== confirmPasscode) {
+      setErrorMsg("Passcodes do not match.");
+      return;
+    }
+    setMut.mutate(passcode);
+  };
+
+  return (
+    <div className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-xs">
+      <div>
+        <h2 className="text-base font-bold text-text">Deletion & Write Passcode</h2>
+        <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+          Require a passcode for modifying or deleting memories via MCP when 2FA is inactive.
+        </p>
+      </div>
+
+      {status?.enabled ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 p-3.5 bg-success/10 border border-success/20 rounded-xl text-success text-xs font-semibold select-none leading-relaxed">
+            <span>✓ A static passcode is active for destructive operations.</span>
+          </div>
+          <Button
+            variant="ghost"
+            className="bg-error/10 hover:bg-error/20 text-error border border-error/20 hover:border-error/35 mt-1 font-bold text-xs select-none w-fit h-9 px-4 animate-in fade-in duration-150"
+            onClick={() => {
+              if (confirm("Are you sure you want to disable passcode protection? Your MCP write operations will no longer require validation (unless 2FA is active).")) {
+                removeMut.mutate();
+              }
+            }}
+            disabled={removeMut.isPending}
+          >
+            Remove Passcode
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 animate-in fade-in duration-150">
+          <div className="flex items-start gap-2.5 bg-accent/5 border border-accent/20 rounded-xl p-3.5 text-xs text-text-muted leading-relaxed select-none">
+            <span>No passcode is set. Modifying or deleting memories via MCP will only require simple confirmation.</span>
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleSave} className="border-t border-border pt-4 flex flex-col gap-3.5 mt-1">
+        <h3 className="text-xs font-bold text-text uppercase tracking-wider select-none">
+          {status?.enabled ? "Update Passcode" : "Set Deletion Passcode"}
+        </h3>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-passcode" className="text-[10px]">
+              New Passcode
+            </Label>
+            <Input
+              id="new-passcode"
+              type="password"
+              placeholder="Enter passcode"
+              value={passcode}
+              onChange={(e) => setPasscode(e.target.value)}
+              className="h-9 text-xs"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="confirm-passcode" className="text-[10px]">
+              Confirm Passcode
+            </Label>
+            <Input
+              id="confirm-passcode"
+              type="password"
+              placeholder="Re-enter passcode"
+              value={confirmPasscode}
+              onChange={(e) => setConfirmPasscode(e.target.value)}
+              className="h-9 text-xs"
+            />
+          </div>
+        </div>
+
+        {errorMsg && <p className="text-xs text-error font-medium">{errorMsg}</p>}
+        {successMsg && <p className="text-xs text-success font-medium">{successMsg}</p>}
+
+        <Button
+          type="submit"
+          disabled={setMut.isPending || !passcode || !confirmPasscode}
+          className="mt-1 font-bold text-xs select-none w-fit h-9 px-4"
+        >
+          {setMut.isPending ? "Updating..." : "Save Passcode"}
+        </Button>
+      </form>
     </div>
   );
 }
@@ -800,7 +1106,12 @@ function SettingsPage() {
 
         <div>
           {tab === "profile" && <ProfileSection />}
-          {tab === "security" && <TwoFactorSection />}
+          {tab === "security" && (
+            <div className="flex flex-col gap-6">
+              <TwoFactorSection />
+              <PasscodeSection />
+            </div>
+          )}
           {tab === "sessions" && <SessionsSection />}
           {tab === "tokens" && <ApiTokensSection />}
           {tab === "mcp" && <McpEndpointSection />}

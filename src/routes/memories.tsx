@@ -13,6 +13,8 @@ import {
   getMemoryUsageStats,
   archiveMemory,
   deleteMemory,
+  listPersonalMemoryRecommendations,
+  reviewMemoryRecommendation,
 } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 import { PageContainer } from "~/components/PageContainer";
@@ -1139,6 +1141,23 @@ function Dashboard() {
     enabled: projectKey === "personal",
   });
 
+  const { data: personalRecommendations = [], refetch: refetchRecs } = useQuery({
+    queryKey: ["personal-recommendations"],
+    queryFn: () => listPersonalMemoryRecommendations(),
+    enabled: projectKey === "personal",
+  });
+
+  const reviewRecMut = useMutation({
+    mutationFn: (data: { id: string; action: "approve" | "reject"; reviewNotes?: string }) =>
+      reviewMemoryRecommendation({ data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["personal-recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      refetchRecs();
+      refetch();
+    },
+  });
+
   const totalByCategory = useMemo(() => {
     const counts: Record<string, number> = { stack: 0, rules: 0, projects: 0, references: 0 };
     for (const m of memories) {
@@ -1250,6 +1269,61 @@ function Dashboard() {
       </PageHeader>
 
       <PageContainer>
+        {/* Conflict Review Banner */}
+        {projectKey === "personal" && personalRecommendations.length > 0 && (
+          <div className="mb-6 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-2xl p-5 md:p-6 shadow-sm flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 duration-200">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 text-lg">
+                  ⚠️
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-text">Conflicting Memories Detected</h3>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Locker has identified memories that contradict new information. Review and approve archiving them.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3.5 mt-1">
+              {personalRecommendations.map((r: any) => (
+                <div
+                  key={r.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-surface/50 backdrop-blur-xs border border-border rounded-xl hover:border-amber-500/30 transition-all"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-text font-medium leading-relaxed">
+                      Proposing to archive: <span className="text-red-400 italic">"{r.fact}"</span>
+                    </p>
+                    {r.reviewNotes && (
+                      <p className="text-[10px] text-text-muted mt-1.5 flex items-center gap-1">
+                        <span className="font-bold text-amber-500/80">Reason:</span> {r.reviewNotes}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2.5 self-end sm:self-auto select-none">
+                    <Button
+                      onClick={() => reviewRecMut.mutate({ id: r.id, action: "reject" })}
+                      disabled={reviewRecMut.isPending}
+                      variant="outline"
+                      className="h-8 text-[11px] px-3 font-semibold bg-surface hover:bg-surface-hover text-text-muted hover:text-text border-border"
+                    >
+                      Keep Active
+                    </Button>
+                    <Button
+                      onClick={() => reviewRecMut.mutate({ id: r.id, action: "approve" })}
+                      disabled={reviewRecMut.isPending}
+                      className="h-8 text-[11px] px-3 font-bold bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 text-amber-400"
+                    >
+                      Approve Archive
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {/* Onboarding block */}
         {memories.length === 0 && showOnboarding && (
           <div className="bg-gradient-to-br from-accent/8 to-accent/4 border border-accent/25 rounded-2xl p-5 md:p-6 relative flex items-start justify-between gap-4 animate-in fade-in zoom-in duration-200">

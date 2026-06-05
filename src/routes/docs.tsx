@@ -1017,257 +1017,388 @@ Authorization = "Bearer lkr_your_token_here"`,
       case "overview":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>System Overview</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>System Overview</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
               Locker is a secure, long-term personal and team memory vault built for artificial intelligence workflows. 
               It provides a standardized, encrypted location for AI clients to store and retrieve technical context, 
               coding rules, team preferences, and project specifications.
             </p>
             
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 32 }}>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                  ⚡ Hybrid Retrieval
-                </h3>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 32 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 18 }}>⚡</span>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>
+                    Hybrid Retrieval Engine
+                  </h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
                   Powered by Cloudflare Vectorize and SQLite. Combines semantic vector search and exact token/substring matches via Reciprocal Rank Fusion (RRF) to ensure high-accuracy conceptual matches without missing specific keyword tokens.
                 </p>
               </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                  🔒 End-to-End Encrypted
-                </h3>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-                  All memory data is encrypted using AES-256-GCM prior to database insertion. Decryption keys remain strictly inside the edge worker process.
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 18 }}>🔒</span>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>
+                    End-to-End Encrypted
+                  </h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  All memory data is encrypted using AES-256-GCM prior to database insertion. Decryption keys remain strictly inside the edge worker process, offering complete zero-plaintext guarantees.
                 </p>
               </div>
             </div>
 
             <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>Key Features & Workflows</h3>
             
-            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 32 }}>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
-                <h4 style={{ margin: "0 0 4px 0", fontSize: 14, fontWeight: 600, color: "var(--text)" }}>🧠 Memory Ingestion & Management</h4>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginBottom: 32 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>🧠</span> Memory Ingestion & Management
+                </h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.6 }}>
                   Create, update, and manage long-term facts either through the visual browser-based dashboard or directly via connected LLMs using programmatic MCP interfaces. Suggest new rules during conversation sessions and approve them in the recommendations queue.
                 </p>
-                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
-                  <button onClick={() => setActiveSection("managing-memories")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
+                  <button onClick={() => setActiveSection("managing-memories")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
                     Manage Memories Guide →
                   </button>
                   <span style={{ color: "var(--border)" }}>|</span>
-                  <button onClick={() => setActiveSection("import-memories")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
-                    Import & Ingestion Prompt Guide →
+                  <button onClick={() => setActiveSection("import-memories")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
+                    Import & Ingestion Guide →
                   </button>
                 </div>
               </div>
 
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
-                <h4 style={{ margin: "0 0 4px 0", fontSize: 14, fontWeight: 600, color: "var(--text)" }}>🛠️ Tech Stack Blueprinting</h4>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>🛠️</span> Tech Stack Blueprinting
+                </h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.6 }}>
                   Build custom constraints for 12 technology stack categories (Languages, Frameworks, DBs, ORMs, styling strategy) using the Stack Creator wizard. Save standard profiles as reusable templates to skip regenerations and maintain consistency.
                 </p>
-                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
-                  <button onClick={() => setActiveSection("stack-creator")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
+                  <button onClick={() => setActiveSection("stack-creator")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
                     Tech Stack Creator Guide →
                   </button>
                   <span style={{ color: "var(--border)" }}>|</span>
-                  <button onClick={() => setActiveSection("templates")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                  <button onClick={() => setActiveSection("templates")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
                     Blueprint Templates Guide →
                   </button>
                 </div>
               </div>
 
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
-                <h4 style={{ margin: "0 0 4px 0", fontSize: 14, fontWeight: 600, color: "var(--text)" }}>💾 Multi-Agent Rule Compilation</h4>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>💾</span> Multi-Agent Rule Compilation
+                </h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.6 }}>
                   Translate stored technical guidelines into formatted instructions for specific AI developer agents. Downloads are supported in the UI for CLAUDE.md, .cursorrules, copilot-instructions.md, GEMINI.md, AGENTS.md, and .agents/rules/rules.md. Synchronize files automatically inside local project directories via MCP.
                 </p>
-                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
-                  <button onClick={() => setActiveSection("export-rules")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
+                  <button onClick={() => setActiveSection("export-rules")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
                     Rules Exporting & Sync Guide →
                   </button>
                 </div>
               </div>
 
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
-                <h4 style={{ margin: "0 0 4px 0", fontSize: 14, fontWeight: 600, color: "var(--text)" }}>👥 Team Governance & Security</h4>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>👥</span> Team Governance & Security
+                </h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.6 }}>
                   Leverage Organization settings to govern billing seats, isolate sub-teams, and restrict scoped memories to specific project workspace keys. Locker enforces a strict security protocol, ephemeral V8 Workers sandboxing, and cryptographically hashed tokens.
                 </p>
-                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
-                  <button onClick={() => setActiveSection("team-collaboration")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
+                  <button onClick={() => setActiveSection("team-collaboration")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
                     Team Collaboration Guide →
                   </button>
                   <span style={{ color: "var(--border)" }}>|</span>
-                  <button onClick={() => setActiveSection("security-privacy")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+                  <button onClick={() => setActiveSection("security-privacy")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
                     Security Architecture & Pillars →
                   </button>
                 </div>
               </div>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Core Security Model</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-              All database items are encrypted using AES-256-GCM. Relational queries, D1 logs, and semantic vector database indices are fully anonymized. Read/write capabilities are regulated via cryptographically signed API token scopes, allowing developers to safely hook up external clients such as Claude, ChatGPT, Cursor, and Gemini.
-            </p>
+            <div style={{ background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.15)", borderRadius: 12, padding: 18 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                🛡️ Core Security Model
+              </h3>
+              <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                All database items are encrypted using AES-256-GCM. Relational queries, D1 logs, and semantic vector database indices are fully anonymized. Read/write capabilities are regulated via cryptographically signed API token scopes, allowing developers to safely hook up external clients such as Claude, ChatGPT, Cursor, and Gemini.
+              </p>
+            </div>
           </div>
         );
       case "connection-auth":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Connection & Authentication</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Connection & Authentication</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
               To connect an external AI model or development assistant to Locker, you must supply the Model Context Protocol (MCP) endpoint address and a cryptographically signed API token.
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
-                    MCP Endpoint Endpoint Address
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 32 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                    🔌 MCP Endpoint Address
                   </span>
                   <button
                     onClick={() => handleCopy(`${origin}/api/mcp`)}
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 4,
-                      padding: "2px 8px",
-                      background: "transparent",
-                      border: "none",
-                      color: "var(--accent)",
+                      gap: 6,
+                      padding: "4px 10px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
                       fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: 6,
                       cursor: "pointer",
+                      transition: "all 0.15s ease",
                     }}
                   >
-                    <CopyIcon size={11} /> Copy
+                    <CopyIcon size={11} /> Copy Address
                   </button>
                 </div>
-                <code style={{ display: "block", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text)", overflow: "auto" }}>
+                <code style={{ display: "block", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontFamily: "monospace", fontSize: 12, color: "var(--text)", overflowX: "auto", whiteSpace: "nowrap" }}>
                   {origin}/api/mcp
                 </code>
               </div>
 
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
-                    HTTP Authentication Header
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                    🔑 HTTP Authentication Header
                   </span>
                   <button
                     onClick={() => handleCopy("Authorization: Bearer <your-api-token>")}
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 4,
-                      padding: "2px 8px",
-                      background: "transparent",
-                      border: "none",
-                      color: "var(--accent)",
+                      gap: 6,
+                      padding: "4px 10px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
                       fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: 6,
                       cursor: "pointer",
+                      transition: "all 0.15s ease",
                     }}
                   >
-                    <CopyIcon size={11} /> Copy
+                    <CopyIcon size={11} /> Copy Header
                   </button>
                 </div>
-                <code style={{ display: "block", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text)", overflow: "auto" }}>
+                <code style={{ display: "block", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontFamily: "monospace", fontSize: 12, color: "var(--text)", overflowX: "auto", whiteSpace: "nowrap" }}>
                   Authorization: Bearer &lt;your-api-token&gt;
                 </code>
               </div>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginTop: 28, marginBottom: 12 }}>Obtaining an API Token</h3>
-            <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, display: "flex", flexDirection: "column", gap: 6 }}>
-              <li>Navigate to the <strong>Admin</strong> page from the top navigation bar.</li>
-              <li>Under the personal settings sidebar, click <strong>API Tokens</strong>.</li>
-              <li>Click the <strong>Generate Token</strong> button. Give the token a name (e.g., <code>Claude Desktop</code>) and select the specific scopes it is authorized to call (such as <code>recall_context</code> or <code>commit_memory</code>).</li>
-            </ol>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Obtaining an API Token</h3>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+              {[
+                { step: "1", text: "Navigate to the Admin page from the top navigation bar." },
+                { step: "2", text: "Under the personal settings sidebar, click API Tokens." },
+                { step: "3", text: "Click the Generate Token button. Give the token a descriptive name (e.g., 'Claude Desktop') and select the specific scopes it is authorized to call (such as 'recall_context' or 'commit_memory')." }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                </div>
+              ))}
+            </div>
           </div>
         );
       case "security-privacy":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Security & Privacy</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-              Locker is built on a zero-compromise security model designed to safeguard sensitive tech stack architecture, corporate code guidelines, and personal context. Our architecture isolates, encrypts, and audits every layer of data interaction.
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: 11, background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", borderRadius: 20, padding: "2px 10px", fontWeight: 600 }}>
+                🛡️ Zero-Trust Security Architecture
+              </span>
+              <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 20, padding: "2px 10px", fontWeight: 600 }}>
+                v2.1 Enabled
+              </span>
+            </div>
+            
+            <h2 style={{ fontSize: 28, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Security & Privacy Guide</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 15, lineHeight: 1.6, marginBottom: 28 }}>
+              Locker operates on a zero-compromise security model designed to safeguard sensitive tech stack architecture, corporate code guidelines, and personal context. Our edge-native infrastructure isolates, encrypts, and audits every layer of data interaction.
             </p>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>1. Zero-Plaintext Storage (AES-256-GCM)</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-              All memory contents, negative constraints, and custom instructions are encrypted before database insertion:
-            </p>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li><strong>Secure Server-Side Keys:</strong> Decryption keys reside strictly inside the Edge Worker environment variables and are never sent to front-end clients or logged.</li>
-              <li><strong>Encrypted Backups:</strong> Database logs, D1 transaction records, and system backups store only cipher text. If backup assets are ever leaked, they remain completely unreadable without the runtime keys.</li>
-            </ul>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+              gap: 20,
+              marginBottom: 32
+            }}>
+              {/* Card 1: Zero-Knowledge Envelope Encryption */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>🔑</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>AES-256-GCM Envelope Encryption</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  All memory contents, tech stack profiles, and templates are encrypted prior to database insertion:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>HKDF Key Derivation:</strong> Per-vault encryption keys are derived dynamically using HKDF with client-specific context and a secure server-side master key.</li>
+                  <li><strong>Memory-Only Key Scope:</strong> Decryption keys reside strictly in ephemeral runtime worker environment memory and are never sent to frontend clients or logged.</li>
+                  <li><strong>Encrypted Backups:</strong> Database logs, D1 transaction snapshots, and storage backups consist exclusively of ciphertext.</li>
+                </ul>
+              </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>2. Isolated V8 Sandbox (Cloudflare Workers)</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-              Locker operates on Cloudflare's serverless Edge runtime:
-            </p>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li><strong>No Long-Lived Servers:</strong> Code execution occurs in isolated ephemeral V8 sandboxes. This prevents classic persistent server hijacks, root directory traversal hacks, and daemon level exploits.</li>
-              <li><strong>Zero Cold Starts:</strong> Request sandboxes spin up globally in under 5 milliseconds, ensuring swift execution and closing windows of attack.</li>
-            </ul>
+              {/* Card 2: SQLite Relational Boundaries & Triggers */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>🛡️</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Relational Boundaries & SQLite Triggers</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  Isolation is enforced deep inside the SQLite engine to guarantee absolute separation of user and organizational domains:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>SQLite Condition Triggers:</strong> Active database-level triggers strictly govern data insertion and updates, preventing scope mismatch.</li>
+                  <li><strong>Multi-Tenant Isolation:</strong> Structured <code>scopeType</code> (<code>personal</code>, <code>organization</code>, <code>team</code>) acts as a cryptographic boundary.</li>
+                  <li><strong>Foreign Key Protection:</strong> Destructive operations or queries attempting to leak records across scopes are immediately blocked at the database engine layer.</li>
+                </ul>
+              </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>3. Cryptographic API Token Scopes</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-              External AI developer agents authenticate using secure token strings prefixed with <code>lkr_</code>:
-            </p>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li><strong>SHA-256 Hashing:</strong> Token strings are cryptographically hashed using SHA-256 for validation.</li>
-              <li><strong>Granular Permissions:</strong> Access tokens enforce strict permissions (e.g. read-only clients are barred from performing mutations).</li>
-              <li><strong>Workspace Scoping:</strong> Tokens can be locked down to a single project key. Even if a token is compromised, the leak is contained to that repository.</li>
-            </ul>
+              {/* Card 3: Web Crypto TOTP 2FA */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>📲</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Web Crypto TOTP Two-Factor Auth</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  Secure destructive or administrative operations via programmatic multi-factor authorization:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>RFC 6238 Standard:</strong> Code generation and validation is performed using high-speed Web Crypto HMAC-SHA1 at the edge.</li>
+                  <li><strong>MFA for MCP:</strong> Destructive client tools (delete or update memory) require a valid 6-digit TOTP code when 2FA is active.</li>
+                  <li><strong>Setup & Backup:</strong> Setup via settings wizard with generated secret keys, QR validation verification, and download-capable recovery keys.</li>
+                </ul>
+              </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>4. Safe Semantic Indexing</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-              Our vector search implementation ensures no plain text is exposed to indexing databases:
-            </p>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li><strong>Index Anonymization:</strong> Cloudflare Vectorize indices are mapped using anonymized UUID hashes.</li>
-              <li><strong>Decryption at the Edge:</strong> The vector database resolves query matches and returns indexes. Text decryption occurs exclusively inside the Edge Worker after validation, returning plain text only to the authenticated client request.</li>
-            </ul>
+              {/* Card 4: MCP Passcode Safeguards */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>🔑</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>MCP Deletion & Write Passcode</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  A static passcode protection layer securing programmatic endpoints from rogue or runaway AI requests:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>Fallback Protection:</strong> When 2FA is inactive, write or delete actions executed via MCP are blocked unless the correct passcode is supplied.</li>
+                  <li><strong>Cryptographic Hashing:</strong> Passcodes are stored and matched using secure hash algorithms (<code>users.writePasscodeHash</code>).</li>
+                  <li><strong>Explicit Confirmation:</strong> Requires setting the <code>confirm === true</code> parameter alongside the valid passcode credential.</li>
+                </ul>
+              </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>5. Enterprise Audit Trails</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-              Track access and administrative mutations:
-            </p>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li><strong>Administrative Logs:</strong> Locker logs token generation, subscription updates, role modifications, and organization changes.</li>
-              <li><strong>Usage Auditing:</strong> Each remote MCP tool call records the timestamp, IP address, and browser User Agent to log exactly who accessed which scopes.</li>
-            </ul>
+              {/* Card 5: Moderated Conflict Resolution */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>📝</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>User-Moderated Conflict Reviews</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  Halts silent automated updates to prevent memory corruption and LLM hallucination overrides:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>Recommendation Queue:</strong> Conflicting facts or proposed modifications are diverted to a review queue (<code>memoryRecommendations</code>).</li>
+                  <li><strong>Visual Conflict UI:</strong> Conflict review banners and cards allow users to compare, approve, or reject suggestions.</li>
+                  <li><strong>No Silent Archiving:</strong> Inferred contradictions trigger an active notification instead of silently overwriting historical context.</li>
+                </ul>
+              </div>
+
+              {/* Card 6: V8 Sandboxing & Session Audits */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>⚙️</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>V8 Ephemeral Sandboxing & Auditing</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  Advanced tracking and runtime isolation shield the application and trace its execution:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>V8 Ephemeral Sandbox:</strong> Runtime execution is sandboxed in Cloudflare Worker processes, shutting down attack surfaces.</li>
+                  <li><strong>Enterprise Audit Trails:</strong> Every MCP call or administrative modification logs the timestamp, IP address, user-agent, and target scope.</li>
+                  <li><strong>Session Management:</strong> Users can inspect and revoke active sessions directly from the Sessions settings panel.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div style={{
+              background: "rgba(168, 85, 247, 0.05)",
+              border: "1px solid rgba(168, 85, 247, 0.15)",
+              borderRadius: "12px",
+              padding: "16px",
+              fontSize: "13px",
+              color: "var(--text-muted)",
+              lineHeight: "1.6",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+            }}>
+              <span style={{ fontSize: 20 }}>💡</span>
+              <span>
+                <strong>Need to configure your security?</strong> Head over to the <strong>Admin → Security</strong> tab in the navigation bar to enable Time-Based 2FA, set a deletion passcode, or audit active login sessions.
+              </span>
+            </div>
           </div>
         );
       case "import-memories":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Importing & Migrating</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-              Migrating your personal context, rules, and inferred preferences from existing platforms is a simple two-step process in Locker. You can copy custom extraction prompts for major LLMs and batch ingest them using our AI parsing tool.
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Importing & Migrating</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              Migrating your personal context, rules, and inferred preferences from existing platforms is a simple two-step process in Locker. Use our custom extraction prompts for major LLMs and batch ingest them using our AI parsing tool.
             </p>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Workflow</h3>
-            <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li>Open the <strong>Import</strong> tab in the navigation bar.</li>
-              <li>Select your source platform (ChatGPT, Claude, Perplexity, Gemini, Grok, or Microsoft Copilot).</li>
-              <li>Locker displays a custom prompt tailored to extract that chatbot's internal memory store and custom instructions. Click <strong>Copy Prompt</strong> (or <strong>Deep Link Search</strong>).</li>
-              <li>Paste the prompt into your chat session with that LLM. The AI will output all its saved memories and inferred preferences in a structured code block.</li>
-              <li>Paste the output code block into the Locker import panel and select a project workspace scope.</li>
-              <li>Click <strong>Parse with AI</strong>. Locker will automatically deduplicate, categorize (rules, projects, or references), and tag the raw dump.</li>
-              <li>Verify the parsed facts on screen and click <strong>Batch Import Memories</strong> to encrypt and save them.</li>
-            </ol>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Migration Workflow</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 32 }}>
+              {[
+                { step: "1", text: "Open the Import tab in the top navigation bar." },
+                { step: "2", text: "Select your source platform (ChatGPT, Claude, Perplexity, Gemini, Grok, or Microsoft Copilot)." },
+                { step: "3", text: "Locker displays a custom prompt tailored to extract that chatbot's internal memory store. Click Copy Prompt." },
+                { step: "4", text: "Paste the prompt into your chat session with that LLM. The AI will output all its saved memories and inferred preferences in a structured JSON/markdown code block." },
+                { step: "5", text: "Paste the output code block into the Locker import panel and select a project workspace scope." },
+                { step: "6", text: "Click Parse with AI. Locker will automatically deduplicate, categorize (rules, projects, or references), and tag the raw dump." },
+                { step: "7", text: "Verify the parsed facts on screen and click Batch Import Memories to encrypt and save them." }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                </div>
+              ))}
+            </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Supported Platforms</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 14 }}>
-                <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>ChatGPT & Claude</h4>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>Extracts both explicit saved memory slots, custom system instructions, and implicit behavioral inferences.</p>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Supported Platforms</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>🤖 ChatGPT & Claude</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>Extracts both explicit saved memory slots, custom system instructions, and implicit behavioral inferences.</p>
               </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 14 }}>
-                <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Perplexity & Gemini</h4>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>Pulls details from Perplexity personalization slots and Gemini "Saved Info" panels verbatim.</p>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>🔍 Perplexity & Gemini</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>Pulls details from Perplexity personalization slots and Gemini "Saved Info" panels verbatim.</p>
               </div>
             </div>
           </div>
@@ -1275,346 +1406,804 @@ Authorization = "Bearer lkr_your_token_here"`,
       case "team-collaboration":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Team Collaboration</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Team Collaboration</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
               Establish shared coding standards and stack specifications for your entire development team. Group members, assign roles, and connect shared workspace keys to eliminate drift across local developer environments.
             </p>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Organizations & Teams</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-              Locker enforces clean hierarchical boundaries to govern shared memories:
-            </p>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li><strong>Organizations:</strong> Billing hubs that manage member seat allocations, subscription quotas, and general workspace keys.</li>
-              <li><strong>Teams:</strong> Granular sub-groups (e.g. <code>frontend-team</code>, <code>devops-team</code>). You can restrict memory blocks or project scopes to specific teams so developers only receive context relevant to their work.</li>
-            </ul>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 32 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)", margin: "0 0 8px 0" }}>🏢 Organizations</h3>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Billing hubs that manage member seat allocations, subscription quotas, and general workspace keys. Enforces strict administrative boundaries.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)", margin: "0 0 8px 0" }}>👥 Teams</h3>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Granular sub-groups (e.g. <code>frontend-team</code>, <code>devops-team</code>). Restrict memory blocks or project scopes to specific teams so developers only receive relevant context.
+                </p>
+              </div>
+            </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>User Roles & Governance</h3>
-            <div style={{ overflowX: "auto", marginBottom: 24 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>User Roles & Governance</h3>
+            <div style={{ 
+              border: "1px solid var(--border)", 
+              borderRadius: 12, 
+              overflow: "hidden", 
+              background: "var(--surface2)", 
+              marginBottom: 32,
+              width: "100%",
+              overflowX: "auto"
+            }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left", minWidth: 500 }}>
                 <thead>
-                  <tr style={{ borderBottom: "2px solid var(--border)" }}>
-                    <th style={{ padding: "8px 12px", color: "var(--text)" }}>Role</th>
-                    <th style={{ padding: "8px 12px", color: "var(--text)" }}>Permissions & Access Boundaries</th>
+                  <tr style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Role</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Permissions & Access Boundaries</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "10px 12px", fontWeight: "bold", color: "var(--accent)" }}>Owner</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)", lineHeight: 1.5 }}>Full billing control, seat upgrades, organization deletion, role modification, and member pruning.</td>
+                    <td style={{ padding: "14px 16px", fontWeight: "bold", color: "var(--accent)" }}>Owner</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.5 }}>Full billing control, seat upgrades, organization deletion, role modification, and member pruning.</td>
                   </tr>
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "10px 12px", fontWeight: "bold", color: "var(--accent)" }}>Admin</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)", lineHeight: 1.5 }}>Create teams, issue email invitations, delete/update shared organization memories, and edit general team lists.</td>
+                    <td style={{ padding: "14px 16px", fontWeight: "bold", color: "var(--accent)" }}>Admin</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.5 }}>Create teams, issue email invitations, delete/update shared organization memories, and edit general team lists.</td>
                   </tr>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "10px 12px", fontWeight: "bold", color: "var(--text)" }}>Member</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)", lineHeight: 1.5 }}>Read-only access or read-write access to specific scoped memory cards based on team memberships.</td>
+                  <tr>
+                    <td style={{ padding: "14px 16px", fontWeight: "bold", color: "var(--text)" }}>Member</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.5 }}>Read-only access or read-write access to specific scoped memory cards based on team memberships.</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Inviting Members</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-              Owners and Admins can invite new developers from the <strong>Organization</strong> view by typing their email. Locker generates a cryptographically signed magic link valid for 48 hours and sends an invitation email using Cloudflare's built-in Email Worker bindings.
-            </p>
+            <div style={{ background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.15)", borderRadius: 12, padding: 18 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                📩 Inviting Members
+              </h3>
+              <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                Owners and Admins can invite new developers from the <strong>Organization</strong> view by typing their email. Locker generates a cryptographically signed magic link valid for 48 hours and sends an invitation email using Cloudflare's built-in Email Worker bindings.
+              </p>
+            </div>
           </div>
         );
       case "managing-memories":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Managing Memories</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Managing Memories</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
               Locker provides a flexible interface for managing your long-term memory vault. Memories can be created, updated, and purged either through the browser-based dashboard or directly by connected AI developer tools using Model Context Protocol (MCP).
             </p>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Managing Memories in the UI</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-              The <strong>Vault</strong> dashboard displays all your current saved memories, categorized and searchable:
-            </p>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li><strong>Creating Memories:</strong> Click the <strong>New Memory</strong> button at the top right of the dashboard. Select a Category (Rules, Projects, or References), write the Fact text, add custom tags, and optionally associate it with a specific <strong>Project Workspace</strong> key to isolate instructions.</li>
-              <li><strong>Editing & Deleting:</strong> Click the edit (pencil) icon on any memory card to modify its fields, or the delete icon to remove it. When you edit or delete a memory, Locker automatically updates the underlying SQL relational database and recalculates the semantic embeddings on Cloudflare Vectorize.</li>
-              <li><strong>Queue Approval Workflow:</strong> Connected AI agents can suggest new rules or project details during coding sessions. Proposed memories go into the <strong>Recommendations Queue</strong>. You must log in and click <strong>Approve</strong> to persist these into long-term storage, or <strong>Reject</strong> to discard them, giving you complete oversight of your vault.</li>
-            </ul>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Managing Memories in the UI</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginBottom: 32 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
+                <strong style={{ display: "block", color: "var(--text)", marginBottom: 4 }}>🧠 Creating Memories</strong>
+                <span style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  Click the <strong>New Memory</strong> button at the top right of the dashboard. Select a Category (Rules, Projects, or References), write the Fact text, add custom tags, and optionally associate it with a specific <strong>Project Workspace</strong> key to isolate instructions.
+                </span>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
+                <strong style={{ display: "block", color: "var(--text)", marginBottom: 4 }}>✏️ Editing & Deleting</strong>
+                <span style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  Click the edit (pencil) icon on any memory card to modify its fields, or the delete icon to remove it. Locker automatically updates the underlying SQL database and recalculates the semantic embeddings on Cloudflare Vectorize.
+                </span>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
+                <strong style={{ display: "block", color: "var(--text)", marginBottom: 4 }}>🚦 Queue Approval Workflow</strong>
+                <span style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  Connected AI agents can suggest new rules or project details during coding sessions. Proposed memories go into the <strong>Recommendations Queue</strong>. You must log in and click <strong>Approve</strong> to persist these into long-term storage, or <strong>Reject</strong> to discard them.
+                </span>
+              </div>
+            </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Programmatic Management via MCP</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Programmatic Management via MCP</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 16 }}>
               Locker exposes secure endpoints for AI models to retrieve and mutate memories in real time. Connected developer agents utilize these JSON-RPC commands behind the scenes:
             </p>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li><strong>Reading Context:</strong> Models call <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>recall_context</button> for hybrid semantic and keyword search (utilizing Reciprocal Rank Fusion of vector and exact keyword/token matches) and <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>search_memories</button> for exact tag/keyword scans.</li>
-              <li><strong>Mutating Store:</strong> Models use <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>commit_memory</button> to suggest facts, <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>update_memory</button> to refine facts, and <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>delete_memory</button> to remove stale data.</li>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.8, marginBottom: 24, display: "flex", flexDirection: "column", gap: 6 }}>
+              <li><strong>Reading Context:</strong> Models call <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>recall_context</button> for hybrid RRF matches, and <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>search_memories</button> for exact tag/keyword scans.</li>
+              <li><strong>Mutating Store:</strong> Models use <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>commit_memory</button> to suggest facts, <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>update_memory</button> to refine facts, and <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>delete_memory</button> to remove stale data.</li>
             </ul>
             <div style={{
-              background: "rgba(168, 85, 247, 0.05)",
-              border: "1px solid rgba(168, 85, 247, 0.2)",
-              borderRadius: "var(--radius)",
-              padding: "12px 16px",
+              background: "rgba(168, 85, 247, 0.04)",
+              border: "1px solid rgba(168, 85, 247, 0.15)",
+              borderRadius: 12,
+              padding: "16px",
               fontSize: 13,
               color: "var(--text-muted)",
               lineHeight: 1.6,
             }}>
-              <strong>💡 Developer Tip:</strong> For more detailed input schemas, required parameters, and configuration guides for all management tools, head over to the full <button onClick={() => setActiveSection("mcp-tools")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: "bold", textDecoration: "underline", padding: 0, font: "inherit" }}>MCP Tools Reference List</button>.
+              <strong>💡 Developer Tip:</strong> For more detailed input schemas, required parameters, and configuration guides for all management tools, head over to the full <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: "bold", textDecoration: "underline", padding: 0, font: "inherit" }}>MCP Tools Reference List</button>.
             </div>
           </div>
         );
       case "stack-creator":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Tech Stack Creator</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Tech Stack Creator</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
               The <strong>Tech Stack Creator</strong> is an interactive step-by-step wizard that allows you to define your workspace's technology profile across 12 architectural categories. Locker utilizes this profile to automatically compile optimized coding rules and agentic instructions.
             </p>
 
-            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18, marginBottom: 24 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 8 }}>
+            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 22, marginBottom: 28 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
                 🛠️ 12 Technology Categories
               </h3>
-              <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
-                Locker segments your stack into modular selections to enforce clean structural boundaries:
+              <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+                Locker segments your stack into modular categories. In the UI, these are displayed as easy-to-use option tags:
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px", fontSize: 12, color: "var(--text)" }}>
-                <div>• <strong>Language</strong> (TypeScript, Go, Python, Rust)</div>
-                <div>• <strong>Runtime</strong> (Node.js, Bun, Native Runtimes)</div>
-                <div>• <strong>Frontend</strong> (React, Next.js, Vue, Svelte)</div>
-                <div>• <strong>Backend Framework</strong> (Express, Hono, Django, FastAPI)</div>
-                <div>• <strong>Database</strong> (Cloudflare D1, PostgreSQL, SQLite, MySQL)</div>
-                <div>• <strong>ORM / DB Client</strong> (Drizzle ORM, Prisma, sqlx, pg)</div>
-                <div>• <strong>Deploy Platform</strong> (Workers, Vercel, Fly.io, AWS)</div>
-                <div>• <strong>Styling Strategy</strong> (Tailwind, Vanilla CSS, Styled Components)</div>
-                <div>• <strong>Lint & Format</strong> (ESLint + Prettier, Biome, Ruff)</div>
-                <div>• <strong>Test Runner</strong> (Vitest, Jest, Playwright)</div>
-                <div>• <strong>State Management</strong> (Zustand, Redux, Jotai)</div>
-                <div>• <strong>Build Tool</strong> (Vite, Webpack, Esbuild)</div>
+              
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {[
+                  { key: "Language", val: "TypeScript, Go, Python, Rust" },
+                  { key: "Runtime", val: "Node.js, Bun, Native Runtimes" },
+                  { key: "Frontend", val: "React, Next.js, Vue, Svelte" },
+                  { key: "Backend", val: "Express, Hono, Django, FastAPI" },
+                  { key: "Database", val: "Cloudflare D1, PG, SQLite, MySQL" },
+                  { key: "ORM Client", val: "Drizzle, Prisma, sqlx, pg" },
+                  { key: "Deploy Platform", val: "Workers, Vercel, Fly.io, AWS" },
+                  { key: "Styling", val: "Tailwind, Vanilla CSS, Styled-Components" },
+                  { key: "Lint & Format", val: "ESLint, Prettier, Biome, Ruff" },
+                  { key: "Test Runner", val: "Vitest, Jest, Playwright" },
+                  { key: "State Manage", val: "Zustand, Redux, Jotai" },
+                  { key: "Build Tool", val: "Vite, Webpack, Esbuild" }
+                ].map((c) => (
+                  <div key={c.key} style={{
+                    fontSize: 11,
+                    padding: "6px 12px",
+                    borderRadius: 20,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    display: "flex",
+                    gap: 6,
+                    alignItems: "center"
+                  }}>
+                    <strong style={{ color: "var(--accent)" }}>{c.key}:</strong>
+                    <span style={{ color: "var(--text-muted)" }}>{c.val}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Workflow</h3>
-            <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, display: "flex", flexDirection: "column", gap: 6 }}>
-              <li>Navigate to the <strong>Vault</strong> page and click the <strong>New Memory</strong> button.</li>
-              <li>Select <strong>Tech Stack Creator</strong> to launch the step-by-step wizard.</li>
-              <li>Provide your selections for each of the 12 tech stack categories.</li>
-              <li>Input any custom <strong>negative constraints</strong> (e.g., "no Tailwind inline utilities" or "do not write raw SQL queries outside repos").</li>
-              <li>Click <strong>Review Recommended Blueprint</strong> to compile rules tailored to your choices. Adjust individual guidelines before saving.</li>
-              <li>Click <strong>Store Memory</strong> to save these rules globally or to a specific project scope. The constraints are instantly synced without exposing database structures to local clients.</li>
-            </ol>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Workflow Steps</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {[
+                { step: "1", text: "Navigate to the Vault page and click the New Memory button." },
+                { step: "2", text: "Select Tech Stack Creator to launch the step-by-step wizard." },
+                { step: "3", text: "Provide your selections for each of the 12 tech stack categories." },
+                { step: "4", text: "Input any custom negative constraints (e.g., 'no Tailwind inline utilities' or 'do not write raw SQL queries outside repos')." },
+                { step: "5", text: "Click Review Recommended Blueprint to compile rules tailored to your choices. Adjust individual guidelines before saving." },
+                { step: "6", text: "Click Store Memory to save these rules globally or to a specific project scope. The constraints are instantly synced without exposing database structures to local clients." }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 12 }}>
+                  <div style={{
+                    width: 22, height: 22, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                </div>
+              ))}
+            </div>
           </div>
         );
       case "templates":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Blueprint Templates</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-              <strong>Blueprint Templates</strong> enable teams and individual developers to save, edit, and share standard configuration profiles. Instead of selecting the same 12 categories repeatedly, you can load templates directly to populate your rules baseline instantly.
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Blueprint Templates</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+              Blueprint Templates enable teams and individual developers to save, edit, and share standard configuration profiles. Instead of selecting the same 12 categories repeatedly, you can load templates directly to populate your rules baseline instantly.
             </p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 28 }}>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
                   💾 Creating Templates
                 </h3>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
                   Go to the <strong>Templates</strong> view and click <strong>New Template</strong>. Set up the stack selections, custom constraints, and rule lists. Save to add the template to your database.
                 </p>
               </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 8 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
                   ⚡ Instant Loading
                 </h3>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
                   In the Stack Creator wizard, click <strong>Load Custom Stack Blueprints</strong> to choose a template. The selections, constraints, and recommendations load instantly.
                 </p>
               </div>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Bypassing LLM Regeneration</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-              If a template already has verified instruction sets, Locker displays a <strong>"Use Loaded Template Rules"</strong> button. Clicking this skips LLM regeneration completely and sends you directly to the review step, reducing token overhead and conserving processing time.
-            </p>
+            <div style={{ background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.15)", borderRadius: 12, padding: 18 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                🚀 Bypassing LLM Regeneration
+              </h3>
+              <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                If a template already has verified instruction sets, Locker displays a <strong>"Use Loaded Template Rules"</strong> button. Clicking this skips LLM regeneration completely and sends you directly to the review step, reducing token overhead and conserving processing time.
+              </p>
+            </div>
           </div>
         );
       case "export-rules":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Exporting Agent Rules</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Exporting Agent Rules</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
               Locker translates your memory rules and tech stack blueprints into optimized configuration files formatted for specific AI developer agents.
             </p>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Supported Formats & Targets</h3>
-            <div style={{ overflowX: "auto", marginBottom: 28 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Supported Formats & Targets</h3>
+            <div style={{ 
+              border: "1px solid var(--border)", 
+              borderRadius: 12, 
+              overflow: "hidden", 
+              background: "var(--surface2)", 
+              marginBottom: 32,
+              width: "100%",
+              overflowX: "auto"
+            }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left", minWidth: 550 }}>
                 <thead>
-                  <tr style={{ borderBottom: "2px solid var(--border)" }}>
-                    <th style={{ padding: "8px 12px", color: "var(--text)" }}>Format File</th>
-                    <th style={{ padding: "8px 12px", color: "var(--text)" }}>Agent / IDE Client</th>
-                    <th style={{ padding: "8px 12px", color: "var(--text)" }}>Recommended Target Path</th>
+                  <tr style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Format File</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Agent / IDE Client</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Target Path</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>CLAUDE.md</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>Claude Code (CLI / Extension)</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>./CLAUDE.md</td>
-                  </tr>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>.cursorrules</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>Cursor Editor (JSON formatted)</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>./.cursorrules</td>
-                  </tr>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>copilot-instructions.md</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>GitHub Copilot Chat</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>./.github/copilot-instructions.md</td>
-                  </tr>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>GEMINI.md</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>Gemini Code Assist / Global Rules</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>~/.gemini/GEMINI.md</td>
-                  </tr>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>AGENTS.md</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>OpenAI Codex & General Agents</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>./AGENTS.md</td>
-                  </tr>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)" }}>.agents/rules/rules.md</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>Google Antigravity Workspaces</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>./.agents/rules/rules.md</td>
-                  </tr>
+                  {[
+                    { file: "CLAUDE.md", client: "Claude Code (CLI / Extension)", path: "./CLAUDE.md" },
+                    { file: ".cursorrules", client: "Cursor Editor (JSON formatted)", path: "./.cursorrules" },
+                    { file: "copilot-instructions.md", client: "GitHub Copilot Chat", path: "./.github/copilot-instructions.md" },
+                    { file: "GEMINI.md", client: "Gemini Code Assist / Global Rules", path: "~/.gemini/GEMINI.md" },
+                    { file: "AGENTS.md", client: "OpenAI Codex & General Agents", path: "./AGENTS.md" },
+                    { file: ".agents/rules/rules.md", client: "Google Antigravity Workspaces", path: "./.agents/rules/rules.md" }
+                  ].map((f, idx, arr) => (
+                    <tr key={f.file} style={{ borderBottom: idx < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
+                      <td style={{ padding: "12px 16px", fontFamily: "monospace", color: "var(--accent)", fontWeight: 600 }}>{f.file}</td>
+                      <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>{f.client}</td>
+                      <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>{f.path}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Method A: Direct Downloads via UI</h3>
-            <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24, display: "flex", flexDirection: "column", gap: 6 }}>
-              <li>Open the <strong>Vault</strong> page, click the <strong>Export Config File</strong> button on any stack card.</li>
-              <li>Select your target format dropdown option (e.g. <code>.agents/rules/rules.md</code>).</li>
-              <li>Click <strong>Download Rules</strong> to trigger browser file delivery. Move it to the appropriate destination directory.</li>
-            </ol>
-
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Method B: Workspace Sync via MCP Tool</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-              If your developer agent is connected via MCP (e.g. Claude Code or Antigravity), it can call Locker's native sync tool to build and write rules files directly inside your active workspace without manual downloads.
-            </p>
-            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 18 }}>
-              <h4 style={{ margin: "0 0 8px 0", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Tool: sync_workspace_agent_configs</h4>
-              <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.5 }}>
-                Writes compiled stack instructions into files matching the target path schema of the requested formatting convention.
-              </p>
-              <pre style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                padding: 12,
-                margin: 0,
-                fontFamily: "monospace",
-                fontSize: 11,
-                color: "var(--text)",
-                overflow: "auto",
-                lineHeight: 1.5,
-              }}>{`{
-  "method": "tools/call",
-  "params": {
-    "name": "sync_workspace_agent_configs",
-    "arguments": {
-      "formatType": "claude", // or cursor, copilot, gemini, agents, antigravity
-      "projectKey": "locker" // optional project filter
-    }
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>📥 Method A: Direct UI Downloads</h4>
+                <ol style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.6, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li>Open the <strong>Vault</strong> page, click the <strong>Export Config File</strong> button on any stack card.</li>
+                  <li>Select your target format dropdown option (e.g. <code>.cursorrules</code>).</li>
+                  <li>Click <strong>Download Rules</strong> to trigger browser file delivery.</li>
+                </ol>
+              </div>
+              
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>⚡ Method B: Workspace Sync via MCP</h4>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  AI developer agents connected via MCP can call Locker's native sync tool to build and write rules files directly inside your active workspace without manual downloads.
+                </p>
+                <pre style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  padding: 10,
+                  margin: 0,
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                  color: "var(--text)",
+                  overflowX: "auto"
+                }}>{`{
+  "name": "sync_workspace_agent_configs",
+  "arguments": {
+    "formatType": "claude", // or cursor, gemini, agents
+    "projectKey": "locker"
   }
 }`}</pre>
+              </div>
             </div>
           </div>
         );
       case "mcp-about":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Model Context Protocol (MCP)</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-              The Model Context Protocol (MCP) is an open-source standard created by Anthropic that allows clients (such as local AI developer tools or editors) to query secure context servers. It decouples LLM logic from specialized APIs and databases.
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Model Context Protocol (MCP)</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              The Model Context Protocol (MCP) is an open-source standard created by Anthropic that allows clients (such as local AI developer tools or editors) to query secure context servers. It decouples LLM logic from specialized APIs and databases, providing a unified, secure interface for context injection.
             </p>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Protocol Architecture</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-              Locker acts as an MCP server, establishing standard bindings:
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>The 3 Pillars of MCP</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
+              MCP defines three core structural primitives to bridge LLMs with external systems:
             </p>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              <li><strong>JSON-RPC 2.0 Transport:</strong> Clients make requests using the JSON-RPC format, invoking tools using <code>tools/call</code>.</li>
-              <li><strong>Edge Delivery:</strong> Because Locker runs inside Cloudflare Workers, connection speeds are exceptionally fast. HTTP stream transports route requests to the nearest edge worker.</li>
-              <li><strong>Anonymized Token Verification:</strong> Secure connection calls authorize edge decryption keys without exposing user organization boundaries or personal login credentials.</li>
-            </ul>
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Key Advantages</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 14 }}>
-                <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Zero Codebase Drift</h4>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>Changes made in the Locker UI are instantly loaded by all connected local IDE clients and LLM sessions.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 32 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 6 }}>
+                  💬 Prompts
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+                  Standardized prompt templates that servers expose to clients. Prompts can contain variable fields and system instructions, helping users write consistent queries.
+                </p>
               </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 14 }}>
-                <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Shared Team Vaults</h4>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>Organizations can scope tokens to teams or workspaces, injecting consistent guidelines across all developers.</p>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 6 }}>
+                  💾 Resources
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+                  Read-only context data sources exposed to models as raw textual content (such as log files, documentation pages, or database read operations).
+                </p>
               </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--accent)", display: "flex", alignItems: "center", gap: 6 }}>
+                  ⚙️ Tools (Locker Core)
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+                  Executable functions with explicit JSON schemas that allow models to modify server state. Locker relies heavily on Tools to search, store, update, and sync memories.
+                </p>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Transport Architectures</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
+              MCP supports multiple transport strategies depending on whether the server runs locally or remotely:
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 32 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>📡 Stdio Transport</h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Ideal for local command-line utilities and utilities running on the same machine. Communication is performed through standard input/output streams (<code>stdin</code>/<code>stdout</code>).
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>⚡ SSE / HTTP Transport</h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Ideal for remote web services. Uses Server-Sent Events (SSE) for server-to-client streaming, alongside client HTTP POST requests. Locker leverages HTTP endpoints to execute as a serverless edge worker.
+                </p>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Official Resources & Links</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 16 }}>
+              Explore the official documentation and repositories to learn more about developing or extending Model Context Protocol applications:
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 16 }}>
+              {[
+                { title: "Official Website", url: "https://modelcontextprotocol.io", icon: "🌐", desc: "The home of MCP. Includes setup guides, quickstarts, and client integrations." },
+                { title: "Protocol Spec", url: "https://modelcontextprotocol.io/specification/", icon: "📜", desc: "The official JSON-RPC 2.0 schema and architectural specifications." },
+                { title: "GitHub Org", url: "https://github.com/modelcontextprotocol", icon: "🐙", desc: "Official SDK repositories (TypeScript, Python, Go) and MCP servers." },
+                { title: "Anthropic Intro", url: "https://www.anthropic.com/news/model-context-protocol", icon: "📰", desc: "Anthropic's official announcement and vision for standardizing AI context." }
+              ].map((l) => (
+                <a
+                  key={l.title}
+                  href={l.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    padding: 16,
+                    background: "var(--surface2)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 12,
+                    textDecoration: "none",
+                    transition: "all 0.2s ease",
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "var(--accent)";
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "var(--border)";
+                    e.currentTarget.style.transform = "translateY(0)";
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--accent)", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>{l.icon}</span> {l.title}
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                    {l.desc}
+                  </span>
+                </a>
+              ))}
             </div>
           </div>
         );
-      case "mcp-tools":
+      case "mcp-tools-retrieval":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>MCP Tools Reference</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
-              The following tools are exposed by the Locker endpoint. AI models with the proper token scopes can invoke these tools automatically.
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Context Retrieval Tools</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              Context Retrieval tools allow connected AI assistants to discover available workspaces, retrieve relevant long-term memory context, and search memories semantically or using exact keyword patterns.
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              {ALL_TOOLS.map((tool) => (
-                <div key={tool.name} style={{
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {ALL_TOOLS.filter((t) =>
+                ["list_accessible_scopes", "recall_context", "search_memories", "get_memory_summary"].includes(t.name)
+              ).map((tool) => (
+                <details key={tool.name} style={{
                   background: "var(--surface2)",
                   border: "1px solid var(--border)",
-                  borderRadius: "var(--radius)",
-                  padding: 18,
+                  borderRadius: 12,
+                  overflow: "hidden"
                 }}>
-                  <h3 style={{ margin: "0 0 8px 0", fontSize: 15, fontWeight: 600, color: "var(--accent)", fontFamily: "monospace" }}>
-                    {tool.name}
-                  </h3>
-                  <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 16px 0", lineHeight: 1.6 }}>
-                    {tool.description}
-                  </p>
-                  <div>
-                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 6px 0", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      Input Schema
+                  <summary style={{
+                    padding: "14px 18px",
+                    fontWeight: 700,
+                    fontSize: 14,
+                    color: "var(--accent)",
+                    fontFamily: "monospace",
+                    cursor: "pointer",
+                    listStyleType: "none",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    userSelect: "none"
+                  }}>
+                    <span>⚙️ {tool.name}</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", background: "var(--surface)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
+                      Click to Expand
+                    </span>
+                  </summary>
+                  <div style={{
+                    padding: "16px 18px",
+                    borderTop: "1px solid var(--border)",
+                    background: "var(--surface)"
+                  }}>
+                    <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px 0", lineHeight: 1.6 }}>
+                      {tool.description}
                     </p>
-                    <pre style={{
-                      background: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 6,
-                      padding: 12,
-                      margin: 0,
-                      fontFamily: "monospace",
-                      fontSize: 11,
-                      color: "var(--text)",
-                      overflow: "auto",
-                      maxHeight: 240,
-                      lineHeight: 1.5,
-                    }}>
-                      {JSON.stringify(tool.inputSchema, null, 2)}
-                    </pre>
+                    <div>
+                      <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 6px 0", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                        Input Schema
+                      </p>
+                      <pre style={{
+                        background: "var(--surface2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: 12,
+                        margin: 0,
+                        fontFamily: "monospace",
+                        fontSize: 11,
+                        color: "var(--text)",
+                        overflow: "auto",
+                        maxHeight: 240,
+                        lineHeight: 1.5,
+                      }}>
+                        {JSON.stringify(tool.inputSchema, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        );
+      case "mcp-tools-mutation":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Memory Mutation Tools</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              Memory Mutation tools enable connected AI agents to store new facts, update existing memory statements, and purge stale records in real-time. These tools are subject to user-configured passcode or MFA controls.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {ALL_TOOLS.filter((t) =>
+                ["commit_memory", "update_memory", "delete_memory"].includes(t.name)
+              ).map((tool) => (
+                <details key={tool.name} style={{
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  overflow: "hidden"
+                }}>
+                  <summary style={{
+                    padding: "14px 18px",
+                    fontWeight: 700,
+                    fontSize: 14,
+                    color: "var(--accent)",
+                    fontFamily: "monospace",
+                    cursor: "pointer",
+                    listStyleType: "none",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    userSelect: "none"
+                  }}>
+                    <span>⚙️ {tool.name}</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", background: "var(--surface)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
+                      Click to Expand
+                    </span>
+                  </summary>
+                  <div style={{
+                    padding: "16px 18px",
+                    borderTop: "1px solid var(--border)",
+                    background: "var(--surface)"
+                  }}>
+                    <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px 0", lineHeight: 1.6 }}>
+                      {tool.description}
+                    </p>
+                    <div>
+                      <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 6px 0", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                        Input Schema
+                      </p>
+                      <pre style={{
+                        background: "var(--surface2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: 12,
+                        margin: 0,
+                        fontFamily: "monospace",
+                        fontSize: 11,
+                        color: "var(--text)",
+                        overflow: "auto",
+                        maxHeight: 240,
+                        lineHeight: 1.5,
+                      }}>
+                        {JSON.stringify(tool.inputSchema, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        );
+      case "mcp-tools-sync":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Workspace Sync Tools</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              Workspace Sync tools translate stack profile definitions and baseline coding rules stored in Locker into optimized instructions formatted for local developer agents.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {ALL_TOOLS.filter((t) =>
+                ["sync_workspace_agent_configs"].includes(t.name)
+              ).map((tool) => (
+                <details key={tool.name} style={{
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  overflow: "hidden"
+                }}>
+                  <summary style={{
+                    padding: "14px 18px",
+                    fontWeight: 700,
+                    fontSize: 14,
+                    color: "var(--accent)",
+                    fontFamily: "monospace",
+                    cursor: "pointer",
+                    listStyleType: "none",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    userSelect: "none"
+                  }}>
+                    <span>⚙️ {tool.name}</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", background: "var(--surface)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>
+                      Click to Expand
+                    </span>
+                  </summary>
+                  <div style={{
+                    padding: "16px 18px",
+                    borderTop: "1px solid var(--border)",
+                    background: "var(--surface)"
+                  }}>
+                    <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px 0", lineHeight: 1.6 }}>
+                      {tool.description}
+                    </p>
+                    <div>
+                      <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 6px 0", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                        Input Schema
+                      </p>
+                      <pre style={{
+                        background: "var(--surface2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: 12,
+                        margin: 0,
+                        fontFamily: "monospace",
+                        fontSize: 11,
+                        color: "var(--text)",
+                        overflow: "auto",
+                        maxHeight: 240,
+                        lineHeight: 1.5,
+                      }}>
+                        {JSON.stringify(tool.inputSchema, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        );
+      case "mcp-errors-security":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Error Codes & Security</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              Learn about Locker's custom error response codes, programmatic MFA retries, and endpoint rate-limiting mechanisms.
+            </p>
+
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>JSON-RPC Error Codes</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 16 }}>
+              Locker uses standard JSON-RPC 2.0 error codes alongside custom application-level error codes to denote security blocks, quota limits, and scoping boundaries.
+            </p>
+
+            <div style={{ 
+              border: "1px solid var(--border)", 
+              borderRadius: 12, 
+              overflow: "hidden", 
+              background: "var(--surface2)", 
+              marginBottom: 36,
+              width: "100%",
+              overflowX: "auto"
+            }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left", minWidth: 600 }}>
+                <thead>
+                  <tr style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700, width: 90 }}>Code</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700, width: 180 }}>Error Name</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Trigger Condition</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Recommended Client Handling</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "14px 16px", fontFamily: "monospace", color: "var(--error)", fontWeight: 600 }}>-32001</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 600 }}>Unauthorized</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Missing, expired, or invalid API token; or lacks necessary permissions for the tool scope.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Prompt user to configure a valid API key with appropriate scopes (e.g. <code>recall_context</code>).</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "14px 16px", fontFamily: "monospace", color: "var(--error)", fontWeight: 600 }}>-32003</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 600 }}>Forbidden</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Access to requested scope key is blocked; memory is locked (requires admin); or modifying other user's shared fact.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Ensure the correct <code>projectKey</code> is provided, or request owner/admin authorization.</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "14px 16px", fontFamily: "monospace", color: "var(--error)", fontWeight: 600 }}>-32004</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 600 }}>Quota Exceeded</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Locker subscription limits (storage capacity, recall rates, or operation quota) exceeded.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Notify user to upgrade their organization plan tier or clean up stale memory items.</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "14px 16px", fontFamily: "monospace", color: "var(--error)", fontWeight: 600 }}>-32005</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 600 }}>Plan Restricted</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Using features (e.g. <code>crossWorkspaceSearch</code>) that require a higher plan tier (Business+).</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Inform user that the requested feature is locked under a higher plan tier.</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "14px 16px", fontFamily: "monospace", color: "#f59e0b", fontWeight: 600 }}>-32024</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 600 }}>MFA Required</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>User has TOTP 2FA enabled, but <code>totpCode</code> was missing or invalid.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Prompt human-in-the-loop for 6-digit TOTP code and retry the call with <code>totpCode</code>.</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "14px 16px", fontFamily: "monospace", color: "#f59e0b", fontWeight: 600 }}>-32025</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 600 }}>Passcode Required</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>User has Deletion Passcode enabled (2FA inactive), but <code>passcode</code> was missing or invalid.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Prompt human-in-the-loop for deletion passcode and retry the call with <code>passcode</code>.</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "14px 16px", fontFamily: "monospace", color: "var(--error)", fontWeight: 600 }}>-32602</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 600 }}>Invalid Params</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Missing required field; <code>confirm</code> was not set to true; or character length limit exceeded (10,000 max).</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Verify input formats, ensure <code>confirm: true</code> is passed on mutations, and try again.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Interactive Verification Flow (MFA / Passcode)</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+              To prevent prompt injection attacks from performing unauthorized write or delete actions, Locker requires explicit user validation. If an AI client attempts to mutate or delete a memory, it should implement the following human-in-the-loop (HITL) retry pattern:
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+              {[
+                { step: "1", title: "Initial Invocation", desc: "The client makes a standard mutation call (e.g. delete_memory) with id and confirm: true." },
+                { step: "2", title: "Security Intercept", desc: "The Locker server identifies that the user has configured MFA (returns -32024) or a passcode (returns -32025)." },
+                { step: "3", title: "Human Challenge", desc: "The AI agent intercepts the specific error code, displays a message, and asks the user to enter their current code or passcode." },
+                { step: "4", title: "Verify & Complete", desc: "The client sends a new tool call containing the user's input (in the totpCode or passcode property). Locker processes and executes the action." }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div>
+                    <strong style={{ display: "block", color: "var(--text)", fontSize: 13, marginBottom: 3 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.4 }}>{s.desc}</p>
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div style={{ marginBottom: 36 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+                  Agent Implementation Example (JavaScript / Node)
+                </span>
+              </div>
+              <pre style={{
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                padding: "16px",
+                fontFamily: "monospace",
+                fontSize: 12,
+                maxHeight: 380,
+                overflow: "auto",
+                lineHeight: 1.6,
+                color: "var(--text)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+                margin: 0,
+              }}>{`async function performDestructiveAction(toolName, arguments) {
+  // 1. Initial attempt with confirmation flag
+  let result = await callMcpTool(toolName, { ...arguments, confirm: true });
+
+  if (result.error) {
+    const { code, message } = result.error;
+
+    // 2. Intercept MFA check
+    if (code === -32024) {
+      const totpCode = await promptUserForInput(
+        "Locker 2FA verification code required. Please check your authenticator app:"
+      );
+      // Retry request with totpCode
+      return await callMcpTool(toolName, { ...arguments, confirm: true, totpCode });
+    }
+
+    // 3. Intercept Passcode check
+    if (code === -32025) {
+      const passcode = await promptUserForInput(
+        "Locker deletion passcode required. Please enter your passcode:"
+      );
+      // Retry request with passcode
+      return await callMcpTool(toolName, { ...arguments, confirm: true, passcode });
+    }
+
+    throw new Error(\`Failed to execute action: \` + message);
+  }
+
+  return result;
+}`}</pre>
+            </div>
+
+            <div style={{ background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.15)", borderRadius: 12, padding: 18 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                ⚡ Rate Limits & Quota Control
+              </h3>
+              <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                Every API token or OAuth session has a default rate-limiting window of <strong>60 requests per minute</strong>. Exceeding this rate returns a standard <code>429 Too Many Requests</code> HTTP response. Additionally, storage space limits (number of stored facts or vectorized context entries) are checked before processing mutations, returning error code <code>-32004</code> if limits are breached.
+              </p>
             </div>
           </div>
         );
       case "tester":
         return (
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Connection Tester</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Connection Tester</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
               Use this utility to test if the Locker MCP server endpoint is operational. This diagnostic calls the <code>tools/list</code> JSON-RPC method to verify connection.
             </p>
 
-            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                 <button
                   onClick={handleTestConnection}
@@ -1626,12 +2215,13 @@ Authorization = "Bearer lkr_your_token_here"`,
                     padding: "10px 20px",
                     background: "var(--accent)",
                     color: "#fff",
-                    fontWeight: 600,
+                    fontWeight: 700,
                     fontSize: 13,
                     transition: "all 0.2s",
                     cursor: testLoading ? "not-allowed" : "pointer",
                     border: "none",
                     borderRadius: "var(--radius)",
+                    boxShadow: "0 4px 6px -1px rgba(168, 85, 247, 0.2)"
                   }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: testLoading ? "spin-slow 2s linear infinite" : "none" }}>
@@ -1646,7 +2236,7 @@ Authorization = "Bearer lkr_your_token_here"`,
                   padding: "14px 16px",
                   background: testResult.status === 'success' ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)",
                   border: testResult.status === 'success' ? "1px solid rgba(34,197,94,0.25)" : "1px solid rgba(239,68,68,0.25)",
-                  borderRadius: "var(--radius)",
+                  borderRadius: 12,
                   color: testResult.status === 'success' ? "#22c55e" : "var(--error)",
                   fontSize: 13,
                   lineHeight: 1.6,
@@ -1729,12 +2319,15 @@ Authorization = "Bearer lkr_your_token_here"`,
           margin: 0 auto;
         }
         .sidebar-section-title {
-          font-size: 10px;
-          font-weight: 700;
-          color: var(--text-muted);
+          font-size: 11px;
+          font-weight: 800;
+          color: var(--text);
           text-transform: uppercase;
-          letter-spacing: 0.08em;
-          margin: 12px 0 6px 8px;
+          letter-spacing: 0.1em;
+          margin: 22px 0 8px 8px;
+          padding-bottom: 5px;
+          border-bottom: 1px solid var(--border);
+          opacity: 0.85;
         }
         .sidebar-button {
           display: flex;
@@ -1816,7 +2409,10 @@ Authorization = "Bearer lkr_your_token_here"`,
           </optgroup>
           <optgroup label="MCP Reference">
             <option value="mcp-about">About MCP</option>
-            <option value="mcp-tools">Tools Schema</option>
+            <option value="mcp-tools-retrieval">Context Retrieval</option>
+            <option value="mcp-tools-mutation">Memory Mutation</option>
+            <option value="mcp-tools-sync">Workspace Sync</option>
+            <option value="mcp-errors-security">Errors & Security</option>
           </optgroup>
           <optgroup label="Client Integrations">
             {SERVICES.map((s) => (
@@ -1891,8 +2487,17 @@ Authorization = "Bearer lkr_your_token_here"`,
                   <button onClick={() => setActiveSection("mcp-about")} className={`sidebar-button ${activeSection === "mcp-about" ? "active" : ""}`}>
                     <span>💡</span> About MCP
                   </button>
-                  <button onClick={() => setActiveSection("mcp-tools")} className={`sidebar-button ${activeSection === "mcp-tools" ? "active" : ""}`}>
-                    <span>🛠️</span> Tools List
+                  <button onClick={() => setActiveSection("mcp-tools-retrieval")} className={`sidebar-button ${activeSection === "mcp-tools-retrieval" ? "active" : ""}`}>
+                    <span>🔍</span> Context Retrieval
+                  </button>
+                  <button onClick={() => setActiveSection("mcp-tools-mutation")} className={`sidebar-button ${activeSection === "mcp-tools-mutation" ? "active" : ""}`}>
+                    <span>✍️</span> Memory Mutation
+                  </button>
+                  <button onClick={() => setActiveSection("mcp-tools-sync")} className={`sidebar-button ${activeSection === "mcp-tools-sync" ? "active" : ""}`}>
+                    <span>🔄</span> Agent Syncing
+                  </button>
+                  <button onClick={() => setActiveSection("mcp-errors-security")} className={`sidebar-button ${activeSection === "mcp-errors-security" ? "active" : ""}`}>
+                    <span>⚠️</span> Errors & Security
                   </button>
                 </div>
               </>

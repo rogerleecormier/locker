@@ -4,6 +4,8 @@ import { Link } from "@tanstack/react-router";
 export type AdminSection =
   // Personal
   | "personal-account"
+  | "personal-security"
+  | "personal-sessions"
   | "personal-tokens"
   | "personal-mcp"
   | "personal-usage"
@@ -30,6 +32,8 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   // Personal
   { id: "personal-account",  label: "My Account",      icon: "👤", category: "personal" },
+  { id: "personal-security", label: "Security",        icon: "🔒", category: "personal" },
+  { id: "personal-sessions", label: "Sessions",        icon: "🛡️", category: "personal" },
   { id: "personal-tokens",   label: "API Tokens",       icon: "🔑", category: "personal" },
   { id: "personal-mcp",      label: "MCP Endpoint",     icon: "🔌", category: "personal" },
   { id: "personal-usage",    label: "My Usage",         icon: "📈", category: "personal" },

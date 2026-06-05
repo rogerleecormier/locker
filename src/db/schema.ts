@@ -6,6 +6,7 @@ export const users = sqliteTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: integer("emailVerified", { mode: "boolean" }).notNull().default(false),
   image: text("image"),
+  writePasscodeHash: text("writePasscodeHash"),
   createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
 });
@@ -316,12 +317,16 @@ export const invitations = sqliteTable("invitations", {
 
 export const memoryRecommendations = sqliteTable("memory_recommendations", {
   id: text("id").primaryKey(),
-  orgId: text("orgId").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  orgId: text("orgId").references(() => organizations.id, { onDelete: "cascade" }),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   fact: text("fact").notNull(),
   category: text("category", { enum: ["rules", "projects", "references", "stack"] }).notNull(),
   tags: text("tags").notNull().default(""),
   projectKey: text("projectKey"),
+  scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
+  scopeId: text("scopeId"),
+  recommendationType: text("recommendationType", { enum: ["add", "archive"] }).notNull().default("add"),
+  targetMemoryId: text("targetMemoryId").references(() => memories.id, { onDelete: "cascade" }),
   status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
   reviewedBy: text("reviewedBy").references(() => users.id),
   reviewNotes: text("reviewNotes"),
