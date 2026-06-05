@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { PLATFORMS, PLATFORM_GROUPS } from "../lib/platforms";
+import { PLATFORMS } from "../lib/platforms";
 import { PLANS, PLAN_ORDER } from "~/lib/plans";
 import { PlanCard } from "~/components/PaywallGate";
 
@@ -603,34 +603,48 @@ function TokenMockup() {
   );
 }
 
-function PlatformGrid() {
-  let delay = 0;
+function PlatformScroller() {
+  const pills = [...PLATFORMS, ...PLATFORMS];
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {PLATFORM_GROUPS.map((group) => {
-        const clients = PLATFORMS.filter((p) => p.group === group);
-        if (clients.length === 0) return null;
-        return (
-          <div key={group}>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.6 }}>
-              {group}
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
-              {clients.map((p) => {
-                const d = delay;
-                delay += 25;
-                return (
-                  <FadeIn key={p.id} delay={d}>
-                    <div style={{ padding: "5px 13px", borderRadius: 20, background: `${p.color}15`, border: `1px solid ${p.color}40`, color: p.color, fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>
-                      {p.label}
-                    </div>
-                  </FadeIn>
-                );
-              })}
-            </div>
+    <div style={{ position: "relative", overflow: "hidden", width: "100%" }}>
+      <div style={{
+        position: "absolute", left: 0, top: 0, bottom: 0, width: 64,
+        background: "linear-gradient(to right, var(--bg, #0a0a0f), transparent)",
+        zIndex: 1, pointerEvents: "none"
+      }} />
+      <div style={{
+        position: "absolute", right: 0, top: 0, bottom: 0, width: 64,
+        background: "linear-gradient(to left, var(--bg, #0a0a0f), transparent)",
+        zIndex: 1, pointerEvents: "none"
+      }} />
+      <style>{`
+        @keyframes scroll-left {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .platform-track {
+          display: flex;
+          gap: 8px;
+          width: max-content;
+          animation: scroll-left 32s linear infinite;
+        }
+        .platform-track:hover { animation-play-state: paused; }
+      `}</style>
+      <div className="platform-track">
+        {pills.map((p, i) => (
+          <div
+            key={`${p.id}-${i}`}
+            style={{
+              padding: "5px 14px", borderRadius: 20,
+              background: `${p.color}15`, border: `1px solid ${p.color}40`,
+              color: p.color, fontSize: 12, fontWeight: 500, whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            {p.label}
           </div>
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
@@ -783,7 +797,7 @@ function LandingPage() {
       <div style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
         <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0 }}>
           {[
-            { value: PLATFORMS.length, suffix: "+", label: "Compatible AI Clients" },
+            { value: 20, suffix: "+", label: "Compatible AI Clients" },
             { value: 256, suffix: "-bit", label: "AES-GCM Encryption" },
             { value: 100, suffix: "%", label: "Edge-Native Architecture" },
           ].map(({ value, suffix, label }, i) => (
@@ -1035,14 +1049,14 @@ function LandingPage() {
             Works with any MCP-compatible client via standard HTTP transport or mcp-remote bridge. Connect your vault to Anthropic, OpenAI, Google, and VS Code ecosystem tools — no proprietary integration required.
           </p>
         </FadeIn>
-        <PlatformGrid />
-        <FadeIn delay={600}>
-          <div style={{ marginTop: 36 }}>
+        <PlatformScroller />
+        <FadeIn delay={400}>
+          <div style={{ marginTop: 32 }}>
             <Link to="/docs" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 22px", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 13, fontWeight: 500, borderRadius: 8, textDecoration: "none", transition: "border-color 0.15s, color 0.15s" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
             >
-              View config guides →
+              View docs →
             </Link>
           </div>
         </FadeIn>
