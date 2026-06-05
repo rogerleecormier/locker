@@ -2120,6 +2120,8 @@ export type ApiTokenPublic = {
   createdAt: number;
   lastUsedAt: number | null;
   expiresAt: number | null;
+  tokenType: "human" | "agent";
+  agentPolicy: string | null;
 };
  
 export const listApiTokens = createServerFn({ method: "GET" }).handler(
@@ -2138,6 +2140,8 @@ export const listApiTokens = createServerFn({ method: "GET" }).handler(
         createdAt: apiTokens.createdAt,
         lastUsedAt: apiTokens.lastUsedAt,
         expiresAt: apiTokens.expiresAt,
+        tokenType: apiTokens.tokenType,
+        agentPolicy: apiTokens.agentPolicy,
       })
       .from(apiTokens)
       .where(eq(apiTokens.userId, user.id))
@@ -2146,16 +2150,55 @@ export const listApiTokens = createServerFn({ method: "GET" }).handler(
   }
 );
  
+const VALID_AGENT_CATEGORIES = ["rules", "projects", "references", "stack"] as const;
+
 export const createApiToken = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; scopes?: any; ttlDays: number } => {
-    const d = data as { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; scopes?: any; ttlDays?: number };
+  .inputValidator((data: unknown): {
+    name: string;
+    permissions: number;
+    scopeType: "personal" | "organization" | "team";
+    scopeId?: string;
+    scopes?: any;
+    ttlDays: number;
+    tokenType: "human" | "agent";
+    agentContext?: string;
+    allowedCategories?: string[];
+    deniedCategories?: string[];
+    allowCredentials?: boolean;
+  } => {
+    const d = data as any;
     if (!d.name || typeof d.name !== "string") throw new Error("name is required");
     const perms = typeof d.permissions === "number" ? d.permissions : 15;
     const scope = d.scopeType === "organization" || d.scopeType === "team" ? d.scopeType : "personal";
     const ttl = typeof d.ttlDays === "number" ? Math.max(1, d.ttlDays) : 365;
-    return { name: d.name.trim().slice(0, 64), permissions: perms & 15, scopeType: scope, scopeId: d.scopeId, scopes: d.scopes, ttlDays: ttl };
+    const tokenType: "human" | "agent" = d.tokenType === "agent" ? "agent" : "human";
+
+    if (tokenType === "agent") {
+      if (!d.agentContext || typeof d.agentContext !== "string") throw new Error("agentContext is required for agent tokens");
+    }
+
+    const allowedCategories = Array.isArray(d.allowedCategories)
+      ? d.allowedCategories.filter((c: unknown) => VALID_AGENT_CATEGORIES.includes(c as any))
+      : [];
+    const deniedCategories = Array.isArray(d.deniedCategories)
+      ? d.deniedCategories.filter((c: unknown) => VALID_AGENT_CATEGORIES.includes(c as any))
+      : [];
+
+    return {
+      name: d.name.trim().slice(0, 64),
+      permissions: perms & 15,
+      scopeType: scope,
+      scopeId: d.scopeId,
+      scopes: d.scopes,
+      ttlDays: ttl,
+      tokenType,
+      agentContext: typeof d.agentContext === "string" ? d.agentContext.trim().slice(0, 128) : undefined,
+      allowedCategories,
+      deniedCategories,
+      allowCredentials: !!d.allowCredentials,
+    };
   })
-  .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number; scopeType: string; scopeId: string | null; scopes: string | null; expiresAt: number }> => {
+  .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number; scopeType: string; scopeId: string | null; scopes: string | null; expiresAt: number; tokenType: string }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
@@ -2169,6 +2212,15 @@ export const createApiToken = createServerFn({ method: "POST" })
     const expiresAt = now + (data.ttlDays * 24 * 60 * 60 * 1000);
     const scopesJson = data.scopes ? (typeof data.scopes === "string" ? data.scopes : JSON.stringify(data.scopes)) : null;
 
+    const agentPolicyJson = data.tokenType === "agent" && data.agentContext
+      ? JSON.stringify({
+          agentContext: data.agentContext,
+          allowedCategories: data.allowedCategories ?? [],
+          deniedCategories: data.deniedCategories ?? [],
+          allowCredentials: data.allowCredentials ?? false,
+        })
+      : null;
+
     await db.insert(apiTokens).values({
       id,
       userId: user.id,
@@ -2178,11 +2230,13 @@ export const createApiToken = createServerFn({ method: "POST" })
       scopeType: data.scopeType,
       scopeId: data.scopeId || null,
       scopes: scopesJson,
+      tokenType: data.tokenType,
+      agentPolicy: agentPolicyJson,
       createdAt: now,
       expiresAt,
     });
 
-    return { token: rawToken, id, name: data.name, permissions: data.permissions, scopeType: data.scopeType, scopeId: data.scopeId || null, scopes: scopesJson, expiresAt };
+    return { token: rawToken, id, name: data.name, permissions: data.permissions, scopeType: data.scopeType, scopeId: data.scopeId || null, scopes: scopesJson, expiresAt, tokenType: data.tokenType };
   });
 
 export const revokeApiToken = createServerFn({ method: "POST" })

@@ -70,6 +70,8 @@ export const apiTokens = sqliteTable("api_tokens", {
   scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
   scopeId: text("scopeId"),
   scopes: text("scopes"), // JSON array of allowed scopes, e.g. [{"type":"personal","id":null}]
+  tokenType: text("tokenType", { enum: ["human", "agent"] }).notNull().default("human"),
+  agentPolicy: text("agentPolicy"), // JSON: AgentPolicy — only set when tokenType === "agent"
   createdAt: integer("createdAt").notNull(),
   expiresAt: integer("expiresAt"),
   lastUsedAt: integer("lastUsedAt"),
@@ -184,6 +186,21 @@ export const MCP_PERM_RECALL = 1 << 0;   // bit 0
 export const MCP_PERM_COMMIT = 1 << 1;   // bit 1
 export const MCP_PERM_UPDATE = 1 << 2;   // bit 2
 export const MCP_PERM_DELETE = 1 << 3;   // bit 3
+
+// ── ABAC types for agent tokens ───────────────────────────────────────────────
+export type MemoryCategory = "rules" | "projects" | "references" | "stack";
+
+export type AgentPolicy = {
+  agentContext: string;              // human-readable label for the agent, max 128 chars
+  allowedCategories: MemoryCategory[]; // empty = ABAC_DEFAULT_ALLOW applies
+  deniedCategories: MemoryCategory[];  // always wins over allowedCategories
+  allowCredentials: boolean;         // whether retrieve/store/delete_credential are permitted
+};
+
+// All four current categories are technical — none are sensitive-by-default.
+// Add future categories like "financial" or "legal" here when introduced.
+export const ABAC_SENSITIVE_CATEGORIES: MemoryCategory[] = [];
+export const ABAC_DEFAULT_ALLOW: MemoryCategory[] = ["rules", "projects", "references", "stack"];
 
 // ── Multi-tenancy layer (organizations & teams) ──────────────────────────────
 export const organizations = sqliteTable("organizations", {

@@ -109,6 +109,11 @@ function TokenRow({
       <div className="flex justify-between items-center gap-4 flex-wrap select-none">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-sm md:text-base text-text">{token.name}</span>
+          {token.tokenType === "agent" && (
+            <Badge className="h-5 px-2 text-[9px] font-semibold border-amber-500/30 bg-amber-500/10 text-amber-400 normal-case tracking-normal">
+              Agent
+            </Badge>
+          )}
           {isExpiringSoon && daysUntilExpiry !== null && (
             <Badge variant="error" className="h-5 px-2 text-[9px] font-semibold border-amber-500/30 bg-amber-500/10 text-amber-400 normal-case tracking-normal">
               Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? "s" : ""}
@@ -196,6 +201,24 @@ function TokenRow({
           </div>
         </div>
 
+        {/* Agent Context (only for agent tokens) */}
+        {token.tokenType === "agent" && token.agentPolicy && (() => {
+          try {
+            const policy = JSON.parse(token.agentPolicy);
+            return (
+              <div className="flex gap-2 flex-wrap items-start">
+                <span className="text-[11px] text-text-muted font-bold uppercase tracking-wider w-[80px] flex-shrink-0 mt-0.5">Agent:</span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-amber-400 font-medium">{policy.agentContext}</span>
+                  {policy.allowedCategories && policy.allowedCategories.length > 0 && (
+                    <span className="text-[10px] text-text-muted">Categories: {policy.allowedCategories.join(", ")}{policy.allowCredentials ? ", credentials" : ""}</span>
+                  )}
+                </div>
+              </div>
+            );
+          } catch { return null; }
+        })()}
+
         {/* Permissions Badges */}
         <div className="flex gap-2 flex-wrap items-center">
           <span className="text-[11px] text-text-muted font-bold uppercase tracking-wider w-[80px] flex-shrink-0">MCP Tools:</span>
@@ -245,9 +268,16 @@ function TokenRow({
   );
 }
 
+const AGENT_CATEGORY_DEFS = [
+  { key: "rules", label: "rules", desc: "Behavioral directives and AI instructions" },
+  { key: "projects", label: "projects", desc: "Active work, tasks, in-progress features" },
+  { key: "references", label: "references", desc: "Technical references and documentation notes" },
+  { key: "stack", label: "stack", desc: "Architecture, dependencies, framework choices" },
+] as const;
+
 export function NewTokenModal({ onClose, onCreate }: {
   onClose: () => void;
-  onCreate: (name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string, scopes?: Array<{ type: "personal" | "organization" | "team"; id: string | null }>, ttlDays?: number) => Promise<string>;
+  onCreate: (name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string, scopes?: Array<{ type: "personal" | "organization" | "team"; id: string | null }>, ttlDays?: number, tokenType?: "human" | "agent", agentContext?: string, allowedCategories?: string[], allowCredentials?: boolean) => Promise<string>;
 }) {
   const [name, setName] = useState("");
   const [perms, setPerms] = useState(MCP_PERM_RECALL | MCP_PERM_COMMIT | MCP_PERM_UPDATE | MCP_PERM_DELETE);
@@ -259,6 +289,10 @@ export function NewTokenModal({ onClose, onCreate }: {
   const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [timeLeft, setTimeLeft] = useState(300);
+  const [tokenType, setTokenType] = useState<"human" | "agent">("human");
+  const [agentContext, setAgentContext] = useState("");
+  const [allowedCategories, setAllowedCategories] = useState<string[]>(["rules", "projects", "references", "stack"]);
+  const [allowCredentials, setAllowCredentials] = useState(false);
 
   const { data: workspacesList = [] } = useQuery({ queryKey: ["workspaces"], queryFn: () => getUserWorkspaces() });
   const workspaces = Array.isArray(workspacesList) ? workspacesList : [];
@@ -269,9 +303,13 @@ export function NewTokenModal({ onClose, onCreate }: {
       setError("At least one scope must be selected.");
       return;
     }
+    if (tokenType === "agent" && !agentContext.trim()) {
+      setError("Agent context is required for agent tokens.");
+      return;
+    }
     setLoading(true);
     setError(null);
-    
+
     const scopes = selectedScopes.map((key) => {
       if (key === "personal") {
         return { type: "personal" as const, id: null };
@@ -286,7 +324,7 @@ export function NewTokenModal({ onClose, onCreate }: {
       : primaryKey.split(":") as ["organization" | "team", string];
 
     try {
-      setToken(await onCreate(name.trim(), perms, scopeType, scopeId, scopes, ttlDays));
+      setToken(await onCreate(name.trim(), perms, scopeType, scopeId, scopes, ttlDays, tokenType, agentContext.trim() || undefined, allowedCategories, allowCredentials));
     } catch (err: any) {
       setError(err.message || "Failed to generate token.");
     } finally {
@@ -335,6 +373,24 @@ export function NewTokenModal({ onClose, onCreate }: {
             </DialogHeader>
 
             <div className="py-2 flex flex-col gap-4 overflow-y-auto max-h-[60vh] pr-1 select-none">
+              {/* Token type toggle */}
+              <div className="flex gap-1 p-1 bg-surface rounded-xl border border-border">
+                <button
+                  type="button"
+                  onClick={() => setTokenType("human")}
+                  className={`flex-1 text-xs font-semibold py-1.5 px-3 rounded-lg transition-colors ${tokenType === "human" ? "bg-surface2 text-text shadow-sm" : "text-text-muted hover:text-text"}`}
+                >
+                  Human Token
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTokenType("agent")}
+                  className={`flex-1 text-xs font-semibold py-1.5 px-3 rounded-lg transition-colors ${tokenType === "agent" ? "bg-amber-500/15 text-amber-400 shadow-sm" : "text-text-muted hover:text-text"}`}
+                >
+                  Agent Token
+                </button>
+              </div>
+
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="token-name">Token Name</Label>
                 <Input
@@ -342,10 +398,66 @@ export function NewTokenModal({ onClose, onCreate }: {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Claude Desktop"
+                  placeholder={tokenType === "agent" ? "e.g. Deploy Pipeline Bot" : "e.g. Claude Desktop"}
                   autoFocus
                 />
               </div>
+
+              {/* Agent-specific fields */}
+              {tokenType === "agent" && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="agent-context">Agent Context <span className="text-error">*</span></Label>
+                    <Input
+                      id="agent-context"
+                      type="text"
+                      value={agentContext}
+                      onChange={(e) => setAgentContext(e.target.value.slice(0, 128))}
+                      placeholder="e.g. frontend debugging, deploy pipeline, code review"
+                    />
+                    <span className="text-[10px] text-text-muted">Describes what this agent is authorized to do. Shown in audit logs.</span>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Allowed Memory Categories</Label>
+                    <div className="flex flex-col gap-2 border border-border rounded-xl p-3 bg-surface2">
+                      {AGENT_CATEGORY_DEFS.map((cat) => (
+                        <label key={cat.key} className="flex items-start gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allowedCategories.includes(cat.key)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setAllowedCategories([...allowedCategories, cat.key]);
+                              } else {
+                                setAllowedCategories(allowedCategories.filter((c) => c !== cat.key));
+                              }
+                            }}
+                            className="mt-0.5 cursor-pointer h-4 w-4 rounded-sm border-border text-accent focus:ring-accent accent-accent"
+                          />
+                          <div>
+                            <div className="text-xs font-semibold text-text font-mono">{cat.label}</div>
+                            <div className="text-[10px] text-text-muted mt-0.5">{cat.desc}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={allowCredentials}
+                      onChange={(e) => setAllowCredentials(e.target.checked)}
+                      className="mt-0.5 cursor-pointer h-4 w-4 rounded-sm border-border text-accent focus:ring-accent accent-accent"
+                    />
+                    <div>
+                      <div className="text-xs font-semibold text-text">Allow Credential Vault Access</div>
+                      <div className="text-[10px] text-text-muted mt-0.5 leading-relaxed">Grants the agent read/write access to encrypted secrets. Enable only when the agent explicitly needs credentials.</div>
+                    </div>
+                  </label>
+                </>
+              )}
 
               <div className="flex flex-col gap-1.5">
                 <Label>Scope Constraints (Select one or more)</Label>
@@ -554,8 +666,8 @@ export function ApiTokensSection() {
   const workspaces = Array.isArray(workspacesList) ? workspacesList : [];
 
   const createMut = useMutation({
-    mutationFn: ({ name, permissions, scopeType, scopeId, scopes, ttlDays }: { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; scopes?: any; ttlDays?: number }) =>
-      createApiToken({ data: { name, permissions, scopeType, scopeId, scopes, ttlDays } }),
+    mutationFn: ({ name, permissions, scopeType, scopeId, scopes, ttlDays, tokenType, agentContext, allowedCategories, allowCredentials }: { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; scopes?: any; ttlDays?: number; tokenType?: "human" | "agent"; agentContext?: string; allowedCategories?: string[]; allowCredentials?: boolean }) =>
+      createApiToken({ data: { name, permissions, scopeType, scopeId, scopes, ttlDays, tokenType: tokenType ?? "human", agentContext, allowedCategories, allowCredentials } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["api-tokens"] }),
   });
   const revokeMut = useMutation({
@@ -567,8 +679,8 @@ export function ApiTokensSection() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["api-tokens"] }),
   });
 
-  async function handleCreate(name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string, scopes?: any, ttlDays?: number): Promise<string> {
-    const result = await createMut.mutateAsync({ name, permissions, scopeType, scopeId, scopes, ttlDays });
+  async function handleCreate(name: string, permissions: number, scopeType: "personal" | "organization" | "team", scopeId?: string, scopes?: any, ttlDays?: number, tokenType?: "human" | "agent", agentContext?: string, allowedCategories?: string[], allowCredentials?: boolean): Promise<string> {
+    const result = await createMut.mutateAsync({ name, permissions, scopeType, scopeId, scopes, ttlDays, tokenType, agentContext, allowedCategories, allowCredentials });
     return result.token;
   }
 

@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets, credentials } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets, credentials, ABAC_DEFAULT_ALLOW } from "~/db/schema";
+import type { AgentPolicy, MemoryCategory } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
@@ -284,6 +285,19 @@ function mcpError(id: unknown, code: number, message: string): Response {
   return Response.json({ jsonrpc: "2.0", id, error: { code, message } });
 }
 
+// Returns null for human tokens (no filter) or a Set of allowed categories for agent tokens.
+function resolveAgentCategoryFilter(claims: TokenClaims): Set<MemoryCategory> | null {
+  if (!claims.isAgent || !claims.agentPolicy) return null;
+  const { allowedCategories, deniedCategories } = claims.agentPolicy;
+  const base: MemoryCategory[] = allowedCategories.length > 0 ? allowedCategories : ABAC_DEFAULT_ALLOW;
+  return new Set(base.filter((c) => !deniedCategories.includes(c)));
+}
+
+function checkCategoryAccess(category: string, filter: Set<MemoryCategory> | null): boolean {
+  if (filter === null) return true;
+  return filter.has(category as MemoryCategory);
+}
+
 function mcpResult(id: unknown, result: unknown): Response {
   return Response.json({ jsonrpc: "2.0", id, result });
 }
@@ -335,6 +349,8 @@ type TokenClaims = {
   scopeType: "personal" | "organization" | "team";
   scopeId: string | null;
   accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }>;
+  isAgent: boolean;
+  agentPolicy: AgentPolicy | null;
 };
 
 async function validateBearerToken(
@@ -381,6 +397,8 @@ async function validateBearerToken(
           scopeType: "personal",
           scopeId: null,
           accessibleScopes,
+          isAgent: false,
+          agentPolicy: null,
         };
       }
     } catch (e) {
@@ -462,6 +480,16 @@ async function validateBearerToken(
       ];
     }
 
+    const isAgent = token.tokenType === "agent";
+    let agentPolicy: AgentPolicy | null = null;
+    if (isAgent && token.agentPolicy) {
+      try {
+        agentPolicy = JSON.parse(token.agentPolicy) as AgentPolicy;
+      } catch {
+        agentPolicy = { agentContext: "unknown", allowedCategories: [], deniedCategories: [], allowCredentials: false };
+      }
+    }
+
     return {
       userId: token.userId,
       tokenId: token.id,
@@ -469,6 +497,8 @@ async function validateBearerToken(
       scopeType: token.scopeType as any,
       scopeId: token.scopeId,
       accessibleScopes,
+      isAgent,
+      agentPolicy,
     };
   }
 
@@ -551,6 +581,8 @@ async function validateBearerToken(
         scopeType: "personal",
         scopeId: null,
         accessibleScopes,
+        isAgent: false,
+        agentPolicy: null,
       };
     } catch (e) {
       console.log("[jwt] verification exception:", String(e));
@@ -605,6 +637,8 @@ async function validateBearerToken(
     scopeType: "personal",
     scopeId: null,
     accessibleScopes,
+    isAgent: false,
+    agentPolicy: null,
   };
 }
 
@@ -884,10 +918,21 @@ export async function handleMcpRequest(
       ? Math.min(20, topK * 3)
       : Math.min(20, topK);
 
+    // ABAC: resolve category filter for agent tokens
+    const categoryFilter = resolveAgentCategoryFilter(claims);
+    if (categoryFilter !== null && categoryFilter.size === 0) {
+      await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context_abac_denied", ipAddress, userAgent, metadata: { query, projectKey, agentContext: claims.agentPolicy?.agentContext, reason: "no_allowed_categories" } });
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify([]) }] });
+    }
+
     // Build the D1 database conditions to query all active candidate memories for the current user & scope
     const scopeConditions = [];
     if (isActive !== undefined) {
       scopeConditions.push(eq(memories.isActive, isActive));
+    }
+    if (categoryFilter !== null) {
+      const allowed = Array.from(categoryFilter);
+      scopeConditions.push(sql`${memories.category} IN (${sql.join(allowed.map((c) => sql`${c}`), sql`, `)})`);
     }
 
     let orgAndTeamKeys: string[] = [];
@@ -933,10 +978,17 @@ export async function handleMcpRequest(
     // Promise 2: Query Vectorize
     let vectorizePromise: Promise<any[]>;
     if (crossWorkspaceSearch) {
+      const personalFilter: Record<string, any> = { userId: claims.userId };
+      const orgFilter: Record<string, any> = { projectKey: { $in: orgAndTeamKeys } };
+      if (categoryFilter !== null) {
+        const allowed = Array.from(categoryFilter);
+        personalFilter.category = { $in: allowed };
+        orgFilter.category = { $in: allowed };
+      }
       vectorizePromise = Promise.all([
-        env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: { userId: claims.userId }, returnMetadata: "none" }),
+        env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: personalFilter, returnMetadata: "none" }),
         orgAndTeamKeys.length > 0
-          ? env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: { projectKey: { $in: orgAndTeamKeys } }, returnMetadata: "none" })
+          ? env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: orgFilter, returnMetadata: "none" })
           : Promise.resolve({ matches: [] })
       ]).then(([personalResults, orgResults]) => {
         return [...(personalResults.matches ?? []), ...(orgResults.matches ?? [])];
@@ -950,6 +1002,9 @@ export async function handleMcpRequest(
         if (projectKey) {
           filter.projectKey = { $in: [projectKey, ""] };
         }
+      }
+      if (categoryFilter !== null) {
+        filter.category = { $in: Array.from(categoryFilter) };
       }
 
       vectorizePromise = env.VECTOR_INDEX.query(embedding, {
@@ -1132,6 +1187,12 @@ export async function handleMcpRequest(
       return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
     }
 
+    // ABAC: agent tokens are restricted to their allowed categories
+    const searchCategoryFilter = resolveAgentCategoryFilter(claims);
+    if (searchCategoryFilter !== null && category && !searchCategoryFilter.has(category as MemoryCategory)) {
+      return mcpError(id, -32003, `Forbidden: agent token cannot search category '${category}'`);
+    }
+
     const conditions = [];
     if (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) {
       conditions.push(eq(memories.projectKey, projectKey));
@@ -1149,6 +1210,12 @@ export async function handleMcpRequest(
     }
     if (category) {
       conditions.push(eq(memories.category, category as "rules" | "projects" | "references"));
+    } else if (searchCategoryFilter !== null) {
+      const allowed = Array.from(searchCategoryFilter);
+      if (allowed.length === 0) {
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify([]) }] });
+      }
+      conditions.push(sql`${memories.category} IN (${sql.join(allowed.map((c) => sql`${c}`), sql`, `)})`);
     }
     if (isActive !== undefined) {
       conditions.push(eq(memories.isActive, isActive));
@@ -1222,6 +1289,14 @@ export async function handleMcpRequest(
       return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
     }
 
+    const summaryCategoryFilter = resolveAgentCategoryFilter(claims);
+    if (summaryCategoryFilter !== null) {
+      const allowed = Array.from(summaryCategoryFilter);
+      if (allowed.length > 0) {
+        conditions.push(sql`${memories.category} IN (${sql.join(allowed.map((c) => sql`${c}`), sql`, `)})`);
+      }
+    }
+
     const rows = await db
       .select({ category: memories.category, tags: memories.tags })
       .from(memories)
@@ -1229,7 +1304,7 @@ export async function handleMcpRequest(
       .all();
 
     const summary = {
-      total: rows.length,
+      total: 0,
       categories: {
         rules: 0,
         projects: 0,
@@ -1239,6 +1314,8 @@ export async function handleMcpRequest(
     };
 
     for (const row of rows) {
+      if (summaryCategoryFilter !== null && !summaryCategoryFilter.has(row.category as MemoryCategory)) continue;
+      summary.total++;
       if (row.category in summary.categories) {
         summary.categories[row.category as "rules" | "projects" | "references"]++;
       }
@@ -1276,6 +1353,12 @@ export async function handleMcpRequest(
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required for vector insert");
+    }
+
+    // ABAC: agent tokens cannot commit to categories outside their policy
+    const commitCategoryFilter = resolveAgentCategoryFilter(claims);
+    if (!checkCategoryAccess(category, commitCategoryFilter)) {
+      return mcpError(id, -32003, `Forbidden: agent token cannot commit memories to category '${category}'. Allowed: ${Array.from(commitCategoryFilter!).join(", ")}`);
     }
 
     if (!isProjectKeyAllowedByToken(claims.accessibleScopes, projectKey)) {
@@ -1463,6 +1546,13 @@ export async function handleMcpRequest(
     if (!isProjectKeyAllowedByToken(claims.accessibleScopes, existing.projectKey)) {
       return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
     }
+
+    // ABAC: agent tokens cannot update memories in blocked categories
+    const updateCategoryFilter = resolveAgentCategoryFilter(claims);
+    if (!checkCategoryAccess(existing.category, updateCategoryFilter)) {
+      return mcpError(id, -32003, `Forbidden: agent token cannot update memories in category '${existing.category}'`);
+    }
+
 
     // Vault Scoping & Quota Check
     const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
@@ -1668,6 +1758,13 @@ export async function handleMcpRequest(
       return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
     }
 
+    // ABAC: agent tokens cannot delete memories in blocked categories
+    const deleteCategoryFilter = resolveAgentCategoryFilter(claims);
+    if (!checkCategoryAccess(existing.category, deleteCategoryFilter)) {
+      return mcpError(id, -32003, `Forbidden: agent token cannot delete memories in category '${existing.category}'`);
+    }
+
+
     // Vault Scoping & Quota Check
     const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
     if (!vaultAllowed) {
@@ -1752,6 +1849,11 @@ export async function handleMcpRequest(
   if (toolName === "sync_workspace_agent_configs") {
     if (!(claims.permissions & MCP_PERM_RECALL)) {
       return mcpError(id, -32001, "Token does not have recall_context permission");
+    }
+    // ABAC: this tool reads "stack" category memories exclusively
+    const syncCategoryFilter = resolveAgentCategoryFilter(claims);
+    if (syncCategoryFilter !== null && !syncCategoryFilter.has("stack")) {
+      return mcpError(id, -32003, "Forbidden: agent token cannot access stack memories required for workspace config sync");
     }
 
     const projectKey = args.projectKey as string | undefined;
@@ -1903,6 +2005,9 @@ export async function handleMcpRequest(
     if (!(claims.permissions & MCP_PERM_COMMIT)) {
       return mcpError(id, -32001, "Token does not have commit_memory permission");
     }
+    if (claims.isAgent && claims.agentPolicy && !claims.agentPolicy.allowCredentials) {
+      return mcpError(id, -32003, "Forbidden: agent token requires allowCredentials=true to store credentials");
+    }
 
     const name = args.name as string | undefined;
     const value = args.value as string | undefined;
@@ -2004,6 +2109,9 @@ export async function handleMcpRequest(
     if (!(claims.permissions & MCP_PERM_RECALL)) {
       return mcpError(id, -32001, "Token does not have recall_context permission");
     }
+    if (claims.isAgent && claims.agentPolicy && !claims.agentPolicy.allowCredentials) {
+      return mcpError(id, -32003, "Forbidden: agent token requires allowCredentials=true to list credentials");
+    }
 
     const projectKey = args.projectKey as string | undefined;
 
@@ -2055,6 +2163,9 @@ export async function handleMcpRequest(
   if (toolName === "retrieve_credential") {
     if (!(claims.permissions & MCP_PERM_RECALL)) {
       return mcpError(id, -32001, "Token does not have recall_context permission");
+    }
+    if (claims.isAgent && claims.agentPolicy && !claims.agentPolicy.allowCredentials) {
+      return mcpError(id, -32003, "Forbidden: agent token requires allowCredentials=true to retrieve credentials");
     }
 
     const name = args.name as string | undefined;
@@ -2123,6 +2234,9 @@ export async function handleMcpRequest(
   if (toolName === "delete_credential") {
     if (!(claims.permissions & MCP_PERM_DELETE)) {
       return mcpError(id, -32001, "Token does not have delete_memory permission");
+    }
+    if (claims.isAgent && claims.agentPolicy && !claims.agentPolicy.allowCredentials) {
+      return mcpError(id, -32003, "Forbidden: agent token requires allowCredentials=true to delete credentials");
     }
 
     const name = args.name as string | undefined;
