@@ -604,68 +604,33 @@ function TokenMockup() {
 }
 
 function PlatformGrid() {
-  const tested = PLATFORMS.filter((p) => p.status === "tested");
-  const testing = PLATFORMS.filter((p) => p.status === "testing");
-  const comingSoon = PLATFORMS.filter((p) => p.status === "coming-soon");
   let delay = 0;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <div>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.7 }}>
-          Tested & Supported
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
-          {tested.map((p) => {
-            const d = delay;
-            delay += 30;
-            return (
-              <FadeIn key={p.id} delay={d}>
-                <div style={{ padding: "5px 13px", borderRadius: 20, background: `${p.color}15`, border: `1px solid ${p.color}40`, color: p.color, fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>
-                  {p.label}
-                </div>
-              </FadeIn>
-            );
-          })}
-        </div>
-      </div>
-      {testing.length > 0 && (
-        <div>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.6 }}>
-            In Testing
+      {PLATFORM_GROUPS.map((group) => {
+        const clients = PLATFORMS.filter((p) => p.group === group);
+        if (clients.length === 0) return null;
+        return (
+          <div key={group}>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.6 }}>
+              {group}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
+              {clients.map((p) => {
+                const d = delay;
+                delay += 25;
+                return (
+                  <FadeIn key={p.id} delay={d}>
+                    <div style={{ padding: "5px 13px", borderRadius: 20, background: `${p.color}15`, border: `1px solid ${p.color}40`, color: p.color, fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>
+                      {p.label}
+                    </div>
+                  </FadeIn>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
-            {testing.map((p) => {
-              const d = delay;
-              delay += 25;
-              return (
-                <FadeIn key={p.id} delay={d}>
-                  <div style={{ padding: "5px 13px", borderRadius: 20, background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.25)", color: "var(--accent)", fontSize: 12, fontWeight: 400, whiteSpace: "nowrap" }}>
-                    {p.label}
-                  </div>
-                </FadeIn>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      <div>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, opacity: 0.5 }}>
-          Coming Soon
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
-          {comingSoon.map((p) => {
-            const d = delay;
-            delay += 20;
-            return (
-              <FadeIn key={p.id} delay={d}>
-                <div style={{ padding: "5px 13px", borderRadius: 20, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12, fontWeight: 400, whiteSpace: "nowrap", opacity: 0.7 }}>
-                  {p.label}
-                </div>
-              </FadeIn>
-            );
-          })}
-        </div>
-      </div>
+        );
+      })}
     </div>
   );
 }
@@ -818,7 +783,7 @@ function LandingPage() {
       <div style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
         <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0 }}>
           {[
-            { value: PLATFORMS.filter((p) => p.status === "tested").length, suffix: "", label: "Supported AI Clients" },
+            { value: PLATFORMS.length, suffix: "+", label: "Compatible AI Clients" },
             { value: 256, suffix: "-bit", label: "AES-GCM Encryption" },
             { value: 100, suffix: "%", label: "Edge-Native Architecture" },
           ].map(({ value, suffix, label }, i) => (
@@ -1067,7 +1032,7 @@ function LandingPage() {
             Integrates with your active AI toolchain
           </h2>
           <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 36, maxWidth: 640, margin: "0 auto 36px" }}>
-            Expose context to your entire toolkit. Claude Code (CLI, Extension, Web), ChatGPT, and Antigravity 2.0 (Editor & CLI) are fully verified. Configuration scripts are provided to hook up all major MCP clients.
+            Works with any MCP-compatible client via standard HTTP transport or mcp-remote bridge. Connect your vault to Anthropic, OpenAI, Google, and VS Code ecosystem tools — no proprietary integration required.
           </p>
         </FadeIn>
         <PlatformGrid />
