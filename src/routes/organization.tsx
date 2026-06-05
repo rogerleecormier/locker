@@ -543,7 +543,7 @@ function OrganizationPage() {
     return (
       <div className="flex-1 min-h-screen bg-background">
         <PageHeader
-          title="Org Hub"
+          title="Team Space"
           icon={orgIcon}
           description="Authoritative knowledge, team recommendations, and member management for your organization."
         />
@@ -589,7 +589,7 @@ function OrganizationPage() {
     return (
       <div className="flex-1 min-h-screen bg-background">
         <PageHeader
-          title="Org Hub"
+          title="Team Space"
           icon={orgIcon}
           description="Authoritative knowledge, team recommendations, and member management for your organization."
         />
@@ -615,12 +615,12 @@ function OrganizationPage() {
   return (
     <div className="flex-1 min-h-screen bg-background">
       <PageHeader
-        title="Org Hub"
+        title="Team Space"
         icon={orgIcon}
         description="Authoritative knowledge, team recommendations, and member management for your organization."
       >
         <div className="flex items-center gap-2 mt-2">
-          <InfoTooltip text="Org Hub is the shared workspace for your organization — add authoritative memories all members' AI sessions will inherit, review member-submitted recommendations, and manage who has access." />
+          <InfoTooltip text="Team Space is the shared workspace for your organization — add authoritative memories all members' AI sessions will inherit, review member-submitted recommendations, and manage who has access." />
           <Badge variant="projects" className="normal-case font-semibold tracking-normal">
             Team
           </Badge>

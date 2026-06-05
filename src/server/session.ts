@@ -15,7 +15,8 @@ export async function requireSession(env: CloudflareEnv) {
       headers: { "Content-Type": "application/json" },
     });
   }
-  if (!session.user.emailVerified) {
+  const isLocal = env.BETTER_AUTH_URL?.includes("localhost") || env.BETTER_AUTH_URL?.includes("127.0.0.1");
+  if (!isLocal && !session.user.emailVerified) {
     throw new Response(JSON.stringify({ error: "Please verify your email before accessing this feature" }), {
       status: 403,
       headers: { "Content-Type": "application/json" },

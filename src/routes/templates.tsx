@@ -303,10 +303,11 @@ function TemplatesPage() {
     queryFn: () => listMemoryTemplates(),
   });
 
-  const { data: workspaces = [] } = useQuery({
+  const { data: workspacesList = [] } = useQuery({
     queryKey: ["workspaces"],
     queryFn: () => getUserWorkspaces(),
   });
+  const workspaces = Array.isArray(workspacesList) ? workspacesList : [];
 
   // Mutations
   const deleteMut = useMutation({
@@ -322,7 +323,7 @@ function TemplatesPage() {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
       setImportingTemplate(null);
       setImportVariables({});
-      alert("Successfully imported template rules into your memory locker!");
+      alert("Successfully imported template rules into your Memories!");
     },
   });
 
@@ -613,14 +614,14 @@ function TemplatesPage() {
             <DialogHeader>
               <DialogTitle>Import Template: {importingTemplate.name}</DialogTitle>
               <DialogDescription>
-                Configure guidelines and template variables to import into your memory locker workspace.
+                Configure guidelines and template variables to import into your Memories workspace.
               </DialogDescription>
             </DialogHeader>
 
             <div className="py-4 flex flex-col gap-5 overflow-y-auto max-h-[60vh] pr-1 select-none">
               {/* Locker Workspace Destination */}
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="import-workspace">Destination Locker Workspace</Label>
+                <Label htmlFor="import-workspace">Destination Workspace</Label>
                 <Select
                   id="import-workspace"
                   value={importWorkspace}

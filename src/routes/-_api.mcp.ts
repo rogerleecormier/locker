@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets, credentials } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { hashToken, deriveUserKey } from "~/server/crypto";
@@ -10,6 +10,8 @@ import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit, est
 import { verifyTOTP } from "~/server/totp";
 import { PLANS } from "~/lib/plans";
 import { getUserEffectivePlan } from "~/server/planGate";
+import { sanitizeMemory } from "~/server/sanitization";
+import { maskSensitiveData } from "~/server/dlp";
 
 type EmbeddingResponse = {
   shape: number[][];
@@ -181,6 +183,53 @@ export const ALL_TOOLS = [
       },
       required: ["projectKey", "formatType"],
       additionalProperties: false,
+    },
+  },
+  {
+    name: "store_credential",
+    description: "Store an encrypted secret credential in the vault. Values are encrypted at rest and will be redacted in context results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The unique uppercase name for the credential (e.g. SLACK_API_TOKEN)." },
+        value: { type: "string", description: "The secret value to encrypt and store." },
+        projectKey: { type: "string", description: "Optional workspace project key scope." },
+      },
+      required: ["name", "value"],
+    },
+  },
+  {
+    name: "list_credentials",
+    description: "List the names of all secure credentials stored in this scope. Does NOT return the secret values.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectKey: { type: "string", description: "Optional workspace project key scope." },
+      },
+    },
+  },
+  {
+    name: "retrieve_credential",
+    description: "Retrieve the decrypted secret value of a credential by name. Warning: The returned raw value will be visible in the current LLM context window.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The name of the credential to retrieve." },
+        projectKey: { type: "string", description: "Optional workspace project key scope." },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "delete_credential",
+    description: "Delete a secure credential by name from the vault.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The name of the credential to delete." },
+        projectKey: { type: "string", description: "Optional workspace project key scope." },
+      },
+      required: ["name"],
     },
   },
 ];
@@ -673,6 +722,9 @@ export async function handleMcpRequest(
       if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
       if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
       if (t.name === "sync_workspace_agent_configs") return !!(claims.permissions & MCP_PERM_RECALL);
+      if (t.name === "store_credential") return !!(claims.permissions & MCP_PERM_COMMIT);
+      if (t.name === "delete_credential") return !!(claims.permissions & MCP_PERM_DELETE);
+      if (t.name === "list_credentials" || t.name === "retrieve_credential") return !!(claims.permissions & MCP_PERM_RECALL);
       return false;
     });
     return new Response(
@@ -726,6 +778,9 @@ export async function handleMcpRequest(
       if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
       if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
       if (t.name === "sync_workspace_agent_configs") return !!(claims.permissions & MCP_PERM_RECALL);
+      if (t.name === "store_credential") return !!(claims.permissions & MCP_PERM_COMMIT);
+      if (t.name === "delete_credential") return !!(claims.permissions & MCP_PERM_DELETE);
+      if (t.name === "list_credentials" || t.name === "retrieve_credential") return !!(claims.permissions & MCP_PERM_RECALL);
       return false;
     });
     return mcpResult(id, { tools: allowedTools });
@@ -1041,7 +1096,12 @@ export async function handleMcpRequest(
       }
     }
 
-    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(finalResults) }] });
+    const maskedResults = finalResults.map((r) => ({
+      ...r,
+      fact: maskSensitiveData(r.fact),
+    }));
+
+    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(maskedResults) }] });
   }
 
   if (toolName === "search_memories") {
@@ -1127,7 +1187,12 @@ export async function handleMcpRequest(
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "search_memories", ipAddress, userAgent, metadata: { category, tag, keyword, projectKey, matchCount: paginated.length } });
     await logTokenUsage(db, claims.tokenId, "recall", 0);
 
-    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(paginated) }] });
+    const maskedPaginated = paginated.map((r) => ({
+      ...r,
+      fact: maskSensitiveData(r.fact),
+    }));
+
+    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(maskedPaginated) }] });
   }
 
   if (toolName === "get_memory_summary") {
@@ -1232,9 +1297,14 @@ export async function handleMcpRequest(
     if (!tagsList.includes(source)) tagsList.push(source);
     const finalTags = tagsList.join(", ");
 
+    const sanitizedFact = sanitizeMemory(fact.trim());
+    if (!sanitizedFact) {
+      return mcpError(id, -32602, "Invalid params: fact was empty or contained adversarial instructions");
+    }
+
     const memId = crypto.randomUUID();
     const timestamp = Date.now();
-    const factTrimmed = fact.trim();
+    const factTrimmed = sanitizedFact;
     const embedding = await generateEmbedding(env.AI, factTrimmed);
     const tokensConsumed = estimateEmbeddingTokens(factTrimmed);
 
@@ -1468,7 +1538,12 @@ export async function handleMcpRequest(
       ? (typeof args.tags === "string" ? args.tags.trim() : "")
       : existing.tags;
 
-    const factTrimmed = fact.trim();
+    const sanitizedFact = sanitizeMemory(fact.trim());
+    if (!sanitizedFact) {
+      return mcpError(id, -32602, "Invalid params: fact was empty or contained adversarial instructions");
+    }
+
+    const factTrimmed = sanitizedFact;
     const embedding = await generateEmbedding(env.AI, factTrimmed);
     const tokensConsumed = estimateEmbeddingTokens(factTrimmed);
 
@@ -1820,6 +1895,278 @@ export async function handleMcpRequest(
             rulesCount: lines.length,
           }),
         },
+      ],
+    });
+  }
+
+  if (toolName === "store_credential") {
+    if (!(claims.permissions & MCP_PERM_COMMIT)) {
+      return mcpError(id, -32001, "Token does not have commit_memory permission");
+    }
+
+    const name = args.name as string | undefined;
+    const value = args.value as string | undefined;
+    const projectKey = args.projectKey as string | undefined;
+
+    if (!name || typeof name !== "string") {
+      return mcpError(id, -32602, "Invalid params: name is required");
+    }
+    if (!value || typeof value !== "string") {
+      return mcpError(id, -32602, "Invalid params: value is required");
+    }
+
+    const upperName = name.trim().toUpperCase();
+    if (!/^[A-Z0-9_]+$/.test(upperName)) {
+      return mcpError(id, -32602, "Invalid params: credential name must contain only uppercase alphanumeric characters and underscores");
+    }
+
+    if (!claims.userId) {
+      throw new Error("Unauthorized: userId is required");
+    }
+
+    const resolvedProjectKey = resolveProjectKey(claims, projectKey);
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, resolvedProjectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${resolvedProjectKey ?? "personal"}'`);
+    }
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, resolvedProjectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${resolvedProjectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "commit", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
+    const { scopeType, scopeId } = parseScope(resolvedProjectKey);
+
+    const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+
+    const encryptedVal = await encrypt(value, vaultKey);
+
+    const scopeConditions = resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
+      ? eq(credentials.projectKey, resolvedProjectKey)
+      : and(eq(credentials.userId, claims.userId), sql`(${credentials.projectKey} IS NULL OR ${credentials.projectKey} = '')`);
+
+    const existing = await db
+      .select()
+      .from(credentials)
+      .where(and(eq(credentials.name, upperName), scopeConditions))
+      .limit(1)
+      .all();
+
+    if (existing.length > 0) {
+      await db
+        .update(credentials)
+        .set({
+          encryptedValue: encryptedVal,
+          updatedAt: Date.now(),
+        })
+        .where(eq(credentials.id, existing[0].id))
+        .run();
+    } else {
+      const credId = crypto.randomUUID();
+      await db
+        .insert(credentials)
+        .values({
+          id: credId,
+          userId: claims.userId,
+          name: upperName,
+          encryptedValue: encryptedVal,
+          projectKey: resolvedProjectKey || null,
+          scopeType,
+          scopeId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+    }
+
+    await logAudit(db, {
+      orgId,
+      userId: claims.userId,
+      tokenId: claims.tokenId,
+      action: "store_credential",
+      metadata: { name: upperName, projectKey: resolvedProjectKey },
+    });
+    await logTokenUsage(db, claims.tokenId, "commit", 0);
+
+    return mcpResult(id, {
+      content: [
+        { type: "text", text: JSON.stringify({ success: true, name: upperName }) },
+      ],
+    });
+  }
+
+  if (toolName === "list_credentials") {
+    if (!(claims.permissions & MCP_PERM_RECALL)) {
+      return mcpError(id, -32001, "Token does not have recall_context permission");
+    }
+
+    const projectKey = args.projectKey as string | undefined;
+
+    if (!claims.userId) {
+      throw new Error("Unauthorized: userId is required");
+    }
+
+    const resolvedProjectKey = resolveProjectKey(claims, projectKey);
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, resolvedProjectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${resolvedProjectKey ?? "personal"}'`);
+    }
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, resolvedProjectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${resolvedProjectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "recall", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
+    const scopeConditions = resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
+      ? eq(credentials.projectKey, resolvedProjectKey)
+      : and(eq(credentials.userId, claims.userId), sql`(${credentials.projectKey} IS NULL OR ${credentials.projectKey} = '')`);
+
+    const rows = await db
+      .select({ name: credentials.name })
+      .from(credentials)
+      .where(scopeConditions)
+      .all();
+
+    await logAudit(db, {
+      orgId,
+      userId: claims.userId,
+      tokenId: claims.tokenId,
+      action: "list_credentials",
+      metadata: { projectKey: resolvedProjectKey, count: rows.length },
+    });
+    await logTokenUsage(db, claims.tokenId, "recall", 0);
+
+    return mcpResult(id, {
+      content: [
+        { type: "text", text: JSON.stringify(rows.map(r => r.name)) },
+      ],
+    });
+  }
+
+  if (toolName === "retrieve_credential") {
+    if (!(claims.permissions & MCP_PERM_RECALL)) {
+      return mcpError(id, -32001, "Token does not have recall_context permission");
+    }
+
+    const name = args.name as string | undefined;
+    const projectKey = args.projectKey as string | undefined;
+
+    if (!name || typeof name !== "string") {
+      return mcpError(id, -32602, "Invalid params: name is required");
+    }
+
+    if (!claims.userId) {
+      throw new Error("Unauthorized: userId is required");
+    }
+
+    const resolvedProjectKey = resolveProjectKey(claims, projectKey);
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, resolvedProjectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${resolvedProjectKey ?? "personal"}'`);
+    }
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, resolvedProjectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${resolvedProjectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "recall", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
+    const upperName = name.trim().toUpperCase();
+    const scopeConditions = resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
+      ? eq(credentials.projectKey, resolvedProjectKey)
+      : and(eq(credentials.userId, claims.userId), sql`(${credentials.projectKey} IS NULL OR ${credentials.projectKey} = '')`);
+
+    const rows = await db
+      .select()
+      .from(credentials)
+      .where(and(eq(credentials.name, upperName), scopeConditions))
+      .limit(1)
+      .all();
+
+    if (rows.length === 0) {
+      return mcpError(id, -32602, "Credential not found");
+    }
+
+    const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
+    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+
+    const decryptedValue = await decrypt(rows[0].encryptedValue, vaultKey);
+
+    await logAudit(db, {
+      orgId,
+      userId: claims.userId,
+      tokenId: claims.tokenId,
+      action: "retrieve_credential",
+      metadata: { name: upperName, projectKey: resolvedProjectKey, success: true },
+    });
+    await logTokenUsage(db, claims.tokenId, "recall", 0);
+
+    return mcpResult(id, {
+      content: [
+        { type: "text", text: JSON.stringify({ name: rows[0].name, value: decryptedValue }) },
+      ],
+    });
+  }
+
+  if (toolName === "delete_credential") {
+    if (!(claims.permissions & MCP_PERM_DELETE)) {
+      return mcpError(id, -32001, "Token does not have delete_memory permission");
+    }
+
+    const name = args.name as string | undefined;
+    const projectKey = args.projectKey as string | undefined;
+
+    if (!name || typeof name !== "string") {
+      return mcpError(id, -32602, "Invalid params: name is required");
+    }
+
+    if (!claims.userId) {
+      throw new Error("Unauthorized: userId is required");
+    }
+
+    const resolvedProjectKey = resolveProjectKey(claims, projectKey);
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, resolvedProjectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${resolvedProjectKey ?? "personal"}'`);
+    }
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, resolvedProjectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${resolvedProjectKey}'`);
+    }
+
+    const upperName = name.trim().toUpperCase();
+    const scopeConditions = resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
+      ? eq(credentials.projectKey, resolvedProjectKey)
+      : and(eq(credentials.userId, claims.userId), sql`(${credentials.projectKey} IS NULL OR ${credentials.projectKey} = '')`);
+
+    await db
+      .delete(credentials)
+      .where(and(eq(credentials.name, upperName), scopeConditions))
+      .run();
+
+    await logAudit(db, {
+      orgId,
+      userId: claims.userId,
+      tokenId: claims.tokenId,
+      action: "delete_credential",
+      metadata: { name: upperName, projectKey: resolvedProjectKey },
+    });
+
+    return mcpResult(id, {
+      content: [
+        { type: "text", text: JSON.stringify({ success: true, name: upperName }) },
       ],
     });
   }

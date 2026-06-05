@@ -1130,10 +1130,11 @@ function Dashboard() {
     queryFn: () => getMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
   });
 
-  const { data: workspaces = [] } = useQuery({
+  const { data: workspacesList = [] } = useQuery({
     queryKey: ["workspaces"],
     queryFn: () => getUserWorkspaces(),
   });
+  const workspaces = Array.isArray(workspacesList) ? workspacesList : [];
 
   const { data: usageStats } = useQuery({
     queryKey: ["usage-stats"],
@@ -1209,7 +1210,7 @@ function Dashboard() {
     <div className="flex flex-col min-h-screen bg-bg text-text pb-12">
       {/* Page Header */}
       <PageHeader
-        title="Memory Locker"
+        title="Memories"
         description="Establish long-term technical context, rules manifestos, and stack preferences for developer agents."
         icon={
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

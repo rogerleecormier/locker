@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useCallback, useMemo } from "react";
-import { ALL_TOOLS } from "./_api.mcp";
+import { ALL_TOOLS } from "./-_api.mcp";
 import { useSession } from "~/lib/authClient";
 import { PLATFORM_GROUPS, PLATFORMS } from "../lib/platforms";
 

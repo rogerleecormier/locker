@@ -386,4 +386,19 @@ export const memoryTemplates = sqliteTable("memory_templates", {
 
 export type MemoryTemplate = typeof memoryTemplates.$inferSelect;
 
+export const credentials = sqliteTable("credentials", {
+  id: text("id").primaryKey(),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  encryptedValue: text("encryptedValue").notNull(),
+  projectKey: text("projectKey"),
+  scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
+  scopeId: text("scopeId"),
+  createdAt: integer("createdAt").notNull(),
+  updatedAt: integer("updatedAt").notNull(),
+});
+
+export type Credential = typeof credentials.$inferSelect;
+export type NewCredential = typeof credentials.$inferInsert;
+
 

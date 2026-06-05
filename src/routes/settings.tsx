@@ -260,7 +260,8 @@ export function NewTokenModal({ onClose, onCreate }: {
   const [confirmed, setConfirmed] = useState(false);
   const [timeLeft, setTimeLeft] = useState(300);
 
-  const { data: workspaces = [] } = useQuery({ queryKey: ["workspaces"], queryFn: () => getUserWorkspaces() });
+  const { data: workspacesList = [] } = useQuery({ queryKey: ["workspaces"], queryFn: () => getUserWorkspaces() });
+  const workspaces = Array.isArray(workspacesList) ? workspacesList : [];
 
   async function handleCreate() {
     if (!name.trim()) return;
@@ -549,7 +550,8 @@ export function ApiTokensSection() {
   const [showModal, setShowModal] = useState(false);
 
   const { data: tokens = [], isLoading } = useQuery({ queryKey: ["api-tokens"], queryFn: () => listApiTokens() });
-  const { data: workspaces = [] } = useQuery({ queryKey: ["workspaces"], queryFn: () => getUserWorkspaces() });
+  const { data: workspacesList = [] } = useQuery({ queryKey: ["workspaces"], queryFn: () => getUserWorkspaces() });
+  const workspaces = Array.isArray(workspacesList) ? workspacesList : [];
 
   const createMut = useMutation({
     mutationFn: ({ name, permissions, scopeType, scopeId, scopes, ttlDays }: { name: string; permissions: number; scopeType: "personal" | "organization" | "team"; scopeId?: string; scopes?: any; ttlDays?: number }) =>
@@ -1066,7 +1068,7 @@ function SettingsPage() {
     { id: "profile" as const, label: "Profile", tooltip: "Update your display name and email address." },
     { id: "security" as const, label: "Security", tooltip: "Manage two-factor authentication and change your password." },
     { id: "sessions" as const, label: "Sessions", tooltip: "View and revoke active login sessions across devices." },
-    { id: "tokens" as const, label: "API Tokens", tooltip: "Create tokens that let AI clients authenticate with your Memory Locker via the MCP endpoint." },
+    { id: "tokens" as const, label: "API Tokens", tooltip: "Create tokens that let AI clients authenticate with your memories via the MCP endpoint." },
     { id: "mcp" as const, label: "MCP Endpoint", tooltip: "Your personal MCP server URL — paste this into your AI client (e.g. Claude, Cursor) to enable memory retrieval." },
   ];
 

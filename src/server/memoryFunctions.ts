@@ -29,6 +29,7 @@ import { encrypt, decrypt, isEncrypted, hashToken, deriveUserKey } from "./crypt
 import { requireSession, requireAdmin } from "./session";
 import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "./enterprise";
 import { checkMemoryLimit, checkApiTokenLimit, getUserEffectivePlan } from "./planGate";
+import { sanitizeMemory } from "./sanitization";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
@@ -602,15 +603,20 @@ export const addMemory = createServerFn({ method: "POST" })
       throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
     }
 
+    const sanitizedFact = sanitizeMemory(data.fact);
+    if (!sanitizedFact) {
+      throw new Error("Invalid memory fact: content was empty or contained adversarial instructions");
+    }
+
     const id = crypto.randomUUID();
     const timestamp = Date.now();
     
     const vaultId = (scopeType === "team" || scopeType === "organization") ? data.projectKey! : user.id;
     const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-    const encryptedFact = await encryptFact(data.fact, vaultKey);
+    const encryptedFact = await encryptFact(sanitizedFact, vaultKey);
 
-    const embedding = await generateEmbedding(env.AI, data.fact);
-    const tokensConsumed = estimateEmbeddingTokens(data.fact);
+    const embedding = await generateEmbedding(env.AI, sanitizedFact);
+    const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
     const tagsList = data.tags.split(",").map(t => t.trim()).filter(Boolean);
     if (!tagsList.includes("manual")) {
@@ -622,7 +628,7 @@ export const addMemory = createServerFn({ method: "POST" })
     try {
       await env.ARCHIVE_QUEUE.send({
         userId: user.id,
-        newFact: data.fact,
+        newFact: sanitizedFact,
         embedding,
         projectKey: data.projectKey || null,
       });
@@ -714,7 +720,7 @@ export const addMemory = createServerFn({ method: "POST" })
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "commit_memory", memoryId: id, metadata: { category: data.category, projectKey: data.projectKey } });
     await logTokenUsage(db, "session", "commit", tokensConsumed);
 
-    return { ...newRow, fact: data.fact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null } as Memory;
+    return { ...newRow, fact: sanitizedFact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null } as Memory;
   });
 
 type BatchImportItem = { fact: string; category?: string; tags?: string; projectKey?: string };
@@ -784,7 +790,12 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
     }
 
-    const valid = items.filter((item) => {
+    const sanitizedItems = items.map((item) => ({
+      ...item,
+      fact: sanitizeMemory(item.fact)
+    }));
+
+    const valid = sanitizedItems.filter((item) => {
       const f = item.fact;
       if (f.length === 0) return false;
       if (/^#+\s/.test(f)) return false;
@@ -794,7 +805,7 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       if (/^imported from:/i.test(f)) return false;
       return true;
     });
-    if (valid.length === 0) return { imported: 0, skipped: 0 };
+    if (valid.length === 0) return { imported: 0, skipped: items.length };
 
     const needsClassification = valid.map((item) =>
       item.category === "rules" || item.category === "projects" || item.category === "references"
@@ -1262,9 +1273,14 @@ export const updateMemory = createServerFn({ method: "POST" })
       throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
     }
 
+    const sanitizedFact = sanitizeMemory(data.fact);
+    if (!sanitizedFact) {
+      throw new Error("Invalid memory fact: content was empty or contained adversarial instructions");
+    }
+
     const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : user.id;
     const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-    const encryptedFact = await encryptFact(data.fact, vaultKey);
+    const encryptedFact = await encryptFact(sanitizedFact, vaultKey);
 
     await db.update(memories)
       .set({ fact: encryptedFact, category: data.category, tags: data.tags, timestamp: Date.now() })
@@ -1282,8 +1298,8 @@ export const updateMemory = createServerFn({ method: "POST" })
       timestamp: Date.now(),
     });
 
-    const embedding = await generateEmbedding(env.AI, data.fact);
-    const tokensConsumed = estimateEmbeddingTokens(data.fact);
+    const embedding = await generateEmbedding(env.AI, sanitizedFact);
+    const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
     await env.VECTOR_INDEX.upsert([{
       id: data.id,
       values: embedding,
@@ -1295,7 +1311,7 @@ export const updateMemory = createServerFn({ method: "POST" })
     await logTokenUsage(db, "session", "commit", tokensConsumed);
 
     const rows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
-    return { ...rows[0], fact: data.fact };
+    return { ...rows[0], fact: sanitizedFact };
   });
 
 export const archiveMemory = createServerFn({ method: "POST" })
@@ -2520,12 +2536,17 @@ export const submitMemoryRecommendation = createServerFn({ method: "POST" })
     const recId = crypto.randomUUID();
     const timestamp = Date.now();
 
+    const sanitizedFact = sanitizeMemory(data.fact);
+    if (!sanitizedFact) {
+      throw new Error("Invalid memory recommendation: content was empty or contained adversarial instructions");
+    }
+
     // 2. Insert the recommendation
     await db.insert(memoryRecommendations).values({
       id: recId,
       orgId: data.orgId,
       userId: user.id,
-      fact: data.fact,
+      fact: sanitizedFact,
       category: data.category,
       tags: data.tags,
       projectKey: data.projectKey || `org:${data.orgId}`,

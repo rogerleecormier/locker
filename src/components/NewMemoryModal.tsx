@@ -95,11 +95,12 @@ function downloadFile(content: string, filename: string, contentType: string) {
 export function NewMemoryModal({ isOpen, onClose, onSaved, projectKey }: NewMemoryModalProps) {
   const queryClient = useQueryClient();
 
-  const { data: workspaces = [] } = useQuery({
+  const { data: workspacesList = [] } = useQuery({
     queryKey: ["workspaces"],
     queryFn: () => getUserWorkspaces(),
     enabled: isOpen,
   });
+  const workspaces = Array.isArray(workspacesList) ? workspacesList : [];
 
   const { data: templates = [] } = useQuery({
     queryKey: ["templates"],

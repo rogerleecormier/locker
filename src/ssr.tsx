@@ -2,7 +2,7 @@ import {
   createStartHandler,
   defaultStreamHandler,
 } from "@tanstack/react-start/server";
-import { handleMcpRequest } from "./routes/_api.mcp";
+import { handleMcpRequest } from "./routes/-_api.mcp";
 import { createAuth } from "./server/auth";
 import { handleMemoryVersionCleanup } from "./scheduled/cleanup-versions";
 import type { CloudflareEnv, ArchiveMessage } from "./types/cloudflare";
