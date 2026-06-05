@@ -52,7 +52,7 @@ function DocsPage() {
       label: "Claude Desktop",
       color: "#d4956a",
       group: "Anthropic",
-      description: "Connect the Claude Desktop app directly to your hosted MCP endpoint.",
+      description: "Connect the Claude Desktop app to Locker via its own MCP config file. Claude Desktop has a separate config from Claude Code CLI and Claude (Web) — it must be configured independently.",
       copyText: `{
   "mcpServers": {
     "locker": {
@@ -72,11 +72,19 @@ function DocsPage() {
 }`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ background: "rgba(212,149,106,0.08)", border: "1px solid rgba(212,149,106,0.25)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#d4956a" }}>
+            <strong>Independent config:</strong> Claude Desktop uses its own <code>claude_desktop_config.json</code> file and does not share MCP configuration with Claude Code CLI or Claude (Web). If you also use Claude Code, you must add Locker there separately.
+          </div>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Admin → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
-            <li>Open <code>claude_desktop_config.json</code> (under <code>~/.config/Claude/</code> on Linux/Mac or <code>%APPDATA%/Claude/</code> on Windows).</li>
+            <li>Open <code>claude_desktop_config.json</code>:
+              <ul style={{ paddingLeft: 20, marginTop: 4, marginBottom: 4 }}>
+                <li>Linux / macOS: <code>~/.config/Claude/claude_desktop_config.json</code></li>
+                <li>Windows: <code>%APPDATA%\Claude\claude_desktop_config.json</code></li>
+              </ul>
+            </li>
             <li>Add the <code>locker</code> block (copy snippet below) into <code>mcpServers</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>Restart Claude Desktop. The tools will appear in your chats.</li>
+            <li>Fully restart Claude Desktop. The Locker tools will appear in your chats.</li>
           </ol>
         </div>
       ),
@@ -87,15 +95,18 @@ function DocsPage() {
       color: "#9c6f3d",
       group: "Anthropic",
       tested: true,
-      description: "Connect Locker to the Claude Code CLI. Fully tested and working.",
+      description: "Connect Locker to Claude Code CLI. If you are logged into the CLI with your claude.ai account, MCP Connectors you set up in Claude (Web) are automatically available here — no extra setup needed. Use this command only to add servers not already in your claude.ai Connectors. Fully tested and working.",
       copyText: `claude mcp add --transport http locker ${origin}/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#22c55e" }}>
+            <strong>Check first:</strong> If Claude Code is logged in with your claude.ai account, MCP Connectors configured in <strong>Claude (Web)</strong> are already inherited automatically — including Locker if you set it up there. Run <code>claude mcp list</code> to confirm before adding it again manually.
+          </div>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-            <li>Go to <strong>Admin → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
+            <li>Run <code>claude mcp list</code>. If <code>claude.ai Locker</code> already appears, you're done — skip the steps below.</li>
+            <li>If Locker is not listed, go to <strong>Admin → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
             <li>Run the command below in your terminal, replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>The default scope is <code>local</code> (project-level, not committed). Add <code>--scope project</code> to write a shareable <code>.mcp.json</code> at the project root, or <code>--scope user</code> to apply it across all projects.</li>
-            <li>Verify with <code>claude mcp list</code>. Locker tools are now available in your Claude Code CLI sessions.</li>
+            <li>The default scope is <code>local</code> (project-level). Use <code>--scope user</code> to register globally across all projects. Use <code>--scope project</code> to write a shareable <code>.mcp.json</code> at the project root.</li>
           </ol>
         </div>
       ),
@@ -106,16 +117,21 @@ function DocsPage() {
       color: "#c97b53",
       group: "Anthropic",
       tested: true,
-      description: "Integrate Locker into the Claude Code VS Code extension. Fully tested and working.",
+      description: "The Claude Code VS Code, JetBrains, and Antigravity IDE extensions share the same account session as the CLI. If you connected Locker via Claude (Web) OAuth, it is automatically available in all Claude Code surfaces — no extra config needed. Fully tested and working.",
       copyText: `claude mcp add --transport http locker ${origin}/api/mcp --header "Authorization: Bearer lkr_your_token_here"`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "var(--accent)" }}>
+            <strong>Inherits from claude.ai account:</strong> Claude Code extensions are authenticated via your claude.ai OAuth session. MCP Connectors you set up in <strong>Claude (Web)</strong> — including Locker — are automatically surfaced in the VS Code, JetBrains, and Antigravity IDE extensions without any additional configuration.
+          </div>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-            <li>Go to <strong>Admin → API Tokens</strong> and generate a new token. Copy it — it's shown only once.</li>
-            <li>Run the command below in your terminal, replacing <code>lkr_your_token_here</code> with your token. <strong>The CLI is required to add servers</strong> — this cannot be done from the VS Code extension.</li>
-            <li>The default scope is <code>local</code> (project-level, not committed). Add <code>--scope project</code> to write a shareable <code>.mcp.json</code> at the project root, or <code>--scope user</code> to apply it across all projects.</li>
-            <li>Verify with <code>claude mcp list</code>. Once added, the VS Code extension picks up the server automatically — use <code>/mcp</code> in the chat panel to view status or reconnect.</li>
+            <li>Use <code>/mcp</code> in the extension chat panel to check if <code>claude.ai Locker</code> already appears. If it does, you're done.</li>
+            <li>If Locker is not listed, it means it hasn't been connected via Claude (Web) yet — see the <strong>Claude (Web)</strong> setup guide to do that first.</li>
+            <li>Alternatively, register Locker directly via the CLI using the command below (requires an API token from <strong>Admin → API Tokens</strong>). Use <code>--scope user</code> to make it available across all projects and all Claude Code surfaces.</li>
           </ol>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+            This applies to all Claude Code IDE surfaces: <strong>VS Code</strong>, <strong>JetBrains</strong> (IntelliJ, WebStorm, etc.), and <strong>Antigravity IDE</strong> — they all share the same claude.ai account session.
+          </p>
         </div>
       ),
     },
@@ -125,15 +141,18 @@ function DocsPage() {
       color: "#b85c38",
       group: "Anthropic",
       tested: true,
-      description: "Connect claude.ai to your Locker vault via the Connectors feature. Uses OAuth — no API token needed. Requires a Claude Pro, Team, or Enterprise plan.",
+      description: "Connect claude.ai to Locker via the Connectors feature. Uses OAuth — no API token needed. Once connected, Locker is also automatically available in Claude Code CLI and all Claude Code IDE extensions (VS Code, JetBrains, Antigravity) via your shared account session. Requires a Claude Pro, Team, or Enterprise plan.",
       copyText: `${origin}/api/mcp`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ background: "rgba(184,92,56,0.06)", border: "1px solid rgba(184,92,56,0.25)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#fb923c" }}>
+            <strong>Shared via account session:</strong> Claude Code CLI and all Claude Code IDE extensions (VS Code, JetBrains, Antigravity) are authenticated with your claude.ai account. MCP Connectors set up here are automatically inherited by those clients — connecting Locker here is the easiest way to get it everywhere.
+          </div>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Open <strong>claude.ai</strong> → click your profile avatar → <strong>Settings → Connectors → Add connector</strong>.</li>
             <li>Enter a name (e.g. <code>Locker</code>) and paste the server URL below.</li>
-            <li>Claude will redirect you to Locker to sign in and approve access — no API token needed.</li>
-            <li>Once authorized, the Locker memory tools will be available in your Claude.ai chats.</li>
+            <li>Claude will redirect you to Locker to sign in and approve access via OAuth — no API token needed.</li>
+            <li>Once authorized, Locker tools are available in claude.ai chats, and automatically in Claude Code CLI and all Claude Code IDE extensions.</li>
           </ol>
         </div>
       ),
@@ -256,7 +275,7 @@ function DocsPage() {
       label: "GitHub Copilot",
       color: "#6f42c1",
       group: "VS Code",
-      description: "Connect GitHub Copilot Chat in VS Code to Locker.",
+      description: "Connect GitHub Copilot Chat in VS Code to Locker. VS Code MCP servers defined in .vscode/mcp.json are shared — GitHub Copilot and VS Code agent mode both read from the same file.",
       copyText: `{
   "servers": {
     "locker": {
@@ -276,11 +295,14 @@ function DocsPage() {
 }`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ background: "rgba(111,66,193,0.06)", border: "1px solid rgba(111,66,193,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#a78bfa" }}>
+            <strong>Shared with VS Code:</strong> MCP servers defined in <code>.vscode/mcp.json</code> (workspace-scoped) or VS Code's <code>settings.json</code> (user-scoped) are available to both GitHub Copilot Chat and VS Code's native agent mode. Configure it once and both use it.
+          </div>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Admin → API Tokens</strong> and generate a new token.</li>
-            <li>Open VS Code Settings → search <strong>MCP</strong> → click <strong>Edit in settings.json</strong>.</li>
-            <li>Add the snippet below under <code>github.copilot.chat.mcp</code>, replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>Copilot Chat will fetch memory context when answering questions.</li>
+            <li><strong>Option A (User-scoped):</strong> Open VS Code Settings → search <strong>MCP</strong> → click <strong>Edit in settings.json</strong>, then add the snippet below under <code>mcp.servers</code>.</li>
+            <li><strong>Option B (Workspace-scoped):</strong> Create or edit <code>.vscode/mcp.json</code> in your workspace root and add the snippet (see the VS Code entry for that format).</li>
+            <li>Replace <code>lkr_your_token_here</code> with your token. Copilot Chat will fetch memory context when answering questions.</li>
           </ol>
         </div>
       ),
@@ -290,7 +312,7 @@ function DocsPage() {
       label: "VS Code",
       color: "#007acc",
       group: "VS Code",
-      description: "Configure VS Code MCP support via .vscode/mcp.json in your workspace.",
+      description: "Configure VS Code native MCP support via .vscode/mcp.json. This workspace file is shared — both VS Code agent mode and GitHub Copilot Chat read MCP servers from it.",
       copyText: `{
   "servers": {
     "locker": {
@@ -310,11 +332,14 @@ function DocsPage() {
 }`,
       instructions: (
         <div style={{ fontSize: 13, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ background: "rgba(0,122,204,0.06)", border: "1px solid rgba(0,122,204,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#60a5fa" }}>
+            <strong>Shared config:</strong> <code>.vscode/mcp.json</code> is the workspace-level VS Code MCP config. Both VS Code's native agent mode and GitHub Copilot Chat read from this same file — add Locker once and both tools have access.
+          </div>
           <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <li>Go to <strong>Admin → API Tokens</strong> and generate a new token.</li>
             <li>Create or edit <code>.vscode/mcp.json</code> in your workspace root.</li>
             <li>Paste the snippet below, replacing <code>lkr_your_token_here</code> with your token.</li>
-            <li>VS Code will pick up the server on the next session start.</li>
+            <li>VS Code will pick up the server on the next session start. Open the MCP panel (<strong>View → MCP Servers</strong>) to verify the connection.</li>
           </ol>
         </div>
       ),
