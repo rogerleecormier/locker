@@ -4,7 +4,7 @@ import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COM
 import type { AgentPolicy, MemoryCategory } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { hashToken, deriveUserKey } from "~/server/crypto";
+import { verifyToken, getOrCreateVaultKey } from "~/server/crypto";
 import { decrypt, isEncrypted } from "~/server/crypto";
 import { encrypt } from "~/server/crypto";
 import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "~/server/enterprise";
@@ -26,20 +26,9 @@ async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
   return result.data[0];
 }
 
-async function decryptFact(stored: string, encKey: string, fallbackKey?: string): Promise<string> {
+async function decryptFact(stored: string, encKey: string): Promise<string> {
   if (!isEncrypted(stored)) return stored;
-  try {
-    return await decrypt(stored, encKey);
-  } catch (err) {
-    if (fallbackKey) {
-      try {
-        return await decrypt(stored, fallbackKey);
-      } catch {
-        // Fall back to original error
-      }
-    }
-    throw err;
-  }
+  return decrypt(stored, encKey);
 }
 
 function normalizeCategory(raw: string | undefined): "rules" | "projects" | "references" {
@@ -419,17 +408,29 @@ async function validateBearerToken(
 
   // API token path (lkr_ prefix)
   if (rawToken.startsWith("lkr_")) {
-    const tokenHash = await hashToken(rawToken);
     const db = drizzle(env.DB, { schema: { apiTokens, organizationMembers, teamMembers } });
 
-    const rows = await db
-      .select()
-      .from(apiTokens)
-      .where(eq(apiTokens.tokenHash, tokenHash))
-      .all();
+    // Token format: lkr_<32-hex-id>_<32-hex-secret>
+    // Look up by embedded row id, then verify with PBKDF2.
+    const afterPrefix = rawToken.slice(4); // strip "lkr_"
+    const secondUnderscore = afterPrefix.indexOf("_");
+    if (secondUnderscore !== 32) return null; // not a valid v2 token
+
+    const embeddedIdHex = afterPrefix.slice(0, 32);
+    const embeddedId = [
+      embeddedIdHex.slice(0, 8),
+      embeddedIdHex.slice(8, 12),
+      embeddedIdHex.slice(12, 16),
+      embeddedIdHex.slice(16, 20),
+      embeddedIdHex.slice(20),
+    ].join("-");
+    const rows = await db.select().from(apiTokens).where(eq(apiTokens.id, embeddedId)).all();
 
     if (!rows.length) return null;
     const token = rows[0];
+
+    const valid = await verifyToken(rawToken, token.tokenHash);
+    if (!valid) return null;
 
     if (token.expiresAt && token.expiresAt < Date.now()) return null;
 
@@ -1023,12 +1024,11 @@ export async function handleMcpRequest(
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify([]) }] });
     }
 
-    // Decrypt all returned memories
     const decrypted = await Promise.all(
       dbRows.map(async (r) => {
         const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : claims.userId;
-        const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-        return { ...r, fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY) };
+        const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+        return { ...r, fact: await decryptFact(r.fact, vaultKey) };
       })
     );
 
@@ -1151,12 +1151,9 @@ export async function handleMcpRequest(
       }
     }
 
-    const maskedResults = finalResults.map((r) => ({
-      ...r,
-      fact: maskSensitiveData(r.fact),
-    }));
-
-    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(maskedResults) }] });
+    // DLP was already applied at write time (commit_memory / update_memory).
+    // Applying it again here would corrupt legitimate code/ID strings during recall.
+    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(finalResults) }] });
   }
 
   if (toolName === "search_memories") {
@@ -1228,11 +1225,10 @@ export async function handleMcpRequest(
       .orderBy(desc(memories.timestamp))
       .all();
 
-    // Decrypt using derived vault key
     const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const decrypted = await Promise.all(
-      rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY) }))
+      rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey) }))
     );
 
     // Filter in memory for tag and keyword
@@ -1254,12 +1250,9 @@ export async function handleMcpRequest(
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "search_memories", ipAddress, userAgent, metadata: { category, tag, keyword, projectKey, matchCount: paginated.length } });
     await logTokenUsage(db, claims.tokenId, "recall", 0);
 
-    const maskedPaginated = paginated.map((r) => ({
-      ...r,
-      fact: maskSensitiveData(r.fact),
-    }));
-
-    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(maskedPaginated) }] });
+    // DLP was already applied at write time (commit_memory / update_memory).
+    // Applying it again here would corrupt legitimate code/ID strings during recall.
+    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(paginated) }] });
   }
 
   if (toolName === "get_memory_summary") {
@@ -1385,15 +1378,19 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, "Invalid params: fact was empty or contained adversarial instructions");
     }
 
+    // DLP: redact secrets/PII at write time so stored memories are permanently clean.
+    // Running at write (not read) time avoids stripping legitimate data during code-gen recall.
+    const dlpFact = maskSensitiveData(sanitizedFact);
+
     const memId = crypto.randomUUID();
     const timestamp = Date.now();
-    const factTrimmed = sanitizedFact;
+    const factTrimmed = dlpFact;
     const embedding = await generateEmbedding(env.AI, factTrimmed);
     const tokensConsumed = estimateEmbeddingTokens(factTrimmed);
 
-    // Derive vault key
+    // Fetch envelope DEK for this vault
     const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const encryptedFact = await encrypt(factTrimmed, vaultKey);
 
     // Archive contradicted memories asynchronously via Queue
@@ -1507,8 +1504,8 @@ export async function handleMcpRequest(
       if (!totpCode || typeof totpCode !== "string") {
         return mcpError(id, -32024, "MFA Verification Required: Please provide a valid 6-digit TOTP code.");
       }
-      const userKey = await deriveUserKey(env.ENCRYPTION_KEY, claims.userId);
-      const decryptedSecret = await decrypt(totpRows[0].secret, userKey);
+      const totpEnvKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, claims.userId);
+      const decryptedSecret = await decrypt(totpRows[0].secret, totpEnvKey);
       const verified = await verifyTOTP(decryptedSecret, totpCode);
       if (!verified) {
         return mcpError(id, -32024, "MFA Verification Failed: Invalid TOTP code.");
@@ -1524,8 +1521,8 @@ export async function handleMcpRequest(
         if (!passcode || typeof passcode !== "string") {
           return mcpError(id, -32025, "Passcode Verification Required: Please provide your deletion passcode.");
         }
-        const hashed = await hashToken(passcode);
-        if (hashed !== userRows[0].writePasscodeHash) {
+        const valid = await verifyToken(passcode, userRows[0].writePasscodeHash);
+        if (!valid) {
           return mcpError(id, -32025, "Passcode Verification Failed: Invalid deletion passcode.");
         }
       }
@@ -1633,13 +1630,16 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, "Invalid params: fact was empty or contained adversarial instructions");
     }
 
-    const factTrimmed = sanitizedFact;
+    // DLP: redact secrets/PII at write time so stored memories are permanently clean.
+    const dlpFact = maskSensitiveData(sanitizedFact);
+
+    const factTrimmed = dlpFact;
     const embedding = await generateEmbedding(env.AI, factTrimmed);
     const tokensConsumed = estimateEmbeddingTokens(factTrimmed);
 
-    // Derive vault key
+    // Fetch envelope DEK for this vault
     const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : claims.userId;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const encryptedFact = await encrypt(factTrimmed, vaultKey);
 
     await db.update(memories)
@@ -1718,8 +1718,8 @@ export async function handleMcpRequest(
       if (!totpCode || typeof totpCode !== "string") {
         return mcpError(id, -32024, "MFA Verification Required: Please provide a valid 6-digit TOTP code.");
       }
-      const userKey = await deriveUserKey(env.ENCRYPTION_KEY, claims.userId);
-      const decryptedSecret = await decrypt(totpRows[0].secret, userKey);
+      const totpEnvKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, claims.userId);
+      const decryptedSecret = await decrypt(totpRows[0].secret, totpEnvKey);
       const verified = await verifyTOTP(decryptedSecret, totpCode);
       if (!verified) {
         return mcpError(id, -32024, "MFA Verification Failed: Invalid TOTP code.");
@@ -1735,8 +1735,8 @@ export async function handleMcpRequest(
         if (!passcode || typeof passcode !== "string") {
           return mcpError(id, -32025, "Passcode Verification Required: Please provide your deletion passcode.");
         }
-        const hashed = await hashToken(passcode);
-        if (hashed !== userRows[0].writePasscodeHash) {
+        const valid = await verifyToken(passcode, userRows[0].writePasscodeHash);
+        if (!valid) {
           return mcpError(id, -32025, "Passcode Verification Failed: Invalid deletion passcode.");
         }
       }
@@ -1900,14 +1900,14 @@ export async function handleMcpRequest(
       .all();
 
     const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
 
     const decryptedMemories = await Promise.all(
       rows.map(async (r) => {
         try {
           return {
             ...r,
-            fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY),
+            fact: await decryptFact(r.fact, vaultKey),
           };
         } catch {
           return null;
@@ -2047,7 +2047,7 @@ export async function handleMcpRequest(
     const { scopeType, scopeId } = parseScope(resolvedProjectKey);
 
     const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
 
     const encryptedVal = await encrypt(value, vaultKey);
 
@@ -2211,8 +2211,7 @@ export async function handleMcpRequest(
     }
 
     const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const decryptedValue = await decrypt(rows[0].encryptedValue, vaultKey);
 
     await logAudit(db, {

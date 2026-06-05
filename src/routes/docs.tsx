@@ -1044,7 +1044,7 @@ Authorization = "Bearer lkr_your_token_here"`,
                   </h3>
                 </div>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                  All memory data is encrypted using AES-256-GCM prior to database insertion. Decryption keys remain strictly inside the edge worker process, offering complete zero-plaintext guarantees.
+                  All memory data is encrypted using AES-256-GCM under a unique per-vault Data Encryption Key (DEK). The DEK is wrapped by a server-side Key Encryption Key — compromising the database or the environment variable alone is insufficient to decrypt any data.
                 </p>
               </div>
             </div>
@@ -1107,7 +1107,7 @@ Authorization = "Bearer lkr_your_token_here"`,
                   <span>👥</span> Team Governance & Security
                 </h4>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.6 }}>
-                  Leverage Organization settings to govern billing seats, isolate sub-teams, and restrict scoped memories to specific project workspace keys. Locker enforces a strict security protocol, ephemeral V8 Workers sandboxing, and cryptographically hashed tokens.
+                  Leverage Organization settings to govern billing seats, isolate sub-teams, and restrict scoped memories to specific project workspace keys. Locker enforces a strict security protocol, ephemeral V8 Workers sandboxing, entropy-based DLP at write time, and PBKDF2-hardened token hashing.
                 </p>
                 <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
                   <button onClick={() => setActiveSection("team-collaboration")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
@@ -1126,7 +1126,7 @@ Authorization = "Bearer lkr_your_token_here"`,
                 🛡️ Core Security Model
               </h3>
               <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                All database items are encrypted using AES-256-GCM. Relational queries, D1 logs, and semantic vector database indices are fully anonymized. Read/write capabilities are regulated via cryptographically signed API token scopes, allowing developers to safely hook up external clients such as Claude, ChatGPT, Cursor, and Gemini.
+                All database items are encrypted using AES-256-GCM under per-vault Data Encryption Keys (DEKs) wrapped by a server-side Key Encryption Key. Secrets are scanned and redacted at write time using entropy-based DLP. API tokens are hashed with PBKDF2 at 210,000 iterations. Relational queries, D1 logs, and vector indices are fully anonymized. Read/write capabilities are regulated via scoped API token bitmasks.
               </p>
             </div>
           </div>
@@ -1228,10 +1228,7 @@ Authorization = "Bearer lkr_your_token_here"`,
               <span style={{ fontSize: 11, background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", borderRadius: 20, padding: "2px 10px", fontWeight: 600 }}>
                 🛡️ Zero-Trust Security Architecture
               </span>
-              <span style={{ fontSize: 11, background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 20, padding: "2px 10px", fontWeight: 600 }}>
-                v2.1 Enabled
-              </span>
-            </div>
+              </div>
             
             <h2 style={{ fontSize: 28, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Security & Privacy Guide</h2>
             <p style={{ color: "var(--text-muted)", fontSize: 15, lineHeight: 1.6, marginBottom: 28 }}>
@@ -1251,12 +1248,13 @@ Authorization = "Bearer lkr_your_token_here"`,
                   <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>AES-256-GCM Envelope Encryption</h3>
                 </div>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                  All memory contents, tech stack profiles, and templates are encrypted prior to database insertion:
+                  All memory contents, tech stack profiles, and templates are encrypted using a two-layer envelope scheme prior to database insertion:
                 </p>
                 <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <li><strong>HKDF Key Derivation:</strong> Per-vault encryption keys are derived dynamically using HKDF with client-specific context and a secure server-side master key.</li>
-                  <li><strong>Memory-Only Key Scope:</strong> Decryption keys reside strictly in ephemeral runtime worker environment memory and are never sent to frontend clients or logged.</li>
-                  <li><strong>Encrypted Backups:</strong> Database logs, D1 transaction snapshots, and storage backups consist exclusively of ciphertext.</li>
+                  <li><strong>Per-User Data Encryption Keys (DEK):</strong> Each vault receives a unique randomly generated 256-bit AES-GCM key. All memory data is encrypted exclusively under this DEK — the master server key never directly touches user data.</li>
+                  <li><strong>Key Encryption Key (KEK) Wrapping:</strong> Each DEK is itself encrypted (wrapped) using the server-side KEK via AES-256-GCM and stored in D1. Compromising the database alone or the environment key alone is insufficient to decrypt any data — both are required.</li>
+                  <li><strong>Memory-Only Key Scope:</strong> Unwrapped DEKs reside strictly in ephemeral edge worker memory during request processing and are never logged, persisted, or sent to clients.</li>
+                  <li><strong>Encrypted Backups:</strong> Database logs, D1 transaction snapshots, and storage backups consist exclusively of ciphertext — wrapped DEKs and encrypted payloads.</li>
                 </ul>
               </div>
 
@@ -1303,7 +1301,7 @@ Authorization = "Bearer lkr_your_token_here"`,
                 </p>
                 <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                   <li><strong>Fallback Protection:</strong> When 2FA is inactive, write or delete actions executed via MCP are blocked unless the correct passcode is supplied.</li>
-                  <li><strong>Cryptographic Hashing:</strong> Passcodes are stored and matched using secure hash algorithms (<code>users.writePasscodeHash</code>).</li>
+                  <li><strong>PBKDF2 Hashing:</strong> Passcodes and API tokens are stored using PBKDF2-HMAC-SHA256 at 210,000 iterations (OWASP 2023) with a random per-token salt — resistant to GPU-accelerated brute-force even if the database is leaked.</li>
                   <li><strong>Explicit Confirmation:</strong> Requires setting the <code>confirm === true</code> parameter alongside the valid passcode credential.</li>
                 </ul>
               </div>
@@ -1337,6 +1335,39 @@ Authorization = "Bearer lkr_your_token_here"`,
                   <li><strong>V8 Ephemeral Sandbox:</strong> Runtime execution is sandboxed in Cloudflare Worker processes, shutting down attack surfaces.</li>
                   <li><strong>Enterprise Audit Trails:</strong> Every MCP call or administrative modification logs the timestamp, IP address, user-agent, and target scope.</li>
                   <li><strong>Session Management:</strong> Users can inspect and revoke active sessions directly from the Sessions settings panel.</li>
+                </ul>
+              </div>
+
+              {/* Card 7: Entropy-Based DLP */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>🔍</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Entropy-Based Data Loss Prevention</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  Secrets and PII are detected and redacted at write time — before encryption — using a multi-layer scanning engine:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>Shannon Entropy Gating:</strong> Candidate values in key-value assignments, JSON fields, and Authorization headers are scored for entropy. Only high-entropy strings (≥ 4.0 bits/char) in secret-looking contexts are flagged, eliminating false positives on legitimate code IDs and slugs.</li>
+                  <li><strong>Structural Pattern Detection:</strong> Unmistakable credential formats — AWS access keys, Stripe keys, GitHub PATs, Slack tokens, PEM private keys, and database URIs — are caught unconditionally regardless of entropy score.</li>
+                  <li><strong>PII Scanning:</strong> Email addresses, phone numbers, credit card numbers, and SSNs are detected via dedicated regex patterns and always redacted.</li>
+                  <li><strong>Write-Time Enforcement:</strong> DLP runs during <code>commit_memory</code> and <code>update_memory</code> — not at retrieval. Stored memories are already clean, so code snippets and identifiers recalled by AI agents are never corrupted.</li>
+                </ul>
+              </div>
+
+              {/* Card 8: Auth & Session Hardening */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>⚡</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Auth Hardening & Request Isolation</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  The authentication layer is designed to eliminate race conditions and minimize database exposure under load:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>One-Time OAuth Bootstrap:</strong> OAuth client provisioning runs at most once per worker isolate lifetime rather than on every request, eliminating D1 write storms and race conditions under concurrent load.</li>
+                  <li><strong>Isolate-Scoped Auth Cache:</strong> Authenticated session configurations are cached at the worker isolate level with a 5-minute TTL, reducing redundant D1 reads without holding stale credentials beyond the cache window.</li>
+                  <li><strong>Read-Only Request Path:</strong> The per-request authentication path performs no writes to the database, ensuring that high-traffic periods cannot cause connection exhaustion or lock contention on auth tables.</li>
                 </ul>
               </div>
             </div>

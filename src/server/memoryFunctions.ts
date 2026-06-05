@@ -19,17 +19,21 @@ import {
   verifications,
   sessions,
   accounts,
+  totpSecrets,
+  credentials,
   type Memory,
   type NewMemory,
   memoryTemplates,
   type MemoryTemplate,
 } from "~/db/schema";
+import type { D1Database } from "@cloudflare/workers-types";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { encrypt, decrypt, isEncrypted, hashToken, deriveUserKey } from "./crypto";
+import { encrypt, decrypt, isEncrypted, hashToken, getOrCreateVaultKey, deriveUserKey } from "./crypto";
 import { requireSession, requireAdmin } from "./session";
 import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "./enterprise";
 import { checkMemoryLimit, checkApiTokenLimit, getUserEffectivePlan } from "./planGate";
 import { sanitizeMemory } from "./sanitization";
+import { maskSensitiveData } from "./dlp";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
@@ -70,30 +74,17 @@ async function encryptFact(fact: string, encKey: string): Promise<string> {
   return encrypt(fact, encKey);
 }
 
-// Decrypt a stored fact. If it's not encrypted (legacy plaintext), return as-is.
-async function decryptFact(stored: string, encKey: string, fallbackKey?: string): Promise<string> {
+async function decryptFact(stored: string, encKey: string): Promise<string> {
   if (!isEncrypted(stored)) return stored;
-  try {
-    return await decrypt(stored, encKey);
-  } catch (err) {
-    if (fallbackKey) {
-      try {
-        return await decrypt(stored, fallbackKey);
-      } catch {
-        // Fall back to original error
-      }
-    }
-    throw err;
-  }
+  return decrypt(stored, encKey);
 }
 
-// Decrypt all facts in a row array using derived vault keys.
-async function decryptMemories(rows: Memory[], masterKey: string): Promise<Memory[]> {
+async function decryptMemories(rows: Memory[], db: D1Database, masterKey: string): Promise<Memory[]> {
   return Promise.all(
     rows.map(async (r) => {
       const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : r.userId;
-      const vaultKey = await deriveUserKey(masterKey, vaultId);
-      return { ...r, fact: await decryptFact(r.fact, vaultKey, masterKey) };
+      const vaultKey = await getOrCreateVaultKey(db, masterKey, vaultId);
+      return { ...r, fact: await decryptFact(r.fact, vaultKey) };
     })
   );
 }
@@ -304,7 +295,7 @@ export const getMemories = createServerFn({ method: "GET" })
         .where(whereClause)
         .orderBy(desc(memories.timestamp))
         .all();
-      return decryptMemories(rows, env.ENCRYPTION_KEY);
+      return decryptMemories(rows, env.DB, env.ENCRYPTION_KEY);
     }
   );
 
@@ -438,12 +429,12 @@ export async function archiveContradictingMemories(
   if (rows.length === 0) return;
 
   const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : userId;
-  const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+  const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
 
   const decryptedCandidates = await Promise.all(
     rows.map(async (r: any) => ({
       id: r.id,
-      fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY),
+      fact: await decryptFact(r.fact, vaultKey),
     }))
   );
 
@@ -608,15 +599,18 @@ export const addMemory = createServerFn({ method: "POST" })
       throw new Error("Invalid memory fact: content was empty or contained adversarial instructions");
     }
 
+    // DLP: redact secrets/PII at write time so stored memories are permanently clean.
+    const dlpFact = maskSensitiveData(sanitizedFact);
+
     const id = crypto.randomUUID();
     const timestamp = Date.now();
-    
-    const vaultId = (scopeType === "team" || scopeType === "organization") ? data.projectKey! : user.id;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-    const encryptedFact = await encryptFact(sanitizedFact, vaultKey);
 
-    const embedding = await generateEmbedding(env.AI, sanitizedFact);
-    const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
+    const vaultId = (scopeType === "team" || scopeType === "organization") ? data.projectKey! : user.id;
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const encryptedFact = await encryptFact(dlpFact, vaultKey);
+
+    const embedding = await generateEmbedding(env.AI, dlpFact);
+    const tokensConsumed = estimateEmbeddingTokens(dlpFact);
 
     const tagsList = data.tags.split(",").map(t => t.trim()).filter(Boolean);
     if (!tagsList.includes("manual")) {
@@ -628,7 +622,7 @@ export const addMemory = createServerFn({ method: "POST" })
     try {
       await env.ARCHIVE_QUEUE.send({
         userId: user.id,
-        newFact: sanitizedFact,
+        newFact: dlpFact,
         embedding,
         projectKey: data.projectKey || null,
       });
@@ -720,7 +714,7 @@ export const addMemory = createServerFn({ method: "POST" })
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "commit_memory", memoryId: id, metadata: { category: data.category, projectKey: data.projectKey } });
     await logTokenUsage(db, "session", "commit", tokensConsumed);
 
-    return { ...newRow, fact: sanitizedFact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null } as Memory;
+    return { ...newRow, fact: dlpFact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null } as Memory;
   });
 
 type BatchImportItem = { fact: string; category?: string; tags?: string; projectKey?: string };
@@ -790,9 +784,10 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
     }
 
+    // Sanitize then apply DLP at write time (entropy-based + PII regex).
     const sanitizedItems = items.map((item) => ({
       ...item,
-      fact: sanitizeMemory(item.fact)
+      fact: maskSensitiveData(sanitizeMemory(item.fact))
     }));
 
     const valid = sanitizedItems.filter((item) => {
@@ -863,11 +858,11 @@ export const batchImportMemories = createServerFn({ method: "POST" })
           .from(memories)
           .where(sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)}) AND ${memories.userId} = ${user.id}`)
           .all();
-        // Decrypt facts using derived per-vault keys
+        // Decrypt facts using envelope-encrypted vault keys (with legacy HKDF fallback)
         for (const r of rows) {
           const rVaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : r.userId;
-          const rVaultKey = await deriveUserKey(env.ENCRYPTION_KEY, rVaultId);
-          existingDbMemories.set(r.id, { ...r, fact: await decryptFact(r.fact, rVaultKey, env.ENCRYPTION_KEY) });
+          const rVaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, rVaultId);
+          existingDbMemories.set(r.id, { ...r, fact: await decryptFact(r.fact, rVaultKey) });
         }
       }
     }
@@ -1038,7 +1033,7 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
 
       const itemPk = item.projectKey || projectKey || null;
       const vaultId = itemPk && (itemPk.startsWith("team:") || itemPk.startsWith("org:")) ? itemPk : user.id;
-      const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+      const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
       const encryptedFact = await encryptFact(item.fact, vaultKey);
 
       return {
@@ -1278,9 +1273,12 @@ export const updateMemory = createServerFn({ method: "POST" })
       throw new Error("Invalid memory fact: content was empty or contained adversarial instructions");
     }
 
+    // DLP: redact secrets/PII at write time so stored memories are permanently clean.
+    const dlpFact = maskSensitiveData(sanitizedFact);
+
     const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : user.id;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-    const encryptedFact = await encryptFact(sanitizedFact, vaultKey);
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const encryptedFact = await encryptFact(dlpFact, vaultKey);
 
     await db.update(memories)
       .set({ fact: encryptedFact, category: data.category, tags: data.tags, timestamp: Date.now() })
@@ -1298,8 +1296,8 @@ export const updateMemory = createServerFn({ method: "POST" })
       timestamp: Date.now(),
     });
 
-    const embedding = await generateEmbedding(env.AI, sanitizedFact);
-    const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
+    const embedding = await generateEmbedding(env.AI, dlpFact);
+    const tokensConsumed = estimateEmbeddingTokens(dlpFact);
     await env.VECTOR_INDEX.upsert([{
       id: data.id,
       values: embedding,
@@ -1311,7 +1309,7 @@ export const updateMemory = createServerFn({ method: "POST" })
     await logTokenUsage(db, "session", "commit", tokensConsumed);
 
     const rows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
-    return { ...rows[0], fact: sanitizedFact };
+    return { ...rows[0], fact: dlpFact };
   });
 
 export const archiveMemory = createServerFn({ method: "POST" })
@@ -1438,8 +1436,8 @@ export const restoreMemory = createServerFn({ method: "POST" })
 
     // Re-insert into Vectorize
     const vaultId = (memory.projectKey && (memory.projectKey.startsWith("team:") || memory.projectKey.startsWith("org:"))) ? memory.projectKey : user.id;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-    const decryptedFact = await decryptFact(memory.fact, vaultKey, env.ENCRYPTION_KEY);
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const decryptedFact = await decryptFact(memory.fact, vaultKey);
     const embedding = await generateEmbedding(env.AI, decryptedFact);
     await env.VECTOR_INDEX.upsert([{
       id: memory.id,
@@ -1534,12 +1532,12 @@ export const moveMemories = createServerFn({ method: "POST" })
 
       // 4. Decrypt from source vault key
       const srcVaultId = (mem.projectKey && (mem.projectKey.startsWith("team:") || mem.projectKey.startsWith("org:"))) ? mem.projectKey : mem.userId;
-      const srcVaultKey = await deriveUserKey(env.ENCRYPTION_KEY, srcVaultId);
-      const plaintextFact = await decryptFact(mem.fact, srcVaultKey, env.ENCRYPTION_KEY);
+      const srcVaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, srcVaultId);
+      const plaintextFact = await decryptFact(mem.fact, srcVaultKey);
 
       // 5. Encrypt for target vault key
       const targetVaultId = (data.targetProjectKey && (data.targetProjectKey.startsWith("team:") || data.targetProjectKey.startsWith("org:"))) ? data.targetProjectKey : user.id;
-      const targetVaultKey = await deriveUserKey(env.ENCRYPTION_KEY, targetVaultId);
+      const targetVaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, targetVaultId);
       const encryptedFact = await encryptFact(plaintextFact, targetVaultKey);
 
       // 6. Generate embedding
@@ -1791,7 +1789,7 @@ export const recallContext = createServerFn({ method: "POST" })
       .all();
 
     const vaultId = (data.projectKey && (data.projectKey.startsWith("team:") || data.projectKey.startsWith("org:"))) ? data.projectKey : user.id;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
 
     const idOrder = new Map(ids.map((id: string, i: number) => [id, i]));
     const sorted = rows.sort((a, b) => {
@@ -1800,7 +1798,7 @@ export const recallContext = createServerFn({ method: "POST" })
       return (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999);
     });
     const decrypted = await Promise.all(
-      sorted.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY) }))
+      sorted.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey) }))
     );
 
     // Audit logging & usage tracking
@@ -1860,7 +1858,7 @@ export const scanDatabaseDuplicates = createServerFn({ method: "POST" })
     }
 
     const encryptedRows = await db.select().from(memories).where(and(eq(memories.userId, user.id), eq(memories.isActive, true))).all();
-    const allMemories = await decryptMemories(encryptedRows, env.ENCRYPTION_KEY);
+    const allMemories = await decryptMemories(encryptedRows, env.DB, env.ENCRYPTION_KEY);
     if (allMemories.length <= 1) return { groups: [] };
 
     const embeddingsMap = new Map<string, number[]>();
@@ -2004,15 +2002,18 @@ export const getProfile = createServerFn({ method: "GET" }).handler(
       r.tags.split(",").map((t) => t.trim()).includes("profile-location")
     );
 
+    // Derive the per-user vault key (envelope DEK) with legacy HKDF fallback
+    const profileVaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, user.id);
+
     let name = "";
     if (nameRow) {
-      const fact = await decryptFact(nameRow.fact, env.ENCRYPTION_KEY);
+      const fact = await decryptFact(nameRow.fact, profileVaultKey);
       name = fact.replace(/^Name is\s+/i, "").trim();
     }
 
     let location = "";
     if (locRow) {
-      const fact = await decryptFact(locRow.fact, env.ENCRYPTION_KEY);
+      const fact = await decryptFact(locRow.fact, profileVaultKey);
       location = fact.replace(/^Location is\s+/i, "").trim();
     }
 
@@ -2062,9 +2063,12 @@ export const saveProfile = createServerFn({ method: "POST" })
       r.tags.split(",").map((t) => t.trim()).includes("profile-location")
     );
 
+    // Use the per-user vault DEK for profile memories
+    const saveProfileVaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, user.id);
+
     if (data.name) {
       const fact = `Name is ${data.name}`;
-      const encFact = await encryptFact(fact, env.ENCRYPTION_KEY);
+      const encFact = await encryptFact(fact, saveProfileVaultKey);
       const embedding = await generateEmbedding(env.AI, fact);
       const tokensConsumed = estimateEmbeddingTokens(fact);
       if (nameRow) {
@@ -2086,7 +2090,7 @@ export const saveProfile = createServerFn({ method: "POST" })
 
     if (data.location) {
       const fact = `Location is ${data.location}`;
-      const encFact = await encryptFact(fact, env.ENCRYPTION_KEY);
+      const encFact = await encryptFact(fact, saveProfileVaultKey);
       const embedding = await generateEmbedding(env.AI, fact);
       if (locRow) {
         await db.update(memories).set({ fact: encFact }).where(eq(memories.id, locRow.id));
@@ -2205,9 +2209,15 @@ export const createApiToken = createServerFn({ method: "POST" })
 
     await checkApiTokenLimit(db, user.id);
 
-    const rawToken = `lkr_${crypto.randomUUID().replace(/-/g, "")}`;
-    const tokenHash = await hashToken(rawToken);
+    // New token format: lkr_<id-no-dashes>_<random-secret>
+    // Embedding the row id lets us look up the row without a full-table scan while
+    // still verifying the secret with PBKDF2.
     const id = crypto.randomUUID();
+    const idHex = id.replace(/-/g, "");
+    const secretBytes = crypto.getRandomValues(new Uint8Array(16));
+    const secretHex = Array.from(secretBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+    const rawToken = `lkr_${idHex}_${secretHex}`;
+    const tokenHash = await hashToken(rawToken);
     const now = Date.now();
     const expiresAt = now + (data.ttlDays * 24 * 60 * 60 * 1000);
     const scopesJson = data.scopes ? (typeof data.scopes === "string" ? data.scopes : JSON.stringify(data.scopes)) : null;
@@ -2290,54 +2300,133 @@ export const renewApiToken = createServerFn({ method: "POST" })
     return { expiresAt };
   });
 
-export const encryptAllMemories = createServerFn({ method: "POST" }).handler(
-  async ({ context }): Promise<{ encrypted: number; alreadyEncrypted: number; failed: number }> => {
+export type MigrateV2Result = {
+  memories: { migrated: number; skipped: number; failed: number };
+  totp: { migrated: number; skipped: number; failed: number };
+  credentials: { migrated: number; skipped: number; failed: number };
+  tokens: { invalidated: number };
+};
+
+export const migrateToV2 = createServerFn({ method: "POST" }).handler(
+  async ({ context }): Promise<MigrateV2Result> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
     const db = getDb(env);
 
-    const rows = await db.select({ id: memories.id, fact: memories.fact, userId: memories.userId, projectKey: memories.projectKey }).from(memories).all();
+    const result: MigrateV2Result = {
+      memories:    { migrated: 0, skipped: 0, failed: 0 },
+      totp:        { migrated: 0, skipped: 0, failed: 0 },
+      credentials: { migrated: 0, skipped: 0, failed: 0 },
+      tokens:      { invalidated: 0 },
+    };
 
-    let encrypted = 0;
-    let alreadyEncrypted = 0;
-    let failed = 0;
-
+    // ── 1. Memories ──────────────────────────────────────────────────────────
     const CHUNK = 20;
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const chunk = rows.slice(i, i + CHUNK);
-      await Promise.all(chunk.map(async (row) => {
+    const memRows = await db.select({ id: memories.id, fact: memories.fact, userId: memories.userId, projectKey: memories.projectKey }).from(memories).all();
+    for (let i = 0; i < memRows.length; i += CHUNK) {
+      await Promise.all(memRows.slice(i, i + CHUNK).map(async (row) => {
         try {
           const vaultId = (row.projectKey && (row.projectKey.startsWith("team:") || row.projectKey.startsWith("org:"))) ? row.projectKey : row.userId;
-          const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+          const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+          const legacyKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
 
           if (isEncrypted(row.fact)) {
-            // Check if it's already encrypted with the derived key. If decrypting with derived key fails but decrypting with master key succeeds, re-encrypt it!
             try {
               await decrypt(row.fact, vaultKey);
-              alreadyEncrypted++;
-              return;
+              result.memories.skipped++;
             } catch {
-              // Try to decrypt with master key, then re-encrypt
-              const decrypted = await decrypt(row.fact, env.ENCRYPTION_KEY);
-              const reEncrypted = await encrypt(decrypted, vaultKey);
-              await db.update(memories).set({ fact: reEncrypted }).where(eq(memories.id, row.id));
-              encrypted++;
-              return;
+              // Encrypted under legacy HKDF — re-encrypt under DEK
+              let plaintext: string;
+              try {
+                plaintext = await decrypt(row.fact, legacyKey);
+              } catch {
+                plaintext = await decrypt(row.fact, env.ENCRYPTION_KEY);
+              }
+              await db.update(memories).set({ fact: await encrypt(plaintext, vaultKey) }).where(eq(memories.id, row.id));
+              result.memories.migrated++;
             }
           } else {
-            // Plaintext fact
-            const encFact = await encrypt(row.fact, vaultKey);
-            await db.update(memories).set({ fact: encFact }).where(eq(memories.id, row.id));
-            encrypted++;
+            await db.update(memories).set({ fact: await encrypt(row.fact, vaultKey) }).where(eq(memories.id, row.id));
+            result.memories.migrated++;
           }
         } catch (err) {
-          console.error(`[encryptAllMemories] failed for ${row.id}:`, err);
-          failed++;
+          console.error(`[migrateToV2] memory ${row.id} failed:`, err);
+          result.memories.failed++;
         }
       }));
     }
 
-    return { encrypted, alreadyEncrypted, failed };
+    // ── 2. TOTP secrets ──────────────────────────────────────────────────────
+    const totpRows = await db.select({ id: totpSecrets.id, userId: totpSecrets.userId, secret: totpSecrets.secret }).from(totpSecrets).all();
+    for (let i = 0; i < totpRows.length; i += CHUNK) {
+      await Promise.all(totpRows.slice(i, i + CHUNK).map(async (row) => {
+        try {
+          const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, row.userId);
+          const legacyKey = await deriveUserKey(env.ENCRYPTION_KEY, row.userId);
+
+          if (isEncrypted(row.secret)) {
+            try {
+              await decrypt(row.secret, vaultKey);
+              result.totp.skipped++;
+            } catch {
+              const plaintext = await decrypt(row.secret, legacyKey);
+              await db.update(totpSecrets).set({ secret: await encrypt(plaintext, vaultKey) }).where(eq(totpSecrets.id, row.id));
+              result.totp.migrated++;
+            }
+          } else {
+            await db.update(totpSecrets).set({ secret: await encrypt(row.secret, vaultKey) }).where(eq(totpSecrets.id, row.id));
+            result.totp.migrated++;
+          }
+        } catch (err) {
+          console.error(`[migrateToV2] totp ${row.id} failed:`, err);
+          result.totp.failed++;
+        }
+      }));
+    }
+
+    // ── 3. Credentials ───────────────────────────────────────────────────────
+    const credRows = await db.select({ id: credentials.id, userId: credentials.userId, encryptedValue: credentials.encryptedValue }).from(credentials).all();
+    for (let i = 0; i < credRows.length; i += CHUNK) {
+      await Promise.all(credRows.slice(i, i + CHUNK).map(async (row) => {
+        try {
+          const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, row.userId);
+          const legacyKey = await deriveUserKey(env.ENCRYPTION_KEY, row.userId);
+
+          if (isEncrypted(row.encryptedValue)) {
+            try {
+              await decrypt(row.encryptedValue, vaultKey);
+              result.credentials.skipped++;
+            } catch {
+              const plaintext = await decrypt(row.encryptedValue, legacyKey);
+              await db.update(credentials).set({ encryptedValue: await encrypt(plaintext, vaultKey) }).where(eq(credentials.id, row.id));
+              result.credentials.migrated++;
+            }
+          } else {
+            await db.update(credentials).set({ encryptedValue: await encrypt(row.encryptedValue, vaultKey) }).where(eq(credentials.id, row.id));
+            result.credentials.migrated++;
+          }
+        } catch (err) {
+          console.error(`[migrateToV2] credential ${row.id} failed:`, err);
+          result.credentials.failed++;
+        }
+      }));
+    }
+
+    // ── 4. API tokens — invalidate SHA-256 hashed tokens ─────────────────────
+    // PBKDF2 hashes start with "pbkdf2$". SHA-256 hashes are 64-char hex with no prefix.
+    // We cannot re-hash without the plaintext, so legacy tokens are deleted — users must regenerate.
+    const legacyTokenRows = await db.select({ id: apiTokens.id, tokenHash: apiTokens.tokenHash })
+      .from(apiTokens)
+      .all();
+    const legacyIds = legacyTokenRows
+      .filter(t => !t.tokenHash.startsWith("pbkdf2$"))
+      .map(t => t.id);
+    for (const id of legacyIds) {
+      await db.delete(apiTokens).where(eq(apiTokens.id, id));
+      result.tokens.invalidated++;
+    }
+
+    return result;
   }
 );
 
@@ -2357,12 +2446,12 @@ export const rebuildVectorizeIndex = createServerFn({ method: "POST" }).handler(
     for (let i = 0; i < allMemories.length; i += CHUNK_SIZE) {
       const chunk = allMemories.slice(i, i + CHUNK_SIZE);
       try {
-        // Decrypt facts in chunk using derived vault keys
+        // Decrypt facts in chunk using envelope-encrypted vault keys (with legacy HKDF fallback)
         const decryptedFacts = await Promise.all(
           chunk.map(async (row) => {
             const vaultId = (row.projectKey && (row.projectKey.startsWith("team:") || row.projectKey.startsWith("org:"))) ? row.projectKey : row.userId;
-            const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-            return decryptFact(row.fact, vaultKey, env.ENCRYPTION_KEY);
+            const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+            return decryptFact(row.fact, vaultKey);
           })
         );
 
@@ -2440,14 +2529,13 @@ export const getMemoryTimeline = createServerFn({ method: "POST" })
       .orderBy(desc(memoryVersions.timestamp))
       .all();
 
-    // Decrypt versions using derived vault keys
     const vaultId = (mem.projectKey && (mem.projectKey.startsWith("team:") || mem.projectKey.startsWith("org:"))) ? mem.projectKey : user.id;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
 
     return Promise.all(
       versions.map(async (v: any) => ({
         ...v,
-        fact: await decryptFact(v.fact, vaultKey, env.ENCRYPTION_KEY),
+        fact: await decryptFact(v.fact, vaultKey),
       }))
     );
   });
@@ -2512,10 +2600,9 @@ export const revertMemoryVersion = createServerFn({ method: "POST" })
       throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
     }
 
-    // Decrypt the version to generate a new embedding
     const vaultId = (mem.projectKey && (mem.projectKey.startsWith("team:") || mem.projectKey.startsWith("org:"))) ? mem.projectKey : user.id;
-    const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
-    const decryptedFact = await decryptFact(ver.fact, vaultKey, env.ENCRYPTION_KEY);
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const decryptedFact = await decryptFact(ver.fact, vaultKey);
 
     const embedding = await generateEmbedding(env.AI, decryptedFact);
     const tokensConsumed = estimateEmbeddingTokens(decryptedFact);
@@ -2797,7 +2884,7 @@ export const reviewMemoryRecommendation = createServerFn({ method: "POST" })
         // Standard "add" recommendation flow
         const projectKey = rec.projectKey || (orgId ? `org:${orgId}` : "personal");
         const vaultId = (rec.scopeType === "team" || rec.scopeType === "organization") ? projectKey : rec.userId;
-        const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+        const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
         const encryptedFact = await encryptFact(rec.fact, vaultKey);
 
         const memId = crypto.randomUUID();

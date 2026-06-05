@@ -28,7 +28,8 @@ import {
   nukeEverything,
   scanDatabaseDuplicates,
   bulkDeleteMemories,
-  encryptAllMemories,
+  migrateToV2,
+  type MigrateV2Result,
   rebuildVectorizeIndex,
   getOrgAuditLogs,
   exportAuditLogsCsv,
@@ -467,7 +468,7 @@ function AdminPage() {
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [scanResults, setScanResults] = useState<DuplicateGroup[] | null>(null);
   const [retainSelections, setRetainSelections] = useState<Record<number, string>>({});
-  const [encryptResult, setEncryptResult] = useState<{ encrypted: number; alreadyEncrypted: number; failed: number } | null>(null);
+  const [migrateResult, setMigrateResult] = useState<MigrateV2Result | null>(null);
   const [rebuildResult, setRebuildResult] = useState<{ processed: number; failed: number } | null>(null);
 
   // users modals
@@ -595,9 +596,9 @@ function AdminPage() {
       alert("Successfully resolved duplicates!");
     },
   });
-  const encryptMutation = useMutation({
-    mutationFn: () => encryptAllMemories({}),
-    onSuccess: (data) => setEncryptResult(data),
+  const migrateMutation = useMutation({
+    mutationFn: () => migrateToV2({}),
+    onSuccess: (data) => setMigrateResult(data),
   });
 
   const createUserMut = useMutation({
@@ -884,20 +885,38 @@ function AdminPage() {
             {rebuildMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Index rebuild failed. Check logs.</p>}
           </SiteAdminSection>
 
-          <SiteAdminSection title="Encryption" description="Encrypt plaintext memories at rest" icon="🔒">
-            <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "15px" }}>
-              Encrypt any plaintext memory facts stored before encryption was enabled. Safe to run multiple times — already-encrypted facts are skipped.
+          <SiteAdminSection title="Security Architecture Migration" description="Migrate all data to v2 envelope encryption and PBKDF2 token hashing" icon="🔒">
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>
+              Migrates all vault data to the v2 security architecture in one pass:
             </p>
-            {encryptResult && (
-              <AdminCard status="success">
-                <p style={{ margin: 0 }}>Done — encrypted {encryptResult.encrypted}, skipped {encryptResult.alreadyEncrypted} already encrypted{encryptResult.failed > 0 ? `, ${encryptResult.failed} failed` : ""}.</p>
+            <ul style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "15px", paddingLeft: "18px", lineHeight: "1.8" }}>
+              <li><strong>Memories</strong> — re-encrypts any data still under the legacy HKDF-derived key to the per-vault DEK.</li>
+              <li><strong>TOTP secrets</strong> — re-encrypts under the per-user DEK.</li>
+              <li><strong>Credentials</strong> — re-encrypts under the per-vault DEK.</li>
+              <li><strong>API tokens</strong> — invalidates any tokens still hashed with SHA-256 (no plaintext available to re-hash). Affected users must regenerate their tokens.</li>
+            </ul>
+            <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: "8px", padding: "10px 14px", marginBottom: "15px", fontSize: "12px", color: "#f59e0b" }}>
+              ⚠️ Run this once after deploying the v2 update to production. Safe to re-run — already-migrated records are skipped. Legacy API tokens will be deleted and cannot be recovered.
+            </div>
+            {migrateResult && (
+              <AdminCard status={migrateResult.memories.failed > 0 || migrateResult.totp.failed > 0 || migrateResult.credentials.failed > 0 ? "warning" : "success"}>
+                <p style={{ margin: "0 0 6px 0", fontWeight: 600 }}>Migration complete</p>
+                <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: "1.8" }}>
+                  <li>Memories: {migrateResult.memories.migrated} migrated, {migrateResult.memories.skipped} already up to date{migrateResult.memories.failed > 0 ? `, ${migrateResult.memories.failed} failed` : ""}</li>
+                  <li>TOTP secrets: {migrateResult.totp.migrated} migrated, {migrateResult.totp.skipped} already up to date{migrateResult.totp.failed > 0 ? `, ${migrateResult.totp.failed} failed` : ""}</li>
+                  <li>Credentials: {migrateResult.credentials.migrated} migrated, {migrateResult.credentials.skipped} already up to date{migrateResult.credentials.failed > 0 ? `, ${migrateResult.credentials.failed} failed` : ""}</li>
+                  <li>Legacy API tokens invalidated: {migrateResult.tokens.invalidated}</li>
+                </ul>
               </AdminCard>
             )}
-            <button onClick={() => { setEncryptResult(null); encryptMutation.mutate(); }} disabled={encryptMutation.isPending}
-              style={{ padding: "9px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer", marginTop: encryptResult ? "12px" : 0 }}>
-              {encryptMutation.isPending ? "Encrypting…" : "Encrypt All Plaintext Memories"}
+            <button
+              onClick={() => { setMigrateResult(null); migrateMutation.mutate(); }}
+              disabled={migrateMutation.isPending}
+              style={{ padding: "9px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer", marginTop: migrateResult ? "12px" : 0 }}
+            >
+              {migrateMutation.isPending ? "Migrating…" : "Run v2 Security Migration"}
             </button>
-            {encryptMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Encryption failed. Check logs.</p>}
+            {migrateMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Migration failed. Check server logs for details.</p>}
           </SiteAdminSection>
 
           <SiteAdminSection title="Destructive Operations" description="Irreversible data deletion" icon="⚠️">

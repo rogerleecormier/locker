@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
 import { totpSecrets, users } from "~/db/schema";
 import { requireSession } from "~/server/session";
-import { encrypt, decrypt, hashToken } from "~/server/crypto";
+import { encrypt, decrypt, getOrCreateVaultKey } from "~/server/crypto";
 import { deriveUserKey } from "~/server/crypto";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
@@ -147,7 +147,8 @@ export const verifyAndSaveTOTP = createServerFn({ method: "POST" })
     }
 
     const db = drizzle(env.DB, { schema: { totpSecrets, users } });
-    const userKey = await deriveUserKey(env.ENCRYPTION_KEY, user.id);
+    // Use envelope DEK for new TOTP secrets
+    const userKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, user.id);
 
     // Encrypt secret
     const encryptedSecret = await encrypt(data.secret, userKey);

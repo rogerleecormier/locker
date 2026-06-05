@@ -403,6 +403,18 @@ export const memoryTemplates = sqliteTable("memory_templates", {
 
 export type MemoryTemplate = typeof memoryTemplates.$inferSelect;
 
+// ── Envelope Encryption — Vault Keys ─────────────────────────────────────────
+// Stores one wrapped Data Encryption Key (DEK) per vault.
+// The DEK is encrypted with the KEK (ENCRYPTION_KEY env var) using AES-256-GCM.
+// vault_id is either a userId (personal vault) or a projectKey ("org:xxx" / "team:xxx").
+export const vaultKeys = sqliteTable("vault_keys", {
+  vaultId: text("vault_id").primaryKey(),
+  wrappedDek: text("wrapped_dek").notNull(), // "iv_hex:ciphertext_hex" of the AES-256-GCM-wrapped DEK
+  createdAt: integer("created_at").notNull(),
+});
+
+export type VaultKey = typeof vaultKeys.$inferSelect;
+
 export const credentials = sqliteTable("credentials", {
   id: text("id").primaryKey(),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
