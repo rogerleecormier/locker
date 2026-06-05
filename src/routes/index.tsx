@@ -993,7 +993,7 @@ function LandingPage() {
                 Generate Bearer tokens with per-tool permission bitmasks. Give your coding assistant read-only access, while letting your personal Claude write new memories mid-session.
               </p>
               <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                {["Tokens hashed with PBKDF2 at 210k iterations", "Shown once at creation, never again", "Toggle recall_context and commit_memory independently", "Revoke any token instantly"].map((item) => (
+                {["Tokens hashed with PBKDF2 at 100k iterations", "Shown once at creation, never again", "Toggle recall_context and commit_memory independently", "Revoke any token instantly"].map((item) => (
                   <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)", textAlign: "left" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                     {item}

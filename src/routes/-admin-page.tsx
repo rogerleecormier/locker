@@ -599,6 +599,7 @@ function AdminPage() {
   const migrateMutation = useMutation({
     mutationFn: () => migrateToV2({}),
     onSuccess: (data) => setMigrateResult(data),
+    onError: (err) => alert("Migration failed: " + String(err)),
   });
 
   const createUserMut = useMutation({

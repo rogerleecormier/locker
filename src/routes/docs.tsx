@@ -1126,7 +1126,7 @@ Authorization = "Bearer lkr_your_token_here"`,
                 🛡️ Core Security Model
               </h3>
               <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                All database items are encrypted using AES-256-GCM under per-vault Data Encryption Keys (DEKs) wrapped by a server-side Key Encryption Key. Secrets are scanned and redacted at write time using entropy-based DLP. API tokens are hashed with PBKDF2 at 210,000 iterations. Relational queries, D1 logs, and vector indices are fully anonymized. Read/write capabilities are regulated via scoped API token bitmasks.
+                All database items are encrypted using AES-256-GCM under per-vault Data Encryption Keys (DEKs) wrapped by a server-side Key Encryption Key. Secrets are scanned and redacted at write time using entropy-based DLP. API tokens are hashed with PBKDF2 at 100,000 iterations. Relational queries, D1 logs, and vector indices are fully anonymized. Read/write capabilities are regulated via scoped API token bitmasks.
               </p>
             </div>
           </div>
@@ -1301,7 +1301,7 @@ Authorization = "Bearer lkr_your_token_here"`,
                 </p>
                 <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                   <li><strong>Fallback Protection:</strong> When 2FA is inactive, write or delete actions executed via MCP are blocked unless the correct passcode is supplied.</li>
-                  <li><strong>PBKDF2 Hashing:</strong> Passcodes and API tokens are stored using PBKDF2-HMAC-SHA256 at 210,000 iterations (OWASP 2023) with a random per-token salt — resistant to GPU-accelerated brute-force even if the database is leaked.</li>
+                  <li><strong>PBKDF2 Hashing:</strong> Passcodes and API tokens are stored using PBKDF2-HMAC-SHA256 at 100,000 iterations (Cloudflare Workers max) with a random per-token salt — resistant to GPU-accelerated brute-force even if the database is leaked.</li>
                   <li><strong>Explicit Confirmation:</strong> Requires setting the <code>confirm === true</code> parameter alongside the valid passcode credential.</li>
                 </ul>
               </div>

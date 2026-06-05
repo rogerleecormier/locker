@@ -192,8 +192,8 @@ export async function sha256Hex(input: string): Promise<string> {
   return bytesToHex(new Uint8Array(hashBuffer));
 }
 
-// PBKDF2 iterations — 210,000 per OWASP 2023 recommendation for PBKDF2-HMAC-SHA256.
-const PBKDF2_ITERATIONS = 210_000;
+// PBKDF2 iterations — 100,000 (Cloudflare Workers Web Crypto max for PBKDF2).
+const PBKDF2_ITERATIONS = 100_000;
 
 // Hash a token with PBKDF2-HMAC-SHA256.
 // Returns a string in the format: pbkdf2$<iterations>$<base64-salt>$<base64-hash>
