@@ -502,3 +502,12 @@ export const memoryGraphEdges = sqliteTable("memory_graph_edges", {
 export type MemoryGraphNode = typeof memoryGraphNodes.$inferSelect;
 export type MemoryGraphEdge = typeof memoryGraphEdges.$inferSelect;
 
+export const systemSettings = sqliteTable("system_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
+});
+
+export type SystemSetting = typeof systemSettings.$inferSelect;
+
+

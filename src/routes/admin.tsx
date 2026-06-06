@@ -3,7 +3,7 @@ import { AdminGuard } from "./-admin-page";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { sql, eq, and, or, like } from "drizzle-orm";
-import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents } from "~/db/schema";
+import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, systemSettings } from "~/db/schema";
 import { requireAdmin } from "~/server/session";
 import { updateSubscriptionSeats } from "~/server/billing";
 import type { CloudflareEnv } from "~/types/cloudflare";
@@ -676,6 +676,52 @@ export const removeUserFromOrgAdmin = createServerFn({ method: "POST" })
 
     // Sync seats to Stripe
     await updateSubscriptionSeats(db, env, data.orgId);
+
+    return { success: true };
+  });
+
+export type SystemSettingsData = {
+  enableSignups: boolean;
+  enableBusinessPlans: boolean;
+  enableEnterprisePlans: boolean;
+};
+
+export const getSystemSettings = createServerFn({ method: "GET" }).handler(
+  async ({ context }): Promise<SystemSettingsData> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const db = drizzle(env.DB, { schema: { systemSettings } });
+
+    const rows = await db.select().from(systemSettings).all();
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+
+    return {
+      enableSignups: map.get("enable_signups") === "true",
+      enableBusinessPlans: map.get("enable_business_plans") !== "false",
+      enableEnterprisePlans: map.get("enable_enterprise_plans") !== "false",
+    };
+  }
+);
+
+export const updateSystemSetting = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { key: string; value: string } => {
+    const d = data as { key: string; value: string };
+    const allowedKeys = ["enable_signups", "enable_business_plans", "enable_enterprise_plans"];
+    if (!allowedKeys.includes(d.key)) throw new Error(`Unknown setting key: ${d.key}`);
+    return { key: d.key, value: d.value };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = drizzle(env.DB, { schema: { systemSettings } });
+
+    await db
+      .insert(systemSettings)
+      .values({ key: data.key, value: data.value, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: systemSettings.key,
+        set: { value: data.value, updatedAt: new Date() },
+      })
+      .run();
 
     return { success: true };
   });

@@ -47,7 +47,7 @@ async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
 }
 
 function getDb(env: CloudflareEnv) {
-  return drizzle(env.DB, { schema: { memories, apiTokens, userPlans, organizationMembers, orgQuotas } });
+  return drizzle(env.DB, { schema: { memories, apiTokens, userPlans, organizationMembers, orgQuotas, users } });
 }
 
 function normalizeCategory(raw: string | undefined): "rules" | "projects" | "references" {
@@ -197,6 +197,10 @@ function parseFactsFromText(raw: string): Array<{ fact: string }> {
 
 async function getUserName(db: ReturnType<typeof getDb>, userId: string, encKey: string): Promise<string> {
   try {
+    const userRow = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).get();
+    if (userRow?.name) {
+      return userRow.name;
+    }
     const rows = await db.select().from(memories).where(eq(memories.userId, userId)).all();
     const nameRow = rows.find((r) =>
       r.tags.split(",").map((t) => t.trim()).includes("profile-name")

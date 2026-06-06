@@ -8,7 +8,7 @@ import { handleMemoryVersionCleanup } from "./scheduled/cleanup-versions";
 import type { CloudflareEnv, ArchiveMessage } from "./types/cloudflare";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
-import { memories, auditLogs, organizationMembers } from "./db/schema";
+import { memories, auditLogs, organizationMembers, systemSettings } from "./db/schema";
 import { archiveContradictingMemories } from "./server/memoryFunctions";
 import { isEncrypted, decrypt, deriveUserKey, getOrCreateVaultKey, decryptEphemeral, EphemeralPlaintext } from "./server/crypto";
 import { logAudit } from "./server/enterprise";
@@ -43,6 +43,23 @@ export default {
 
 
     if (url.pathname.startsWith("/api/auth/")) {
+      if (url.pathname === "/api/auth/signup/email" && request.method === "POST") {
+        const db = drizzle(env.DB, { schema: { systemSettings } });
+        try {
+          const row = await db.select().from(systemSettings).where(eq(systemSettings.key, "enable_signups")).get();
+          if (row?.value !== "true") {
+            return Response.json(
+              { message: "Signups are disabled during development." },
+              { status: 403 }
+            );
+          }
+        } catch {
+          return Response.json(
+            { message: "Signups are disabled during development." },
+            { status: 403 }
+          );
+        }
+      }
       const auth = await createAuth(env);
       const response = await auth.handler(request);
       return response;

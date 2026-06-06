@@ -31,7 +31,121 @@ const AUTH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 /** Timestamps of when each cached entry was created. */
 const authCacheTimestamps = new Map<string, number>();
 
+/** Tracks if the demo user has been created/verified in this isolate. */
+let demoUserEnsured = false;
+
 // ── One-time OAuth client bootstrap ──────────────────────────────────────────
+
+/**
+ * Ensures the demo user exists in D1 and Vectorize.
+ */
+async function ensureDemoUser(
+  db: SchemaDb,
+  env: CloudflareEnv,
+): Promise<void> {
+  if (demoUserEnsured) return;
+  const email = "demo@locker.rcormier.dev";
+  const password = "demopassword123";
+
+  try {
+    const existing = await db.query.users.findFirst({
+      where: (u, { eq }) => eq(u.email, email),
+    });
+
+    if (existing) {
+      demoUserEnsured = true;
+      return;
+    }
+
+    const userId = "demo_user_id_locker_dev";
+    const { hashPassword } = await import("better-auth/crypto");
+    const hashedPassword = await hashPassword(password);
+
+    // 1. Create demo user
+    await db.insert(schema.users).values({
+      id: userId,
+      name: "Demo User",
+      email,
+      emailVerified: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // 2. Create demo plan
+    await db.insert(schema.userPlans).values({
+      userId,
+      plan: "free",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // 3. Create demo credentials account
+    await db.insert(schema.accounts).values({
+      id: "demo_account_id_locker_dev",
+      accountId: email,
+      providerId: "credential",
+      userId,
+      password: hashedPassword,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    console.log("[auth] Seeded demo user account in D1.");
+
+    // 4. Seed default memories in Vectorize & D1
+    const defaultMemories = [
+      "Locker is a secure context and rule engine for AI-native engineering.",
+      "Locker uses envelope encryption with AES-256-GCM for all memories.",
+      "Locker integrates with Cursor, Claude Desktop, and Copilot via the Model Context Protocol (MCP)."
+    ];
+
+    const { getOrCreateVaultKey, encrypt } = await import("./crypto");
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, userId);
+
+    for (const text of defaultMemories) {
+      const memId = crypto.randomUUID();
+      
+      // Generate embedding using Workers AI
+      const result = await env.AI.run("@cf/baai/bge-m3", { text: [text] });
+      const r = result as { data?: number[][] };
+      const embedding = r.data?.[0] ?? [];
+
+      const encryptedFact = await encrypt(text, vaultKey);
+
+      await db.insert(schema.memories).values({
+        id: memId,
+        userId,
+        fact: encryptedFact,
+        category: "references",
+        tags: "demo-default",
+        timestamp: Date.now(),
+        isActive: true,
+        projectKey: "demo:default",
+        scopeType: "personal",
+        isLocked: false,
+        authorityType: "contributed",
+        isQuarantined: false,
+      });
+
+      await env.VECTOR_INDEX.insert([
+        {
+          id: memId,
+          values: embedding,
+          metadata: {
+            userId,
+            category: "references",
+            tags: "demo-default",
+            projectKey: "demo:default",
+          } as any,
+        },
+      ]);
+    }
+    console.log("[auth] Seeded default sandbox memories in Vectorize.");
+    demoUserEnsured = true;
+  } catch (err) {
+    console.error("[auth] Failed to check or seed demo user:", err);
+  }
+}
 
 /**
  * Ensures the Claude OAuth client row exists in D1.
@@ -118,10 +232,14 @@ export async function createAuth(env: CloudflareEnv) {
   // Ensure the Claude OAuth client exists exactly once per isolate lifetime.
   // This replaces the previous per-request upsert that caused D1 write storms.
   await ensureClaudeOAuthClient(db, env);
+  
+  // Ensure the demo user and default memories exist
+  await ensureDemoUser(db, env);
 
   const auth = betterAuth({
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
+    trustedOrigins: ["http://localhost:*"],
     advanced: {
       ipAddress: {
         ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"],

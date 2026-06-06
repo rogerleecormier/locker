@@ -153,7 +153,11 @@ function LandingNav() {
 
 function Nav({ user }: { user: { id: string; name: string; email: string } }) {
   async function handleSignOut() {
-    await signOut();
+    try {
+      await signOut();
+    } catch (err) {
+      console.error("[signOut] Unexpected error:", err);
+    }
     window.location.href = "/login";
   }
 

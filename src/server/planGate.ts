@@ -10,6 +10,7 @@ import {
   userPlans,
   oauthAccessTokensV2,
   featureOverrides,
+  systemSettings,
 } from "~/db/schema";
 import {
   PLANS,
@@ -102,12 +103,39 @@ export async function getUserEffectivePlan(
   return { planId: best, orgId: bestOrgId };
 }
 
+// ── Sitewide plan enforcement ─────────────────────────────────────────────────
+async function enforceGlobalPlanRestrictions(
+  db: any,
+  planId: PlanId,
+  orgId: string | null
+): Promise<{ planId: PlanId; orgId: string | null }> {
+  const settingRows = await db
+    .select()
+    .from(systemSettings)
+    .all();
+  const map = new Map((settingRows as any[]).map((r: any) => [r.key, r.value]));
+
+  const enableBusiness = map.get("enable_business_plans") !== "false";
+  const enableEnterprise = map.get("enable_enterprise_plans") !== "false";
+
+  let resolved = planId;
+  if (resolved === "enterprise" && !enableEnterprise) {
+    resolved = enableBusiness ? "business" : "free";
+  }
+  if (resolved === "business" && !enableBusiness) {
+    resolved = "free";
+  }
+
+  return { planId: resolved, orgId: resolved !== planId ? null : orgId };
+}
+
 export async function requireFeature(
   db: any,
   userId: string,
   feature: keyof PlanFeatures
 ): Promise<{ planId: PlanId; orgId: string | null }> {
-  const { planId, orgId } = await getUserEffectivePlan(db, userId);
+  const raw = await getUserEffectivePlan(db, userId);
+  const { planId, orgId } = await enforceGlobalPlanRestrictions(db, raw.planId, raw.orgId);
 
   if (!planHasFeature(planId, feature)) {
     const requiredPlan: PlanId =

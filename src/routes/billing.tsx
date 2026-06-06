@@ -18,6 +18,7 @@ import {
   tokenUsages,
   userPlans,
   oauthAccessTokensV2,
+  systemSettings,
 } from "~/db/schema";
 import { eq, sql, and } from "drizzle-orm";
 import { PageContainer } from "~/components/PageContainer";
@@ -32,7 +33,7 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
   async ({ context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
-    const db = drizzle(env.DB, { schema: { memories, apiTokens, organizations, organizationMembers, orgQuotas, tokenUsages, userPlans, oauthAccessTokensV2 } });
+    const db = drizzle(env.DB, { schema: { memories, apiTokens, organizations, organizationMembers, orgQuotas, tokenUsages, userPlans, oauthAccessTokensV2, systemSettings } });
 
     const { planId, orgId } = await getUserEffectivePlan(db, user.id);
 
@@ -146,6 +147,12 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
       })
     );
 
+    // ── Sitewide plan settings ───────────────────────────────────────────────
+    const siteSettingRows = await db.select().from(systemSettings).all();
+    const settingsMap = new Map(siteSettingRows.map((r) => [r.key, r.value]));
+    const enableBusinessPlans = settingsMap.get("enable_business_plans") !== "false";
+    const enableEnterprisePlans = settingsMap.get("enable_enterprise_plans") !== "false";
+
     return {
       planId,
       personalPlanId,
@@ -153,6 +160,8 @@ export const getBillingInfo = createServerFn({ method: "GET" }).handler(
       userId: user.id,
       hasBillingCustomer,
       managedOrgs,
+      enableBusinessPlans,
+      enableEnterprisePlans,
       usage: {
         memories: Number(memoriesCount[0]?.count ?? 0),
         apiTokens: Number(tokensCount[0]?.count ?? 0),
@@ -413,22 +422,38 @@ export function MyBillingSection() {
                 <p className="text-xs md:text-sm text-text-muted leading-relaxed">
                   You're on the free plan. Upgrade to unlock more memories, recalls, and advanced analytics.
                 </p>
-                <div className="flex gap-2.5 flex-wrap mt-1">
-                  <Button onClick={handleUpgrade} disabled={upgradingId !== null} className="font-bold text-xs select-none h-9 px-4">
-                    {upgradingId === "personal" ? "Redirecting to Checkout…" : "Upgrade to Business"}
-                  </Button>
-                  <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none">
-                    Contact Sales for Enterprise
-                  </a>
-                </div>
+                {billing?.enableBusinessPlans ? (
+                  <div className="flex gap-2.5 flex-wrap mt-1">
+                    <Button onClick={handleUpgrade} disabled={upgradingId !== null} className="font-bold text-xs select-none h-9 px-4">
+                      {upgradingId === "personal" ? "Redirecting to Checkout…" : "Upgrade to Business"}
+                    </Button>
+                    {billing?.enableEnterprisePlans && (
+                      <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none">
+                        Contact Sales for Enterprise
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-accent/5 border border-accent/15 rounded-xl flex items-center gap-2 text-xs text-text-muted select-none">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Paid plan upgrades are currently disabled during development.
+                  </div>
+                )}
               </div>
             )}
 
             {personalPlan === "business" && (
               <div className="flex gap-2.5 flex-wrap items-center mt-1">
-                <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none">
-                  Upgrade to Enterprise
-                </a>
+                {billing?.enableEnterprisePlans ? (
+                  <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none">
+                    Upgrade to Enterprise
+                  </a>
+                ) : (
+                  <div className="p-3 bg-accent/5 border border-accent/15 rounded-xl flex items-center gap-2 text-xs text-text-muted select-none">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Enterprise upgrades are currently disabled.
+                  </div>
+                )}
                 {billing?.hasBillingCustomer && (
                   <Button onClick={handlePortal} disabled={portalLoading} variant="ghost" className="h-9 text-xs text-error hover:text-error hover:bg-error/5 hover:border-error/25 px-3">
                     {portalLoading ? "Opening…" : "Downgrade / Cancel"}

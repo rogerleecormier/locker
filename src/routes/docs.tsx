@@ -1019,9 +1019,39 @@ function DocsPage() {
                   <li>Click <strong>Download Rules</strong> to trigger browser file delivery.</li>
                 </ol>
               </div>
-              
+
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
-                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>⚡ Method B: Workspace Sync via MCP</h4>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--accent)" }}>🚀 Method B: npx locker-sync CLI</h4>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  A standalone zero-install CLI tool that authenticates with the Locker API and writes the compiled rules file directly to your workspace. Ideal for pre-commit hooks and CI workflows.
+                </p>
+                <pre style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  padding: 10,
+                  margin: "0 0 10px 0",
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                  color: "var(--text)",
+                  overflowX: "auto"
+                }}>{`# Sync .cursorrules to your project root
+npx locker-sync sync --format cursor --project locker
+
+# Preview without writing (dry-run)
+npx locker-sync sync --format claude --dry-run
+
+# Using environment variable for CI
+LOCKER_API_TOKEN=lkr_... npx locker-sync sync`}</pre>
+                <div style={{ background: "rgba(168,85,247,0.05)", border: "1px solid rgba(168,85,247,0.15)", borderRadius: 8, padding: 10 }}>
+                  <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 6px 0", fontWeight: 700 }}>🔗 Pre-commit Hook (.git/hooks/pre-commit)</p>
+                  <pre style={{ background: "transparent", border: "none", padding: 0, margin: 0, fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)", overflowX: "auto" }}>{`#!/bin/sh
+npx locker-sync sync --format cursor --project my-project`}</pre>
+                </div>
+              </div>
+
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>⚡ Method C: MCP Tool (Agent-Initiated)</h4>
                 <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
                   AI developer agents connected via MCP can call Locker's native sync tool to build and write rules files directly inside your active workspace without manual downloads.
                 </p>
@@ -1038,7 +1068,7 @@ function DocsPage() {
                 }}>{`{
   "name": "sync_workspace_agent_configs",
   "arguments": {
-    "formatType": "claude", // or cursor, gemini, agents
+    "formatType": "claude", // or cursor, copilot, gemini, agents, antigravity
     "projectKey": "locker"
   }
 }`}</pre>
@@ -1314,9 +1344,36 @@ function DocsPage() {
         return (
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Workspace Sync Tools</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 16 }}>
               Workspace Sync tools translate stack profile definitions and baseline coding rules stored in Locker into optimized instructions formatted for local developer agents.
             </p>
+
+            {/* CLI callout */}
+            <div style={{
+              background: "rgba(168, 85, 247, 0.05)",
+              border: "1px solid rgba(168, 85, 247, 0.2)",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 24,
+              display: "flex",
+              gap: 14,
+              alignItems: "flex-start",
+            }}>
+              <span style={{ fontSize: 22, flexShrink: 0 }}>🚀</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 6px 0" }}>
+                  Prefer the CLI? Use <code style={{ color: "var(--accent)" }}>npx locker-sync sync</code>
+                </p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  The <strong>locker-sync</strong> CLI is the recommended developer workflow. It wraps this MCP tool in a zero-install command that resolves your API token, calls <code>sync_workspace_agent_configs</code>, and writes the rules file to disk — all in one step. Perfect for pre-commit hooks.
+                </p>
+                <pre style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: 10, margin: 0, fontFamily: "monospace", fontSize: 11, color: "var(--text)", overflowX: "auto" }}>{`# Sync .cursorrules (recommended for developers)
+npx locker-sync sync --format cursor --project my-project
+
+# All formats: cursor | claude | copilot | gemini | agents | antigravity
+npx locker-sync sync --format claude --dry-run`}</pre>
+              </div>
+            </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {ALL_TOOLS.filter((t) =>

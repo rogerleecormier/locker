@@ -12,6 +12,27 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  async function handleDemoLogin() {
+    setError("");
+    setDemoLoading(true);
+    try {
+      const result = await signIn.email({
+        email: "demo@locker.rcormier.dev",
+        password: "demopassword123",
+      });
+      if (result.error) {
+        setError(result.error.message ?? "Demo login failed. Try again shortly.");
+      } else {
+        navigate({ to: "/" });
+      }
+    } catch {
+      setError("Demo login unavailable. Please try again.");
+    } finally {
+      setDemoLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,6 +114,36 @@ function LoginPage() {
             </Link>
           </span>
         </div>
+
+        {/* Demo account divider */}
+        <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
+          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+          <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>or explore without an account</span>
+          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        </div>
+
+        <button
+          id="demo-login-btn"
+          type="button"
+          onClick={handleDemoLogin}
+          disabled={demoLoading || loading}
+          style={{
+            ...styles.btn,
+            marginTop: 0,
+            background: "transparent",
+            border: "1px solid rgba(168,85,247,0.35)",
+            color: "var(--accent)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
+          {demoLoading ? "Signing in to demo…" : "Try Demo Account"}
+        </button>
       </div>
     </div>
   );
