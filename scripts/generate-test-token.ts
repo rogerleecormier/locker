@@ -1,22 +1,11 @@
 import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
+import { hashToken } from '../src/server/crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const DB_NAME = 'locker-db';
-
-async function hashToken(token) {
-  const salt = crypto.randomBytes(16);
-  // Derive bits using pbkdf2Sync for simplicity and compatibility in Node
-  const derived = crypto.pbkdf2Sync(
-    Buffer.from(token),
-    salt,
-    100000,
-    32,
-    'sha256'
-  );
-  const saltB64 = salt.toString('base64');
-  const hashB64 = derived.toString('base64');
-  return `pbkdf2$100000$${saltB64}$${hashB64}`;
-}
+const CONFIG_PATH = 'dist/server/wrangler.json';
 
 async function run() {
   const id = crypto.randomUUID();
@@ -36,47 +25,52 @@ async function run() {
   console.log('Plaintext token:', rawToken);
   console.log('Token hash:', tokenHash);
 
-  // First delete any existing local test tokens for this user to avoid clutter/conflicts
+  // We want to insert the token in both:
+  // 1. Root .wrangler state (for wrangler CLI calls without config)
+  // 2. dist/server/.wrangler state (for the running dev server)
   const deleteSql = `DELETE FROM api_tokens WHERE userId = '${userId}' AND name = '${name}';`;
   const insertSql = `INSERT INTO api_tokens (id, userId, name, tokenHash, permissions, createdAt) VALUES ('${id}', '${userId}', '${name}', '${tokenHash}', ${permissions}, ${createdAt});`;
 
-  const tempSqlFile = './scratch/temp.sql';
+  const tempSqlFile = path.resolve('scratch/temp.sql');
   const sqlContent = `${deleteSql}\n${insertSql}\n`;
 
   try {
-    const fs = await import('node:fs');
     fs.writeFileSync(tempSqlFile, sqlContent, 'utf8');
 
-    // Insert into root D1 using wrangler.json config
-    console.log('Inserting into D1 using wrangler.json...');
+    // Insert into root wrangler D1 (with wrangler.json config)
+    console.log('Inserting into root D1 database (using wrangler.json)...');
     execSync(
       `npx wrangler d1 execute ${DB_NAME} --local --config wrangler.json --file "${tempSqlFile}"`,
       { encoding: "utf8" }
     );
 
-    // Insert into dist/server D1 using dist/server/wrangler.json config
-    console.log('Inserting into D1 using dist/server/wrangler.json...');
+    // Insert into dist/server wrangler D1 (using dist/server/wrangler.json config)
+    console.log('Inserting into dist/server D1 database (using dist/server/wrangler.json)...');
     try {
       execSync(
-        `npx wrangler d1 execute ${DB_NAME} --local --config dist/server/wrangler.json --file "${tempSqlFile}"`,
+        `npx wrangler d1 execute ${DB_NAME} --local --config ${CONFIG_PATH} --file "${tempSqlFile}"`,
         { encoding: "utf8" }
       );
-    } catch (dbErr) {
+    } catch (dbErr: any) {
       console.warn('Warning: Could not insert token into dist/server DB (likely not migrated):', dbErr.message);
     }
 
-    console.log('Successfully inserted token into local D1 DBs.');
+    console.log('Successfully inserted token into both local D1 DBs.');
     console.log('\nUse this token to test:');
     console.log(`Authorization: Bearer ${rawToken}`);
     
     // Automatically update scripts/test-mcp-calls.mjs with this token
-    return rawToken;
-  } catch (err) {
+    const testScriptPath = path.resolve('scripts/test-mcp-calls.mjs');
+    let content = fs.readFileSync(testScriptPath, 'utf8');
+    content = content.replace(/const TOKEN = 'lkr_[a-f0-9_]+';/, `const TOKEN = '${rawToken}';`);
+    fs.writeFileSync(testScriptPath, content, 'utf8');
+    console.log(`Updated scripts/test-mcp-calls.mjs with new token.`);
+
+  } catch (err: any) {
     console.error('Error inserting token:', err.message);
     process.exit(1);
   } finally {
     try {
-      const fs = await import('node:fs');
       if (fs.existsSync(tempSqlFile)) {
         fs.unlinkSync(tempSqlFile);
       }
@@ -84,17 +78,4 @@ async function run() {
   }
 }
 
-run().then(async (token) => {
-  // Update scripts/test-mcp-calls.mjs
-  try {
-    const fs = await import('node:fs');
-    const path = await import('node:path');
-    const testScriptPath = path.resolve('scripts/test-mcp-calls.mjs');
-    let content = fs.readFileSync(testScriptPath, 'utf8');
-    content = content.replace(/const TOKEN = 'lkr_[a-f0-9_]+';/, `const TOKEN = '${token}';`);
-    fs.writeFileSync(testScriptPath, content, 'utf8');
-    console.log(`Updated scripts/test-mcp-calls.mjs with new token.`);
-  } catch (e) {
-    console.error('Failed to update test script:', e);
-  }
-});
+run();

@@ -35,13 +35,15 @@ function bytesToHex(bytes: Uint8Array): string {
 
 async function importKEK(hexKEK: string): Promise<CryptoKey> {
   const keyBytes = hexToBytes(hexKEK);
-  return crypto.subtle.importKey(
+  const key = await crypto.subtle.importKey(
     "raw",
     keyBytes.buffer as ArrayBuffer,
     { name: "AES-GCM" },
     false,
     ["encrypt", "decrypt"]
   );
+  keyBytes.fill(0);
+  return key;
 }
 
 async function wrapDEK(dek: CryptoKey, kek: CryptoKey): Promise<string> {
@@ -52,6 +54,7 @@ async function wrapDEK(dek: CryptoKey, kek: CryptoKey): Promise<string> {
     kek,
     dekBytes as ArrayBuffer
   );
+  new Uint8Array(dekBytes).fill(0);
   return `${bytesToHex(iv)}:${bytesToHex(new Uint8Array(wrapped))}`;
 }
 
@@ -65,12 +68,17 @@ async function unwrapDEK(wrappedDEK: string, kek: CryptoKey): Promise<CryptoKey>
     kek,
     ciphertext as unknown as BufferSource
   );
-  return crypto.subtle.importKey("raw", dekBytes, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
-}
-
-async function exportDEKToHex(dek: CryptoKey): Promise<string> {
-  const raw = await crypto.subtle.exportKey("raw", dek);
-  return bytesToHex(new Uint8Array(raw));
+  iv.fill(0);
+  ciphertext.fill(0);
+  const dek = await crypto.subtle.importKey(
+    "raw",
+    dekBytes,
+    { name: "AES-GCM" },
+    false, // extractable: false
+    ["encrypt", "decrypt"]
+  );
+  new Uint8Array(dekBytes).fill(0);
+  return dek;
 }
 
 // ── Vault Key lifecycle ───────────────────────────────────────────────────────
@@ -79,12 +87,12 @@ async function exportDEKToHex(dek: CryptoKey): Promise<string> {
  * Fetch or create the vault DEK for a given vaultId (userId or "team:xxx" / "org:xxx").
  *
  * - Looks up the `vault_keys` table in D1.
- * - If not found, generates a new random DEK, wraps it with the KEK, stores it, and returns the hex DEK.
- * - If found, unwraps the stored DEK using the KEK and returns the hex DEK.
+ * - If not found, generates a new random DEK, wraps it with the KEK, stores it, and returns the DEK.
+ * - If found, unwraps the stored DEK using the KEK and returns the DEK.
  *
- * The returned hex string is compatible with the existing encrypt()/decrypt() helpers.
+ * The returned CryptoKey is compatible with the updated encrypt()/decrypt() helpers.
  */
-export async function getOrCreateVaultKey(db: D1Database, masterKey: string, vaultId: string): Promise<string> {
+export async function getOrCreateVaultKey(db: D1Database, masterKey: string, vaultId: string): Promise<CryptoKey> {
   const kek = await importKEK(masterKey);
 
   // Try to fetch existing wrapped DEK
@@ -94,8 +102,7 @@ export async function getOrCreateVaultKey(db: D1Database, masterKey: string, vau
     .first<{ wrapped_dek: string }>();
 
   if (existing) {
-    const dek = await unwrapDEK(existing.wrapped_dek, kek);
-    return exportDEKToHex(dek);
+    return unwrapDEK(existing.wrapped_dek, kek);
   }
 
   // Generate a new random DEK and wrap it with the KEK
@@ -117,12 +124,55 @@ export async function getOrCreateVaultKey(db: D1Database, masterKey: string, vau
     .first<{ wrapped_dek: string }>();
 
   if (inserted) {
-    const canonicalDEK = await unwrapDEK(inserted.wrapped_dek, kek);
-    return exportDEKToHex(canonicalDEK);
+    return unwrapDEK(inserted.wrapped_dek, kek);
   }
 
-  // Fallback: use the locally generated DEK (should not happen in practice)
-  return exportDEKToHex(dek);
+  return dek;
+}
+
+// ── Ephemeral Plaintext and Decryption Helpers ───────────────────────────────
+
+export class EphemeralPlaintext {
+  private bytes: Uint8Array | null;
+
+  constructor(bytes: Uint8Array) {
+    this.bytes = bytes;
+  }
+
+  /**
+   * Access the plaintext as a string. Keep the scope of this string as narrow as possible.
+   */
+  get(): string {
+    if (!this.bytes) throw new Error("Plaintext has already been dropped");
+    return new TextDecoder().decode(this.bytes);
+  }
+
+  /**
+   * Explicitly zero out the underlying buffer to clear it from volatile memory.
+   */
+  drop(): void {
+    if (this.bytes) {
+      this.bytes.fill(0);
+      this.bytes = null;
+    }
+  }
+}
+
+export async function decryptEphemeral(encrypted: string, key: string | CryptoKey): Promise<EphemeralPlaintext> {
+  const colon = encrypted.indexOf(":");
+  if (colon === -1) throw new Error("Invalid encrypted format");
+  const iv = hexToBytes(encrypted.slice(0, colon));
+  const ciphertext = hexToBytes(encrypted.slice(colon + 1));
+  const cryptoKey = await importKey(key);
+  const plaintextBuffer = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: iv as unknown as BufferSource },
+    cryptoKey,
+    ciphertext as unknown as BufferSource
+  );
+  iv.fill(0);
+  ciphertext.fill(0);
+
+  return new EphemeralPlaintext(new Uint8Array(plaintextBuffer));
 }
 
 // ── Legacy key derivation (backward compatibility ONLY) ──────────────────────
@@ -146,31 +196,36 @@ export async function deriveUserKey(masterKey: string, userId: string): Promise<
   return bytesToHex(new Uint8Array(exported));
 }
 
-async function importKey(hexKey: string): Promise<CryptoKey> {
-  const keyBytes = hexToBytes(hexKey);
-  return crypto.subtle.importKey("raw", keyBytes.buffer as ArrayBuffer, { name: "AES-GCM" }, false, [
+async function importKey(key: string | CryptoKey): Promise<CryptoKey> {
+  if (typeof key !== "string") return key;
+  const keyBytes = hexToBytes(key);
+  const cryptoKey = await crypto.subtle.importKey("raw", keyBytes.buffer as ArrayBuffer, { name: "AES-GCM" }, false, [
     "encrypt",
     "decrypt",
   ]);
+  keyBytes.fill(0);
+  return cryptoKey;
 }
 
 // Returns "iv_hex:ciphertext_hex"
-export async function encrypt(plaintext: string, hexKey: string): Promise<string> {
-  const key = await importKey(hexKey);
+export async function encrypt(plaintext: string, key: string | CryptoKey): Promise<string> {
+  const cryptoKey = await importKey(key);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encoded = new TextEncoder().encode(plaintext);
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource }, key, encoded as unknown as BufferSource);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource }, cryptoKey, encoded as unknown as BufferSource);
   return `${bytesToHex(iv)}:${bytesToHex(new Uint8Array(ciphertext))}`;
 }
 
 // Accepts "iv_hex:ciphertext_hex", returns original plaintext
-export async function decrypt(encrypted: string, hexKey: string): Promise<string> {
+export async function decrypt(encrypted: string, key: string | CryptoKey): Promise<string> {
   const colon = encrypted.indexOf(":");
   if (colon === -1) throw new Error("Invalid encrypted format");
   const iv = hexToBytes(encrypted.slice(0, colon));
   const ciphertext = hexToBytes(encrypted.slice(colon + 1));
-  const key = await importKey(hexKey);
-  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource }, key, ciphertext as unknown as BufferSource);
+  const cryptoKey = await importKey(key);
+  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource }, cryptoKey, ciphertext as unknown as BufferSource);
+  iv.fill(0);
+  ciphertext.fill(0);
   return new TextDecoder().decode(plaintext);
 }
 
@@ -251,6 +306,7 @@ export async function verifyToken(token: string, storedHash: string): Promise<bo
       expectedHashBytes.length * 8
     );
     const derivedBytes = new Uint8Array(derived);
+
     // Constant-time comparison to prevent timing attacks
     if (derivedBytes.length !== expectedHashBytes.length) return false;
     let diff = 0;

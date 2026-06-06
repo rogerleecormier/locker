@@ -1,6 +1,6 @@
 import { argv } from 'node:process';
 
-const TOKEN = 'lkr_63bbd3a03c7c49c29c890bee6ff6140b';
+const TOKEN = 'lkr_de9bfb13b8f6484aad5a8454d2172ae2_ea604d2298081a96e641ba56df0c4ed9';
 const BASE_URL = 'http://localhost:8787/api/mcp';
 
 async function sendMcpRequest(method, params) {

@@ -28,12 +28,12 @@ import {
 } from "~/db/schema";
 import type { D1Database } from "@cloudflare/workers-types";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { encrypt, decrypt, isEncrypted, hashToken, getOrCreateVaultKey, deriveUserKey } from "./crypto";
+import { encrypt, decrypt, isEncrypted, hashToken, getOrCreateVaultKey, deriveUserKey, decryptEphemeral, EphemeralPlaintext } from "./crypto";
 import { requireSession, requireAdmin } from "./session";
 import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "./enterprise";
 import { checkMemoryLimit, checkApiTokenLimit, getUserEffectivePlan } from "./planGate";
 import { sanitizeMemory } from "./sanitization";
-import { maskSensitiveData } from "./dlp";
+import { maskSensitiveData, containsSensitiveData } from "./dlp";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
@@ -70,23 +70,35 @@ function extractText(result: unknown): string {
 }
 
 // Encrypt a fact for storage. Embedding is always generated from plaintext.
-async function encryptFact(fact: string, encKey: string): Promise<string> {
+async function encryptFact(fact: string, encKey: string | CryptoKey): Promise<string> {
   return encrypt(fact, encKey);
 }
 
-async function decryptFact(stored: string, encKey: string): Promise<string> {
+async function decryptFact(stored: string, encKey: string | CryptoKey): Promise<string> {
   if (!isEncrypted(stored)) return stored;
   return decrypt(stored, encKey);
 }
 
 async function decryptMemories(rows: Memory[], db: D1Database, masterKey: string): Promise<Memory[]> {
-  return Promise.all(
-    rows.map(async (r) => {
-      const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : r.userId;
-      const vaultKey = await getOrCreateVaultKey(db, masterKey, vaultId);
-      return { ...r, fact: await decryptFact(r.fact, vaultKey) };
-    })
-  );
+  const ephemerals: EphemeralPlaintext[] = [];
+  try {
+    return await Promise.all(
+      rows.map(async (r) => {
+        const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : r.userId;
+        const vaultKey = await getOrCreateVaultKey(db, masterKey, vaultId);
+        if (isEncrypted(r.fact)) {
+          const eph = await decryptEphemeral(r.fact, vaultKey);
+          ephemerals.push(eph);
+          return { ...r, fact: eph.get() };
+        }
+        return { ...r };
+      })
+    );
+  } finally {
+    for (const eph of ephemerals) {
+      eph.drop();
+    }
+  }
 }
 
 async function classifyMemories(
@@ -428,29 +440,28 @@ export async function archiveContradictingMemories(
 
   if (rows.length === 0) return;
 
-  const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : userId;
-  const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+  const decryptedCandidates: Array<{ id: string; ephemeralFact: EphemeralPlaintext }> = [];
+  try {
+    const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : userId;
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
 
-  const decryptedCandidates = await Promise.all(
-    rows.map(async (r: any) => ({
-      id: r.id,
-      fact: await decryptFact(r.fact, vaultKey),
-    }))
-  );
+    for (const r of rows) {
+      const eph = await decryptEphemeral(r.fact, vaultKey);
+      decryptedCandidates.push({ id: r.id, ephemeralFact: eph });
+    }
 
-  const prompt = `You are an AI assistant that detects contradictions or conflicts between a new memory and a list of existing memories.
+    const prompt = `You are an AI assistant that detects contradictions or conflicts between a new memory and a list of existing memories.
 A contradiction/conflict occurs when the new memory makes the existing memory outdated, invalid, or directly contradicts it (e.g., a change in project stack, changed technical requirement, or updated preference).
 
 New Memory: "${newFact}"
 
 Existing Memories:
-${decryptedCandidates.map((c) => `[${c.id}] "${c.fact}"`).join("\n")}
+${decryptedCandidates.map((c) => `[${c.id}] "${c.ephemeralFact.get()}"`).join("\n")}
 
 Identify which existing memories are contradicted or superseded by the new memory.
 Respond with ONLY a JSON array of the IDs of the contradicted memories. If none are contradicted, return an empty array [].
 Do not include markdown code fences or conversational text. Just the raw JSON array of strings.`;
 
-  try {
     const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
       prompt,
       max_tokens: 256,
@@ -471,7 +482,7 @@ Do not include markdown code fences or conversational text. Just the raw JSON ar
           // Reroute to Review Queue (memoryRecommendations) instead of silent archiving
           for (const row of toArchiveRows) {
             const dec = decryptedCandidates.find((c) => c.id === row.id);
-            const decryptedFact = dec ? dec.fact : "";
+            const decryptedFact = dec ? dec.ephemeralFact.get() : "";
 
             const { scopeType: rowScopeType, scopeId: rowScopeId } = parseScope(row.projectKey);
 
@@ -545,6 +556,10 @@ Do not include markdown code fences or conversational text. Just the raw JSON ar
     }
   } catch (err) {
     console.error("[archiveContradictingMemories] failed:", err);
+  } finally {
+    for (const c of decryptedCandidates) {
+      c.ephemeralFact.drop();
+    }
   }
 }
 
@@ -599,18 +614,18 @@ export const addMemory = createServerFn({ method: "POST" })
       throw new Error("Invalid memory fact: content was empty or contained adversarial instructions");
     }
 
-    // DLP: redact secrets/PII at write time so stored memories are permanently clean.
-    const dlpFact = maskSensitiveData(sanitizedFact);
+    // DLP Quarantine Check: flag if sensitive data is detected, but keep raw fact.
+    const isQuarantined = containsSensitiveData(sanitizedFact);
 
     const id = crypto.randomUUID();
     const timestamp = Date.now();
 
     const vaultId = (scopeType === "team" || scopeType === "organization") ? data.projectKey! : user.id;
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
-    const encryptedFact = await encryptFact(dlpFact, vaultKey);
+    const encryptedFact = await encryptFact(sanitizedFact, vaultKey);
 
-    const embedding = await generateEmbedding(env.AI, dlpFact);
-    const tokensConsumed = estimateEmbeddingTokens(dlpFact);
+    const embedding = await generateEmbedding(env.AI, sanitizedFact);
+    const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
     const tagsList = data.tags.split(",").map(t => t.trim()).filter(Boolean);
     if (!tagsList.includes("manual")) {
@@ -622,7 +637,7 @@ export const addMemory = createServerFn({ method: "POST" })
     try {
       await env.ARCHIVE_QUEUE.send({
         userId: user.id,
-        newFact: dlpFact,
+        newFact: sanitizedFact,
         embedding,
         projectKey: data.projectKey || null,
       });
@@ -677,6 +692,7 @@ export const addMemory = createServerFn({ method: "POST" })
       scopeId,
       isLocked,
       authorityType,
+      isQuarantined,
     };
 
     await db.insert(memories).values(newRow);
@@ -711,10 +727,10 @@ export const addMemory = createServerFn({ method: "POST" })
     }
 
     // Audit Log & usage tracking
-    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "commit_memory", memoryId: id, metadata: { category: data.category, projectKey: data.projectKey } });
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "commit_memory", memoryId: id, metadata: { category: data.category, projectKey: data.projectKey, quarantined: isQuarantined } });
     await logTokenUsage(db, "session", "commit", tokensConsumed);
 
-    return { ...newRow, fact: dlpFact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null } as Memory;
+    return { ...newRow, fact: sanitizedFact, tags: newRow.tags ?? "", isActive: true, projectKey: newRow.projectKey ?? null } as Memory;
   });
 
 type BatchImportItem = { fact: string; category?: string; tags?: string; projectKey?: string };
@@ -784,11 +800,16 @@ export const batchImportMemories = createServerFn({ method: "POST" })
       throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
     }
 
-    // Sanitize then apply DLP at write time (entropy-based + PII regex).
-    const sanitizedItems = items.map((item) => ({
-      ...item,
-      fact: maskSensitiveData(sanitizeMemory(item.fact))
-    }));
+    // Sanitize then check DLP (entropy-based + PII regex) for quarantine.
+    const sanitizedItems = items.map((item) => {
+      const sanitized = sanitizeMemory(item.fact);
+      const isQuarantined = containsSensitiveData(sanitized);
+      return {
+        ...item,
+        fact: sanitized,
+        isQuarantined,
+      };
+    });
 
     const valid = sanitizedItems.filter((item) => {
       const f = item.fact;
@@ -1047,6 +1068,7 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
         embedding: embeddings[i],
         isDupe: dupeFlags[i],
         projectKey: itemPk,
+        isQuarantined: !!item.isQuarantined,
       };
     }));
 
@@ -1056,8 +1078,8 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
     const CHUNK_SIZE = 10;
     for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
       await db.insert(memories).values(
-        newRows.slice(i, i + CHUNK_SIZE).map(({ id, userId, fact, category, tags, timestamp: ts, projectKey: pk }) => ({
-          id, userId, fact, category, tags, timestamp: ts, isActive: true, projectKey: pk,
+        newRows.slice(i, i + CHUNK_SIZE).map(({ id, userId, fact, category, tags, timestamp: ts, projectKey: pk, isQuarantined }) => ({
+          id, userId, fact, category, tags, timestamp: ts, isActive: true, projectKey: pk, isQuarantined,
         }))
       );
     }
@@ -1273,15 +1295,15 @@ export const updateMemory = createServerFn({ method: "POST" })
       throw new Error("Invalid memory fact: content was empty or contained adversarial instructions");
     }
 
-    // DLP: redact secrets/PII at write time so stored memories are permanently clean.
-    const dlpFact = maskSensitiveData(sanitizedFact);
+    // DLP Quarantine Check: flag if sensitive data is detected, but keep raw fact.
+    const isQuarantined = containsSensitiveData(sanitizedFact);
 
     const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : user.id;
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
-    const encryptedFact = await encryptFact(dlpFact, vaultKey);
+    const encryptedFact = await encryptFact(sanitizedFact, vaultKey);
 
     await db.update(memories)
-      .set({ fact: encryptedFact, category: data.category, tags: data.tags, timestamp: Date.now() })
+      .set({ fact: encryptedFact, category: data.category, tags: data.tags, timestamp: Date.now(), isQuarantined })
       .where(eq(memories.id, data.id));
 
     // Record Memory Version
@@ -1296,8 +1318,8 @@ export const updateMemory = createServerFn({ method: "POST" })
       timestamp: Date.now(),
     });
 
-    const embedding = await generateEmbedding(env.AI, dlpFact);
-    const tokensConsumed = estimateEmbeddingTokens(dlpFact);
+    const embedding = await generateEmbedding(env.AI, sanitizedFact);
+    const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
     await env.VECTOR_INDEX.upsert([{
       id: data.id,
       values: embedding,
@@ -1305,11 +1327,74 @@ export const updateMemory = createServerFn({ method: "POST" })
     }]);
 
     // Audit logging & usage tracking
-    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: data.id, metadata: { category: data.category } });
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: data.id, metadata: { category: data.category, quarantined: isQuarantined } });
     await logTokenUsage(db, "session", "commit", tokensConsumed);
 
     const rows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
-    return { ...rows[0], fact: dlpFact };
+    return { ...rows[0], fact: sanitizedFact };
+  });
+
+type UnmaskMemoryInput = {
+  id: string;
+};
+
+export const unmaskMemory = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): UnmaskMemoryInput => {
+    const d = data as UnmaskMemoryInput;
+    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
+    return { id: d.id };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    if (!user.id) {
+      throw new Error("Unauthorized");
+    }
+
+    const existingRows = await db.select().from(memories).where(eq(memories.id, data.id)).all();
+    if (existingRows.length === 0) {
+      throw new Error("Memory not found or unauthorized");
+    }
+    const existing = existingRows[0];
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, user.id, existing.projectKey);
+    if (!vaultAllowed) {
+      throw new Error(`Forbidden: no access to vault scope '${existing.projectKey}'`);
+    }
+
+    const isSharedVault = existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"));
+    if (!isSharedVault && existing.userId !== user.id) {
+      throw new Error("Unauthorized");
+    }
+
+    if (isSharedVault) {
+      const actualOrgId = existing.projectKey!.startsWith("org:") ? existing.projectKey!.slice(4) : orgId;
+      if (actualOrgId) {
+        const memberRow = await db
+          .select({ role: organizationMembers.role })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.orgId, actualOrgId), eq(organizationMembers.userId, user.id)))
+          .limit(1)
+          .all();
+        const role = memberRow[0]?.role;
+        if (role !== "owner" && role !== "admin") {
+          throw new Error("Forbidden: Only organization owners/admins can unmask memories in a shared vault.");
+        }
+      } else {
+        throw new Error("Forbidden: You do not have permission to modify this memory.");
+      }
+    }
+
+    await db.update(memories)
+      .set({ isQuarantined: false })
+      .where(eq(memories.id, data.id));
+
+    // Audit log
+    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "unmask_memory", memoryId: data.id });
+
+    return { success: true };
   });
 
 export const archiveMemory = createServerFn({ method: "POST" })

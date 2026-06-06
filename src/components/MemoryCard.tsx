@@ -93,8 +93,12 @@ export function MemoryCard({
   return (
     <div
       onClick={onSelect}
-      className={`group relative flex flex-col justify-between p-5 rounded-xl border border-border bg-surface hover:bg-surface2 hover:border-accent/35 hover:-translate-y-1 hover:shadow-lg hover:shadow-accent/5 transition-all duration-200 cursor-pointer min-h-[220px] h-full box-border select-none ${
-        isSelected ? "border-accent ring-2 ring-accent/20 bg-accent/3" : ""
+      className={`group relative flex flex-col justify-between p-5 rounded-xl border bg-surface hover:bg-surface2 hover:-translate-y-1 hover:shadow-lg hover:shadow-accent/5 transition-all duration-200 cursor-pointer min-h-[220px] h-full box-border select-none ${
+        memory.isQuarantined
+          ? "border-red-500/40 hover:border-red-500/60 bg-red-500/3 hover:bg-red-500/5"
+          : isSelected
+            ? "border-accent ring-2 ring-accent/20 bg-accent/3"
+            : "border-border hover:border-accent/35"
       }`}
     >
       <div>
@@ -115,6 +119,11 @@ export function MemoryCard({
           />
           <div className="flex gap-2 items-center">
             <Badge variant={memory.category as any}>{memory.category}</Badge>
+            {memory.isQuarantined && (
+              <Badge variant="secondary" className="border-red-500/35 bg-red-500/10 text-red-500 font-semibold normal-case flex items-center gap-1">
+                <span>⚠️</span> Quarantined
+              </Badge>
+            )}
             {isStale && (
               <Badge variant="secondary" className="border-amber-500/35 bg-amber-500/10 text-amber-500 font-semibold normal-case">
                 Stale

@@ -4,15 +4,13 @@ import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COM
 import type { AgentPolicy, MemoryCategory } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { verifyToken, getOrCreateVaultKey } from "~/server/crypto";
-import { decrypt, isEncrypted } from "~/server/crypto";
-import { encrypt } from "~/server/crypto";
+import { verifyToken, getOrCreateVaultKey, decrypt, encrypt, isEncrypted, decryptEphemeral, EphemeralPlaintext } from "~/server/crypto";
 import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "~/server/enterprise";
 import { verifyTOTP } from "~/server/totp";
 import { PLANS } from "~/lib/plans";
 import { getUserEffectivePlan } from "~/server/planGate";
 import { sanitizeMemory } from "~/server/sanitization";
-import { maskSensitiveData } from "~/server/dlp";
+import { maskSensitiveData, containsSensitiveData } from "~/server/dlp";
 
 type EmbeddingResponse = {
   shape: number[][];
@@ -26,7 +24,7 @@ async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
   return result.data[0];
 }
 
-async function decryptFact(stored: string, encKey: string): Promise<string> {
+async function decryptFact(stored: string, encKey: string | CryptoKey): Promise<string> {
   if (!isEncrypted(stored)) return stored;
   return decrypt(stored, encKey);
 }
@@ -424,7 +422,13 @@ async function validateBearerToken(
       embeddedIdHex.slice(16, 20),
       embeddedIdHex.slice(20),
     ].join("-");
-    const rows = await db.select().from(apiTokens).where(eq(apiTokens.id, embeddedId)).all();
+    let rows;
+    try {
+      rows = await db.select().from(apiTokens).where(eq(apiTokens.id, embeddedId)).all();
+    } catch (dbErr: any) {
+      console.error("D1 token query failed:", dbErr);
+      return null;
+    }
 
     if (!rows.length) return null;
     const token = rows[0];
@@ -1024,136 +1028,154 @@ export async function handleMcpRequest(
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify([]) }] });
     }
 
-    const decrypted = await Promise.all(
-      dbRows.map(async (r) => {
+    const decrypted: Array<{ row: typeof dbRows[0]; ephemeralFact: EphemeralPlaintext }> = [];
+    try {
+      for (const r of dbRows) {
         const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : claims.userId;
         const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
-        return { ...r, fact: await decryptFact(r.fact, vaultKey) };
-      })
-    );
-
-    // Apply hard filters (category, tag, keyword)
-    const matchFilters = (m: typeof decrypted[0]): boolean => {
-      if (category && m.category !== category) return false;
-      if (tag) {
-        const lowerTag = tag.toLowerCase().trim();
-        const tagsList = (m.tags || "").split(",").map((t) => t.trim().toLowerCase());
-        if (!tagsList.includes(lowerTag)) return false;
-      }
-      if (keyword) {
-        const lowerKw = keyword.toLowerCase().trim();
-        if (!m.fact.toLowerCase().includes(lowerKw)) return false;
-      }
-      return true;
-    };
-
-    // Filter decrypted scope memories
-    const filteredDecrypted = decrypted.filter(matchFilters);
-
-    // 1. Semantic Search (Vectorize) Ranked List
-    // Map vector matches back to decrypted memories (preserving semantic ordering)
-    const decryptedMap = new Map(filteredDecrypted.map((m) => [m.id, m]));
-    const vectorRanked = vectorMatches
-      .map((vm) => decryptedMap.get(vm.id))
-      .filter((m): m is NonNullable<typeof m> => !!m);
-
-    // 2. Keyword/Full-Text Search Ranked List
-    // Score all decrypted candidate memories based on search query matching
-    const queryLower = queryTrimmed.toLowerCase();
-    const queryTokens = queryLower.split(/[^a-z0-9]+/i).filter((t) => t.length > 0);
-
-    const ftsRanked = filteredDecrypted
-      .map((m) => {
-        let score = 0;
-        const factLower = m.fact.toLowerCase();
-
-        // Exact substring match on full query
-        if (factLower.includes(queryLower)) {
-          score += 1000;
+        let eph;
+        if (isEncrypted(r.fact)) {
+          eph = await decryptEphemeral(r.fact, vaultKey);
+        } else {
+          eph = new EphemeralPlaintext(new TextEncoder().encode(r.fact));
         }
+        decrypted.push({ row: r, ephemeralFact: eph });
+      }
 
-        // Token match scoring
-        for (const token of queryTokens) {
-          if (factLower.includes(token)) {
-            score += 10;
+      // Apply hard filters (category, tag, keyword) using ephemeralFact.get()
+      const filteredDecrypted = decrypted.filter(({ row, ephemeralFact }) => {
+        if (category && row.category !== category) return false;
+        if (tag) {
+          const lowerTag = tag.toLowerCase().trim();
+          const tagsList = (row.tags || "").split(",").map((t) => t.trim().toLowerCase());
+          if (!tagsList.includes(lowerTag)) return false;
+        }
+        if (keyword) {
+          const lowerKw = keyword.toLowerCase().trim();
+          if (!ephemeralFact.get().toLowerCase().includes(lowerKw)) return false;
+        }
+        return true;
+      });
+
+      // 1. Semantic Search (Vectorize) Ranked List
+      // Map vector matches back to decrypted memories (preserving semantic ordering)
+      const decryptedMap = new Map(filteredDecrypted.map((m) => [m.row.id, m]));
+      const vectorRanked = vectorMatches
+        .map((vm) => decryptedMap.get(vm.id))
+        .filter((m): m is NonNullable<typeof m> => !!m);
+
+      // 2. Keyword/Full-Text Search Ranked List
+      const queryLower = queryTrimmed.toLowerCase();
+      const queryTokens = queryLower.split(/[^a-z0-9]+/i).filter((t) => t.length > 0);
+
+      const ftsRanked = filteredDecrypted
+        .map((m) => {
+          let score = 0;
+          const factLower = m.ephemeralFact.get().toLowerCase();
+
+          // Exact substring match on full query
+          if (factLower.includes(queryLower)) {
+            score += 1000;
           }
-        }
 
-        // Tag matching booster
-        const tagsLower = (m.tags || "").toLowerCase();
-        for (const token of queryTokens) {
-          if (tagsLower.includes(token)) {
-            score += 5;
+          // Token match scoring
+          for (const token of queryTokens) {
+            if (factLower.includes(token)) {
+              score += 10;
+            }
           }
+
+          // Tag matching booster
+          const tagsLower = (m.row.tags || "").toLowerCase();
+          for (const token of queryTokens) {
+            if (tagsLower.includes(token)) {
+              score += 5;
+            }
+          }
+
+          return { item: m, score };
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score || b.item.row.timestamp - a.item.row.timestamp)
+        .map((item) => item.item);
+
+      // 3. Reciprocal Rank Fusion (RRF)
+      const rrfMap = new Map<string, { item: typeof decrypted[0]; rrfScore: number }>();
+      const k = 60;
+
+      vectorRanked.forEach((m, idx) => {
+        const score = 1 / (k + idx + 1);
+        rrfMap.set(m.row.id, { item: m, rrfScore: score });
+      });
+
+      ftsRanked.forEach((m, idx) => {
+        const score = 1 / (k + idx + 1);
+        const existing = rrfMap.get(m.row.id);
+        if (existing) {
+          existing.rrfScore += score;
+        } else {
+          rrfMap.set(m.row.id, { item: m, rrfScore: score });
         }
+      });
 
-        return { memory: m, score };
-      })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score || b.memory.timestamp - a.memory.timestamp)
-      .map((item) => item.memory);
+      // Sort RRF merged list:
+      const ranked = Array.from(rrfMap.values())
+        .sort((a, b) => {
+          const authA = a.item.row.authorityType === "authoritative" ? 1 : 0;
+          const authB = b.item.row.authorityType === "authoritative" ? 1 : 0;
+          if (authA !== authB) {
+            return authB - authA; // authoritative first
+          }
+          return b.rrfScore - a.rrfScore;
+        })
+        .map((x) => x.item);
 
-    // 3. Reciprocal Rank Fusion (RRF)
-    // Combine both lists (semantic and FTS)
-    const rrfMap = new Map<string, { memory: typeof decrypted[0]; rrfScore: number }>();
-    const k = 60;
+      const finalResults = ranked.slice(0, topK);
 
-    // Add semantic ranks
-    vectorRanked.forEach((m, idx) => {
-      const score = 1 / (k + idx + 1);
-      rrfMap.set(m.id, { memory: m, rrfScore: score });
-    });
+      // Audit log & token usage
+      await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: finalResults.length } });
+      await logTokenUsage(db, claims.tokenId, "recall", tokensConsumed);
 
-    // Add FTS ranks
-    ftsRanked.forEach((m, idx) => {
-      const score = 1 / (k + idx + 1);
-      const existing = rrfMap.get(m.id);
-      if (existing) {
-        existing.rrfScore += score;
-      } else {
-        rrfMap.set(m.id, { memory: m, rrfScore: score });
-      }
-    });
-
-    // Sort RRF merged list:
-    // First, authoritative memories float to the top
-    // Second, sort by RRF score descending
-    const ranked = Array.from(rrfMap.values())
-      .sort((a, b) => {
-        const authA = a.memory.authorityType === "authoritative" ? 1 : 0;
-        const authB = b.memory.authorityType === "authoritative" ? 1 : 0;
-        if (authA !== authB) {
-          return authB - authA; // authoritative first
-        }
-        return b.rrfScore - a.rrfScore;
-      })
-      .map((item) => item.memory);
-
-    const finalResults = ranked.slice(0, topK);
-
-    // Audit log & token usage
-    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: finalResults.length } });
-    await logTokenUsage(db, claims.tokenId, "recall", tokensConsumed);
-
-    // Update lastAccessedAt for recalled memories
-    if (finalResults.length > 0) {
-      const recalledIds = finalResults.map((r) => r.id);
-      if (ctx?.waitUntil) {
-        ctx.waitUntil(
-          db.update(memories).set({ lastAccessedAt: Date.now() })
+      // Update lastAccessedAt for recalled memories
+      if (finalResults.length > 0) {
+        const recalledIds = finalResults.map((r) => r.row.id);
+        if (ctx?.waitUntil) {
+          ctx.waitUntil(
+            db.update(memories).set({ lastAccessedAt: Date.now() })
+              .where(inArray(memories.id, recalledIds))
+              .run()
+          );
+        } else {
+          await db.update(memories).set({ lastAccessedAt: Date.now() })
             .where(inArray(memories.id, recalledIds))
-            .run()
-        );
-      } else {
-        await db.update(memories).set({ lastAccessedAt: Date.now() })
-          .where(inArray(memories.id, recalledIds))
-          .run();
+            .run();
+        }
+      }
+
+      // Construct the return results with decrypted strings
+      const payloadResults = finalResults.map((m) => ({
+        id: m.row.id,
+        userId: m.row.userId,
+        fact: m.row.isQuarantined ? "[REDACTED]" : m.ephemeralFact.get(),
+        category: m.row.category,
+        tags: m.row.tags,
+        timestamp: m.row.timestamp,
+        isActive: m.row.isActive,
+        projectKey: m.row.projectKey,
+        scopeType: m.row.scopeType,
+        scopeId: m.row.scopeId,
+        isLocked: m.row.isLocked,
+        authorityType: m.row.authorityType,
+        lastAccessedAt: m.row.lastAccessedAt,
+      }));
+
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(payloadResults) }] });
+    } finally {
+      // Clean up all ephemeral plaintext
+      for (const m of decrypted) {
+        m.ephemeralFact.drop();
       }
     }
-
-    // DLP was already applied at write time (commit_memory / update_memory).
-    // Applying it again here would corrupt legitimate code/ID strings during recall.
-    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(finalResults) }] });
   }
 
   if (toolName === "search_memories") {
@@ -1225,34 +1247,64 @@ export async function handleMcpRequest(
       .orderBy(desc(memories.timestamp))
       .all();
 
-    const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
-    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
-    const decrypted = await Promise.all(
-      rows.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey) }))
-    );
+    const decrypted: Array<{ row: typeof rows[0]; ephemeralFact: EphemeralPlaintext }> = [];
+    try {
+      const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
+      const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
 
-    // Filter in memory for tag and keyword
-    let filtered = decrypted;
-    if (tag) {
-      const lowerTag = tag.toLowerCase().trim();
-      filtered = filtered.filter((r) =>
-        (r.tags || "").split(",").map((t) => t.trim().toLowerCase()).includes(lowerTag)
-      );
+      for (const r of rows) {
+        let eph;
+        if (isEncrypted(r.fact)) {
+          eph = await decryptEphemeral(r.fact, vaultKey);
+        } else {
+          eph = new EphemeralPlaintext(new TextEncoder().encode(r.fact));
+        }
+        decrypted.push({ row: r, ephemeralFact: eph });
+      }
+
+      // Filter in memory for tag and keyword using ephemeralFact.get()
+      let filtered = decrypted;
+      if (tag) {
+        const lowerTag = tag.toLowerCase().trim();
+        filtered = filtered.filter((item) =>
+          (item.row.tags || "").split(",").map((t) => t.trim().toLowerCase()).includes(lowerTag)
+        );
+      }
+      if (keyword) {
+        const lowerKw = keyword.toLowerCase().trim();
+        filtered = filtered.filter((item) => item.ephemeralFact.get().toLowerCase().includes(lowerKw));
+      }
+
+      const paginated = filtered.slice(offset, offset + limit);
+
+      // Audit log & token usage
+      await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "search_memories", ipAddress, userAgent, metadata: { category, tag, keyword, projectKey, matchCount: paginated.length } });
+      await logTokenUsage(db, claims.tokenId, "recall", 0);
+
+      // Construct return results payload
+      const payloadResults = paginated.map((item) => ({
+        id: item.row.id,
+        userId: item.row.userId,
+        fact: item.row.isQuarantined ? "[REDACTED]" : item.ephemeralFact.get(),
+        category: item.row.category,
+        tags: item.row.tags,
+        timestamp: item.row.timestamp,
+        isActive: item.row.isActive,
+        projectKey: item.row.projectKey,
+        scopeType: item.row.scopeType,
+        scopeId: item.row.scopeId,
+        isLocked: item.row.isLocked,
+        authorityType: item.row.authorityType,
+        lastAccessedAt: item.row.lastAccessedAt,
+      }));
+
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(payloadResults) }] });
+    } finally {
+      // Clean up all ephemeral plaintext
+      for (const item of decrypted) {
+        item.ephemeralFact.drop();
+      }
     }
-    if (keyword) {
-      const lowerKw = keyword.toLowerCase().trim();
-      filtered = filtered.filter((r) => r.fact.toLowerCase().includes(lowerKw));
-    }
-
-    const paginated = filtered.slice(offset, offset + limit);
-
-    // Audit log & token usage
-    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "search_memories", ipAddress, userAgent, metadata: { category, tag, keyword, projectKey, matchCount: paginated.length } });
-    await logTokenUsage(db, claims.tokenId, "recall", 0);
-
-    // DLP was already applied at write time (commit_memory / update_memory).
-    // Applying it again here would corrupt legitimate code/ID strings during recall.
-    return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(paginated) }] });
   }
 
   if (toolName === "get_memory_summary") {
@@ -1378,26 +1430,24 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, "Invalid params: fact was empty or contained adversarial instructions");
     }
 
-    // DLP: redact secrets/PII at write time so stored memories are permanently clean.
-    // Running at write (not read) time avoids stripping legitimate data during code-gen recall.
-    const dlpFact = maskSensitiveData(sanitizedFact);
+    // DLP Quarantine Check: flag if sensitive data is detected, but keep raw fact.
+    const isQuarantined = containsSensitiveData(sanitizedFact);
 
     const memId = crypto.randomUUID();
     const timestamp = Date.now();
-    const factTrimmed = dlpFact;
-    const embedding = await generateEmbedding(env.AI, factTrimmed);
-    const tokensConsumed = estimateEmbeddingTokens(factTrimmed);
+    const embedding = await generateEmbedding(env.AI, sanitizedFact);
+    const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
     // Fetch envelope DEK for this vault
     const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
-    const encryptedFact = await encrypt(factTrimmed, vaultKey);
+    const encryptedFact = await encrypt(sanitizedFact, vaultKey);
 
     // Archive contradicted memories asynchronously via Queue
     try {
       await env.ARCHIVE_QUEUE.send({
         userId: claims.userId,
-        newFact: factTrimmed,
+        newFact: sanitizedFact,
         embedding,
         projectKey: projectKey || null,
       });
@@ -1428,6 +1478,7 @@ export async function handleMcpRequest(
       projectKey: projectKey || null,
       scopeType,
       scopeId,
+      isQuarantined,
     });
 
     // Record Memory Version
@@ -1456,12 +1507,12 @@ export async function handleMcpRequest(
     ]);
 
     // Audit log & token usage
-    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "commit_memory", memoryId: memId, ipAddress, userAgent, metadata: { category, projectKey } });
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "commit_memory", memoryId: memId, ipAddress, userAgent, metadata: { category, projectKey, quarantined: isQuarantined } });
     await logTokenUsage(db, claims.tokenId, "commit", tokensConsumed);
 
     return mcpResult(id, {
       content: [
-        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: factTrimmed, category, tags: finalTags, projectKey }) },
+        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: isQuarantined ? "[REDACTED]" : sanitizedFact, category, tags: finalTags, projectKey }) },
       ],
     });
   }
@@ -1505,8 +1556,13 @@ export async function handleMcpRequest(
         return mcpError(id, -32024, "MFA Verification Required: Please provide a valid 6-digit TOTP code.");
       }
       const totpEnvKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, claims.userId);
-      const decryptedSecret = await decrypt(totpRows[0].secret, totpEnvKey);
-      const verified = await verifyTOTP(decryptedSecret, totpCode);
+      const ephemeralSecret = await decryptEphemeral(totpRows[0].secret, totpEnvKey);
+      let verified = false;
+      try {
+        verified = await verifyTOTP(ephemeralSecret.get(), totpCode);
+      } finally {
+        ephemeralSecret.drop();
+      }
       if (!verified) {
         return mcpError(id, -32024, "MFA Verification Failed: Invalid TOTP code.");
       }
@@ -1630,17 +1686,16 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, "Invalid params: fact was empty or contained adversarial instructions");
     }
 
-    // DLP: redact secrets/PII at write time so stored memories are permanently clean.
-    const dlpFact = maskSensitiveData(sanitizedFact);
+    // DLP Quarantine Check: flag if sensitive data is detected, but keep raw fact.
+    const isQuarantined = containsSensitiveData(sanitizedFact);
 
-    const factTrimmed = dlpFact;
-    const embedding = await generateEmbedding(env.AI, factTrimmed);
-    const tokensConsumed = estimateEmbeddingTokens(factTrimmed);
+    const embedding = await generateEmbedding(env.AI, sanitizedFact);
+    const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
     // Fetch envelope DEK for this vault
     const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : claims.userId;
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
-    const encryptedFact = await encrypt(factTrimmed, vaultKey);
+    const encryptedFact = await encrypt(sanitizedFact, vaultKey);
 
     await db.update(memories)
       .set({
@@ -1648,6 +1703,7 @@ export async function handleMcpRequest(
         category,
         tags: rawTags,
         timestamp: Date.now(),
+        isQuarantined,
       })
       .where(eq(memories.id, memId));
 
@@ -1677,12 +1733,12 @@ export async function handleMcpRequest(
     ]);
 
     // Audit log & token usage
-    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_memory", memoryId: memId, ipAddress, userAgent, metadata: { category } });
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_memory", memoryId: memId, ipAddress, userAgent, metadata: { category, quarantined: isQuarantined } });
     await logTokenUsage(db, claims.tokenId, "commit", tokensConsumed);
 
     return mcpResult(id, {
       content: [
-        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: factTrimmed, category, tags: rawTags }) },
+        { type: "text", text: JSON.stringify({ success: true, id: memId, fact: isQuarantined ? "[REDACTED]" : sanitizedFact, category, tags: rawTags }) },
       ],
     });
   }
@@ -1719,8 +1775,13 @@ export async function handleMcpRequest(
         return mcpError(id, -32024, "MFA Verification Required: Please provide a valid 6-digit TOTP code.");
       }
       const totpEnvKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, claims.userId);
-      const decryptedSecret = await decrypt(totpRows[0].secret, totpEnvKey);
-      const verified = await verifyTOTP(decryptedSecret, totpCode);
+      const ephemeralSecret = await decryptEphemeral(totpRows[0].secret, totpEnvKey);
+      let verified = false;
+      try {
+        verified = await verifyTOTP(ephemeralSecret.get(), totpCode);
+      } finally {
+        ephemeralSecret.drop();
+      }
       if (!verified) {
         return mcpError(id, -32024, "MFA Verification Failed: Invalid TOTP code.");
       }
@@ -1899,106 +1960,117 @@ export async function handleMcpRequest(
       .where(and(...conditions))
       .all();
 
-    const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
-    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const decryptedMemories: Array<{ row: typeof rows[0]; ephemeralFact: EphemeralPlaintext } | null> = [];
+    try {
+      const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
+      const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
 
-    const decryptedMemories = await Promise.all(
-      rows.map(async (r) => {
+      for (const r of rows) {
         try {
-          return {
-            ...r,
-            fact: await decryptFact(r.fact, vaultKey),
-          };
+          let eph;
+          if (isEncrypted(r.fact)) {
+            eph = await decryptEphemeral(r.fact, vaultKey);
+          } else {
+            eph = new EphemeralPlaintext(new TextEncoder().encode(r.fact));
+          }
+          decryptedMemories.push({ row: r, ephemeralFact: eph });
         } catch {
-          return null;
+          decryptedMemories.push(null);
         }
-      })
-    );
+      }
 
-    const filtered = decryptedMemories.filter((r): r is NonNullable<typeof r> => {
-      if (!r) return false;
-      if (r.category === "stack") return true;
-      const tagsList = (r.tags || "").split(",").map((t) => t.trim().toLowerCase());
-      return (
-        tagsList.includes("architecture") ||
-        tagsList.includes("baseline") ||
-        tagsList.includes("stack") ||
-        tagsList.includes("blueprint")
-      );
-    });
-
-    const lines = filtered.flatMap((m) =>
-      m.fact.split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => line.startsWith("- ") ? line.slice(2) : line)
-    );
-
-    let targetPath = "./AGENTS.md";
-    let markdownBody = "";
-
-    switch (formatType) {
-      case "claude":
-        targetPath = "./CLAUDE.md";
-        markdownBody = `# Claude System Instructions - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Enforced Guidelines\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
-        break;
-      case "cursor":
-        targetPath = "./.cursorrules";
-        markdownBody = JSON.stringify(
-          {
-            name: "Workspace Guidelines",
-            description: "Architectural rules synced from Locker",
-            globs: ["*"],
-            rules: lines,
-          },
-          null,
-          2
+      const filtered = decryptedMemories.filter((item): item is NonNullable<typeof item> => {
+        if (!item) return false;
+        if (item.row.category === "stack") return true;
+        const tagsList = (item.row.tags || "").split(",").map((t) => t.trim().toLowerCase());
+        return (
+          tagsList.includes("architecture") ||
+          tagsList.includes("baseline") ||
+          tagsList.includes("stack") ||
+          tagsList.includes("blueprint")
         );
-        break;
-      case "copilot":
-        targetPath = "./.github/copilot-instructions.md";
-        markdownBody = `# Copilot Instructions - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Rules:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
-        break;
-      case "gemini":
-        targetPath = "./GEMINI.md";
-        markdownBody = `# Gemini Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Coding Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
-        break;
-      case "antigravity":
-        targetPath = "./.agents/rules/rules.md";
-        markdownBody = `# Antigravity Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
-        break;
-      case "agents":
-      default:
-        targetPath = "./AGENTS.md";
-        markdownBody = `# Developer Agent Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## General Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
-        break;
-     }
+      });
 
-    // Audit log & token usage
-    await logAudit(db, {
-      orgId,
-      userId: claims.userId,
-      tokenId: claims.tokenId,
-      action: "sync_workspace_agent_configs",
-      ipAddress,
-      userAgent,
-      metadata: { projectKey: resolvedProjectKey, formatType, rulesCount: lines.length },
-    });
-    await logTokenUsage(db, claims.tokenId, "recall", 0);
+      const lines = filtered.flatMap((item) => {
+        const factText = item.row.isQuarantined ? "[REDACTED]" : item.ephemeralFact.get();
+        return factText.split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => line.startsWith("- ") ? line.slice(2) : line);
+      });
 
-    return mcpResult(id, {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            markdown: markdownBody,
-            targetPath: targetPath,
-            projectKey: resolvedProjectKey,
-            rulesCount: lines.length,
-          }),
-        },
-      ],
-    });
+      let targetPath = "./AGENTS.md";
+      let markdownBody = "";
+
+      switch (formatType) {
+        case "claude":
+          targetPath = "./CLAUDE.md";
+          markdownBody = `# Claude System Instructions - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Enforced Guidelines\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
+          break;
+        case "cursor":
+          targetPath = "./.cursorrules";
+          markdownBody = JSON.stringify(
+            {
+              name: "Workspace Guidelines",
+              description: "Architectural rules synced from Locker",
+              globs: ["*"],
+              rules: lines,
+            },
+            null,
+            2
+          );
+          break;
+        case "copilot":
+          targetPath = "./.github/copilot-instructions.md";
+          markdownBody = `# Copilot Instructions - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Rules:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
+          break;
+        case "gemini":
+          targetPath = "./GEMINI.md";
+          markdownBody = `# Gemini Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Coding Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
+          break;
+        case "antigravity":
+          targetPath = "./.agents/rules/rules.md";
+          markdownBody = `# Antigravity Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
+          break;
+        case "agents":
+        default:
+          targetPath = "./AGENTS.md";
+          markdownBody = `# Developer Agent Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## General Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
+          break;
+       }
+
+      // Audit log & token usage
+      await logAudit(db, {
+        orgId,
+        userId: claims.userId,
+        tokenId: claims.tokenId,
+        action: "sync_workspace_agent_configs",
+        ipAddress,
+        userAgent,
+        metadata: { projectKey: resolvedProjectKey, formatType, rulesCount: lines.length },
+      });
+      await logTokenUsage(db, claims.tokenId, "recall", 0);
+
+      return mcpResult(id, {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              markdown: markdownBody,
+              targetPath: targetPath,
+              projectKey: resolvedProjectKey,
+              rulesCount: lines.length,
+            }),
+          },
+        ],
+      });
+    } finally {
+      for (const item of decryptedMemories) {
+        if (item) {
+          item.ephemeralFact.drop();
+        }
+      }
+    }
   }
 
   if (toolName === "store_credential") {
@@ -2212,7 +2284,13 @@ export async function handleMcpRequest(
 
     const vaultId = (resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))) ? resolvedProjectKey : claims.userId;
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
-    const decryptedValue = await decrypt(rows[0].encryptedValue, vaultKey);
+    const ephemeralValue = await decryptEphemeral(rows[0].encryptedValue, vaultKey);
+    let payloadText = "";
+    try {
+      payloadText = JSON.stringify({ name: rows[0].name, value: ephemeralValue.get() });
+    } finally {
+      ephemeralValue.drop();
+    }
 
     await logAudit(db, {
       orgId,
@@ -2225,7 +2303,7 @@ export async function handleMcpRequest(
 
     return mcpResult(id, {
       content: [
-        { type: "text", text: JSON.stringify({ name: rows[0].name, value: decryptedValue }) },
+        { type: "text", text: payloadText },
       ],
     });
   }

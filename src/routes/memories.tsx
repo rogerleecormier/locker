@@ -15,6 +15,7 @@ import {
   deleteMemory,
   listPersonalMemoryRecommendations,
   reviewMemoryRecommendation,
+  unmaskMemory,
 } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 import { PageContainer } from "~/components/PageContainer";
@@ -477,6 +478,18 @@ function MemoryDetailPanel({
     },
   });
 
+  const unmaskMutation = useMutation({
+    mutationFn: () => unmaskMemory({ data: { id: memory.id } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      onClose();
+      alert("Memory released from quarantine!");
+    },
+    onError: (err: any) => {
+      alert("Failed to unmask memory: " + String(err.message || err));
+    },
+  });
+
   const tagsList = useMemo(() => {
     return editTags ? editTags.split(",").map((t) => t.trim()).filter(Boolean) : [];
   }, [editTags]);
@@ -493,6 +506,26 @@ function MemoryDetailPanel({
       </div>
 
       <div className="flex flex-col gap-4 overflow-y-auto no-scrollbar flex-1 pr-1 pb-4">
+        {/* Quarantine Banner */}
+        {memory.isQuarantined && (
+          <div className="flex flex-col gap-2 p-3 bg-red-500/10 border border-red-500/25 rounded-xl text-xs text-text leading-relaxed">
+            <div className="flex items-center gap-1.5 font-bold text-red-500">
+              <span>⚠️</span> Quarantined Fact
+            </div>
+            <p className="text-text-muted">
+              This memory contains sensitive data and is quarantined. AI agents cannot see it (receives a redacted placeholder) until you explicitly review and unmask it.
+            </p>
+            <Button
+              onClick={() => unmaskMutation.mutate()}
+              disabled={unmaskMutation.isPending}
+              size="sm"
+              className="mt-1 w-full bg-red-600 hover:bg-red-700 text-white font-bold h-8 text-xs"
+            >
+              {unmaskMutation.isPending ? "Unmasking..." : "🔓 Unmask & Release"}
+            </Button>
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="detail-fact">Fact Content</Label>

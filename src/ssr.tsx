@@ -10,7 +10,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import { memories, auditLogs, organizationMembers } from "./db/schema";
 import { archiveContradictingMemories } from "./server/memoryFunctions";
-import { isEncrypted, decrypt, deriveUserKey } from "./server/crypto";
+import { isEncrypted, decrypt, deriveUserKey, getOrCreateVaultKey, decryptEphemeral, EphemeralPlaintext } from "./server/crypto";
 import { logAudit } from "./server/enterprise";
 import { handleStripeWebhook } from "./server/billing";
 
@@ -184,7 +184,7 @@ export default {
   }
 } satisfies ExportedHandler<CloudflareEnv>;
 
-async function decryptFact(stored: string, encKey: string, fallbackKey?: string): Promise<string> {
+async function decryptFact(stored: string, encKey: string | CryptoKey, fallbackKey?: string): Promise<string> {
   if (!isEncrypted(stored)) return stored;
   try {
     return await decrypt(stored, encKey);
@@ -340,6 +340,7 @@ function createZip(files: { name: string; content: Uint8Array | string }[]): Uin
 }
 
 async function handleExportRequest(request: Request, env: CloudflareEnv): Promise<Response> {
+  const ephemerals: EphemeralPlaintext[] = [];
   try {
     const auth = await createAuth(env);
     const session = await auth.api.getSession({ headers: request.headers });
@@ -362,12 +363,21 @@ async function handleExportRequest(request: Request, env: CloudflareEnv): Promis
     const decrypted = await Promise.all(
       userMemories.map(async (r) => {
         const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : r.userId;
-        const vaultKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+        const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
         let plainFact = r.fact;
-        try {
-          plainFact = await decryptFact(r.fact, vaultKey, env.ENCRYPTION_KEY);
-        } catch (err) {
-          console.error(`[export] Decryption failed for memory ${r.id}:`, err);
+        if (isEncrypted(r.fact)) {
+          try {
+            const eph = await decryptEphemeral(r.fact, vaultKey);
+            ephemerals.push(eph);
+            plainFact = eph.get();
+          } catch (err) {
+            try {
+              const legacyKey = await deriveUserKey(env.ENCRYPTION_KEY, vaultId);
+              plainFact = await decrypt(r.fact, legacyKey);
+            } catch {
+              console.error(`[export] Decryption failed for memory ${r.id}:`, err);
+            }
+          }
         }
         return {
           id: r.id,
@@ -438,5 +448,9 @@ async function handleExportRequest(request: Request, env: CloudflareEnv): Promis
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
+  } finally {
+    for (const eph of ephemerals) {
+      eph.drop();
+    }
   }
 }
