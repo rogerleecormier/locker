@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets, credentials, notifications, ABAC_DEFAULT_ALLOW, JIT_PROTECTED_TAG, jitAccessRequests } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets, credentials, notifications, ABAC_DEFAULT_ALLOW, JIT_PROTECTED_TAG, jitAccessRequests, memoryRecommendations } from "~/db/schema";
 import type { AgentPolicy, MemoryCategory } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
@@ -11,6 +11,7 @@ import { PLANS } from "~/lib/plans";
 import { getUserEffectivePlan } from "~/server/planGate";
 import { sanitizeMemory } from "~/server/sanitization";
 import { maskSensitiveData, containsSensitiveData } from "~/server/dlp";
+import { extractGraphEntities, persistGraphData, expandByEntityIds } from "~/server/graphRag";
 
 type EmbeddingResponse = {
   shape: number[][];
@@ -120,7 +121,7 @@ export const ALL_TOOLS = [
       properties: {
         query: { type: "string", description: "Natural-language search query." },
         topK: { type: "number", description: "Max results (default: 5)." },
-        category: { type: "string", enum: ["rules", "projects", "references"], description: "Optional category filter." },
+        category: { type: "string", enum: ["rules", "projects", "references", "stack"], description: "Optional category filter." },
         tag: { type: "string", description: "Optional tag filter (case-insensitive)." },
         keyword: { type: "string", description: "Optional exact substring filter (case-insensitive)." },
         projectKey: { type: "string", description: "Optional project workspace key (e.g. repository hash or folder slug)." },
@@ -136,7 +137,7 @@ export const ALL_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        category: { type: "string", enum: ["rules", "projects", "references"], description: "Filter by category." },
+        category: { type: "string", enum: ["rules", "projects", "references", "stack"], description: "Filter by category." },
         tag: { type: "string", description: "Filter by tag (case-insensitive)." },
         keyword: { type: "string", description: "Case-insensitive substring search within facts." },
         limit: { type: "number", description: "Max results to return (default: 50, max: 200)." },
@@ -162,7 +163,7 @@ export const ALL_TOOLS = [
       type: "object",
       properties: {
         fact: { type: "string", description: "The factual statement to store." },
-        category: { type: "string", enum: ["rules", "projects", "references"] },
+        category: { type: "string", enum: ["rules", "projects", "references", "stack"] },
         tags: { type: "string", description: "Comma-separated keywords." },
         source: { type: "string", description: "The source chatbot or origin (e.g. chatgpt, claude). Defaults to mcp." },
         projectKey: { type: "string", description: "Optional project workspace key to scope this memory." },
@@ -178,7 +179,7 @@ export const ALL_TOOLS = [
       properties: {
         id: { type: "string", description: "The unique ID of the memory to update." },
         fact: { type: "string", description: "The updated factual statement." },
-        category: { type: "string", enum: ["rules", "projects", "references"], description: "Optional updated category." },
+        category: { type: "string", enum: ["rules", "projects", "references", "stack"], description: "Optional updated category." },
         tags: { type: "string", description: "Optional updated comma-separated keywords/tags." },
         confirm: { type: "boolean", description: "Must be explicitly set to true by human-in-the-loop action." },
         totpCode: { type: "string", description: "6-digit Authenticator TOTP code (required if 2FA is enabled)." },
@@ -1179,7 +1180,7 @@ export async function handleMcpRequest(
       .where(and(...scopeConditions))
       .all();
 
-    // Promise 2: Query Vectorize
+    // Promise 2: Query Vectorize — return indexed metadata so we can read entityIds for graph expansion.
     let vectorizePromise: Promise<any[]>;
     if (crossWorkspaceSearch) {
       const personalFilter: Record<string, any> = { userId: claims.userId };
@@ -1190,9 +1191,9 @@ export async function handleMcpRequest(
         orgFilter.category = { $in: allowed };
       }
       vectorizePromise = Promise.all([
-        env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: personalFilter, returnMetadata: "none" }),
+        env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: personalFilter, returnMetadata: "indexed" }),
         orgAndTeamKeys.length > 0
-          ? env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: orgFilter, returnMetadata: "none" })
+          ? env.VECTOR_INDEX.query(embedding, { topK: vectorTopK, filter: orgFilter, returnMetadata: "indexed" })
           : Promise.resolve({ matches: [] })
       ]).then(([personalResults, orgResults]) => {
         return [...(personalResults.matches ?? []), ...(orgResults.matches ?? [])];
@@ -1214,12 +1215,25 @@ export async function handleMcpRequest(
       vectorizePromise = env.VECTOR_INDEX.query(embedding, {
         topK: vectorTopK,
         filter,
-        returnMetadata: "none",
+        returnMetadata: "indexed",
       }).then((res) => res.matches ?? []);
     }
 
     // Execute database and vector search queries in parallel
     const [vectorMatches, dbRows] = await Promise.all([vectorizePromise, d1Promise]);
+
+    // GraphRAG expansion: collect entity IDs stored in Vectorize metadata and use a
+    // lightning-fast IN (...) lookup on memory_graph_edges to pull adjacent memories.
+    const vectorIds = vectorMatches.map((m: any) => m.id as string);
+    const entityIds = vectorMatches.flatMap((m: any) => {
+      const raw = (m.metadata as Record<string, unknown> | undefined)?.entityIds;
+      if (typeof raw !== "string" || !raw) return [];
+      return raw.split(" ").filter(Boolean);
+    });
+    // expandedIds may include graph-adjacent memory IDs not in the original vector results.
+    const expandedIds = entityIds.length > 0
+      ? await expandByEntityIds(env.DB, entityIds, vectorIds)
+      : vectorIds;
 
     if (!dbRows.length) {
       await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: 0 } });
@@ -1260,8 +1274,16 @@ export async function handleMcpRequest(
       // Map vector matches back to decrypted memories (preserving semantic ordering)
       const decryptedMap = new Map(filteredDecrypted.map((m) => [m.row.id, m]));
       const vectorRanked = vectorMatches
-        .map((vm) => decryptedMap.get(vm.id))
+        .map((vm: any) => decryptedMap.get(vm.id))
         .filter((m): m is NonNullable<typeof m> => !!m);
+
+      // 1b. Graph-expanded results: memories adjacent via shared entity nodes.
+      // These get a fixed low RRF score so they appear after semantic/FTS results but
+      // before the topK cutoff when they're genuinely related architectural components.
+      const graphExpandedSet = new Set(expandedIds);
+      const graphRanked = filteredDecrypted.filter(
+        (m) => graphExpandedSet.has(m.row.id) && !vectorMatches.some((vm: any) => vm.id === m.row.id)
+      );
 
       // 2. Keyword/Full-Text Search Ranked List
       const queryLower = queryTrimmed.toLowerCase();
@@ -1314,6 +1336,15 @@ export async function handleMcpRequest(
           existing.rrfScore += score;
         } else {
           rrfMap.set(m.row.id, { item: m, rrfScore: score });
+        }
+      });
+
+      // Graph-expanded results enter the RRF map at a fixed score below any ranked result
+      // so they surface only when topK is not already filled by semantic/FTS matches.
+      const graphBaseScore = 1 / (k + vectorRanked.length + ftsRanked.length + 1);
+      graphRanked.forEach((m) => {
+        if (!rrfMap.has(m.row.id)) {
+          rrfMap.set(m.row.id, { item: m, rrfScore: graphBaseScore });
         }
       });
 
@@ -1687,7 +1718,10 @@ export async function handleMcpRequest(
 
     const memId = crypto.randomUUID();
     const timestamp = Date.now();
-    const embedding = await generateEmbedding(env.AI, sanitizedFact);
+    const [embedding, graphExtraction] = await Promise.all([
+      generateEmbedding(env.AI, sanitizedFact),
+      extractGraphEntities(env.AI, sanitizedFact),
+    ]);
     const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
     // Fetch envelope DEK for this vault
@@ -1745,6 +1779,14 @@ export async function handleMcpRequest(
       timestamp,
     });
 
+    // Persist GraphRAG entity nodes and edges; best-effort — must not block the write.
+    let entityIds: string[] = [];
+    try {
+      entityIds = await persistGraphData(env.DB, memId, claims.userId, projectKey ?? null, graphExtraction);
+    } catch (err) {
+      console.error("[mcp commit_memory] graph persist failed:", err);
+    }
+
     await env.VECTOR_INDEX.insert([
       {
         id: memId,
@@ -1754,6 +1796,8 @@ export async function handleMcpRequest(
           category,
           tags: finalTags,
           projectKey: projectKey ?? "",
+          // Space-separated entity node IDs enable O(1) IN() graph expansion at recall time.
+          entityIds: entityIds.join(" "),
         },
       },
     ]);
@@ -1795,7 +1839,97 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, "Invalid params: confirm must be set to true");
     }
 
-    // MFA / Passcode verification
+    // ── AGENT APPROVAL GATE ────────────────────────────────────────────────────
+    // Agent tokens cannot execute destructive writes directly — regardless of
+    // `confirm: true`. The request is routed into the approval queue so the human
+    // must click "Approve" in the Locker UI before any change is applied.
+    if (claims.isAgent) {
+      const rows = await db.select().from(memories).where(eq(memories.id, memId)).all();
+      if (!rows.length) {
+        return mcpError(id, -32602, `Memory not found or unauthorized: ${memId}`);
+      }
+      const existing = rows[0];
+
+      if (!isProjectKeyAllowedByToken(claims.accessibleScopes, existing.projectKey)) {
+        return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
+      }
+
+      const updateCategoryFilter = resolveAgentCategoryFilter(claims);
+      if (!checkCategoryAccess(existing.category, updateCategoryFilter)) {
+        return mcpError(id, -32003, `Forbidden: agent token cannot update memories in category '${existing.category}'`);
+      }
+
+      const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
+      if (!vaultAllowed) {
+        return mcpError(id, -32003, `Forbidden: no access to vault scope '${existing.projectKey}'`);
+      }
+
+      const sanitizedFact = sanitizeMemory(fact.trim());
+      if (!sanitizedFact) {
+        return mcpError(id, -32602, "Invalid params: fact was empty or contained adversarial instructions");
+      }
+
+      const proposedCategory = args.category !== undefined
+        ? normalizeCategory(args.category as string | undefined)
+        : existing.category;
+      const proposedTags = args.tags !== undefined
+        ? (typeof args.tags === "string" ? args.tags.trim() : existing.tags)
+        : existing.tags;
+
+      // Decrypt the current fact to display in the approval UI
+      const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : claims.userId;
+      const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+      const currentFact = isEncrypted(existing.fact) ? await decrypt(existing.fact, vaultKey) : existing.fact;
+
+      const agentLabel = claims.agentPolicy?.agentContext ?? "unknown agent";
+      const recId = crypto.randomUUID();
+
+      await db.insert(memoryRecommendations).values({
+        id: recId,
+        orgId: orgId ?? null,
+        userId: claims.userId,
+        fact: currentFact,
+        category: existing.category,
+        tags: existing.tags,
+        projectKey: existing.projectKey ?? null,
+        scopeType: existing.scopeType,
+        scopeId: existing.scopeId ?? null,
+        recommendationType: "update",
+        targetMemoryId: memId,
+        status: "pending",
+        proposedFact: sanitizedFact,
+        proposedCategory,
+        proposedTags,
+        agentContext: agentLabel,
+        createdAt: Date.now(),
+      });
+
+      try {
+        await db.insert(notifications).values({
+          id: crypto.randomUUID(),
+          userId: claims.userId,
+          title: "Agent Update Approval Required",
+          message: `Agent "${agentLabel}" wants to update a memory. Review and approve in your Locker vault.`,
+          type: "warning",
+          status: "unread",
+          linkUrl: "/memories",
+          createdAt: Date.now(),
+        });
+      } catch (e) {
+        console.error("[update_memory] notification failed:", e);
+      }
+
+      await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_memory_queued", memoryId: memId, ipAddress, userAgent, metadata: { recId, agentContext: agentLabel } });
+
+      return mcpResult(id, {
+        content: [
+          { type: "text", text: JSON.stringify({ queued: true, recommendationId: recId, message: "Update request queued for human approval. The memory will not be changed until the owner approves it in the Locker UI." }) },
+        ],
+      });
+    }
+    // ── END AGENT GATE ─────────────────────────────────────────────────────────
+
+    // MFA / Passcode verification (human tokens only)
     const totpRows = await db
       .select()
       .from(totpSecrets)
@@ -1925,7 +2059,7 @@ export async function handleMcpRequest(
       return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
     }
 
-    const category = args.category !== undefined 
+    const category = args.category !== undefined
       ? normalizeCategory(args.category as string | undefined)
       : existing.category;
 
@@ -2014,7 +2148,81 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, "Invalid params: confirm must be set to true");
     }
 
-    // MFA / Passcode verification
+    // ── AGENT APPROVAL GATE ────────────────────────────────────────────────────
+    // Agent tokens cannot delete memories directly. The request is queued for
+    // human approval in the Locker UI. The memory is unchanged until approved.
+    if (claims.isAgent) {
+      const rows = await db.select().from(memories).where(eq(memories.id, memId)).all();
+      if (!rows.length) {
+        return mcpError(id, -32602, `Memory not found or unauthorized: ${memId}`);
+      }
+      const existing = rows[0];
+
+      if (!isProjectKeyAllowedByToken(claims.accessibleScopes, existing.projectKey)) {
+        return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
+      }
+
+      const deleteCategoryFilter = resolveAgentCategoryFilter(claims);
+      if (!checkCategoryAccess(existing.category, deleteCategoryFilter)) {
+        return mcpError(id, -32003, `Forbidden: agent token cannot delete memories in category '${existing.category}'`);
+      }
+
+      const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
+      if (!vaultAllowed) {
+        return mcpError(id, -32003, `Forbidden: no access to vault scope '${existing.projectKey}'`);
+      }
+
+      // Decrypt the current fact to display in the approval UI
+      const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : claims.userId;
+      const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+      const currentFact = isEncrypted(existing.fact) ? await decrypt(existing.fact, vaultKey) : existing.fact;
+
+      const agentLabel = claims.agentPolicy?.agentContext ?? "unknown agent";
+      const recId = crypto.randomUUID();
+
+      await db.insert(memoryRecommendations).values({
+        id: recId,
+        orgId: orgId ?? null,
+        userId: claims.userId,
+        fact: currentFact,
+        category: existing.category,
+        tags: existing.tags,
+        projectKey: existing.projectKey ?? null,
+        scopeType: existing.scopeType,
+        scopeId: existing.scopeId ?? null,
+        recommendationType: "delete",
+        targetMemoryId: memId,
+        status: "pending",
+        agentContext: agentLabel,
+        createdAt: Date.now(),
+      });
+
+      try {
+        await db.insert(notifications).values({
+          id: crypto.randomUUID(),
+          userId: claims.userId,
+          title: "Agent Deletion Approval Required",
+          message: `Agent "${agentLabel}" wants to delete a memory. Review and approve in your Locker vault.`,
+          type: "warning",
+          status: "unread",
+          linkUrl: "/memories",
+          createdAt: Date.now(),
+        });
+      } catch (e) {
+        console.error("[delete_memory] notification failed:", e);
+      }
+
+      await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "delete_memory_queued", memoryId: memId, ipAddress, userAgent, metadata: { recId, agentContext: agentLabel } });
+
+      return mcpResult(id, {
+        content: [
+          { type: "text", text: JSON.stringify({ queued: true, recommendationId: recId, message: "Deletion request queued for human approval. The memory will not be deleted until the owner approves it in the Locker UI." }) },
+        ],
+      });
+    }
+    // ── END AGENT GATE ─────────────────────────────────────────────────────────
+
+    // MFA / Passcode verification (human tokens only)
     const totpRows = await db
       .select()
       .from(totpSecrets)

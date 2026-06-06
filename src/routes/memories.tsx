@@ -1303,7 +1303,7 @@ function Dashboard() {
       </PageHeader>
 
       <PageContainer>
-        {/* Conflict Review Banner */}
+        {/* Pending Agent Action + Conflict Review Banner */}
         {projectKey === "personal" && personalRecommendations.length > 0 && (
           <div className="mb-6 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-2xl p-5 md:p-6 shadow-sm flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 duration-200">
             <div className="flex items-center justify-between gap-4">
@@ -1312,49 +1312,119 @@ function Dashboard() {
                   ⚠️
                 </span>
                 <div>
-                  <h3 className="text-sm font-bold text-text">Conflicting Memories Detected</h3>
+                  <h3 className="text-sm font-bold text-text">Vault Actions Pending Approval</h3>
                   <p className="text-xs text-text-muted mt-0.5">
-                    Locker has identified memories that contradict new information. Review and approve archiving them.
+                    Agent requests and detected conflicts require your approval before any change is applied.
                   </p>
                 </div>
               </div>
             </div>
 
             <div className="grid gap-3.5 mt-1">
-              {personalRecommendations.map((r: any) => (
-                <div
-                  key={r.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-surface/50 backdrop-blur-xs border border-border rounded-xl hover:border-amber-500/30 transition-all"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-text font-medium leading-relaxed">
-                      Proposing to archive: <span className="text-red-400 italic">"{r.fact}"</span>
-                    </p>
-                    {r.reviewNotes && (
-                      <p className="text-[10px] text-text-muted mt-1.5 flex items-center gap-1">
-                        <span className="font-bold text-amber-500/80">Reason:</span> {r.reviewNotes}
-                      </p>
-                    )}
+              {personalRecommendations.map((r: any) => {
+                const isDelete = r.recommendationType === "delete";
+                const isUpdate = r.recommendationType === "update";
+                const isArchive = r.recommendationType === "archive";
+                const agentLabel = r.agentContext ? `Agent "${r.agentContext}"` : "An agent";
+
+                return (
+                  <div
+                    key={r.id}
+                    className={`flex flex-col gap-3 p-4 bg-surface/50 backdrop-blur-xs border rounded-xl transition-all ${
+                      isDelete
+                        ? "border-red-500/20 hover:border-red-500/35"
+                        : isUpdate
+                        ? "border-blue-500/20 hover:border-blue-500/35"
+                        : "hover:border-amber-500/30 border-border"
+                    }`}
+                  >
+                    {/* Header row */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isDelete && (
+                          <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-red-500/15 text-red-400 border border-red-500/25">
+                            Delete Request
+                          </span>
+                        )}
+                        {isUpdate && (
+                          <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-blue-500/15 text-blue-400 border border-blue-500/25">
+                            Update Request
+                          </span>
+                        )}
+                        {isArchive && (
+                          <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-500/15 text-amber-400 border border-amber-500/25">
+                            Conflict Detected
+                          </span>
+                        )}
+                        {(isDelete || isUpdate) && r.agentContext && (
+                          <span className="text-[10px] text-text-muted truncate">from {agentLabel}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Body */}
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0 flex flex-col gap-2">
+                        {isArchive && (
+                          <>
+                            <p className="text-xs text-text font-medium leading-relaxed">
+                              Proposing to archive: <span className="text-red-400 italic">"{r.fact}"</span>
+                            </p>
+                            {r.reviewNotes && (
+                              <p className="text-[10px] text-text-muted flex items-center gap-1">
+                                <span className="font-bold text-amber-500/80">Reason:</span> {r.reviewNotes}
+                              </p>
+                            )}
+                          </>
+                        )}
+                        {isDelete && (
+                          <p className="text-xs text-text font-medium leading-relaxed">
+                            Requesting to <span className="text-red-400 font-bold">permanently delete</span>:{" "}
+                            <span className="text-text-muted italic">"{r.fact}"</span>
+                          </p>
+                        )}
+                        {isUpdate && (
+                          <div className="flex flex-col gap-1.5">
+                            <p className="text-[10px] uppercase font-bold text-text-muted tracking-wide">Current</p>
+                            <p className="text-xs text-text-muted italic leading-relaxed">"{r.fact}"</p>
+                            <p className="text-[10px] uppercase font-bold text-blue-400/80 tracking-wide mt-0.5">Proposed</p>
+                            <p className="text-xs text-text font-medium leading-relaxed">"{r.proposedFact}"</p>
+                            {r.proposedCategory && r.proposedCategory !== r.category && (
+                              <p className="text-[10px] text-text-muted">
+                                Category: <span className="text-text">{r.category}</span> → <span className="text-blue-400">{r.proposedCategory}</span>
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2.5 self-end sm:self-auto shrink-0 select-none">
+                        <Button
+                          onClick={() => reviewRecMut.mutate({ id: r.id, action: "reject" })}
+                          disabled={reviewRecMut.isPending}
+                          variant="outline"
+                          className="h-8 text-[11px] px-3 font-semibold bg-surface hover:bg-surface-hover text-text-muted hover:text-text border-border"
+                        >
+                          {isArchive ? "Keep Active" : "Deny"}
+                        </Button>
+                        <Button
+                          onClick={() => reviewRecMut.mutate({ id: r.id, action: "approve" })}
+                          disabled={reviewRecMut.isPending}
+                          className={`h-8 text-[11px] px-3 font-bold border ${
+                            isDelete
+                              ? "bg-red-500/15 border-red-500/30 hover:bg-red-500/25 text-red-400"
+                              : isUpdate
+                              ? "bg-blue-500/15 border-blue-500/30 hover:bg-blue-500/25 text-blue-400"
+                              : "bg-amber-500/15 border-amber-500/30 hover:bg-amber-500/25 text-amber-400"
+                          }`}
+                        >
+                          {isDelete ? "Approve Delete" : isUpdate ? "Approve Update" : "Approve Archive"}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2.5 self-end sm:self-auto select-none">
-                    <Button
-                      onClick={() => reviewRecMut.mutate({ id: r.id, action: "reject" })}
-                      disabled={reviewRecMut.isPending}
-                      variant="outline"
-                      className="h-8 text-[11px] px-3 font-semibold bg-surface hover:bg-surface-hover text-text-muted hover:text-text border-border"
-                    >
-                      Keep Active
-                    </Button>
-                    <Button
-                      onClick={() => reviewRecMut.mutate({ id: r.id, action: "approve" })}
-                      disabled={reviewRecMut.isPending}
-                      className="h-8 text-[11px] px-3 font-bold bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 text-amber-400"
-                    >
-                      Approve Archive
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

@@ -453,14 +453,15 @@ function ReviewQueueMockup() {
 function McpCallMockup() {
   const [step, setStep] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setStep((s) => (s + 1) % 4), 1800);
+    const id = setInterval(() => setStep((s) => (s + 1) % 5), 1800);
     return () => clearInterval(id);
   }, []);
   const steps = [
     { label: "AI sends recall_context", color: "#a855f7", icon: "→" },
     { label: "Bearer token verified", color: "#22c55e", icon: "🔑" },
-    { label: "Semantic search in Vectorize", color: "#fbbf24", icon: "⚡" },
-    { label: "Decrypted facts returned", color: "#818cf8", icon: "←" },
+    { label: "RRF fusion: semantic + keyword + recency ranks", color: "#fbbf24", icon: "⚡" },
+    { label: "Graph expansion via entity IDs", color: "#f97316", icon: "🕸" },
+    { label: "RRF-ranked, decrypted facts returned", color: "#818cf8", icon: "←" },
   ];
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, fontFamily: "monospace" }}>
@@ -479,18 +480,18 @@ function McpCallMockup() {
 }
 
 function TokenMockup() {
-  const tools = ["recall_context", "commit_memory"];
+  const humanTools = ["recall_context", "commit_memory", "update_memory", "delete_memory"];
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
       <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--surface2)", fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
         API Tokens & Scopes
       </div>
       <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-        {[{ name: "Claude Desktop", perms: [0, 1] }, { name: "Codex (read-only)", perms: [0] }].map((tok, i) => (
+        {[{ name: "Claude Desktop", perms: [0, 1, 2, 3] }, { name: "Codex (read-only)", perms: [0] }].map((tok, i) => (
           <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px" }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 6, textAlign: "left" }}>{tok.name}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {tools.map((t, j) => (
+              {humanTools.map((t, j) => (
                 <span key={j} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: tok.perms.includes(j) ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.03)", border: `1px solid ${tok.perms.includes(j) ? "rgba(168,85,247,0.4)" : "var(--border)"}`, color: tok.perms.includes(j) ? "var(--accent)" : "var(--text-muted)", fontFamily: "monospace" }}>
                   {tok.perms.includes(j) ? "✓" : "✗"} {t}
                 </span>
@@ -498,6 +499,21 @@ function TokenMockup() {
             </div>
           </div>
         ))}
+        {/* Agent token with ABAC policy */}
+        <div style={{ background: "var(--surface2)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textAlign: "left" }}>Deploy Pipeline Bot</span>
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.04em" }}>Agent</span>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6, fontStyle: "italic" }}>deploy pipeline · allowed: stack, rules · tags: #architecture, #internal · credentials: denied</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {["stack ✓", "rules ✓", "projects ✗", "references ✗", "#architecture ✓", "#internal ✓", "#confidential 🔐", "credentials ✗"].map((label, j) => (
+              <span key={j} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: label.includes("✓") ? "rgba(168,85,247,0.1)" : label.includes("🔐") ? "rgba(245,158,11,0.1)" : "rgba(255,255,255,0.03)", border: `1px solid ${label.includes("✓") ? "rgba(168,85,247,0.3)" : label.includes("🔐") ? "rgba(245,158,11,0.3)" : "var(--border)"}`, color: label.includes("✓") ? "var(--accent)" : label.includes("🔐") ? "#f59e0b" : "var(--text-muted)", fontFamily: "monospace" }}>
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
         <div style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 8, padding: "8px 12px", fontSize: 11, color: "var(--accent)", fontFamily: "monospace" }}>
           lkr_a8f3c2e1d9b7...  <span style={{ color: "var(--text-muted)" }}>shown once</span>
         </div>
@@ -761,7 +777,7 @@ function LandingPage() {
                   Connect your vault to IDE code assistants using a single `/api/mcp` endpoint compliant with the Model Context Protocol. AI assistants retrieve semantic memories on demand.
                 </p>
                 <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                  {["recall_context — semantic vector query of facts", "commit_memory — persist new rules directly from prompt sessions", "Edge-distributed vector search under 50ms", "JSON-RPC 2.0 transport over secure HTTP"].map((item) => (
+                  {["recall_context — semantic (bge-m3) + keyword (tags/category) + recency ranks fused via RRF, then Llama-3.3-70B cross-encoder reranking; optional optimize mode synthesizes results into a dense system-prompt string", "commit_memory — adds new facts directly; update_memory and delete_memory queue agent requests for human approval in the Vault Actions panel before any change is applied", "store_credential / retrieve_credential — encrypted secret vault", "JSON-RPC 2.0 streamable HTTP transport"].map((item) => (
                     <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)", textAlign: "left" }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                       {item}
@@ -846,10 +862,10 @@ function LandingPage() {
                   Authoritative Org Vaults & Peer Review Queue
                 </h2>
                 <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
-                  Ensure team-wide context remains reliable. Developers can suggest rules from their IDE agents, which queue inside the Recommendation Dashboard. Approving them promotes them to the Authoritative Org Vault.
+                  Ensure team-wide context remains reliable. Agent update and delete requests are queued for human approval — no destructive action executes until you click Approve in the Vault Actions panel.
                 </p>
                 <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                  {["Proposed agent updates enqueued automatically", "Full markdown diff view for auditing change intents", "Authoritative rules override personal context", "Enforce security standards team-wide"].map((item) => (
+                  {["Agent update and delete requests queued for human approval", "Color-coded review cards: red for deletions, blue for edits, amber for conflicts", "Authoritative rules override personal context", "Enforce security standards team-wide"].map((item) => (
                     <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)", textAlign: "left" }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                       {item}
@@ -869,13 +885,13 @@ function LandingPage() {
             <FadeIn>
               <SectionLabel>API Security</SectionLabel>
               <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
-                Fine-grained access control & scopes
+                Fine-grained access control & ABAC for agents
               </h2>
               <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
-                Generate Bearer tokens with per-tool permission bitmasks. Give your coding assistant read-only access, while letting your personal Claude write new memories mid-session.
+                Generate scoped Bearer tokens with per-tool permission bitmasks. Create Agent Tokens with ABAC policies that restrict which memory categories an autonomous agent can read or write — so a debugging bot can never reach your financial projections.
               </p>
               <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                {["Tokens hashed with PBKDF2 at 100k iterations", "Shown once at creation, never again", "Toggle recall_context and commit_memory independently", "Revoke any token instantly"].map((item) => (
+                {["Tokens hashed with PBKDF2 at 100k iterations", "Shown once at creation, never again", "Human tokens: bitmask permissions across recall, commit, update, and delete", "Agent tokens: ABAC policy restricts categories (rules/projects/references/stack), tag allowlists/denylists, and credential vault access", "Agent update_memory and delete_memory calls are never executed immediately — queued for human approval in the Vault Actions panel", "Memories tagged #confidential trigger JIT access — agent receives a placeholder until the developer approves via approve_jit_access", "Revoke any token instantly"].map((item) => (
                   <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)", textAlign: "left" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                     {item}
@@ -903,7 +919,7 @@ function LandingPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
             <Step num="1" title="Build or Import Context" desc="Run the Tech Stack Wizard to output target constraints, or ingest pre-built memory templates and chatbot exports." delay={0} />
-            <Step num="2" title="Extract & Tag Rules" desc="Locker automatically scans for secrets with entropy-based DLP, indexes, labels, and encrypts facts under a per-vault DEK before writing them to the database." delay={100} />
+            <Step num="2" title="Extract, Tag & Graph-Enrich" desc="Locker scans for secrets with entropy-based DLP and encrypts facts under a per-vault DEK. Workers AI simultaneously extracts entity nodes and relationship edges, storing them in the knowledge graph so recall can traverse architectural connections later." delay={100} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
             <Step num="3" title="Bind Universal MCP Endpoint" desc="Expose your Locker context to Cursor, Claude Desktop, Copilot, or CLI clients using your secure bearer token." delay={200} />
@@ -926,14 +942,14 @@ function LandingPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
             {[
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Envelope encryption", desc: "AES-256-GCM with per-vault DEKs wrapped by a KEK. Database + env var must both be compromised to decrypt anything.", delay: 0 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "Semantic vector search", desc: "Cloudflare Vectorize powers fuzzy recall — find facts by meaning, not just keywords.", delay: 60 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "GraphRAG hybrid retrieval", desc: "Semantic (bge-m3), keyword, and recency ranks fused via RRF with GraphRAG expansion across memory_graph_edges. The in-app session path adds Llama-3.3-70B cross-encoder reranking; the MCP tool supports optimize: true for Llama-3-8B system-prompt synthesis.", delay: 60 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: "Tech Stack Wizard", desc: "Instantly compile optimized .cursorrules, CLAUDE.md, and AGENTS.md files tailored to your development stack.", delay: 120 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>, title: "Memory Templates", desc: "Deploy pre-built coding guidelines, DevOps runbooks, and SOC2 compliance controls directly to developer agents.", delay: 180 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Review & Approval Queue", desc: "Review context suggestions made by developer agents before merging them production-wide.", delay: 240 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Review & Approval Queue", desc: "Agent update and delete requests are queued — never executed immediately. The Vault Actions panel shows color-coded cards (red for deletions, blue for edits) so you can approve or deny each action.", delay: 240 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>, title: "Authoritative Org Vault", desc: "Lock critical standards inside organization scopes. Authoritative rules always take precedence in agent contexts.", delay: 300 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, title: "Per-Token Scopes", desc: "Configure bitmask permissions to toggle read-only recall_context and write-access commit_memory capabilities.", delay: 360 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>, title: "Cloudflare Edge Native", desc: "Zero-servers to manage. Runs entirely on Cloudflare Workers, Cloudflare D1, and Cloudflare Vectorize.", delay: 420 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>, title: "In-App Notifications", desc: "Receive immediate toasts and notifications when agent-committed rules require TPM or DevOps review.", delay: 480 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>, title: "Non-Destructive DLP", desc: "High-entropy secrets and PII are automatically quarantined at write time. AI agents receive redacted placeholders, while authorized humans unmask facts in the UI.", delay: 480 },
             ].map((f) => (
               <FeatureCard key={f.title} icon={f.icon} title={f.title} desc={f.desc} delay={f.delay} />
             ))}

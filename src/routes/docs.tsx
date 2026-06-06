@@ -250,11 +250,11 @@ function DocsPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                   <span style={{ fontSize: 18 }}>⚡</span>
                   <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>
-                    Hybrid Retrieval Engine
+                    GraphRAG Hybrid Retrieval Engine
                   </h3>
                 </div>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                  Powered by Cloudflare Vectorize and SQLite. Combines semantic vector search and exact token/substring matches via Reciprocal Rank Fusion (RRF) to ensure high-accuracy conceptual matches without missing specific keyword tokens.
+                  Powered by Cloudflare Vectorize, Workers AI, and D1. At recall time, three ranked lists are fused via Reciprocal Rank Fusion (RRF, k = 60): a Vectorize semantic rank (bge-m3 embeddings), a keyword rank (term-overlap against plaintext <code>tags</code> and <code>category</code> — no decryption required), and a recency rank (exponential decay, λ = 0.005, half-life ≈ 139 days). The top-20 fused candidates are decrypted ephemerally and re-scored by a Llama-3.3-70B cross-encoder before the final <code>topK</code> results are returned. Authoritative memories always pin to the front. Graph-adjacent memories — surfaced via a <code>memory_graph_edges</code> entity lookup — enter the fused pool alongside Vectorize results. At write time, Workers AI extracts named entity nodes and directed relationship edges from each fact, storing them in <code>memory_graph_nodes</code> / <code>memory_graph_edges</code>.
                 </p>
               </div>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
@@ -275,10 +275,10 @@ function DocsPage() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginBottom: 32 }}>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
                 <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span>🧠</span> Memory Ingestion & Management
+                  <span>🧠</span> Memory Ingestion & GraphRAG Enrichment
                 </h4>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.6 }}>
-                  Create, update, and manage long-term facts either through the visual browser-based dashboard or directly via connected LLMs using programmatic MCP interfaces. Suggest new rules during conversation sessions and approve them in the recommendations queue.
+                  Create, update, and manage long-term facts either through the visual browser-based dashboard or directly via connected LLMs using programmatic MCP interfaces. Every new fact is automatically enriched by Workers AI: named entity nodes (services, libraries, APIs, databases) and directed relationship edges are extracted and stored in <code>memory_graph_nodes</code> / <code>memory_graph_edges</code>, building a knowledge graph that powers multi-hop recall.
                 </p>
                 <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
                   <button onClick={() => setActiveSection("managing-memories")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
@@ -328,7 +328,7 @@ function DocsPage() {
                   <span>👥</span> Team Governance & Security
                 </h4>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.6 }}>
-                  Leverage Organization settings to govern billing seats, isolate sub-teams, and restrict scoped memories to specific project workspace keys. Locker enforces a strict security protocol, ephemeral V8 Workers sandboxing, entropy-based DLP at write time, and PBKDF2-hardened token hashing.
+                  Leverage Organization settings to govern billing seats, isolate sub-teams, and restrict scoped memories to specific project workspace keys. Locker enforces a strict security protocol, ephemeral V8 Workers sandboxing, entropy-based DLP quarantine checks, PBKDF2-hardened token hashing, and Attribute-Based Access Control (ABAC) for autonomous agent tokens.
                 </p>
                 <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
                   <button onClick={() => setActiveSection("team-collaboration")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
@@ -347,7 +347,7 @@ function DocsPage() {
                 🛡️ Core Security Model
               </h3>
               <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                All database items are encrypted using AES-256-GCM under per-vault Data Encryption Keys (DEKs) wrapped by a server-side Key Encryption Key. Secrets are scanned and redacted at write time using entropy-based DLP. API tokens are hashed with PBKDF2 at 100,000 iterations. Relational queries, D1 logs, and vector indices are fully anonymized. Read/write capabilities are regulated via scoped API token bitmasks.
+                All database items are encrypted using AES-256-GCM under per-vault Data Encryption Keys (DEKs) wrapped by a server-side Key Encryption Key. GraphRAG entity extraction runs on plaintext before encryption so the knowledge graph is built from real fact text; only ciphertext and graph metadata are stored in D1. Secrets are detected at write time using entropy-based DLP — memories containing high-entropy strings or known credential patterns are flagged with <code>isQuarantined</code> and returned as <code>[REDACTED]</code> to MCP callers. API tokens are hashed with PBKDF2-HMAC-SHA256 at 100,000 iterations. Read/write capabilities are regulated via scoped API token bitmasks. Agent tokens are further constrained by Attribute-Based Access Control (ABAC) policies — enforcing category-level boundaries and explicit <code>allowedTags</code>/<code>deniedTags</code> filters so a debugging agent cannot access financial or governance records. Memories tagged <code>#confidential</code> trigger a Just-in-Time (JIT) approval gate: the agent receives <code>[APPROVAL PENDING]</code> and access is unblocked only after the token owner explicitly approves via <code>approve_jit_access</code>.
               </p>
             </div>
           </div>
@@ -428,7 +428,7 @@ function DocsPage() {
               {[
                 { step: "1", text: "Navigate to the Admin page from the top navigation bar." },
                 { step: "2", text: "Under the personal settings sidebar, click API Tokens." },
-                { step: "3", text: "Click the Generate Token button. Give the token a descriptive name (e.g., 'Claude Desktop') and select the specific scopes it is authorized to call (such as 'recall_context' or 'commit_memory')." }
+                { step: "3", text: "Click the Generate Token button. Choose Human Token (for interactive clients like Claude Desktop) or Agent Token (for autonomous pipelines and bots). Human tokens carry per-tool permission bitmasks. Agent tokens additionally require an Agent Context label, an Allowed Categories list — restricting which memory categories (rules, projects, references, stack) the agent may read or write — and optional allowedTags/deniedTags for fine-grained tag-level access control. Memories tagged #confidential always require JIT approval regardless of tag policy. Credential vault access must also be explicitly enabled." }
               ].map((s) => (
                 <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
                   <div style={{
@@ -492,6 +492,7 @@ function DocsPage() {
                   <li><strong>SQLite Condition Triggers:</strong> Active database-level triggers strictly govern data insertion and updates, preventing scope mismatch.</li>
                   <li><strong>Multi-Tenant Isolation:</strong> Structured <code>scopeType</code> (<code>personal</code>, <code>organization</code>, <code>team</code>) acts as a cryptographic boundary.</li>
                   <li><strong>Foreign Key Protection:</strong> Destructive operations or queries attempting to leak records across scopes are immediately blocked at the database engine layer.</li>
+                  <li><strong>Agent ABAC:</strong> Agent tokens carry an <code>AgentPolicy</code> declaring which memory categories (<code>rules</code>, <code>projects</code>, <code>references</code>, <code>stack</code>), an explicit <code>allowedTags</code>/<code>deniedTags</code> tag-level allowlist/denylist, and whether the credential vault is accessible. Category and tag filters are applied at both the SQL query layer and the Vectorize metadata layer — encrypted data for off-limits categories is never decrypted. Memories tagged <code>#confidential</code> are never returned directly to agents; they trigger a JIT access request that requires human approval before the unredacted fact is released.</li>
                 </ul>
               </div>
 
@@ -518,12 +519,12 @@ function DocsPage() {
                   <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>MCP Deletion & Write Passcode</h3>
                 </div>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                  A static passcode protection layer securing programmatic endpoints from rogue or runaway AI requests:
+                  A static passcode protection layer for human token write/delete operations. Agent tokens follow the async approval queue instead — this passcode path applies to human tokens only:
                 </p>
                 <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <li><strong>Fallback Protection:</strong> When 2FA is inactive, write or delete actions executed via MCP are blocked unless the correct passcode is supplied.</li>
+                  <li><strong>Fallback Protection (Human Tokens):</strong> When 2FA is inactive, write or delete actions executed by a human token via MCP are blocked unless the correct passcode is supplied.</li>
                   <li><strong>PBKDF2 Hashing:</strong> Passcodes and API tokens are stored using PBKDF2-HMAC-SHA256 at 100,000 iterations (Cloudflare Workers max) with a random per-token salt — resistant to GPU-accelerated brute-force even if the database is leaked.</li>
-                  <li><strong>Explicit Confirmation:</strong> Requires setting the <code>confirm === true</code> parameter alongside the valid passcode credential.</li>
+                  <li><strong>Explicit Confirmation:</strong> Human token destructive calls require <code>confirm: true</code> alongside a valid passcode or TOTP code. For agent tokens, <code>confirm: true</code> has no effect on <code>update_memory</code> or <code>delete_memory</code> — those are always queued.</li>
                 </ul>
               </div>
 
@@ -531,15 +532,16 @@ function DocsPage() {
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ fontSize: 20 }}>📝</span>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>User-Moderated Conflict Reviews</h3>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Human Approval Queue for Agent Actions</h3>
                 </div>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                  Halts silent automated updates to prevent memory corruption and LLM hallucination overrides:
+                  Blocks autonomous agents from making any destructive change without explicit human sign-off:
                 </p>
                 <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <li><strong>Recommendation Queue:</strong> Conflicting facts or proposed modifications are diverted to a review queue (<code>memoryRecommendations</code>).</li>
-                  <li><strong>Visual Conflict UI:</strong> Conflict review banners and cards allow users to compare, approve, or reject suggestions.</li>
-                  <li><strong>No Silent Archiving:</strong> Inferred contradictions trigger an active notification instead of silently overwriting historical context.</li>
+                  <li><strong>Agent Approval Gate:</strong> When an agent token calls <code>update_memory</code> or <code>delete_memory</code>, the request is written to the <code>memory_recommendations</code> queue — the tool returns <code>{"{ queued: true }"}</code> and the vault is left unchanged.</li>
+                  <li><strong>Vault Actions UI:</strong> The Memories page surfaces pending agent requests with color-coded cards — red for deletion requests, blue for update requests, amber for detected contradictions. Each card shows the current fact and the proposed change side-by-side.</li>
+                  <li><strong>No Silent Mutations:</strong> Agents cannot bypass the queue by passing <code>confirm: true</code>; that parameter is ignored for agent tokens on destructive operations.</li>
+                  <li><strong>Contradiction Detection:</strong> New facts that contradict existing memories are also queued as amber archive recommendations rather than silently overwriting context.</li>
                 </ul>
               </div>
 
@@ -566,13 +568,13 @@ function DocsPage() {
                   <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Entropy-Based Data Loss Prevention</h3>
                 </div>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                  Secrets and PII are detected and redacted at write time — before encryption — using a multi-layer scanning engine:
+                  Secrets and PII are detected and quarantined at write time — preserving the raw fact under envelope encryption while flag-quarantining the record — using a multi-layer scanning engine:
                 </p>
                 <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                   <li><strong>Shannon Entropy Gating:</strong> Candidate values in key-value assignments, JSON fields, and Authorization headers are scored for entropy. Only high-entropy strings (≥ 4.0 bits/char) in secret-looking contexts are flagged, eliminating false positives on legitimate code IDs and slugs.</li>
                   <li><strong>Structural Pattern Detection:</strong> Unmistakable credential formats — AWS access keys, Stripe keys, GitHub PATs, Slack tokens, PEM private keys, and database URIs — are caught unconditionally regardless of entropy score.</li>
-                  <li><strong>PII Scanning:</strong> Email addresses, phone numbers, credit card numbers, and SSNs are detected via dedicated regex patterns and always redacted.</li>
-                  <li><strong>Write-Time Enforcement:</strong> DLP runs during <code>commit_memory</code> and <code>update_memory</code> — not at retrieval. Stored memories are already clean, so code snippets and identifiers recalled by AI agents are never corrupted.</li>
+                  <li><strong>PII Scanning:</strong> Email addresses, phone numbers, credit card numbers, and SSNs are detected via dedicated regex patterns and flagged for quarantine.</li>
+                  <li><strong>Quarantine & Review Lifecycle:</strong> DLP runs during <code>commit_memory</code> and <code>update_memory</code>. If sensitive data is found, the memory is quarantined. AI agents and MCP requests receive a secure <code>[REDACTED]</code> placeholder in transit. Owners and admins can explicitly review, verify, and unmask/release the memory from quarantine in the Memories Dashboard.</li>
                 </ul>
               </div>
 
@@ -589,6 +591,24 @@ function DocsPage() {
                   <li><strong>One-Time OAuth Bootstrap:</strong> OAuth client provisioning runs at most once per worker isolate lifetime rather than on every request, eliminating D1 write storms and race conditions under concurrent load.</li>
                   <li><strong>Isolate-Scoped Auth Cache:</strong> Authenticated session configurations are cached at the worker isolate level with a 5-minute TTL, reducing redundant D1 reads without holding stale credentials beyond the cache window.</li>
                   <li><strong>Read-Only Request Path:</strong> The per-request authentication path performs no writes to the database, ensuring that high-traffic periods cannot cause connection exhaustion or lock contention on auth tables.</li>
+                </ul>
+              </div>
+
+              {/* Card 9: Zod Server-Function Validation */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>🧩</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Strict Server-Function Input Validation</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  Every server function that handles memory ingestion or retrieval enforces a rigid Zod schema before any database or vector-index transaction executes — blocking prompt-injection payloads at the earliest possible boundary:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>String length caps:</strong> <code>fact</code> and <code>query</code> fields are capped at 10,000 characters; names and tags at 64–500 characters. Payloads exceeding these bounds are rejected before touching D1 or Vectorize.</li>
+                  <li><strong>UUID enforcement:</strong> All ID fields (<code>id</code>, <code>memoryId</code>, <code>versionId</code>, etc.) must be valid UUIDs. Non-UUID strings — including injected SQL fragments or hallucinated identifiers — are dropped at parse time.</li>
+                  <li><strong>Enum allow-lists:</strong> <code>category</code>, <code>action</code>, <code>tokenType</code>, <code>scopeType</code>, and similar fields are validated against a fixed <code>z.enum()</code> set; values outside the allow-list are rejected rather than passed through.</li>
+                  <li><strong>Array size limits:</strong> Batch operations (<code>batchImportMemories</code>, <code>bulkDeleteMemories</code>, <code>moveMemories</code>) cap input arrays at 200–500 items to prevent runaway agent loops from exhausting quota.</li>
+                  <li><strong>Hard-fail parsing:</strong> Zod <code>.parse()</code> throws a <code>ZodError</code> on any schema violation; the server function returns an error immediately without executing any side effects on D1 or Vectorize.</li>
                 </ul>
               </div>
             </div>
@@ -745,9 +765,9 @@ function DocsPage() {
                 </span>
               </div>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
-                <strong style={{ display: "block", color: "var(--text)", marginBottom: 4 }}>🚦 Queue Approval Workflow</strong>
+                <strong style={{ display: "block", color: "var(--text)", marginBottom: 4 }}>🚦 Vault Actions Pending Approval</strong>
                 <span style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  Connected AI agents can suggest new rules or project details during coding sessions. Proposed memories go into the <strong>Recommendations Queue</strong>. You must log in and click <strong>Approve</strong> to persist these into long-term storage, or <strong>Reject</strong> to discard them.
+                  All agent-initiated destructive operations are held in an approval queue. This covers three cases: agent <code>update_memory</code> calls (blue cards showing the proposed new fact vs. the current fact), agent <code>delete_memory</code> calls (red cards), and newly proposed facts that contradict existing memories (amber cards). You must log in and click <strong>Approve</strong> to apply the action, or <strong>Deny</strong> to discard it. No change reaches the vault until you explicitly approve.
                 </span>
               </div>
             </div>
@@ -759,6 +779,7 @@ function DocsPage() {
             <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.8, marginBottom: 24, display: "flex", flexDirection: "column", gap: 6 }}>
               <li><strong>Reading Context:</strong> Models call <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>recall_context</button> for hybrid RRF matches, and <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>search_memories</button> for exact tag/keyword scans.</li>
               <li><strong>Mutating Store:</strong> Models use <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>commit_memory</button> to suggest facts, <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>update_memory</button> to refine facts, and <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>delete_memory</button> to remove stale data.</li>
+              <li><strong>Credential Vault:</strong> Models use <button onClick={() => setActiveSection("mcp-tools-credentials")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>store_credential</button>, <button onClick={() => setActiveSection("mcp-tools-credentials")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>retrieve_credential</button>, and <button onClick={() => setActiveSection("mcp-tools-credentials")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>delete_credential</button> to manage encrypted secrets. Requires <code>allowCredentials: true</code> on agent tokens.</li>
             </ul>
             <div style={{
               background: "rgba(168, 85, 247, 0.04)",
@@ -1015,9 +1036,9 @@ function DocsPage() {
                 </p>
               </div>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
-                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>⚡ SSE / HTTP Transport</h4>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>⚡ Streamable HTTP Transport</h4>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                  Ideal for remote web services. Uses Server-Sent Events (SSE) for server-to-client streaming, alongside client HTTP POST requests. Locker leverages HTTP endpoints to execute as a serverless edge worker.
+                  The current MCP standard for remote servers. Uses a single HTTP endpoint that accepts JSON-RPC POST requests and may stream responses. Locker implements this transport as a serverless Cloudflare Worker at <code>/api/mcp</code>.
                 </p>
               </div>
             </div>
@@ -1076,7 +1097,7 @@ function DocsPage() {
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Context Retrieval Tools</h2>
             <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Context Retrieval tools allow connected AI assistants to discover available workspaces, retrieve relevant long-term memory context, and search memories semantically or using exact keyword patterns.
+              Context Retrieval tools allow connected AI assistants to discover available workspaces, retrieve relevant long-term memory context, and search memories by keyword. <code>recall_context</code> runs a four-stage pipeline: (1) Cloudflare Vectorize semantic retrieval (bge-m3) over a candidate pool of up to 100 results, (2) a keyword rank via term-overlap against plaintext <code>tags</code> and <code>category</code> columns — no decryption required at this stage, (3) a recency rank via exponential decay (λ = 0.005, half-life ≈ 139 days on <code>timestamp</code>), and (4) Reciprocal Rank Fusion (k = 60) across all three lists. Graph-adjacent memories surfaced via <code>memory_graph_edges</code> enter the fused pool alongside the Vectorize results. The top-20 fused candidates are decrypted ephemerally and re-scored by a Llama-3.3-70B cross-encoder that orders them by contextual relevance to the query — only the final <code>topK</code> results are returned. Authoritative memories always pin to the front regardless of score. Pass <code>optimize: true</code> to additionally synthesize the returned facts into a single dense system-prompt string, reducing context-window token consumption for the caller.
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1145,9 +1166,13 @@ function DocsPage() {
         return (
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Memory Mutation Tools</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Memory Mutation tools enable connected AI agents to store new facts, update existing memory statements, and purge stale records in real-time. These tools are subject to user-configured passcode or MFA controls.
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 12 }}>
+              Memory Mutation tools let connected clients add, update, and delete facts. Behavior differs by token type:
             </p>
+            <div style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.15)", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+              <strong style={{ color: "var(--accent)" }}>Human tokens</strong> — <code>update_memory</code> and <code>delete_memory</code> execute immediately after MFA/passcode verification (if configured). <code>commit_memory</code> also executes immediately.<br />
+              <strong style={{ color: "#f59e0b" }}>Agent tokens</strong> — <code>update_memory</code> and <code>delete_memory</code> are <strong>never executed immediately</strong>. The request is written to the approval queue (<code>memory_recommendations</code>) and the tool returns <code>{"{ queued: true, recommendationId }"}</code>. The human vault owner must approve the action in the <strong>Vault Actions Pending Approval</strong> panel before any change is applied. <code>commit_memory</code> follows the existing conflict-detection path and may also be queued as a recommendation.
+            </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {ALL_TOOLS.filter((t) =>
@@ -1281,6 +1306,62 @@ function DocsPage() {
             </div>
           </div>
         );
+      case "mcp-tools-credentials":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Credential Vault Tools</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 16 }}>
+              Credential Vault tools let connected agents store, list, retrieve, and delete encrypted secrets without exposing them in memory facts. Values are AES-256-GCM encrypted at rest under the same per-vault DEK as memories. Agent tokens must have <code>allowCredentials: true</code> in their ABAC policy to access any credential tool.
+            </p>
+            <div style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+              <strong style={{ color: "#f59e0b" }}>⚠️ Agent token restriction:</strong> Agent tokens deny credential vault access by default. An <code>AgentPolicy</code> must explicitly set <code>allowCredentials: true</code> for these tools to be available.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+              {ALL_TOOLS.filter((t) =>
+                ["store_credential", "list_credentials", "retrieve_credential", "delete_credential"].includes(t.name)
+              ).map((tool) => (
+                <details key={tool.name} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+                  <summary style={{ padding: "14px 18px", fontWeight: 700, fontSize: 14, color: "var(--accent)", fontFamily: "monospace", cursor: "pointer", listStyleType: "none", display: "flex", justifyContent: "space-between", alignItems: "center", userSelect: "none" }}>
+                    <span>⚙️ {tool.name}</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", background: "var(--surface)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>Click to Expand</span>
+                  </summary>
+                  <div style={{ padding: "16px 18px", borderTop: "1px solid var(--border)", background: "var(--surface)" }}>
+                    <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px 0", lineHeight: 1.6 }}>{tool.description}</p>
+                    <div>
+                      <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 6px 0", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Input Schema</p>
+                      <pre style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, margin: 0, fontFamily: "monospace", fontSize: 11, color: "var(--text)", overflow: "auto", maxHeight: 240, lineHeight: 1.5 }}>
+                        {JSON.stringify(tool.inputSchema, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>JIT Access for Confidential Memories</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+              Memories tagged <code>#confidential</code> require a Just-in-Time (JIT) access grant before an agent can read them. When an agent's <code>recall_context</code> or <code>search_memories</code> call hits a confidential memory, a <code>jitRequestId</code> is returned instead of the fact. The human token owner calls <code>approve_jit_access</code> to grant or deny — on approval, a short-lived Bearer token valid for 15 minutes is returned for the agent to re-run its query.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {ALL_TOOLS.filter((t) => t.name === "approve_jit_access").map((tool) => (
+                <details key={tool.name} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+                  <summary style={{ padding: "14px 18px", fontWeight: 700, fontSize: 14, color: "var(--accent)", fontFamily: "monospace", cursor: "pointer", listStyleType: "none", display: "flex", justifyContent: "space-between", alignItems: "center", userSelect: "none" }}>
+                    <span>⚙️ {tool.name}</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", background: "var(--surface)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 4 }}>Click to Expand</span>
+                  </summary>
+                  <div style={{ padding: "16px 18px", borderTop: "1px solid var(--border)", background: "var(--surface)" }}>
+                    <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px 0", lineHeight: 1.6 }}>{tool.description}</p>
+                    <div>
+                      <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 6px 0", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Input Schema</p>
+                      <pre style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, margin: 0, fontFamily: "monospace", fontSize: 11, color: "var(--text)", overflow: "auto", maxHeight: 240, lineHeight: 1.5 }}>
+                        {JSON.stringify(tool.inputSchema, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        );
       case "mcp-errors-security":
         return (
           <div>
@@ -1322,8 +1403,8 @@ function DocsPage() {
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
                     <td style={{ padding: "14px 16px", fontFamily: "monospace", color: "var(--error)", fontWeight: 600 }}>-32003</td>
                     <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 600 }}>Forbidden</td>
-                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Access to requested scope key is blocked; memory is locked (requires admin); or modifying other user's shared fact.</td>
-                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Ensure the correct <code>projectKey</code> is provided, or request owner/admin authorization.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Access to requested scope key is blocked; memory is locked (requires admin); modifying another user's shared fact; or an agent token's ABAC policy does not permit access to the requested memory category or credential vault.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Ensure the correct <code>projectKey</code> is provided, request owner/admin authorization, or verify the agent token's <code>allowedCategories</code>, <code>allowedTags</code>/<code>deniedTags</code>, and <code>allowCredentials</code> policy. For <code>#confidential</code> memories, use <code>approve_jit_access</code> to grant temporary access.</td>
                   </tr>
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
                     <td style={{ padding: "14px 16px", fontFamily: "monospace", color: "var(--error)", fontWeight: 600 }}>-32004</td>
@@ -1352,23 +1433,26 @@ function DocsPage() {
                   <tr>
                     <td style={{ padding: "14px 16px", fontFamily: "monospace", color: "var(--error)", fontWeight: 600 }}>-32602</td>
                     <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 600 }}>Invalid Params</td>
-                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Missing required field; <code>confirm</code> was not set to true; or character length limit exceeded (10,000 max).</td>
-                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Verify input formats, ensure <code>confirm: true</code> is passed on mutations, and try again.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Missing required field; <code>confirm</code> was not set to true; character limit exceeded (<code>fact</code>/<code>query</code> max 10,000 chars); non-UUID passed as an ID field; or a value outside the allowed enum set (e.g. an unlisted <code>category</code>). Validation is enforced at the server function boundary before any D1 or Vectorize transaction executes.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.4 }}>Verify input formats, ensure <code>confirm: true</code> is passed on mutations, use valid UUID strings for IDs, and use only supported enum values for <code>category</code> and <code>action</code> fields.</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Interactive Verification Flow (MFA / Passcode)</h3>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Interactive Verification Flow (MFA / Passcode — Human Tokens)</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 8 }}>
+              This HITL flow applies to <strong>human tokens</strong> only. Agent tokens calling <code>update_memory</code> or <code>delete_memory</code> are routed to the async approval queue instead — they never reach this MFA/passcode check.
+            </p>
             <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-              To prevent prompt injection attacks from performing unauthorized write or delete actions, Locker requires explicit user validation. If an AI client attempts to mutate or delete a memory, it should implement the following human-in-the-loop (HITL) retry pattern:
+              To prevent prompt injection attacks from performing unauthorized write or delete actions via human tokens, Locker requires explicit user validation. If a human-token client attempts to mutate or delete a memory, it should implement the following retry pattern:
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
               {[
-                { step: "1", title: "Initial Invocation", desc: "The client makes a standard mutation call (e.g. delete_memory) with id and confirm: true." },
+                { step: "1", title: "Initial Invocation", desc: "The human-token client makes a standard mutation call (e.g. delete_memory) with the memory id and confirm: true." },
                 { step: "2", title: "Security Intercept", desc: "The Locker server identifies that the user has configured MFA (returns -32024) or a passcode (returns -32025)." },
-                { step: "3", title: "Human Challenge", desc: "The AI agent intercepts the specific error code, displays a message, and asks the user to enter their current code or passcode." },
+                { step: "3", title: "Human Challenge", desc: "The AI agent intercepts the specific error code, displays a message, and asks the user to enter their current TOTP code or passcode." },
                 { step: "4", title: "Verify & Complete", desc: "The client sends a new tool call containing the user's input (in the totpCode or passcode property). Locker processes and executes the action." }
               ].map((s) => (
                 <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
@@ -1664,6 +1748,7 @@ function DocsPage() {
             <option value="mcp-tools-retrieval">Context Retrieval</option>
             <option value="mcp-tools-mutation">Memory Mutation</option>
             <option value="mcp-tools-sync">Workspace Sync</option>
+            <option value="mcp-tools-credentials">Credential Vault</option>
             <option value="mcp-errors-security">Errors & Security</option>
           </optgroup>
           <optgroup label="Client Integrations">
@@ -1728,6 +1813,9 @@ function DocsPage() {
               </button>
               <button onClick={() => setActiveSection("mcp-tools-sync")} className={`sidebar-button ${activeSection === "mcp-tools-sync" ? "active" : ""}`}>
                 <span>🔄</span> Agent Syncing
+              </button>
+              <button onClick={() => setActiveSection("mcp-tools-credentials")} className={`sidebar-button ${activeSection === "mcp-tools-credentials" ? "active" : ""}`}>
+                <span>🔐</span> Credential Vault
               </button>
               <button onClick={() => setActiveSection("mcp-errors-security")} className={`sidebar-button ${activeSection === "mcp-errors-security" ? "active" : ""}`}>
                 <span>⚠️</span> Errors & Security

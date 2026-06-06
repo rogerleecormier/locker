@@ -352,13 +352,23 @@ export const memoryRecommendations = sqliteTable("memory_recommendations", {
   projectKey: text("projectKey"),
   scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
   scopeId: text("scopeId"),
-  recommendationType: text("recommendationType", { enum: ["add", "archive"] }).notNull().default("add"),
+  // "add" = suggest adding a new memory (org workflow)
+  // "archive" = suggest archiving a contradicted memory (contradiction detector)
+  // "update" = agent wants to rewrite an existing memory (requires human approval)
+  // "delete" = agent wants to permanently delete a memory (requires human approval)
+  recommendationType: text("recommendationType", { enum: ["add", "archive", "update", "delete"] }).notNull().default("add"),
   targetMemoryId: text("targetMemoryId").references(() => memories.id, { onDelete: "cascade" }),
   status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
   reviewedBy: text("reviewedBy").references(() => users.id),
   reviewNotes: text("reviewNotes"),
   createdAt: integer("createdAt").notNull(),
   reviewedAt: integer("reviewedAt"),
+  // Populated for "update" type: the agent's proposed new state (old state is in fact/category/tags).
+  proposedFact: text("proposedFact"),
+  proposedCategory: text("proposedCategory"),
+  proposedTags: text("proposedTags"),
+  // Human-readable label of the agent that created this request.
+  agentContext: text("agentContext"),
 });
 
 export const notifications = sqliteTable("notifications", {
@@ -467,4 +477,28 @@ export const credentials = sqliteTable("credentials", {
 export type Credential = typeof credentials.$inferSelect;
 export type NewCredential = typeof credentials.$inferInsert;
 
+// ── GraphRAG — Entity nodes and relationship edges ────────────────────────────
+// Entities are extracted ephemerally by Workers AI on each addMemory/commit_memory.
+// entity_ids are stored as a space-separated list in Vectorize metadata so a single
+// IN (...) lookup against this table can hydrate adjacent nodes without SQL joins.
+export const memoryGraphNodes = sqliteTable("memory_graph_nodes", {
+  id: text("id").primaryKey(),                          // stable UUID for this entity
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  projectKey: text("projectKey"),                       // vault scope, mirrors memories.projectKey
+  label: text("label").notNull(),                       // canonical name, e.g. "AuthService"
+  type: text("type").notNull(),                         // e.g. "service" | "file" | "concept" | "person"
+  createdAt: integer("createdAt").notNull(),
+});
+
+export const memoryGraphEdges = sqliteTable("memory_graph_edges", {
+  id: text("id").primaryKey(),
+  memoryId: text("memoryId").notNull().references(() => memories.id, { onDelete: "cascade" }),
+  sourceNodeId: text("sourceNodeId").notNull().references(() => memoryGraphNodes.id, { onDelete: "cascade" }),
+  targetNodeId: text("targetNodeId").notNull().references(() => memoryGraphNodes.id, { onDelete: "cascade" }),
+  relation: text("relation").notNull(),                 // e.g. "calls" | "depends_on" | "implements"
+  createdAt: integer("createdAt").notNull(),
+});
+
+export type MemoryGraphNode = typeof memoryGraphNodes.$inferSelect;
+export type MemoryGraphEdge = typeof memoryGraphEdges.$inferSelect;
 

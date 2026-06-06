@@ -30,6 +30,7 @@ import {
 import type { D1Database } from "@cloudflare/workers-types";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { encrypt, decrypt, isEncrypted, hashToken, getOrCreateVaultKey, deriveUserKey, decryptEphemeral, EphemeralPlaintext } from "./crypto";
+import { extractGraphEntities, persistGraphData, expandByEntityIds } from "./graphRag";
 import { requireSession, requireAdmin } from "./session";
 import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "./enterprise";
 import { checkMemoryLimit, checkApiTokenLimit, getUserEffectivePlan } from "./planGate";
@@ -621,7 +622,10 @@ export const addMemory = createServerFn({ method: "POST" })
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const encryptedFact = await encryptFact(sanitizedFact, vaultKey);
 
-    const embedding = await generateEmbedding(env.AI, sanitizedFact);
+    const [embedding, graphExtraction] = await Promise.all([
+      generateEmbedding(env.AI, sanitizedFact),
+      extractGraphEntities(env.AI, sanitizedFact),
+    ]);
     const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
     const tagsList = data.tags.split(",").map(t => t.trim()).filter(Boolean);
@@ -706,6 +710,15 @@ export const addMemory = createServerFn({ method: "POST" })
       timestamp,
     });
 
+    // Persist GraphRAG entity nodes and edges, then embed entity IDs into Vectorize metadata.
+    // persistGraphData is best-effort: failures must not block the memory write.
+    let entityIds: string[] = [];
+    try {
+      entityIds = await persistGraphData(env.DB, id, user.id, data.projectKey ?? null, graphExtraction);
+    } catch (err) {
+      console.error("[addMemory] graph persist failed:", err);
+    }
+
     try {
       await env.VECTOR_INDEX.insert([
         {
@@ -716,6 +729,8 @@ export const addMemory = createServerFn({ method: "POST" })
             category: data.category,
             tags: finalTags,
             projectKey: data.projectKey ?? "",
+            // Space-separated entity node IDs enable O(1) IN() graph expansion at recall time.
+            entityIds: entityIds.join(" "),
           } as Record<string, VectorizeVectorMetadata>,
         },
       ]);
@@ -1764,6 +1779,45 @@ export const bulkDeleteMemories = createServerFn({ method: "POST" })
     return { deleted: authorizedIds.length };
   });
 
+// ── RRF helpers ───────────────────────────────────────────────────────────────
+
+const RRF_K = 60; // standard constant that dampens outlier rank advantages
+const RECENCY_LAMBDA = 0.005; // e-folding ≈ 139 days
+const CROSS_ENCODER_TOP = 20; // candidates fed into the cross-encoder
+const CROSS_ENCODER_OUTPUT = 10; // max results the cross-encoder selects
+
+function rrfScore(ranks: number[]): number {
+  return ranks.reduce((sum, r) => sum + 1 / (RRF_K + r + 1), 0);
+}
+
+function recencyScore(timestamp: number): number {
+  const ageMs = Date.now() - timestamp;
+  const ageDays = ageMs / 86_400_000;
+  return Math.exp(-RECENCY_LAMBDA * ageDays);
+}
+
+// Tokenise query into lower-case words ≥ 3 chars, stripping punctuation.
+function tokenise(text: string): Set<string> {
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
+  return new Set(tokens);
+}
+
+// Score a memory's plaintext metadata fields (tags + category) against query tokens.
+// Uses blind-index-safe columns only — fact is never decrypted at this stage.
+function keywordScore(row: Memory, queryTokens: Set<string>): number {
+  if (queryTokens.size === 0) return 0;
+  const haystack = `${row.tags} ${row.category}`.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+  let hits = 0;
+  for (const token of queryTokens) {
+    if (haystack.includes(token)) hits++;
+  }
+  return hits / queryTokens.size;
+}
+
 const RecallContextSchema = z.object({
   query: z.string().min(1, "query is required").max(10000).transform((s) => s.trim()),
   topK: z.number().int().min(1).max(50).default(5),
@@ -1795,7 +1849,11 @@ export const recallContext = createServerFn({ method: "POST" })
     const queryTrimmed = data.query;
     const embedding = await generateEmbedding(env.AI, queryTrimmed);
     const tokensConsumed = estimateEmbeddingTokens(queryTrimmed);
-    const topK = Math.min(20, data.topK ?? 5);
+    const finalTopK = Math.min(data.topK ?? 5, 50);
+
+    // ── 1. Vectorize semantic retrieval ────────────────────────────────────────
+    // Fetch a generous candidate pool so RRF has enough signal to re-rank from.
+    const VECTOR_CANDIDATE_K = Math.min(Math.max(finalTopK * 4, 40), 100);
 
     const filter: Record<string, any> = {};
     if (data.projectKey && (data.projectKey.startsWith("team:") || data.projectKey.startsWith("org:"))) {
@@ -1807,21 +1865,35 @@ export const recallContext = createServerFn({ method: "POST" })
       }
     }
 
-    const results = await env.VECTOR_INDEX.query(embedding, {
-      topK,
+    const vectorResults = await env.VECTOR_INDEX.query(embedding, {
+      topK: VECTOR_CANDIDATE_K,
       filter,
-      returnMetadata: "none",
+      returnMetadata: "indexed",
     });
 
-    if (!results.matches || results.matches.length === 0) {
+    if (!vectorResults.matches || vectorResults.matches.length === 0) {
       await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "recall_context", metadata: { query: data.query, projectKey: data.projectKey, matchCount: 0 } });
       await logTokenUsage(db, "session", "recall", tokensConsumed);
       return [];
     }
 
-    const ids = results.matches.map((m: VectorizeMatch) => m.id);
+    // Build a rank map from Vectorize order (index 0 = highest similarity).
+    const vectorRankMap = new Map<string, number>(
+      vectorResults.matches.map((m: VectorizeMatch, i: number) => [m.id, i])
+    );
+    const vectorIds = vectorResults.matches.map((m: VectorizeMatch) => m.id);
+
+    // ── 2. GraphRAG expansion ──────────────────────────────────────────────────
+    const entityIds = vectorResults.matches.flatMap((m: VectorizeMatch) => {
+      const raw = (m.metadata as Record<string, unknown> | undefined)?.entityIds;
+      if (typeof raw !== "string" || !raw) return [];
+      return raw.split(" ").filter(Boolean);
+    });
+    const expandedIds = await expandByEntityIds(env.DB, entityIds, vectorIds);
+
+    // ── 3. Fetch candidate rows from D1 ────────────────────────────────────────
     const conditions = [
-      sql`${memories.id} IN (${sql.join(ids.map((id: string) => sql`${id}`), sql`, `)})`
+      sql`${memories.id} IN (${sql.join(expandedIds.map((id: string) => sql`${id}`), sql`, `)})`
     ];
 
     if (data.isActive !== undefined) {
@@ -1849,24 +1921,147 @@ export const recallContext = createServerFn({ method: "POST" })
       .where(and(...conditions))
       .all();
 
+    if (rows.length === 0) {
+      await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "recall_context", metadata: { query: data.query, projectKey: data.projectKey, matchCount: 0 } });
+      await logTokenUsage(db, "session", "recall", tokensConsumed);
+      return [];
+    }
+
+    // ── 4. Keyword rank list (blind-index safe — tags/category are plaintext) ─
+    const queryTokens = tokenise(queryTrimmed);
+    const keywordScored = rows
+      .map((r) => ({ id: r.id, score: keywordScore(r, queryTokens) }))
+      .sort((a, b) => b.score - a.score);
+    const keywordRankMap = new Map<string, number>(keywordScored.map((e, i) => [e.id, i]));
+
+    // ── 5. Recency rank list ───────────────────────────────────────────────────
+    const recencyScored = rows
+      .map((r) => ({ id: r.id, score: recencyScore(r.timestamp) }))
+      .sort((a, b) => b.score - a.score);
+    const recencyRankMap = new Map<string, number>(recencyScored.map((e, i) => [e.id, i]));
+
+    // ── 6. Reciprocal Rank Fusion ─────────────────────────────────────────────
+    // Authoritative memories pin to the front before RRF ordering.
+    const fused = rows
+      .map((r) => {
+        const vRank = vectorRankMap.get(r.id) ?? rows.length;
+        const kRank = keywordRankMap.get(r.id) ?? rows.length;
+        const tRank = recencyRankMap.get(r.id) ?? rows.length;
+        return { row: r, rfScore: rrfScore([vRank, kRank, tRank]) };
+      })
+      .sort((a, b) => {
+        // Authoritative memories always float to the top.
+        if (a.row.authorityType === "authoritative" && b.row.authorityType !== "authoritative") return -1;
+        if (a.row.authorityType !== "authoritative" && b.row.authorityType === "authoritative") return 1;
+        return b.rfScore - a.rfScore;
+      });
+
+    // ── 7. Decrypt top-N candidates for cross-encoder ─────────────────────────
     const vaultId = (data.projectKey && (data.projectKey.startsWith("team:") || data.projectKey.startsWith("org:"))) ? data.projectKey : user.id;
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
 
-    const idOrder = new Map(ids.map((id: string, i: number) => [id, i]));
-    const sorted = rows.sort((a, b) => {
-      if (a.authorityType === "authoritative" && b.authorityType !== "authoritative") return -1;
-      if (a.authorityType !== "authoritative" && b.authorityType === "authoritative") return 1;
-      return (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999);
-    });
-    const decrypted = await Promise.all(
-      sorted.map(async (r) => ({ ...r, fact: await decryptFact(r.fact, vaultKey) }))
-    );
+    const crossEncoderPool = fused.slice(0, CROSS_ENCODER_TOP);
+    const ephemerals: Array<{ id: string; eph: import("./crypto").EphemeralPlaintext }> = [];
+    let decryptedPool: Array<{ row: Memory; fact: string }>;
 
-    // Audit logging & usage tracking
-    await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "recall_context", metadata: { query: data.query, projectKey: data.projectKey, matchCount: decrypted.length } });
-    await logTokenUsage(db, "session", "recall", tokensConsumed);
+    try {
+      decryptedPool = await Promise.all(
+        crossEncoderPool.map(async ({ row }) => {
+          const { decryptEphemeral } = await import("./crypto");
+          if (isEncrypted(row.fact)) {
+            const eph = await decryptEphemeral(row.fact, vaultKey);
+            ephemerals.push({ id: row.id, eph });
+            return { row, fact: eph.get() };
+          }
+          return { row, fact: row.fact };
+        })
+      );
 
-    return decrypted;
+      // ── 8. Cross-encoder reranking ─────────────────────────────────────────
+      // The LLM acts as a cross-encoder: it scores each candidate against the
+      // raw query and returns an ordered list of IDs. This is the final ranking
+      // gate before the result set is returned to the IDE agent.
+      let finalOrder: string[] | null = null;
+
+      if (decryptedPool.length > 1) {
+        const candidateLines = decryptedPool
+          .map((c, i) => `[${i}] ${c.fact.slice(0, 300)}`)
+          .join("\n");
+
+        const cePrompt = `You are a precision memory retrieval ranker. Given the user's query and a numbered list of candidate memory facts, output ONLY a JSON array of the candidate indices (integers), ordered from most relevant to least relevant. Include only indices whose facts are genuinely useful for answering the query. Omit irrelevant facts entirely. No explanation, no markdown.
+
+Query: "${queryTrimmed}"
+
+Candidates:
+${candidateLines}
+
+Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
+
+        try {
+          const ceResult = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+            prompt: cePrompt,
+            max_tokens: Math.max(64, decryptedPool.length * 6),
+          });
+          const ceText = extractText(ceResult).trim();
+          const match = ceText.match(/\[[\s\S]*?\]/);
+          if (match) {
+            const parsed: unknown[] = JSON.parse(match[0]);
+            const indices = parsed
+              .filter((v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < decryptedPool.length)
+              .slice(0, CROSS_ENCODER_OUTPUT);
+            if (indices.length > 0) {
+              finalOrder = indices.map((i) => decryptedPool[i].row.id);
+            }
+          }
+        } catch (ceErr) {
+          console.error("[recallContext] cross-encoder failed, falling back to RRF order:", ceErr);
+        }
+      }
+
+      // Build the final result set.
+      let result: Memory[];
+      if (finalOrder && finalOrder.length > 0) {
+        const poolMap = new Map(decryptedPool.map((c) => [c.row.id, c]));
+        // Re-apply authority pinning after cross-encoder ordering.
+        const ceOrdered = finalOrder
+          .map((id) => poolMap.get(id))
+          .filter((c): c is { row: Memory; fact: string } => c !== undefined);
+        const authoritative = ceOrdered.filter((c) => c.row.authorityType === "authoritative");
+        const contributed = ceOrdered.filter((c) => c.row.authorityType !== "authoritative");
+        result = [...authoritative, ...contributed]
+          .slice(0, finalTopK)
+          .map((c) => ({ ...c.row, fact: c.fact }));
+      } else {
+        // Fallback: use RRF order with decrypted facts.
+        const poolMap = new Map(decryptedPool.map((c) => [c.row.id, c]));
+        result = crossEncoderPool
+          .slice(0, finalTopK)
+          .map(({ row }) => {
+            const c = poolMap.get(row.id);
+            return c ? { ...row, fact: c.fact } : null;
+          })
+          .filter((r): r is Memory => r !== null);
+      }
+
+      // Best-effort: update lastAccessedAt for returned memories.
+      const returnedIds = result.map((r) => r.id);
+      if (returnedIds.length > 0) {
+        db.update(memories)
+          .set({ lastAccessedAt: Date.now() })
+          .where(sql`${memories.id} IN (${sql.join(returnedIds.map((id) => sql`${id}`), sql`, `)})`)
+          .run()
+          .catch((err) => console.error("[recallContext] lastAccessedAt update failed:", err));
+      }
+
+      await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "recall_context", metadata: { query: data.query, projectKey: data.projectKey, matchCount: result.length } });
+      await logTokenUsage(db, "session", "recall", tokensConsumed);
+
+      return result;
+    } finally {
+      for (const { eph } of ephemerals) {
+        eph.drop();
+      }
+    }
   });
 
 export const nukeEverything = createServerFn({ method: "POST" }).handler(
@@ -2853,7 +3048,96 @@ export const reviewMemoryRecommendation = createServerFn({ method: "POST" })
     const timestamp = Date.now();
 
     if (data.action === "approve") {
-      if (rec.recommendationType === "archive") {
+      if (rec.recommendationType === "delete") {
+        // Agent requested deletion — now the human has approved it.
+        if (!rec.targetMemoryId) {
+          throw new Error("Invalid recommendation: targetMemoryId is required for deletion.");
+        }
+        const targets = await db.select().from(memories).where(eq(memories.id, rec.targetMemoryId)).all();
+        if (targets.length === 0) {
+          // Memory was already deleted; treat as success.
+          await db.update(memoryRecommendations)
+            .set({ status: "approved", reviewedBy: user.id, reviewedAt: timestamp, reviewNotes: data.reviewNotes })
+            .where(eq(memoryRecommendations.id, data.id));
+          return { success: true };
+        }
+
+        await db.delete(memories).where(eq(memories.id, rec.targetMemoryId));
+        try {
+          await env.VECTOR_INDEX.deleteByIds([rec.targetMemoryId]);
+        } catch (e) {
+          console.error("[reviewMemoryRecommendation] vector delete failed:", e);
+        }
+
+        await db.update(memoryRecommendations)
+          .set({ status: "approved", reviewedBy: user.id, reviewedAt: timestamp, reviewNotes: data.reviewNotes })
+          .where(eq(memoryRecommendations.id, data.id));
+
+        await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "approve_agent_delete", memoryId: rec.targetMemoryId, metadata: { recId: rec.id, agentContext: rec.agentContext } });
+        return { success: true };
+
+      } else if (rec.recommendationType === "update") {
+        // Agent requested an update — now the human has approved it.
+        if (!rec.targetMemoryId) {
+          throw new Error("Invalid recommendation: targetMemoryId is required for update.");
+        }
+        const targets = await db.select().from(memories).where(eq(memories.id, rec.targetMemoryId)).all();
+        if (targets.length === 0) {
+          throw new Error("Target memory not found — it may have been deleted.");
+        }
+        const targetMem = targets[0];
+
+        if (!rec.proposedFact) {
+          throw new Error("Invalid recommendation: proposedFact is missing.");
+        }
+
+        const proposedCategory = (rec.proposedCategory as any) ?? targetMem.category;
+        const proposedTags = rec.proposedTags ?? targetMem.tags;
+
+        const vaultId = (targetMem.projectKey && (targetMem.projectKey.startsWith("team:") || targetMem.projectKey.startsWith("org:"))) ? targetMem.projectKey : targetMem.userId;
+        const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+        const encryptedFact = await encryptFact(rec.proposedFact, vaultKey);
+        const isQuarantined = containsSensitiveData(rec.proposedFact);
+
+        await db.update(memories)
+          .set({ fact: encryptedFact, category: proposedCategory, tags: proposedTags, timestamp, isQuarantined })
+          .where(eq(memories.id, rec.targetMemoryId));
+
+        await db.insert(memoryVersions).values({
+          id: crypto.randomUUID(),
+          memoryId: rec.targetMemoryId,
+          fact: encryptedFact,
+          category: proposedCategory,
+          tags: proposedTags,
+          changedBy: user.id,
+          changeReason: "agent_update_approved",
+          timestamp,
+        });
+
+        const embedding = await generateEmbedding(env.AI, rec.proposedFact);
+        try {
+          await env.VECTOR_INDEX.upsert([{
+            id: rec.targetMemoryId,
+            values: embedding,
+            metadata: {
+              userId: targetMem.userId,
+              category: proposedCategory,
+              tags: proposedTags,
+              projectKey: targetMem.projectKey ?? "",
+            } as Record<string, VectorizeVectorMetadata>,
+          }]);
+        } catch (e) {
+          console.error("[reviewMemoryRecommendation] vector upsert failed:", e);
+        }
+
+        await db.update(memoryRecommendations)
+          .set({ status: "approved", reviewedBy: user.id, reviewedAt: timestamp, reviewNotes: data.reviewNotes })
+          .where(eq(memoryRecommendations.id, data.id));
+
+        await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "approve_agent_update", memoryId: rec.targetMemoryId, metadata: { recId: rec.id, agentContext: rec.agentContext } });
+        return { success: true };
+
+      } else if (rec.recommendationType === "archive") {
         if (!rec.targetMemoryId) {
           throw new Error("Invalid recommendation: targetMemoryId is required for archiving.");
         }
@@ -4030,13 +4314,15 @@ export const listPersonalMemoryRecommendations = createServerFn({ method: "GET" 
     const user = await requireSession(env);
     const db = getDb(env);
 
+    // Returns all pending personal recommendations: contradiction-detected archives,
+    // and agent-requested updates/deletes that require human approval.
     return db
       .select()
       .from(memoryRecommendations)
       .where(and(
         eq(memoryRecommendations.userId, user.id),
-        eq(memoryRecommendations.scopeType, "personal"),
-        eq(memoryRecommendations.status, "pending")
+        eq(memoryRecommendations.status, "pending"),
+        sql`(${memoryRecommendations.scopeType} = 'personal' OR ${memoryRecommendations.recommendationType} IN ('update', 'delete'))`
       ))
       .orderBy(desc(memoryRecommendations.createdAt))
       .all();
