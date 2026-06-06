@@ -31,6 +31,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { title: "Locker — Personal Vault" },
     ],
     links: [
+      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
       { rel: "icon", type: "image/png", href: "/favicon.png" },
       { rel: "shortcut icon", href: "/favicon.ico" },
     ],
