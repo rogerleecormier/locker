@@ -80,16 +80,20 @@ async function packPrompt(ai: Ai, query: string, items: PackableMemory[]): Promi
 
   const userMessage =
     `User query: "${query}"\n\nMemory fragments to compress:\n${chunks}\n\nOutput the optimised system prompt now.`;
+  try {
+    const result = await ai.run("@cf/meta/llama-3.1-8b-instruct-fp8", {
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      max_tokens: 1024,
+    });
 
-  const result = await ai.run("@cf/meta/llama-3-8b-instruct", {
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
-    max_tokens: 1024,
-  });
-
-  return extractText(result).trim();
+    return extractText(result).trim();
+  } catch (err) {
+    console.error("[packPrompt] compression failed:", err);
+    return items.map((m, i) => `${i + 1}. [${m.category}] ${m.fact}`).join("\n");
+  }
 }
 
 const MCP_MANIFEST = {
@@ -555,6 +559,67 @@ async function validateBearerToken(
   // API token path (lkr_ prefix)
   if (rawToken.startsWith("lkr_")) {
     const db = drizzle(env.DB, { schema: { apiTokens, organizationMembers, teamMembers } });
+
+    // Handle JIT short-lived tokens
+    if (rawToken.startsWith("lkr_jit_")) {
+      const jitDb = drizzle(env.DB, { schema: { jitAccessRequests } });
+      const jitRows = await jitDb
+        .select()
+        .from(jitAccessRequests)
+        .where(eq(jitAccessRequests.status, "approved"))
+        .all();
+      
+      let matchedRow = null;
+      for (const row of jitRows) {
+        if (row.jitTokenHash && row.jitExpiresAt && row.jitExpiresAt > Date.now()) {
+          const jitValid = await verifyToken(rawToken, row.jitTokenHash);
+          if (jitValid) {
+            matchedRow = row;
+            break;
+          }
+        }
+      }
+
+      if (matchedRow) {
+        // Load original agent token's policy and scopes
+        const tokenRows = await db.select().from(apiTokens).where(eq(apiTokens.id, matchedRow.tokenId)).all();
+        if (tokenRows.length > 0) {
+          const token = tokenRows[0];
+          let accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }> = [];
+          if (token.scopes) {
+            try {
+              accessibleScopes = JSON.parse(token.scopes);
+            } catch (e) {}
+          }
+          if (accessibleScopes.length === 0) {
+            accessibleScopes = [{ type: token.scopeType as any, id: token.scopeId }];
+          }
+          const isAgent = token.tokenType === "agent";
+          let agentPolicy = null;
+          if (isAgent && token.agentPolicy) {
+            try {
+              agentPolicy = JSON.parse(token.agentPolicy);
+            } catch {}
+          }
+          
+          return {
+            userId: token.userId,
+            tokenId: token.id,
+            permissions: token.permissions,
+            scopeType: token.scopeType as any,
+            scopeId: token.scopeId,
+            accessibleScopes,
+            isAgent,
+            agentPolicy,
+            jitRequestId: matchedRow.id,
+            jitAllowedMemoryIds: new Set(
+              matchedRow.blockedMemoryIds ? matchedRow.blockedMemoryIds.split(",").filter(Boolean) : []
+            ),
+          };
+        }
+      }
+      return null;
+    }
 
     // Token format: lkr_<32-hex-id>_<32-hex-secret>
     // Look up by embedded row id, then verify with PBKDF2.

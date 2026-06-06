@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useCallback, useEffect, useRef } from "react";
-import { batchImportMemories, parseMemoriesWithAI } from "~/server/memoryFunctions";
+import { batchImportMemories, parseMemoriesWithAI, compareImportedMemories, executeImportActions } from "~/server/memoryFunctions";
+import type { ImportComparisonItem, ComparisonStatus } from "~/types/importTypes";
 import { TEMPLATES } from "~/lib/templates";
 import { PageContainer } from "~/components/PageContainer";
 import { PageHeader } from "~/components/PageHeader";
@@ -273,16 +274,20 @@ function IngestPanel() {
   const [pasteText, setPasteText] = useState("");
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
-  const [editingPreview, setEditingPreview] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
-  const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
+  
+  // Comparisons states
+  const [comparisons, setComparisons] = useState<ImportComparisonItem[] | null>(null);
+  const [activeTab, setActiveTab] = useState<ComparisonStatus | "all">("new");
+  const [resolvedActions, setResolvedActions] = useState<Record<string, "import" | "skip" | "update" | "archive_and_import" | "exclude">>({});
+  
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number; details?: string } | null>(null);
   const [source, setSource] = useState<string>("manual");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileRead(file: File) {
     setParseError(null);
-    setPreview(null);
-    setEditingPreview(null);
+    setComparisons(null);
+    setResolvedActions({});
     setImportResult(null);
 
     const text = await file.text();
@@ -317,23 +322,34 @@ function IngestPanel() {
     }
   }
 
-  const batchMutation = useMutation({
-    mutationFn: ({ items, source }: { items: Array<{ fact: string; category?: string; tags?: string }>; source: string }) =>
-      batchImportMemories({ data: { items, source } }),
+  const executeMutation = useMutation({
+    mutationFn: ({ items, source }: { items: Array<{ fact: string; category: "rules" | "projects" | "references"; tags?: string; action: "import" | "skip" | "update" | "archive_and_import" | "exclude"; matchedMemoryId?: string }>; source: string }) =>
+      executeImportActions({ data: { items, source } }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
       setPasteText("");
-      setPreview(null);
+      setComparisons(null);
+      setResolvedActions({});
       setParseError(null);
-      setImportResult(result);
-      setTimeout(() => setImportResult(null), 8000);
+      
+      const importedCount = result.imported;
+      const skippedCount = result.skipped;
+      const updatedCount = result.updated;
+      const archivedCount = result.archived;
+      
+      setImportResult({
+        imported: importedCount + updatedCount,
+        skipped: skippedCount,
+        details: `Imported: ${importedCount} new. Updated: ${updatedCount}. Archived: ${archivedCount}. Skipped: ${skippedCount}.`
+      });
+      setTimeout(() => setImportResult(null), 10000);
     },
   });
 
   async function handleProcess() {
     setParseError(null);
-    setPreview(null);
-    setEditingPreview(null);
+    setComparisons(null);
+    setResolvedActions({});
     setImportResult(null);
     if (!pasteText.trim()) return;
     setParsing(true);
@@ -341,10 +357,31 @@ function IngestPanel() {
       const items = await parseMemoriesWithAI({ data: { text: pasteText } });
       if (items.length === 0) {
         setParseError("No memories could be extracted. Try adding more content.");
-      } else {
-        setPreview(items);
-        setEditingPreview([...items]);
+        setParsing(false);
+        return;
       }
+      
+      const comparisonItems = await compareImportedMemories({ data: { items } });
+      setComparisons(comparisonItems);
+      
+      const initialActions: Record<string, "import" | "skip" | "update" | "archive_and_import" | "exclude"> = {};
+      comparisonItems.forEach((item) => {
+        if (item.status === "new") {
+          initialActions[item.tempId] = "import";
+        } else if (item.status === "duplicate") {
+          initialActions[item.tempId] = "skip";
+        } else if (item.status === "update") {
+          initialActions[item.tempId] = "update";
+        } else if (item.status === "contradiction") {
+          initialActions[item.tempId] = "archive_and_import";
+        }
+      });
+      setResolvedActions(initialActions);
+      
+      // Select the first tab that has elements
+      const tabsOrder: Array<ComparisonStatus> = ["new", "update", "contradiction", "duplicate"];
+      const firstNonEmptyTab = tabsOrder.find(t => comparisonItems.some(item => item.status === t)) || "new";
+      setActiveTab(firstNonEmptyTab);
     } catch (e) {
       setParseError((e as Error).message);
     } finally {
@@ -353,9 +390,28 @@ function IngestPanel() {
   }
 
   function handleImport() {
-    if (!editingPreview) return;
-    batchMutation.mutate({ items: editingPreview, source });
+    if (!comparisons) return;
+    
+    const itemsToExecute = comparisons.map((item) => ({
+      fact: item.fact,
+      category: item.category,
+      tags: item.tags,
+      action: resolvedActions[item.tempId] || "exclude",
+      matchedMemoryId: item.matchedMemory?.id,
+    }));
+    
+    executeMutation.mutate({ items: itemsToExecute, source });
   }
+
+  // Count items under each category
+  const countNew = comparisons?.filter(c => c.status === "new").length ?? 0;
+  const countUpdates = comparisons?.filter(c => c.status === "update").length ?? 0;
+  const countContradictions = comparisons?.filter(c => c.status === "contradiction").length ?? 0;
+  const countDuplicates = comparisons?.filter(c => c.status === "duplicate").length ?? 0;
+
+  const filteredItems = comparisons 
+    ? comparisons.map((item, idx) => ({ item, originalIndex: idx })).filter(({ item }) => activeTab === "all" || item.status === activeTab) 
+    : [];
 
   return (
     <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-xs">
@@ -365,7 +421,7 @@ function IngestPanel() {
         </svg>
         <span className="font-semibold text-sm text-text">Step 2 — Paste & import</span>
         <span className="text-text-muted text-xs md:ml-auto">
-          Paste the chatbot output — AI extracts and imports the memories
+          Paste the chatbot output — AI extracts and compares memories
         </span>
       </div>
 
@@ -393,8 +449,8 @@ function IngestPanel() {
         {inputMode === "paste" && (
           <textarea
             value={pasteText}
-            onChange={(e) => { setPasteText(e.target.value); setParseError(null); setPreview(null); setImportResult(null); }}
-            placeholder="Paste anything — chatbot memory exports, free-form text, structured or unstructured output. AI will extract the discrete facts."
+            onChange={(e) => { setPasteText(e.target.value); setParseError(null); setComparisons(null); setImportResult(null); }}
+            placeholder="Paste anything — chatbot memory exports, free-form text, structured or unstructured output. AI will extract and compare them with existing memories."
             rows={8}
             maxLength={16000}
             className="w-full bg-surface2 text-text border border-border rounded-xl p-3.5 text-xs font-mono placeholder:text-text-muted focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent leading-relaxed resize-y"
@@ -494,12 +550,31 @@ function IngestPanel() {
             <Button
               onClick={() => {
                 if (templateSelection.length > 0) {
-                  batchMutation.mutate({ items: templateSelection, source: "template" });
+                  const formatted = templateSelection.map(t => ({ fact: t.fact, category: t.category, tags: t.tags }));
+                  compareImportedMemories({ data: { items: formatted } }).then(res => {
+                    setComparisons(res);
+                    const initialActions: Record<string, "import" | "skip" | "update" | "archive_and_import" | "exclude"> = {};
+                    res.forEach((item) => {
+                      if (item.status === "new") {
+                        initialActions[item.tempId] = "import";
+                      } else if (item.status === "duplicate") {
+                        initialActions[item.tempId] = "skip";
+                      } else if (item.status === "update") {
+                        initialActions[item.tempId] = "update";
+                      } else if (item.status === "contradiction") {
+                        initialActions[item.tempId] = "archive_and_import";
+                      }
+                    });
+                    setResolvedActions(initialActions);
+                    setActiveTab("new");
+                    setSelectedTemplate(null);
+                    setTemplateSelection(null);
+                  });
                 }
               }}
               className="h-9 px-4 font-bold text-xs select-none w-fit mt-1"
             >
-              Import {templateSelection.length} Item{templateSelection.length !== 1 ? "s" : ""}
+              Analyze {templateSelection.length} Blueprints
             </Button>
           </div>
         )}
@@ -510,97 +585,337 @@ function IngestPanel() {
           </div>
         )}
 
-        {preview && editingPreview && (
+        {comparisons && (
           <div className="flex flex-col gap-3">
             <div className="flex justify-between items-center select-none gap-4">
-              <strong className="text-accent text-xs font-bold uppercase tracking-wider">Review & Edit</strong>
-              <span className="text-xs text-text-muted font-medium">{editingPreview.length} memor{editingPreview.length !== 1 ? "ies" : "y"}</span>
+              <strong className="text-accent text-xs font-bold uppercase tracking-wider">Review & Edit Comparisons</strong>
+              <span className="text-xs text-text-muted font-medium">{comparisons.length} extracted memory fact{comparisons.length !== 1 ? "s" : ""}</span>
             </div>
-            <div className="border border-accent/15 bg-accent/2 rounded-xl max-h-[350px] overflow-y-auto no-scrollbar p-1.5 flex flex-col gap-2.5">
-              {editingPreview.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="p-3 bg-surface border border-border rounded-xl flex flex-col gap-3 shadow-3xs"
-                >
-                  <div className="flex gap-3 items-start justify-between">
-                    <div className="flex-1">
-                      <Input
-                        type="text"
-                        value={item.fact}
-                        onChange={(e) => {
-                          const updated = [...editingPreview];
-                          updated[idx] = { ...updated[idx], fact: e.target.value };
-                          setEditingPreview(updated);
-                        }}
-                        className="h-8 text-xs font-medium"
-                      />
-                    </div>
-                    <Button
-                      onClick={() => {
-                        const updated = editingPreview.filter((_, i) => i !== idx);
-                        setEditingPreview(updated);
-                      }}
-                      variant="ghost"
-                      className="h-8 text-xs text-error hover:text-error hover:bg-error/5 hover:border-error/25 font-semibold px-2.5"
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input
-                      type="text"
-                      placeholder="Category (optional)"
-                      value={item.category || ""}
-                      onChange={(e) => {
-                        const updated = [...editingPreview];
-                        updated[idx] = { ...updated[idx], category: e.target.value || undefined };
-                        setEditingPreview(updated);
-                      }}
-                      className="h-8 text-[11px] font-medium"
-                    />
-                    <Input
-                      type="text"
-                      placeholder="Tags (optional, comma-separated)"
-                      value={item.tags || ""}
-                      onChange={(e) => {
-                        const updated = [...editingPreview];
-                        updated[idx] = { ...updated[idx], tags: e.target.value || undefined };
-                        setEditingPreview(updated);
-                      }}
-                      className="h-8 text-[11px] font-medium"
-                    />
-                  </div>
+
+            {/* Tabbed View */}
+            <div className="flex gap-1 border-b border-border overflow-x-auto no-scrollbar select-none mb-2 bg-surface2/30 p-1 rounded-t-xl">
+              {[
+                { key: "new", label: "New", count: countNew, badgeStyle: "bg-success/15 text-success" },
+                { key: "update", label: "Updates", count: countUpdates, badgeStyle: "bg-amber-500/15 text-amber-600" },
+                { key: "contradiction", label: "Contradictions", count: countContradictions, badgeStyle: "bg-rose-500/15 text-rose-600" },
+                { key: "duplicate", label: "Duplicates", count: countDuplicates, badgeStyle: "bg-surface2 border border-border text-text-muted" },
+                { key: "all", label: "All", count: comparisons.length, badgeStyle: "bg-accent/15 text-accent" },
+              ].map((tab) => {
+                const active = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key as any)}
+                    className={`px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 whitespace-nowrap transition-colors -mb-[1px] rounded-t-md hover:bg-surface2/40 uppercase tracking-wider text-[11px] cursor-pointer flex items-center gap-2 ${
+                      active 
+                        ? "border-accent text-accent bg-surface shadow-2xs font-bold" 
+                        : "border-transparent text-text-muted hover:text-text"
+                    }`}
+                  >
+                    {tab.label}
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${tab.badgeStyle}`}>
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Comparisons List */}
+            <div className="border border-accent/15 bg-accent/2 rounded-xl max-h-[420px] overflow-y-auto no-scrollbar p-2 flex flex-col gap-3">
+              {filteredItems.length === 0 ? (
+                <div className="py-12 text-center text-text-muted text-xs font-semibold select-none bg-surface border border-border rounded-xl">
+                  No memories in this category.
                 </div>
-              ))}
+              ) : (
+                filteredItems.map(({ item, originalIndex }) => {
+                  const action = resolvedActions[item.tempId];
+                  const isExcluded = action === "exclude";
+
+                  return (
+                    <div
+                      key={item.tempId}
+                      className={`p-4 bg-surface border rounded-xl flex flex-col gap-3.5 shadow-xs transition-all ${
+                        isExcluded ? "opacity-60 border-border bg-surface/50" : "border-border hover:border-accent/30"
+                      }`}
+                    >
+                      {item.status === "new" && (
+                        <div className="flex justify-between items-center gap-4 select-none">
+                          <span className="text-[9px] font-bold text-success uppercase tracking-wider bg-success/10 px-2.5 py-1 rounded-full border border-success/20">New Memory</span>
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "import" }))}
+                              className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                action === "import"
+                                  ? "bg-success border-success text-white"
+                                  : "bg-surface border-border text-text hover:bg-surface2"
+                              }`}
+                            >
+                              Import
+                            </button>
+                            <button
+                              onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "exclude" }))}
+                              className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                action === "exclude"
+                                  ? "bg-error border-error text-white"
+                                  : "bg-surface border-border text-text hover:bg-error/5 hover:border-error/25 hover:text-error"
+                              }`}
+                            >
+                              Exclude
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {item.status === "duplicate" && (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex justify-between items-center select-none gap-4">
+                            <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider bg-surface2 border border-border px-2.5 py-1 rounded-full">Duplicate</span>
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "skip" }))}
+                                className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                  action === "skip"
+                                    ? "bg-accent border-accent text-white"
+                                    : "bg-surface border-border text-text hover:bg-surface2"
+                                }`}
+                              >
+                                Skip & Link Source
+                              </button>
+                              <button
+                                onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "import" }))}
+                                className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                  action === "import"
+                                    ? "bg-success border-success text-white"
+                                    : "bg-surface border-border text-text hover:bg-surface2"
+                                }`}
+                              >
+                                Import Anyway
+                              </button>
+                              <button
+                                onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "exclude" }))}
+                                className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                  action === "exclude"
+                                    ? "bg-error border-error text-white"
+                                    : "bg-surface border-border text-text hover:bg-error/5 hover:border-error/25 hover:text-error"
+                                }`}
+                              >
+                                Exclude
+                              </button>
+                            </div>
+                          </div>
+                          {item.matchedMemory && (
+                            <div className="bg-surface2/60 border border-border rounded-xl p-3 text-xs leading-relaxed flex flex-col gap-1 select-none">
+                              <div className="text-[9px] font-bold text-text-muted uppercase tracking-wider">Existing Memory Match:</div>
+                              <div className="text-text-muted font-medium line-through decoration-text-muted/50">{item.matchedMemory.fact}</div>
+                              {item.reason && <div className="text-[10px] text-text-muted italic mt-1 bg-surface3/40 px-2 py-1 rounded-md">{item.reason}</div>}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {item.status === "update" && (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex justify-between items-center select-none gap-4">
+                            <span className="text-[9px] font-bold text-amber-500 uppercase tracking-wider bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">Update Candidate</span>
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "update" }))}
+                                className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                  action === "update"
+                                    ? "bg-amber-500 border-amber-500 text-white"
+                                    : "bg-surface border-border text-text hover:bg-surface2"
+                                }`}
+                              >
+                                Update Existing
+                              </button>
+                              <button
+                                onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "import" }))}
+                                className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                  action === "import"
+                                    ? "bg-success border-success text-white"
+                                    : "bg-surface border-border text-text hover:bg-surface2"
+                                }`}
+                              >
+                                Keep Both
+                              </button>
+                              <button
+                                onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "exclude" }))}
+                                className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                  action === "exclude"
+                                    ? "bg-error border-error text-white"
+                                    : "bg-surface border-border text-text hover:bg-error/5 hover:border-error/25 hover:text-error"
+                                }`}
+                              >
+                                Keep Old Only
+                              </button>
+                            </div>
+                          </div>
+                          {item.matchedMemory && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1 select-none">
+                              <div className="bg-rose-500/4 border border-rose-500/10 rounded-xl p-3 text-xs leading-relaxed flex flex-col gap-1.5 shadow-4xs">
+                                <div className="text-[9px] font-bold text-rose-500 uppercase tracking-wider flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Existing (AS IS)
+                                </div>
+                                <div className="text-text-muted line-through decoration-rose-500/20">{item.matchedMemory.fact}</div>
+                              </div>
+                              <div className="bg-success/4 border border-success/10 rounded-xl p-3 text-xs leading-relaxed flex flex-col gap-1.5 shadow-4xs">
+                                <div className="text-[9px] font-bold text-success uppercase tracking-wider flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-success" /> Proposed Update
+                                </div>
+                                <div className="text-text font-semibold">{item.fact}</div>
+                              </div>
+                            </div>
+                          )}
+                          {item.reason && <div className="text-[10px] text-text-muted italic select-none bg-surface3/40 px-2.5 py-1.5 rounded-md mt-1">{item.reason}</div>}
+                        </div>
+                      )}
+
+                      {item.status === "contradiction" && (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex justify-between items-center select-none gap-4">
+                            <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20">Contradiction</span>
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "archive_and_import" }))}
+                                className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                  action === "archive_and_import"
+                                    ? "bg-rose-500 border-rose-500 text-white"
+                                    : "bg-surface border-border text-text hover:bg-surface2"
+                                }`}
+                              >
+                                Archive Old & Add New
+                              </button>
+                              <button
+                                onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "import" }))}
+                                className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                  action === "import"
+                                    ? "bg-success border-success text-white"
+                                    : "bg-surface border-border text-text hover:bg-surface2"
+                                }`}
+                              >
+                                Keep Both
+                              </button>
+                              <button
+                                onClick={() => setResolvedActions(prev => ({ ...prev, [item.tempId]: "exclude" }))}
+                                className={`h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border cursor-pointer transition-colors ${
+                                  action === "exclude"
+                                    ? "bg-error border-error text-white"
+                                    : "bg-surface border-border text-text hover:bg-error/5 hover:border-error/25 hover:text-error"
+                                }`}
+                              >
+                                Keep Old Only
+                              </button>
+                            </div>
+                          </div>
+                          {item.matchedMemory && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1 select-none">
+                              <div className="bg-rose-500/4 border border-rose-500/10 rounded-xl p-3 text-xs leading-relaxed flex flex-col gap-1.5 shadow-4xs">
+                                <div className="text-[9px] font-bold text-rose-500 uppercase tracking-wider flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Existing Obsolete Memory
+                                </div>
+                                <div className="text-text-muted line-through decoration-rose-500/20">{item.matchedMemory.fact}</div>
+                              </div>
+                              <div className="bg-success/4 border border-success/10 rounded-xl p-3 text-xs leading-relaxed flex flex-col gap-1.5 shadow-4xs">
+                                <div className="text-[9px] font-bold text-success uppercase tracking-wider flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-success" /> New Facts
+                                </div>
+                                <div className="text-text font-semibold">{item.fact}</div>
+                              </div>
+                            </div>
+                          )}
+                          {item.reason && <div className="text-[10px] text-text-muted italic select-none bg-surface3/40 px-2.5 py-1.5 rounded-md mt-1">{item.reason}</div>}
+                        </div>
+                      )}
+
+                      {/* Inputs to edit fields */}
+                      <div className="flex flex-col gap-3 pt-3 border-t border-border/60">
+                        <div className="flex gap-3 items-start justify-between">
+                          <div className="flex-1">
+                            <Input
+                              type="text"
+                              disabled={isExcluded}
+                              value={item.fact}
+                              onChange={(e) => {
+                                const updated = [...comparisons!];
+                                updated[originalIndex] = { ...updated[originalIndex], fact: e.target.value };
+                                setComparisons(updated);
+                              }}
+                              className="h-8.5 text-xs font-semibold"
+                            />
+                          </div>
+                          <button
+                            onClick={() => {
+                              const updated = comparisons.filter((_, i) => i !== originalIndex);
+                              setComparisons(updated);
+                            }}
+                            className="h-8.5 px-3 rounded-md text-[10px] font-bold uppercase tracking-wider border border-error/20 bg-error/5 text-error hover:bg-error/15 cursor-pointer flex items-center justify-center transition-colors select-none"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 select-none">
+                          <div>
+                            <Input
+                              type="text"
+                              disabled={isExcluded}
+                              placeholder="Category (optional)"
+                              value={item.category || ""}
+                              onChange={(e) => {
+                                const updated = [...comparisons!];
+                                updated[originalIndex] = { ...updated[originalIndex], category: (e.target.value || "references") as any };
+                                setComparisons(updated);
+                              }}
+                              className="h-8 text-[11px] font-semibold"
+                            />
+                          </div>
+                          <div>
+                            <Input
+                              type="text"
+                              disabled={isExcluded}
+                              placeholder="Tags (optional, comma-separated)"
+                              value={item.tags || ""}
+                              onChange={(e) => {
+                                const updated = [...comparisons!];
+                                updated[originalIndex] = { ...updated[originalIndex], tags: e.target.value || undefined };
+                                setComparisons(updated);
+                              }}
+                              className="h-8 text-[11px] font-semibold"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         )}
 
-        {batchMutation.isError && (
+        {executeMutation.isError && (
           <div className="p-3 bg-error/10 border border-error/20 rounded-xl text-error text-xs font-medium select-none">
-            Import failed: {(batchMutation.error as Error).message}
+            Import failed: {(executeMutation.error as Error).message}
           </div>
         )}
 
         {importResult && (
-          <div className="p-3.5 bg-success/15 border border-success/30 rounded-xl text-success text-xs font-semibold select-none flex items-center justify-between gap-4 mt-2 shadow-3xs">
-            <span>
-              Imported {importResult.imported} memor{importResult.imported !== 1 ? "ies" : "y"}.
-              {importResult.skipped > 0 && (
-                <span className="text-text-muted font-medium ml-1.5">
-                  {importResult.skipped} duplicate{importResult.skipped !== 1 ? "s" : ""} skipped.
-                </span>
-              )}
-            </span>
-            <div className="flex gap-2.5 items-center flex-shrink-0">
+          <div className="p-4 bg-success/15 border border-success/30 rounded-2xl text-success text-xs font-semibold select-none flex flex-col md:flex-row md:items-center justify-between gap-3 mt-2 shadow-sm animate-fade-in">
+            <div className="flex flex-col gap-0.5">
+              <span className="font-bold text-sm">Import Complete!</span>
+              <span className="text-text-muted font-medium mt-0.5">
+                {importResult.details || `Processed memories successfully.`}
+              </span>
+            </div>
+            <div className="flex gap-2.5 items-center flex-shrink-0 self-end md:self-auto">
               <Button
                 onClick={() => navigate({ to: "/" })}
                 variant="outline"
-                className="h-7 text-xs border-success/30 bg-success/5 text-success hover:bg-success/15 hover:border-success/45 font-bold"
+                className="h-8 px-4 text-xs border-success/30 bg-success/5 text-success hover:bg-success/15 hover:border-success/45 font-bold rounded-lg shadow-3xs"
               >
                 View memories →
               </Button>
-              <button onClick={() => setImportResult(null)} className="text-success hover:opacity-100 opacity-70 font-semibold text-lg cursor-pointer px-1">×</button>
+              <button onClick={() => setImportResult(null)} className="text-success hover:opacity-100 opacity-70 font-semibold text-lg cursor-pointer px-1.5 py-0.5">×</button>
             </div>
           </div>
         )}
@@ -608,19 +923,19 @@ function IngestPanel() {
         <div className="flex gap-3 flex-wrap items-center mt-3 select-none">
           <Button
             onClick={handleProcess}
-            disabled={!pasteText.trim() || parsing || batchMutation.isPending}
+            disabled={!pasteText.trim() || parsing || executeMutation.isPending}
             variant="outline"
             className="h-9 px-4 font-bold text-xs select-none hover:border-accent/40 hover:text-accent"
           >
-            {parsing ? "Extracting…" : "Extract Memories"}
+            {parsing ? "Analyzing context…" : "Extract & Compare Memories"}
           </Button>
-          {preview && (
+          {comparisons && (
             <Button
               onClick={handleImport}
-              disabled={batchMutation.isPending}
+              disabled={executeMutation.isPending}
               className="h-9 px-4 font-bold text-xs select-none"
             >
-              {batchMutation.isPending ? "Importing…" : `Import ${preview.length} Memor${preview.length !== 1 ? "ies" : "y"}`}
+              {executeMutation.isPending ? "Executing Actions…" : `Apply Import Actions (${comparisons.filter(c => resolvedActions[c.tempId] !== "exclude").length} items)`}
             </Button>
           )}
 
