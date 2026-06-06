@@ -460,7 +460,7 @@ function DocsPage() {
               {[
                 { step: "1", text: "Navigate to the Admin page from the top navigation bar." },
                 { step: "2", text: "Under the personal settings sidebar, click API Tokens." },
-                { step: "3", text: "Click the Generate Token button. Choose Human Token (for interactive clients like Claude Desktop) or Agent Token (for autonomous pipelines and bots). Human tokens carry per-tool permission bitmasks. Agent tokens additionally require an Agent Context label, an Allowed Categories list — restricting which memory categories (rules, projects, references, stack) the agent may read or write — and optional allowedTags/deniedTags for fine-grained tag-level access control. Memories tagged #confidential always require JIT approval regardless of tag policy. Credential vault access must also be explicitly enabled." }
+                { step: "3", text: "Click the Generate Token button and select a token type: Human Token (for interactive clients like Claude Desktop) or Agent Token (for autonomous agents and CI/CD pipelines)." }
               ].map((s) => (
                 <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
                   <div style={{
@@ -471,6 +471,37 @@ function DocsPage() {
                   <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
                 </div>
               ))}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginTop: 16, marginBottom: 24 }}>
+              <div style={{ background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.15)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8, marginTop: 0 }}>
+                  👤 Human Tokens
+                </h4>
+                <div style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6 }}>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    <li style={{ marginBottom: 6 }}><strong>Use Case:</strong> Interactive clients where a human drives the session (e.g., Claude Desktop, IDE extensions).</li>
+                    <li style={{ marginBottom: 6 }}><strong>Permissions:</strong> Controlled by a simple per-tool bitmask (e.g. <code>recall_context</code>, <code>commit_memory</code>).</li>
+                    <li><strong>Safety:</strong> Destructive calls (delete/update) bypass queues but require manual TOTP 2FA or a secure passcode.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div style={{ background: "rgba(59, 130, 246, 0.04)", border: "1px solid rgba(59, 130, 246, 0.15)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8, marginTop: 0 }}>
+                  🤖 Agent Tokens (ABAC Policies)
+                </h4>
+                <div style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6 }}>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    <li style={{ marginBottom: 6 }}><strong>Use Case:</strong> Autonomous workflows, background daemons, or CI/CD pipelines.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Agent Context:</strong> Requires declaring an audited purpose label aligning operations to a specific role.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Category Filters:</strong> Strict limits on access to specific categories (<code>rules</code>, <code>projects</code>, <code>references</code>, <code>stack</code>).</li>
+                    <li style={{ marginBottom: 6 }}><strong>Tag Bounds:</strong> Define <code>allowedTags</code> and <code>deniedTags</code> rules for precise tag-level boundaries.</li>
+                    <li style={{ marginBottom: 6 }}><strong>JIT Gate:</strong> Memories tagged <code>#confidential</code> trigger an approval queue and are redacted by default.</li>
+                    <li><strong>Credentials:</strong> Access to stored vault credentials must be explicitly and individually allowed.</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </div>
         );
