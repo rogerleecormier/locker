@@ -46,7 +46,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM organizations WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in organizations when scopeType is organization')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fku_memories_scope_org
@@ -57,7 +57,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM organizations WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in organizations when scopeType is organization')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fki_memories_scope_team
@@ -68,7 +68,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM teams WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in teams when scopeType is team')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fku_memories_scope_team
@@ -79,7 +79,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM teams WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in teams when scopeType is team')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fki_memories_scope_personal
@@ -106,7 +106,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM organizations WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in organizations when scopeType is organization')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fku_api_tokens_scope_org
@@ -117,7 +117,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM organizations WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in organizations when scopeType is organization')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fki_api_tokens_scope_team
@@ -128,7 +128,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM teams WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in teams when scopeType is team')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fku_api_tokens_scope_team
@@ -139,7 +139,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM teams WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in teams when scopeType is team')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fki_api_tokens_scope_personal
@@ -166,7 +166,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM organizations WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in organizations when scopeType is organization')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fku_memory_recommendations_scope_org
@@ -177,7 +177,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM organizations WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in organizations when scopeType is organization')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fki_memory_recommendations_scope_team
@@ -188,7 +188,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM teams WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in teams when scopeType is team')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fku_memory_recommendations_scope_team
@@ -199,7 +199,7 @@ BEGIN
   SELECT (CASE
     WHEN (SELECT 1 FROM teams WHERE id = NEW.scopeId) IS NULL
     THEN RAISE(ABORT, 'Foreign key violation: scopeId must exist in teams when scopeType is team')
-  END);?
+  END);
 END;
 --> statement-breakpoint
 CREATE TRIGGER fki_memory_recommendations_scope_personal
