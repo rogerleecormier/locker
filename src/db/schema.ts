@@ -195,6 +195,12 @@ export type AgentPolicy = {
   agentContext: string;              // human-readable label for the agent, max 128 chars
   allowedCategories: MemoryCategory[]; // empty = ABAC_DEFAULT_ALLOW applies
   deniedCategories: MemoryCategory[];  // always wins over allowedCategories
+  // Tag-level least-privilege: explicit allowlist / denylist applied after category filter.
+  // allowedTags: if non-empty, only memories whose tags intersect this set are visible.
+  // deniedTags:  memories whose tags intersect this set are always blocked (wins over allowedTags).
+  // A tag value of "#confidential" triggers the JIT approval workflow rather than a hard deny.
+  allowedTags: string[];             // normalised lowercase, e.g. ["#internal","#architecture"]
+  deniedTags: string[];              // normalised lowercase, e.g. ["#pii","#secret"]
   allowCredentials: boolean;         // whether retrieve/store/delete_credential are permitted
 };
 
@@ -202,6 +208,9 @@ export type AgentPolicy = {
 // Add future categories like "financial" or "legal" here when introduced.
 export const ABAC_SENSITIVE_CATEGORIES: MemoryCategory[] = [];
 export const ABAC_DEFAULT_ALLOW: MemoryCategory[] = ["rules", "projects", "references", "stack"];
+
+// Tag that triggers JIT approval rather than a hard ABAC deny.
+export const JIT_PROTECTED_TAG = "#confidential";
 
 // ── Multi-tenancy layer (organizations & teams) ──────────────────────────────
 export const organizations = sqliteTable("organizations", {
@@ -415,6 +424,33 @@ export const vaultKeys = sqliteTable("vault_keys", {
 });
 
 export type VaultKey = typeof vaultKeys.$inferSelect;
+
+// ── Just-in-Time (JIT) Access Requests ───────────────────────────────────────
+// Created when an agent queries a memory tagged #confidential.
+// status: pending → approved → denied (or auto-expired).
+// When approved, a short-lived JIT token is minted and written back here so
+// the agent can retry its query with the token to get the unredacted result.
+export const jitAccessRequests = sqliteTable("jit_access_requests", {
+  id: text("id").primaryKey(),
+  tokenId: text("tokenId").notNull().references(() => apiTokens.id, { onDelete: "cascade" }),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // Snapshot of the original MCP request so the agent can replay it after approval.
+  mcpMethod: text("mcpMethod").notNull(),   // "recall_context" | "search_memories"
+  mcpArgs: text("mcpArgs").notNull(),       // JSON-serialised original tool arguments
+  // Which memory IDs were blocked (comma-separated). Used for targeted unredaction.
+  blockedMemoryIds: text("blockedMemoryIds").notNull().default(""),
+  status: text("status", { enum: ["pending", "approved", "denied"] }).notNull().default("pending"),
+  // Short-lived token issued on approval; the agent presents this as its Bearer token.
+  jitTokenHash: text("jitTokenHash"),       // PBKDF2 hash of the raw JIT token
+  jitExpiresAt: integer("jitExpiresAt"),    // epoch ms — 15 min from approval
+  createdAt: integer("createdAt").notNull(),
+  reviewedAt: integer("reviewedAt"),
+  reviewedBy: text("reviewedBy").references(() => users.id),
+  reviewNotes: text("reviewNotes"),
+});
+
+export type JitAccessRequest = typeof jitAccessRequests.$inferSelect;
+export type NewJitAccessRequest = typeof jitAccessRequests.$inferInsert;
 
 export const credentials = sqliteTable("credentials", {
   id: text("id").primaryKey(),

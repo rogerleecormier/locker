@@ -1,10 +1,10 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets, credentials, ABAC_DEFAULT_ALLOW } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets, credentials, notifications, ABAC_DEFAULT_ALLOW, JIT_PROTECTED_TAG, jitAccessRequests } from "~/db/schema";
 import type { AgentPolicy, MemoryCategory } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { verifyToken, getOrCreateVaultKey, decrypt, encrypt, isEncrypted, decryptEphemeral, EphemeralPlaintext } from "~/server/crypto";
+import { verifyToken, hashToken, getOrCreateVaultKey, decrypt, encrypt, isEncrypted, decryptEphemeral, EphemeralPlaintext } from "~/server/crypto";
 import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "~/server/enterprise";
 import { verifyTOTP } from "~/server/totp";
 import { PLANS } from "~/lib/plans";
@@ -220,6 +220,20 @@ export const ALL_TOOLS = [
       required: ["name"],
     },
   },
+  {
+    name: "approve_jit_access",
+    description: "Approve or deny a pending Just-in-Time access request for #confidential memories. Only the memory owner (human token) may call this. On approval a short-lived token valid for 15 minutes is returned; the agent must re-run its original query using that token as its Bearer credential.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        jitRequestId: { type: "string", description: "The JIT request ID returned in a previous recall_context or search_memories response." },
+        decision: { type: "string", enum: ["approve", "deny"], description: "approve to grant access, deny to reject." },
+        reviewNotes: { type: "string", description: "Optional notes recorded in the audit log." },
+      },
+      required: ["jitRequestId", "decision"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 function isProjectKeyAllowedByToken(
@@ -285,6 +299,93 @@ function checkCategoryAccess(category: string, filter: Set<MemoryCategory> | nul
   return filter.has(category as MemoryCategory);
 }
 
+// Tag-level ABAC result for a single memory row.
+type TagAccessResult =
+  | { access: "allow" }
+  | { access: "deny" }
+  | { access: "jit" }; // triggers JIT approval workflow
+
+// Normalise a raw tags string into a set of lowercase tag tokens.
+function normaliseTags(raw: string): Set<string> {
+  const tags = new Set<string>();
+  for (const t of raw.split(",")) {
+    const trimmed = t.trim().toLowerCase();
+    if (trimmed) tags.add(trimmed);
+  }
+  return tags;
+}
+
+// Evaluate tag-level ABAC for a single memory row against the agent policy.
+// Returns "allow", "deny", or "jit" (needs approval before access is granted).
+function checkTagAccess(rawTags: string, policy: AgentPolicy | null): TagAccessResult {
+  if (!policy) return { access: "allow" };
+
+  const memTags = normaliseTags(rawTags);
+  const allowedTags = policy.allowedTags ?? [];
+  const deniedTags = policy.deniedTags ?? [];
+
+  // Denied tags win first — but #confidential gets JIT instead of hard-deny.
+  for (const dt of deniedTags) {
+    if (memTags.has(dt)) {
+      return dt === JIT_PROTECTED_TAG ? { access: "jit" } : { access: "deny" };
+    }
+  }
+
+  // If the memory has #confidential and the agent hasn't been explicitly allowed it, trigger JIT.
+  if (memTags.has(JIT_PROTECTED_TAG) && !allowedTags.includes(JIT_PROTECTED_TAG)) {
+    return { access: "jit" };
+  }
+
+  // If an explicit allowlist is set, the memory must match at least one allowed tag.
+  if (allowedTags.length > 0) {
+    const hasAllowed = allowedTags.some((at) => memTags.has(at));
+    if (!hasAllowed) return { access: "deny" };
+  }
+
+  return { access: "allow" };
+}
+
+// Create a JIT access request row and notify the developer via in-app notification.
+// Returns the newly-created JIT request id.
+async function createJitRequest(
+  db: ReturnType<typeof drizzle>,
+  params: {
+    tokenId: string;
+    userId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    blockedMemoryIds: string[];
+    agentContext: string;
+  },
+): Promise<string> {
+  const jitId = crypto.randomUUID();
+  await db.insert(jitAccessRequests).values({
+    id: jitId,
+    tokenId: params.tokenId,
+    userId: params.userId,
+    mcpMethod: params.toolName,
+    mcpArgs: JSON.stringify(params.args),
+    blockedMemoryIds: params.blockedMemoryIds.join(","),
+    status: "pending",
+    createdAt: Date.now(),
+  });
+  try {
+    await db.insert(notifications).values({
+      id: crypto.randomUUID(),
+      userId: params.userId,
+      title: "JIT Access Approval Required",
+      message: `Agent "${params.agentContext}" requested access to #confidential memories via ${params.toolName}. Approve or deny at Settings → Agent Tokens.`,
+      type: "warning",
+      linkUrl: `/settings/agent-tokens?jit=${jitId}`,
+      createdAt: Date.now(),
+    });
+  } catch (e) {
+    console.error("[JIT] Failed to write notification:", e);
+  }
+  console.warn(`[JIT] Request created id=${jitId} agent="${params.agentContext}" tool=${params.toolName} blocked=${params.blockedMemoryIds.join(",")}`);
+  return jitId;
+}
+
 function mcpResult(id: unknown, result: unknown): Response {
   return Response.json({ jsonrpc: "2.0", id, result });
 }
@@ -338,6 +439,9 @@ type TokenClaims = {
   accessibleScopes: Array<{ type: "personal" | "organization" | "team"; id: string | null }>;
   isAgent: boolean;
   agentPolicy: AgentPolicy | null;
+  // Set when the token is a JIT token — grants access to the listed memory IDs only.
+  jitRequestId: string | null;
+  jitAllowedMemoryIds: Set<string> | null;
 };
 
 async function validateBearerToken(
@@ -386,6 +490,8 @@ async function validateBearerToken(
           accessibleScopes,
           isAgent: false,
           agentPolicy: null,
+          jitRequestId: null,
+          jitAllowedMemoryIds: null,
         };
       }
     } catch (e) {
@@ -435,6 +541,18 @@ async function validateBearerToken(
 
     const valid = await verifyToken(rawToken, token.tokenHash);
     if (!valid) return null;
+
+    // Opportunistically upgrade legacy SHA-256 hashes to PBKDF2 on first successful auth.
+    // A plain SHA-256 hash is 64 lowercase hex chars with no "$" prefix.
+    if (/^[0-9a-f]{64}$/.test(token.tokenHash)) {
+      try {
+        const upgradedHash = await hashToken(rawToken);
+        await db.update(apiTokens).set({ tokenHash: upgradedHash }).where(eq(apiTokens.id, token.id)).run();
+        console.log(`[api-token] upgraded SHA-256 hash to PBKDF2 for token ${token.id}`);
+      } catch (upgradeErr) {
+        console.error("[api-token] PBKDF2 upgrade failed (non-fatal):", upgradeErr);
+      }
+    }
 
     if (token.expiresAt && token.expiresAt < Date.now()) return null;
 
@@ -491,7 +609,37 @@ async function validateBearerToken(
       try {
         agentPolicy = JSON.parse(token.agentPolicy) as AgentPolicy;
       } catch {
-        agentPolicy = { agentContext: "unknown", allowedCategories: [], deniedCategories: [], allowCredentials: false };
+        agentPolicy = { agentContext: "unknown", allowedCategories: [], deniedCategories: [], allowedTags: [], deniedTags: [], allowCredentials: false };
+      }
+    }
+
+    // Check if this lkr_ token is being used as a JIT token for a specific approved request.
+    let jitRequestId: string | null = null;
+    let jitAllowedMemoryIds: Set<string> | null = null;
+    if (isAgent) {
+      const jitDb = drizzle(env.DB);
+      const jitRows = await jitDb
+        .select()
+        .from(jitAccessRequests)
+        .where(
+          and(
+            eq(jitAccessRequests.tokenId, token.id),
+            eq(jitAccessRequests.status, "approved"),
+          )
+        )
+        .all();
+      // Find a row whose jitTokenHash matches rawToken and has not yet expired.
+      for (const row of jitRows) {
+        if (row.jitTokenHash && row.jitExpiresAt && row.jitExpiresAt > Date.now()) {
+          const jitValid = await verifyToken(rawToken, row.jitTokenHash);
+          if (jitValid) {
+            jitRequestId = row.id;
+            jitAllowedMemoryIds = new Set(
+              row.blockedMemoryIds ? row.blockedMemoryIds.split(",").filter(Boolean) : []
+            );
+            break;
+          }
+        }
       }
     }
 
@@ -504,6 +652,8 @@ async function validateBearerToken(
       accessibleScopes,
       isAgent,
       agentPolicy,
+      jitRequestId,
+      jitAllowedMemoryIds,
     };
   }
 
@@ -588,6 +738,8 @@ async function validateBearerToken(
         accessibleScopes,
         isAgent: false,
         agentPolicy: null,
+        jitRequestId: null,
+        jitAllowedMemoryIds: null,
       };
     } catch (e) {
       console.log("[jwt] verification exception:", String(e));
@@ -644,6 +796,8 @@ async function validateBearerToken(
     accessibleScopes,
     isAgent: false,
     agentPolicy: null,
+    jitRequestId: null,
+    jitAllowedMemoryIds: null,
   };
 }
 
@@ -764,6 +918,8 @@ export async function handleMcpRequest(
       if (t.name === "store_credential") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "delete_credential") return !!(claims.permissions & MCP_PERM_DELETE);
       if (t.name === "list_credentials" || t.name === "retrieve_credential") return !!(claims.permissions & MCP_PERM_RECALL);
+      // approve_jit_access is only exposed to human (non-agent) tokens.
+      if (t.name === "approve_jit_access") return !!(claims.permissions & MCP_PERM_RECALL) && !claims.isAgent;
       return false;
     });
     return new Response(
@@ -820,6 +976,7 @@ export async function handleMcpRequest(
       if (t.name === "store_credential") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "delete_credential") return !!(claims.permissions & MCP_PERM_DELETE);
       if (t.name === "list_credentials" || t.name === "retrieve_credential") return !!(claims.permissions & MCP_PERM_RECALL);
+      if (t.name === "approve_jit_access") return !!(claims.permissions & MCP_PERM_RECALL) && !claims.isAgent;
       return false;
     });
     return mcpResult(id, { tools: allowedTools });
@@ -1152,24 +1309,46 @@ export async function handleMcpRequest(
         }
       }
 
-      // Construct the return results with decrypted strings
-      const payloadResults = finalResults.map((m) => ({
-        id: m.row.id,
-        userId: m.row.userId,
-        fact: m.row.isQuarantined ? "[REDACTED]" : m.ephemeralFact.get(),
-        category: m.row.category,
-        tags: m.row.tags,
-        timestamp: m.row.timestamp,
-        isActive: m.row.isActive,
-        projectKey: m.row.projectKey,
-        scopeType: m.row.scopeType,
-        scopeId: m.row.scopeId,
-        isLocked: m.row.isLocked,
-        authorityType: m.row.authorityType,
-        lastAccessedAt: m.row.lastAccessedAt,
-      }));
+      // Tag-level ABAC: evaluate each result; collect any that need JIT.
+      const jitBlockedIds: string[] = [];
+      const payloadResults = finalResults.map((m) => {
+        if (m.row.isQuarantined) {
+          return { id: m.row.id, userId: m.row.userId, fact: "[REDACTED]", category: m.row.category, tags: m.row.tags, timestamp: m.row.timestamp, isActive: m.row.isActive, projectKey: m.row.projectKey, scopeType: m.row.scopeType, scopeId: m.row.scopeId, isLocked: m.row.isLocked, authorityType: m.row.authorityType, lastAccessedAt: m.row.lastAccessedAt };
+        }
+        // JIT bypass: if this token was issued for this specific request, unredact allowed IDs.
+        if (claims.jitAllowedMemoryIds?.has(m.row.id)) {
+          return { id: m.row.id, userId: m.row.userId, fact: m.ephemeralFact.get(), category: m.row.category, tags: m.row.tags, timestamp: m.row.timestamp, isActive: m.row.isActive, projectKey: m.row.projectKey, scopeType: m.row.scopeType, scopeId: m.row.scopeId, isLocked: m.row.isLocked, authorityType: m.row.authorityType, lastAccessedAt: m.row.lastAccessedAt };
+        }
+        const tagCheck = checkTagAccess(m.row.tags, claims.agentPolicy);
+        if (tagCheck.access === "jit") {
+          jitBlockedIds.push(m.row.id);
+          return { id: m.row.id, userId: m.row.userId, fact: "[APPROVAL PENDING]", category: m.row.category, tags: m.row.tags, timestamp: m.row.timestamp, isActive: m.row.isActive, projectKey: m.row.projectKey, scopeType: m.row.scopeType, scopeId: m.row.scopeId, isLocked: m.row.isLocked, authorityType: m.row.authorityType, lastAccessedAt: m.row.lastAccessedAt };
+        }
+        if (tagCheck.access === "deny") {
+          return null;
+        }
+        return { id: m.row.id, userId: m.row.userId, fact: m.ephemeralFact.get(), category: m.row.category, tags: m.row.tags, timestamp: m.row.timestamp, isActive: m.row.isActive, projectKey: m.row.projectKey, scopeType: m.row.scopeType, scopeId: m.row.scopeId, isLocked: m.row.isLocked, authorityType: m.row.authorityType, lastAccessedAt: m.row.lastAccessedAt };
+      }).filter((r): r is NonNullable<typeof r> => r !== null);
 
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(payloadResults) }] });
+      // If any memories needed JIT approval, create a pending request and include it in the response.
+      let jitMeta: { jitRequestId: string; message: string } | undefined;
+      if (jitBlockedIds.length > 0 && claims.isAgent) {
+        const jitId = await createJitRequest(db, {
+          tokenId: claims.tokenId,
+          userId: claims.userId,
+          toolName: "recall_context",
+          args,
+          blockedMemoryIds: jitBlockedIds,
+          agentContext: claims.agentPolicy?.agentContext ?? "unknown",
+        });
+        jitMeta = {
+          jitRequestId: jitId,
+          message: `${jitBlockedIds.length} memory(s) tagged #confidential require developer approval before they can be returned. A notification has been sent. Retry with your JIT token once approved.`,
+        };
+        await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "jit_access_requested", ipAddress, userAgent, metadata: { jitId, blockedCount: jitBlockedIds.length, toolName: "recall_context" } });
+      }
+
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ results: payloadResults, ...(jitMeta ? { jit: jitMeta } : {}) }) }] });
     } finally {
       // Clean up all ephemeral plaintext
       for (const m of decrypted) {
@@ -1281,24 +1460,42 @@ export async function handleMcpRequest(
       await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "search_memories", ipAddress, userAgent, metadata: { category, tag, keyword, projectKey, matchCount: paginated.length } });
       await logTokenUsage(db, claims.tokenId, "recall", 0);
 
-      // Construct return results payload
-      const payloadResults = paginated.map((item) => ({
-        id: item.row.id,
-        userId: item.row.userId,
-        fact: item.row.isQuarantined ? "[REDACTED]" : item.ephemeralFact.get(),
-        category: item.row.category,
-        tags: item.row.tags,
-        timestamp: item.row.timestamp,
-        isActive: item.row.isActive,
-        projectKey: item.row.projectKey,
-        scopeType: item.row.scopeType,
-        scopeId: item.row.scopeId,
-        isLocked: item.row.isLocked,
-        authorityType: item.row.authorityType,
-        lastAccessedAt: item.row.lastAccessedAt,
-      }));
+      // Tag-level ABAC + JIT intercept.
+      const searchJitBlockedIds: string[] = [];
+      const payloadResults = paginated.map((item) => {
+        if (item.row.isQuarantined) {
+          return { id: item.row.id, userId: item.row.userId, fact: "[REDACTED]", category: item.row.category, tags: item.row.tags, timestamp: item.row.timestamp, isActive: item.row.isActive, projectKey: item.row.projectKey, scopeType: item.row.scopeType, scopeId: item.row.scopeId, isLocked: item.row.isLocked, authorityType: item.row.authorityType, lastAccessedAt: item.row.lastAccessedAt };
+        }
+        if (claims.jitAllowedMemoryIds?.has(item.row.id)) {
+          return { id: item.row.id, userId: item.row.userId, fact: item.ephemeralFact.get(), category: item.row.category, tags: item.row.tags, timestamp: item.row.timestamp, isActive: item.row.isActive, projectKey: item.row.projectKey, scopeType: item.row.scopeType, scopeId: item.row.scopeId, isLocked: item.row.isLocked, authorityType: item.row.authorityType, lastAccessedAt: item.row.lastAccessedAt };
+        }
+        const tagCheck = checkTagAccess(item.row.tags, claims.agentPolicy);
+        if (tagCheck.access === "jit") {
+          searchJitBlockedIds.push(item.row.id);
+          return { id: item.row.id, userId: item.row.userId, fact: "[APPROVAL PENDING]", category: item.row.category, tags: item.row.tags, timestamp: item.row.timestamp, isActive: item.row.isActive, projectKey: item.row.projectKey, scopeType: item.row.scopeType, scopeId: item.row.scopeId, isLocked: item.row.isLocked, authorityType: item.row.authorityType, lastAccessedAt: item.row.lastAccessedAt };
+        }
+        if (tagCheck.access === "deny") return null;
+        return { id: item.row.id, userId: item.row.userId, fact: item.ephemeralFact.get(), category: item.row.category, tags: item.row.tags, timestamp: item.row.timestamp, isActive: item.row.isActive, projectKey: item.row.projectKey, scopeType: item.row.scopeType, scopeId: item.row.scopeId, isLocked: item.row.isLocked, authorityType: item.row.authorityType, lastAccessedAt: item.row.lastAccessedAt };
+      }).filter((r): r is NonNullable<typeof r> => r !== null);
 
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(payloadResults) }] });
+      let searchJitMeta: { jitRequestId: string; message: string } | undefined;
+      if (searchJitBlockedIds.length > 0 && claims.isAgent) {
+        const jitId = await createJitRequest(db, {
+          tokenId: claims.tokenId,
+          userId: claims.userId,
+          toolName: "search_memories",
+          args,
+          blockedMemoryIds: searchJitBlockedIds,
+          agentContext: claims.agentPolicy?.agentContext ?? "unknown",
+        });
+        searchJitMeta = {
+          jitRequestId: jitId,
+          message: `${searchJitBlockedIds.length} memory(s) tagged #confidential require developer approval before they can be returned. A notification has been sent. Retry with your JIT token once approved.`,
+        };
+        await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "jit_access_requested", ipAddress, userAgent, metadata: { jitId, blockedCount: searchJitBlockedIds.length, toolName: "search_memories" } });
+      }
+
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ results: payloadResults, ...(searchJitMeta ? { jit: searchJitMeta } : {}) }) }] });
     } finally {
       // Clean up all ephemeral plaintext
       for (const item of decrypted) {
@@ -2359,6 +2556,94 @@ export async function handleMcpRequest(
       content: [
         { type: "text", text: JSON.stringify({ success: true, name: upperName }) },
       ],
+    });
+  }
+
+  if (toolName === "approve_jit_access") {
+    // Only human (non-agent) tokens may approve/deny JIT requests.
+    if (claims.isAgent) {
+      return mcpError(id, -32003, "Forbidden: agent tokens cannot approve JIT requests");
+    }
+    if (!(claims.permissions & MCP_PERM_RECALL)) {
+      return mcpError(id, -32001, "Token does not have recall_context permission");
+    }
+
+    const jitRequestId = args.jitRequestId as string | undefined;
+    const decision = args.decision as "approve" | "deny" | undefined;
+    const reviewNotes = args.reviewNotes as string | undefined;
+
+    if (!jitRequestId || typeof jitRequestId !== "string") {
+      return mcpError(id, -32602, "Invalid params: jitRequestId is required");
+    }
+    if (decision !== "approve" && decision !== "deny") {
+      return mcpError(id, -32602, "Invalid params: decision must be 'approve' or 'deny'");
+    }
+
+    const jitRows = await db
+      .select()
+      .from(jitAccessRequests)
+      .where(eq(jitAccessRequests.id, jitRequestId))
+      .all();
+
+    if (!jitRows.length) {
+      return mcpError(id, -32602, `JIT request not found: ${jitRequestId}`);
+    }
+    const jitRow = jitRows[0];
+
+    // Only the user who owns the token being granted may approve.
+    if (jitRow.userId !== claims.userId) {
+      return mcpError(id, -32003, "Forbidden: you may only approve JIT requests for your own agent tokens");
+    }
+
+    if (jitRow.status !== "pending") {
+      return mcpError(id, -32602, `JIT request is already ${jitRow.status}`);
+    }
+
+    const now = Date.now();
+
+    if (decision === "deny") {
+      await db
+        .update(jitAccessRequests)
+        .set({ status: "denied", reviewedAt: now, reviewedBy: claims.userId, reviewNotes: reviewNotes ?? null })
+        .where(eq(jitAccessRequests.id, jitRequestId));
+
+      await logAudit(db, { orgId: null, userId: claims.userId, tokenId: claims.tokenId, action: "jit_access_denied", ipAddress, userAgent, metadata: { jitRequestId, agentTokenId: jitRow.tokenId } });
+
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ success: true, decision: "deny", jitRequestId }) }] });
+    }
+
+    // Issue a 15-minute JIT token: generate a random secret, hash it, store the hash.
+    const jitSecret = `lkr_jit_${crypto.randomUUID().replace(/-/g, "")}`;
+    const jitTokenHash = await hashToken(jitSecret);
+    const jitExpiresAt = now + 15 * 60 * 1000; // 15 minutes
+
+    await db
+      .update(jitAccessRequests)
+      .set({
+        status: "approved",
+        jitTokenHash,
+        jitExpiresAt,
+        reviewedAt: now,
+        reviewedBy: claims.userId,
+        reviewNotes: reviewNotes ?? null,
+      })
+      .where(eq(jitAccessRequests.id, jitRequestId));
+
+    await logAudit(db, { orgId: null, userId: claims.userId, tokenId: claims.tokenId, action: "jit_access_approved", ipAddress, userAgent, metadata: { jitRequestId, agentTokenId: jitRow.tokenId, expiresAt: jitExpiresAt } });
+
+    return mcpResult(id, {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          decision: "approve",
+          jitRequestId,
+          jitToken: jitSecret,
+          expiresAt: jitExpiresAt,
+          expiresIn: "15 minutes",
+          instructions: "Pass this token as the Bearer Authorization header when re-running the original query. It grants access only to the specific #confidential memories listed in this request and expires automatically.",
+        }),
+      }],
     });
   }
 

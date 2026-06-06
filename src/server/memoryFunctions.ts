@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { drizzle } from "drizzle-orm/d1";
 import { desc, eq, sql, and, isNull } from "drizzle-orm";
 import {
@@ -208,13 +209,12 @@ async function getUserName(db: ReturnType<typeof getDb>, userId: string, encKey:
   return "The user";
 }
 
+const ParseMemoriesWithAISchema = z.object({
+  text: z.string().min(1, "text is required").max(16000, "Text exceeds the maximum length of 16,000 characters").transform((s) => s.trim()),
+});
+
 export const parseMemoriesWithAI = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { text: string } => {
-    const d = data as { text: string };
-    if (!d.text || typeof d.text !== "string") throw new Error("text is required");
-    if (d.text.trim().length > 16000) throw new Error("Text exceeds the maximum length of 16,000 characters");
-    return { text: d.text.trim() };
-  })
+  .inputValidator((data) => ParseMemoriesWithAISchema.parse(data))
   .handler(async ({ data, context }): Promise<Array<{ fact: string; category?: string; tags?: string }>> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -277,11 +277,12 @@ Rules:
     return facts.map((item) => ({ fact: item.fact }));
   });
 
+const GetMemoriesSchema = z.object({
+  projectKey: z.string().max(128).optional(),
+});
+
 export const getMemories = createServerFn({ method: "GET" })
-  .inputValidator((data: unknown): { projectKey?: string } => {
-    const d = data as { projectKey?: string };
-    return { projectKey: d?.projectKey };
-  })
+  .inputValidator((data) => GetMemoriesSchema.parse(data))
   .handler(
     async ({ data, context }): Promise<Memory[]> => {
       const { env } = (context as unknown as CFContext).cloudflare;
@@ -572,21 +573,17 @@ type AddMemoryInput = {
   authorityType?: "authoritative" | "contributed";
 };
 
+const AddMemorySchema = z.object({
+  fact: z.string().min(1, "fact is required").max(10000),
+  category: z.enum(["rules", "projects", "references"]),
+  tags: z.string().max(500).default("").transform((s) => s.trim()),
+  projectKey: z.string().max(128).optional().transform((s) => s?.trim()),
+  isLocked: z.boolean().optional(),
+  authorityType: z.enum(["authoritative", "contributed"]).optional(),
+});
+
 export const addMemory = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): AddMemoryInput => {
-    const d = data as AddMemoryInput;
-    if (!d.fact || typeof d.fact !== "string") throw new Error("fact is required");
-    if (!["rules", "projects", "references", "stack"].includes(d.category))
-      throw new Error("category must be rules, projects, references, or stack");
-    return {
-      fact: d.fact.trim(),
-      category: d.category,
-      tags: typeof d.tags === "string" ? d.tags.trim() : "",
-      projectKey: typeof d.projectKey === "string" ? d.projectKey.trim() : undefined,
-      isLocked: typeof d.isLocked === "boolean" ? d.isLocked : undefined,
-      authorityType: d.authorityType === "authoritative" || d.authorityType === "contributed" ? d.authorityType : undefined,
-    };
-  })
+  .inputValidator((data) => AddMemorySchema.parse(data))
   .handler(async ({ data, context }): Promise<Memory> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -754,22 +751,21 @@ type BatchImportInput = {
   projectKey?: string;
 };
 
+const BatchImportItemSchema = z.object({
+  fact: z.string().max(10000).default("").transform((s) => s.trim()),
+  category: z.string().max(32).optional(),
+  tags: z.string().max(500).optional(),
+  projectKey: z.string().max(128).optional(),
+});
+
+const BatchImportSchema = z.object({
+  items: z.array(BatchImportItemSchema).max(500, "Cannot import more than 500 items at once"),
+  source: z.string().max(64).default("manual").transform((s) => s.trim().toLowerCase()),
+  projectKey: z.string().max(128).optional(),
+});
+
 export const batchImportMemories = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): BatchImportInput => {
-    const d = data as BatchImportInput;
-    if (!Array.isArray(d.items)) throw new Error("items must be an array");
-    const validatedItems = d.items.map((item) => ({
-      fact: String(item.fact || "").trim(),
-      category: item.category,
-      tags: item.tags,
-      projectKey: item.projectKey,
-    }));
-    return {
-      items: validatedItems,
-      source: typeof d.source === "string" ? d.source.trim().toLowerCase() : "manual",
-      projectKey: d.projectKey,
-    };
-  })
+  .inputValidator((data) => BatchImportSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ imported: number; skipped: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -1129,12 +1125,10 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
     return { imported: newRows.length, skipped: allRows.length - newRows.length };
   });
 
+const IdSchema = z.object({ id: z.string().uuid("id must be a valid UUID") });
+
 export const deleteMemory = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string } => {
-    const d = data as { id: string };
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    return { id: d.id };
-  })
+  .inputValidator((data) => IdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ deleted: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -1220,14 +1214,15 @@ type UpdateMemoryInput = {
   tags: string;
 };
 
+const UpdateMemorySchema = z.object({
+  id: z.string().uuid("id must be a valid UUID"),
+  fact: z.string().min(1, "fact is required").max(10000).transform((s) => s.trim()),
+  category: z.enum(["rules", "projects", "references"]),
+  tags: z.string().max(500).default("").transform((s) => s.trim()),
+});
+
 export const updateMemory = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): UpdateMemoryInput => {
-    const d = data as UpdateMemoryInput;
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    if (!d.fact || typeof d.fact !== "string") throw new Error("fact is required");
-    if (!["rules", "projects", "references"].includes(d.category)) throw new Error("invalid category");
-    return { id: d.id, fact: d.fact.trim(), category: d.category, tags: typeof d.tags === "string" ? d.tags.trim() : "" };
-  })
+  .inputValidator((data) => UpdateMemorySchema.parse(data))
   .handler(async ({ data, context }): Promise<Memory> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -1339,11 +1334,7 @@ type UnmaskMemoryInput = {
 };
 
 export const unmaskMemory = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): UnmaskMemoryInput => {
-    const d = data as UnmaskMemoryInput;
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    return { id: d.id };
-  })
+  .inputValidator((data) => IdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -1398,11 +1389,7 @@ export const unmaskMemory = createServerFn({ method: "POST" })
   });
 
 export const archiveMemory = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string } => {
-    const d = data as { id: string };
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    return { id: d.id };
-  })
+  .inputValidator((data) => IdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ archived: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -1433,15 +1420,14 @@ export const archiveMemory = createServerFn({ method: "POST" })
     return { archived: true };
   });
 
+const GetArchivedMemoriesSchema = z.object({
+  projectKey: z.string().max(128).optional(),
+  limit: z.number().int().min(1).max(200).default(50),
+  offset: z.number().int().min(0).default(0),
+});
+
 export const getArchivedMemories = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { projectKey?: string; limit: number; offset: number } => {
-    const d = data as { projectKey?: string; limit?: number; offset?: number };
-    return {
-      projectKey: typeof d?.projectKey === "string" ? d.projectKey : undefined,
-      limit: typeof d?.limit === "number" ? d.limit : 50,
-      offset: typeof d?.offset === "number" ? d.offset : 0,
-    };
-  })
+  .inputValidator((data) => GetArchivedMemoriesSchema.parse(data))
   .handler(async ({ data, context }): Promise<any> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -1483,11 +1469,7 @@ export const getArchivedMemories = createServerFn({ method: "POST" })
   });
 
 export const restoreMemory = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string } => {
-    const d = data as { id: string };
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    return { id: d.id };
-  })
+  .inputValidator((data) => IdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ restored: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -1536,11 +1518,7 @@ export const restoreMemory = createServerFn({ method: "POST" })
   });
 
 export const permanentlyDeleteArchivedMemory = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string } => {
-    const d = data as { id: string };
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    return { id: d.id };
-  })
+  .inputValidator((data) => IdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ deleted: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -1578,13 +1556,13 @@ export const permanentlyDeleteArchivedMemory = createServerFn({ method: "POST" }
     return { deleted: true };
   });
 
+const MoveMemoriesSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1, "ids must be a non-empty array").max(200),
+  targetProjectKey: z.string().min(1).max(128).transform((s) => s.trim()),
+});
+
 export const moveMemories = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { ids: string[]; targetProjectKey: string } => {
-    const d = data as { ids: string[]; targetProjectKey: string };
-    if (!Array.isArray(d.ids) || d.ids.length === 0) throw new Error("ids must be a non-empty array");
-    if (typeof d.targetProjectKey !== "string") throw new Error("targetProjectKey is required");
-    return { ids: d.ids.filter((id) => typeof id === "string"), targetProjectKey: d.targetProjectKey.trim() };
-  })
+  .inputValidator((data) => MoveMemoriesSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ moved: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -1691,12 +1669,12 @@ export const moveMemories = createServerFn({ method: "POST" })
     return { moved: movedCount };
   });
 
+const BulkIdsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1, "ids must be a non-empty array").max(200),
+});
+
 export const bulkDeleteMemories = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { ids: string[] } => {
-    const d = data as { ids: string[] };
-    if (!Array.isArray(d.ids) || d.ids.length === 0) throw new Error("ids must be a non-empty array");
-    return { ids: d.ids.filter((id) => typeof id === "string") };
-  })
+  .inputValidator((data) => BulkIdsSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ deleted: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -1786,17 +1764,15 @@ export const bulkDeleteMemories = createServerFn({ method: "POST" })
     return { deleted: authorizedIds.length };
   });
 
+const RecallContextSchema = z.object({
+  query: z.string().min(1, "query is required").max(10000).transform((s) => s.trim()),
+  topK: z.number().int().min(1).max(50).default(5),
+  projectKey: z.string().max(128).optional().transform((s) => s?.trim()),
+  isActive: z.boolean().default(true),
+});
+
 export const recallContext = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { query: string; topK?: number; projectKey?: string; isActive?: boolean } => {
-    const d = data as { query: string; topK?: number; projectKey?: string; isActive?: boolean };
-    if (!d.query || typeof d.query !== "string") throw new Error("query is required");
-    return {
-      query: d.query.trim(),
-      topK: d.topK ?? 5,
-      projectKey: typeof d.projectKey === "string" ? d.projectKey.trim() : undefined,
-      isActive: typeof d.isActive === "boolean" ? d.isActive : true,
-    };
-  })
+  .inputValidator((data) => RecallContextSchema.parse(data))
   .handler(async ({ data, context }): Promise<Memory[]> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -2126,11 +2102,13 @@ export const getUserPlan = createServerFn({ method: "GET" }).handler(
   }
 );
 
+const SaveProfileSchema = z.object({
+  name: z.string().max(256).default("").transform((s) => s.trim()),
+  location: z.string().max(256).default("").transform((s) => s.trim()),
+});
+
 export const saveProfile = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { name: string; location: string } => {
-    const d = data as { name: string; location: string };
-    return { name: String(d.name || "").trim(), location: String(d.location || "").trim() };
-  })
+  .inputValidator((data) => SaveProfileSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -2239,54 +2217,31 @@ export const listApiTokens = createServerFn({ method: "GET" }).handler(
   }
 );
  
-const VALID_AGENT_CATEGORIES = ["rules", "projects", "references", "stack"] as const;
+
+const AgentCategoryEnum = z.enum(["rules", "projects", "references", "stack"]);
+
+const CreateApiTokenSchema = z.object({
+  name: z.string().min(1, "name is required").max(64).transform((s) => s.trim()),
+  permissions: z.number().int().min(0).max(15).default(15).transform((n) => n & 15),
+  scopeType: z.enum(["personal", "organization", "team"]).default("personal"),
+  scopeId: z.string().max(128).optional(),
+  scopes: z.unknown().optional(),
+  ttlDays: z.number().int().min(1).max(3650).default(365),
+  tokenType: z.enum(["human", "agent"]).default("human"),
+  agentContext: z.string().max(128).optional().transform((s) => s?.trim()),
+  allowedCategories: z.array(AgentCategoryEnum).default([]),
+  deniedCategories: z.array(AgentCategoryEnum).default([]),
+  allowedTags: z.array(z.string().max(64)).default([]).transform((arr) => arr.map((t) => t.trim().toLowerCase()).filter(Boolean)),
+  deniedTags: z.array(z.string().max(64)).default([]).transform((arr) => arr.map((t) => t.trim().toLowerCase()).filter(Boolean)),
+  allowCredentials: z.boolean().default(false),
+}).superRefine((val, ctx) => {
+  if (val.tokenType === "agent" && !val.agentContext) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "agentContext is required for agent tokens", path: ["agentContext"] });
+  }
+});
 
 export const createApiToken = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): {
-    name: string;
-    permissions: number;
-    scopeType: "personal" | "organization" | "team";
-    scopeId?: string;
-    scopes?: any;
-    ttlDays: number;
-    tokenType: "human" | "agent";
-    agentContext?: string;
-    allowedCategories?: string[];
-    deniedCategories?: string[];
-    allowCredentials?: boolean;
-  } => {
-    const d = data as any;
-    if (!d.name || typeof d.name !== "string") throw new Error("name is required");
-    const perms = typeof d.permissions === "number" ? d.permissions : 15;
-    const scope = d.scopeType === "organization" || d.scopeType === "team" ? d.scopeType : "personal";
-    const ttl = typeof d.ttlDays === "number" ? Math.max(1, d.ttlDays) : 365;
-    const tokenType: "human" | "agent" = d.tokenType === "agent" ? "agent" : "human";
-
-    if (tokenType === "agent") {
-      if (!d.agentContext || typeof d.agentContext !== "string") throw new Error("agentContext is required for agent tokens");
-    }
-
-    const allowedCategories = Array.isArray(d.allowedCategories)
-      ? d.allowedCategories.filter((c: unknown) => VALID_AGENT_CATEGORIES.includes(c as any))
-      : [];
-    const deniedCategories = Array.isArray(d.deniedCategories)
-      ? d.deniedCategories.filter((c: unknown) => VALID_AGENT_CATEGORIES.includes(c as any))
-      : [];
-
-    return {
-      name: d.name.trim().slice(0, 64),
-      permissions: perms & 15,
-      scopeType: scope,
-      scopeId: d.scopeId,
-      scopes: d.scopes,
-      ttlDays: ttl,
-      tokenType,
-      agentContext: typeof d.agentContext === "string" ? d.agentContext.trim().slice(0, 128) : undefined,
-      allowedCategories,
-      deniedCategories,
-      allowCredentials: !!d.allowCredentials,
-    };
-  })
+  .inputValidator((data) => CreateApiTokenSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ token: string; id: string; name: string; permissions: number; scopeType: string; scopeId: string | null; scopes: string | null; expiresAt: number; tokenType: string }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -2312,6 +2267,8 @@ export const createApiToken = createServerFn({ method: "POST" })
           agentContext: data.agentContext,
           allowedCategories: data.allowedCategories ?? [],
           deniedCategories: data.deniedCategories ?? [],
+          allowedTags: data.allowedTags ?? [],
+          deniedTags: data.deniedTags ?? [],
           allowCredentials: data.allowCredentials ?? false,
         })
       : null;
@@ -2335,11 +2292,7 @@ export const createApiToken = createServerFn({ method: "POST" })
   });
 
 export const revokeApiToken = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string } => {
-    const d = data as { id: string };
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    return { id: d.id };
-  })
+  .inputValidator((data) => IdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ revoked: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -2350,12 +2303,13 @@ export const revokeApiToken = createServerFn({ method: "POST" })
     return { revoked: true };
   });
 
+const UpdateTokenPermissionsSchema = z.object({
+  id: z.string().uuid(),
+  permissions: z.number().int().min(0).max(15).transform((n) => n & 15),
+});
+
 export const updateApiTokenPermissions = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string; permissions: number } => {
-    const d = data as { id: string; permissions: number };
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    return { id: d.id, permissions: (d.permissions & 15) };
-  })
+  .inputValidator((data) => UpdateTokenPermissionsSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ updated: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -2366,13 +2320,13 @@ export const updateApiTokenPermissions = createServerFn({ method: "POST" })
     return { updated: true };
   });
 
+const RenewApiTokenSchema = z.object({
+  id: z.string().uuid(),
+  ttlDays: z.number().int().min(1).max(3650).default(30),
+});
+
 export const renewApiToken = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string; ttlDays: number } => {
-    const d = data as { id: string; ttlDays?: number };
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    const ttl = typeof d.ttlDays === "number" ? Math.max(1, d.ttlDays) : 30;
-    return { id: d.id, ttlDays: ttl };
-  })
+  .inputValidator((data) => RenewApiTokenSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ expiresAt: number }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -2575,12 +2529,10 @@ export const rebuildVectorizeIndex = createServerFn({ method: "POST" }).handler(
   }
 );
 
+const MemoryIdSchema = z.object({ memoryId: z.string().uuid("memoryId must be a valid UUID") });
+
 export const getMemoryTimeline = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { memoryId: string } => {
-    const d = data as { memoryId: string };
-    if (!d.memoryId || typeof d.memoryId !== "string") throw new Error("memoryId is required");
-    return { memoryId: d.memoryId };
-  })
+  .inputValidator((data) => MemoryIdSchema.parse(data))
   .handler(async ({ data, context }): Promise<any[]> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -2639,12 +2591,10 @@ export const getAuditLogs = createServerFn({ method: "GET" })
       .all();
   });
 
+const VersionIdSchema = z.object({ versionId: z.string().uuid("versionId must be a valid UUID") });
+
 export const revertMemoryVersion = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { versionId: string } => {
-    const d = data as { versionId: string };
-    if (!d.versionId || typeof d.versionId !== "string") throw new Error("versionId is required");
-    return { versionId: d.versionId };
-  })
+  .inputValidator((data) => VersionIdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -2729,20 +2679,16 @@ export const revertMemoryVersion = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+const SubmitRecommendationSchema = z.object({
+  orgId: z.string().min(1).max(128).transform((s) => s.trim()),
+  fact: z.string().min(1, "fact is required").max(10000).transform((s) => s.trim()),
+  category: z.enum(["rules", "projects", "references"]),
+  tags: z.string().max(500).default("").transform((s) => s.trim()),
+  projectKey: z.string().max(128).optional(),
+});
+
 export const submitMemoryRecommendation = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { orgId: string; fact: string; category: "rules" | "projects" | "references"; tags: string; projectKey?: string } => {
-    const d = data as { orgId: string; fact: string; category: "rules" | "projects" | "references"; tags: string; projectKey?: string };
-    if (!d.orgId || typeof d.orgId !== "string") throw new Error("orgId is required");
-    if (!d.fact || typeof d.fact !== "string") throw new Error("fact is required");
-    if (!["rules", "projects", "references"].includes(d.category)) throw new Error("invalid category");
-    return {
-      orgId: d.orgId.trim(),
-      fact: d.fact.trim(),
-      category: d.category,
-      tags: typeof d.tags === "string" ? d.tags.trim() : "",
-      projectKey: d.projectKey,
-    };
-  })
+  .inputValidator((data) => SubmitRecommendationSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean; id: string }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -2808,12 +2754,10 @@ export const submitMemoryRecommendation = createServerFn({ method: "POST" })
     return { success: true, id: recId };
   });
 
+const OrgIdSchema = z.object({ orgId: z.string().min(1).max(128).transform((s) => s.trim()) });
+
 export const listMemoryRecommendations = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { orgId: string } => {
-    const d = data as { orgId: string };
-    if (!d.orgId || typeof d.orgId !== "string") throw new Error("orgId is required");
-    return { orgId: d.orgId.trim() };
-  })
+  .inputValidator((data) => OrgIdSchema.parse(data))
   .handler(async ({ data, context }): Promise<any[]> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -2850,13 +2794,14 @@ export const listMemoryRecommendations = createServerFn({ method: "POST" })
     return queryBuilder.orderBy(desc(memoryRecommendations.createdAt)).all();
   });
 
+const ReviewRecommendationSchema = z.object({
+  id: z.string().uuid(),
+  action: z.enum(["approve", "reject"]),
+  reviewNotes: z.string().max(1000).optional().transform((s) => s?.trim()),
+});
+
 export const reviewMemoryRecommendation = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string; action: "approve" | "reject"; reviewNotes?: string } => {
-    const d = data as { id: string; action: "approve" | "reject"; reviewNotes?: string };
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    if (!["approve", "reject"].includes(d.action)) throw new Error("invalid action");
-    return { id: d.id, action: d.action, reviewNotes: d.reviewNotes?.trim() };
-  })
+  .inputValidator((data) => ReviewRecommendationSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -3083,11 +3028,13 @@ export const listNotifications = createServerFn({ method: "GET" })
       .all();
   });
 
+const MarkNotificationSchema = z.object({
+  id: z.string().uuid().optional(),
+  all: z.boolean().optional(),
+});
+
 export const markNotificationRead = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id?: string; all?: boolean } => {
-    const d = data as { id?: string; all?: boolean };
-    return { id: d.id, all: d.all };
-  })
+  .inputValidator((data) => MarkNotificationSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -3108,12 +3055,12 @@ export const markNotificationRead = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+const EmailSchema = z.object({
+  email: z.string().email("valid email is required").max(254).transform((s) => s.toLowerCase().trim()),
+});
+
 export const sendPasswordResetEmail = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { email: string } => {
-    const d = data as { email: string };
-    if (!d.email || typeof d.email !== "string") throw new Error("email is required");
-    return { email: d.email.toLowerCase().trim() };
-  })
+  .inputValidator((data) => EmailSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const db = drizzle(env.DB, { schema: { users, verifications } });
@@ -3164,14 +3111,13 @@ export const sendPasswordResetEmail = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+const ResetPasswordSchema = z.object({
+  token: z.string().uuid("token must be a valid UUID"),
+  password: z.string().min(8, "Password must be at least 8 characters").max(256),
+});
+
 export const resetPassword = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { token: string; password: string } => {
-    const d = data as { token: string; password: string };
-    if (!d.token || typeof d.token !== "string") throw new Error("token is required");
-    if (!d.password || typeof d.password !== "string") throw new Error("password is required");
-    if (d.password.length < 8) throw new Error("Password must be at least 8 characters");
-    return { token: d.token, password: d.password };
-  })
+  .inputValidator((data) => ResetPasswordSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const db = drizzle(env.DB, { schema: { users, verifications, accounts } });
@@ -3204,13 +3150,13 @@ export const resetPassword = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+const SendVerificationEmailSchema = z.object({
+  userId: z.string().min(1).max(128),
+  email: z.string().email("valid email is required").max(254),
+});
+
 export const sendVerificationEmail = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { userId: string; email: string } => {
-    const d = data as { userId: string; email: string };
-    if (!d.userId || typeof d.userId !== "string") throw new Error("userId is required");
-    if (!d.email || typeof d.email !== "string") throw new Error("email is required");
-    return { userId: d.userId, email: d.email };
-  })
+  .inputValidator((data) => SendVerificationEmailSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const db = drizzle(env.DB, { schema: { verifications } });
@@ -3246,12 +3192,10 @@ export const sendVerificationEmail = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+const VerifyEmailSchema = z.object({ token: z.string().uuid("token must be a valid UUID") });
+
 export const verifyEmail = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { token: string } => {
-    const d = data as { token: string };
-    if (!d.token || typeof d.token !== "string") throw new Error("token is required");
-    return { token: d.token };
-  })
+  .inputValidator((data) => VerifyEmailSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const db = drizzle(env.DB, { schema: { users, verifications } });
@@ -3304,11 +3248,7 @@ export const getMemoryUsageStats = createServerFn({ method: "GET" })
   });
 
 export const getPendingOrgInvitations = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { orgId: string } => {
-    const d = data as { orgId: string };
-    if (!d.orgId) throw new Error("orgId is required");
-    return { orgId: d.orgId };
-  })
+  .inputValidator((data) => OrgIdSchema.parse(data))
   .handler(async ({ data, context }): Promise<Array<{ id: string; email: string; role: string; expiresAt: number; createdAt: number }>> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -3360,12 +3300,10 @@ export const listActiveSessions = createServerFn({ method: "GET" }).handler(
   }
 );
 
+const SessionIdSchema = z.object({ sessionId: z.string().min(1).max(256) });
+
 export const revokeSession = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { sessionId: string } => {
-    const d = data as { sessionId: string };
-    if (!d.sessionId || typeof d.sessionId !== "string") throw new Error("sessionId is required");
-    return { sessionId: d.sessionId };
-  })
+  .inputValidator((data) => SessionIdSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -3453,27 +3391,18 @@ async function enrichAuditLogs(
   });
 }
 
+const AuditLogFilterSchema = z.object({
+  limit: z.number().int().min(1).max(100).optional(),
+  offset: z.number().int().min(0).optional(),
+  memoryId: z.string().uuid().optional(),
+  action: z.string().max(64).optional(),
+  userId: z.string().max(128).optional(),
+  dateFrom: z.number().int().min(0).optional(),
+  dateTo: z.number().int().min(0).optional(),
+});
+
 export const getOrgAuditLogs = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): {
-    limit?: number;
-    offset?: number;
-    memoryId?: string;
-    action?: string;
-    userId?: string;
-    dateFrom?: number;
-    dateTo?: number;
-  } => {
-    const d = data as any;
-    return {
-      limit: typeof d?.limit === "number" ? d.limit : undefined,
-      offset: typeof d?.offset === "number" ? d.offset : undefined,
-      memoryId: typeof d?.memoryId === "string" ? d.memoryId : undefined,
-      action: typeof d?.action === "string" ? d.action : undefined,
-      userId: typeof d?.userId === "string" ? d.userId : undefined,
-      dateFrom: typeof d?.dateFrom === "number" ? d.dateFrom : undefined,
-      dateTo: typeof d?.dateTo === "number" ? d.dateTo : undefined,
-    };
-  })
+  .inputValidator((data) => AuditLogFilterSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -3538,14 +3467,13 @@ export const getOrgAuditLogs = createServerFn({ method: "POST" })
     };
   });
 
+const ExportAuditCsvSchema = z.object({
+  action: z.string().max(64).optional(),
+  userId: z.string().max(128).optional(),
+});
+
 export const exportAuditLogsCsv = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { action?: string; userId?: string } => {
-    const d = data as { action?: string; userId?: string };
-    return {
-      action: typeof d?.action === "string" ? d.action : undefined,
-      userId: typeof d?.userId === "string" ? d.userId : undefined,
-    };
-  })
+  .inputValidator((data) => ExportAuditCsvSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -3615,27 +3543,18 @@ export const exportAuditLogsCsv = createServerFn({ method: "POST" })
   });
 
 // ── Site-Level Audit Log (site admin only) ─────────────────────────────────
+const SiteAuditLogFilterSchema = z.object({
+  limit: z.number().int().min(1).max(100).optional(),
+  offset: z.number().int().min(0).optional(),
+  action: z.string().max(64).optional(),
+  userId: z.string().max(128).optional(),
+  orgId: z.string().max(128).optional(),
+  dateFrom: z.number().int().min(0).optional(),
+  dateTo: z.number().int().min(0).optional(),
+});
+
 export const getSiteAuditLogs = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): {
-    limit?: number;
-    offset?: number;
-    action?: string;
-    userId?: string;
-    orgId?: string;
-    dateFrom?: number;
-    dateTo?: number;
-  } => {
-    const d = data as any;
-    return {
-      limit: typeof d?.limit === "number" ? d.limit : undefined,
-      offset: typeof d?.offset === "number" ? d.offset : undefined,
-      action: typeof d?.action === "string" ? d.action : undefined,
-      userId: typeof d?.userId === "string" ? d.userId : undefined,
-      orgId: typeof d?.orgId === "string" ? d.orgId : undefined,
-      dateFrom: typeof d?.dateFrom === "number" ? d.dateFrom : undefined,
-      dateTo: typeof d?.dateTo === "number" ? d.dateTo : undefined,
-    };
-  })
+  .inputValidator((data) => SiteAuditLogFilterSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     // ── Hard server-side guard: ONLY the configured site admin ─────────────
@@ -3693,15 +3612,14 @@ export const getSiteAuditLogs = createServerFn({ method: "POST" })
     };
   });
 
+const ExportSiteAuditCsvSchema = z.object({
+  action: z.string().max(64).optional(),
+  userId: z.string().max(128).optional(),
+  orgId: z.string().max(128).optional(),
+});
+
 export const exportSiteAuditLogsCsv = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { action?: string; userId?: string; orgId?: string } => {
-    const d = data as any;
-    return {
-      action: typeof d?.action === "string" ? d.action : undefined,
-      userId: typeof d?.userId === "string" ? d.userId : undefined,
-      orgId: typeof d?.orgId === "string" ? d.orgId : undefined,
-    };
-  })
+  .inputValidator((data) => ExportSiteAuditCsvSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     // ── Hard server-side guard: ONLY the configured site admin ─────────────
@@ -3764,14 +3682,12 @@ export const exportSiteAuditLogsCsv = createServerFn({ method: "POST" })
     return { csv };
   });
 
+const AnalyzeProjectSchema = z.object({
+  description: z.string().min(1, "description is required").max(4000).transform((s) => s.trim()),
+});
+
 export const analyzeProjectRequirements = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { description: string } => {
-    const d = data as { description: string };
-    if (!d.description || typeof d.description !== "string") {
-      throw new Error("description is required");
-    }
-    return { description: d.description.trim() };
-  })
+  .inputValidator((data) => AnalyzeProjectSchema.parse(data))
   .handler(async ({ data, context }): Promise<{
     language: string;
     frontend: string;
@@ -3874,39 +3790,26 @@ Project Description:
     };
   });
 
+const StackFieldSchema = z.string().max(128).default("");
+
+const GenerateStackSchema = z.object({
+  language: StackFieldSchema,
+  frontend: StackFieldSchema,
+  hosting: StackFieldSchema,
+  database: StackFieldSchema,
+  storage: StackFieldSchema,
+  search: StackFieldSchema,
+  vector: StackFieldSchema,
+  componentLibrary: StackFieldSchema,
+  orm: StackFieldSchema,
+  auth: StackFieldSchema,
+  styling: StackFieldSchema,
+  stateCache: StackFieldSchema,
+  bannedProviders: z.array(z.string().max(64)).default([]),
+});
+
 export const generateStackRecommendation = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): {
-    language: string;
-    frontend: string;
-    hosting: string;
-    database: string;
-    storage: string;
-    search: string;
-    vector: string;
-    componentLibrary: string;
-    orm: string;
-    auth: string;
-    styling: string;
-    stateCache: string;
-    bannedProviders: string[];
-  } => {
-    const d = data as any;
-    return {
-      language: String(d.language || ""),
-      frontend: String(d.frontend || ""),
-      hosting: String(d.hosting || ""),
-      database: String(d.database || ""),
-      storage: String(d.storage || ""),
-      search: String(d.search || ""),
-      vector: String(d.vector || ""),
-      componentLibrary: String(d.componentLibrary || ""),
-      orm: String(d.orm || ""),
-      auth: String(d.auth || ""),
-      styling: String(d.styling || ""),
-      stateCache: String(d.stateCache || ""),
-      bannedProviders: Array.isArray(d.bannedProviders) ? d.bannedProviders.map(String) : [],
-    };
-  })
+  .inputValidator((data) => GenerateStackSchema.parse(data))
   .handler(async ({ data, context }): Promise<{
     name: string;
     description: string;
@@ -3992,27 +3895,17 @@ export const listMemoryTemplates = createServerFn({ method: "GET" })
     return db.select().from(memoryTemplates).all();
   });
 
+const TemplateCategoryEnum = z.enum(["stack", "governance", "devops", "compliance", "documentation"]);
+
+const MemoryTemplateSchema = z.object({
+  name: z.string().min(1, "name is required").max(128).transform((s) => s.trim()),
+  description: z.string().min(1, "description is required").max(512).transform((s) => s.trim()),
+  category: TemplateCategoryEnum,
+  configPayload: z.string().min(1, "configPayload is required").max(50000),
+});
+
 export const createMemoryTemplate = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): {
-    name: string;
-    description: string;
-    category: "stack" | "governance" | "devops" | "compliance" | "documentation";
-    configPayload: string;
-  } => {
-    const d = data as any;
-    if (!d.name || typeof d.name !== "string") throw new Error("name is required");
-    if (!d.description || typeof d.description !== "string") throw new Error("description is required");
-    if (!["stack", "governance", "devops", "compliance", "documentation"].includes(d.category)) {
-      throw new Error("Invalid category");
-    }
-    if (!d.configPayload || typeof d.configPayload !== "string") throw new Error("configPayload is required");
-    return {
-      name: d.name.trim(),
-      description: d.description.trim(),
-      category: d.category,
-      configPayload: d.configPayload,
-    };
-  })
+  .inputValidator((data) => MemoryTemplateSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -4038,29 +3931,7 @@ export const createMemoryTemplate = createServerFn({ method: "POST" })
   });
 
 export const updateMemoryTemplate = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): {
-    id: string;
-    name: string;
-    description: string;
-    category: "stack" | "governance" | "devops" | "compliance" | "documentation";
-    configPayload: string;
-  } => {
-    const d = data as any;
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    if (!d.name || typeof d.name !== "string") throw new Error("name is required");
-    if (!d.description || typeof d.description !== "string") throw new Error("description is required");
-    if (!["stack", "governance", "devops", "compliance", "documentation"].includes(d.category)) {
-      throw new Error("Invalid category");
-    }
-    if (!d.configPayload || typeof d.configPayload !== "string") throw new Error("configPayload is required");
-    return {
-      id: d.id,
-      name: d.name.trim(),
-      description: d.description.trim(),
-      category: d.category,
-      configPayload: d.configPayload,
-    };
-  })
+  .inputValidator((data) => MemoryTemplateSchema.extend({ id: z.string().uuid() }).parse(data))
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -4086,11 +3957,7 @@ export const updateMemoryTemplate = createServerFn({ method: "POST" })
   });
 
 export const deleteMemoryTemplate = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string } => {
-    const d = data as any;
-    if (!d.id || typeof d.id !== "string") throw new Error("id is required");
-    return { id: d.id };
-  })
+  .inputValidator((data) => IdSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
@@ -4107,14 +3974,12 @@ export const deleteMemoryTemplate = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+const SetPasscodeSchema = z.object({
+  passcode: z.string().min(4, "Passcode must be at least 4 characters").max(32, "Passcode must be at most 32 characters"),
+});
+
 export const setDeletionPasscode = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { passcode: string } => {
-    const d = data as { passcode: string };
-    if (!d.passcode || typeof d.passcode !== "string" || d.passcode.length < 4 || d.passcode.length > 32) {
-      throw new Error("Passcode must be between 4 and 32 characters long");
-    }
-    return { passcode: d.passcode };
-  })
+  .inputValidator((data) => SetPasscodeSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
