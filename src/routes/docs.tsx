@@ -714,19 +714,20 @@ function DocsPage() {
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Importing & Migrating</h2>
             <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Migrating your personal context, rules, and inferred preferences from existing platforms is a simple two-step process in Locker. Use our custom extraction prompts for major LLMs and batch ingest them using our AI parsing tool.
+              Locker makes it easy to migrate your personal context, coding rules, and learned preferences from existing LLM platforms. Use custom extraction prompts designed for each major AI assistant, paste the output into Locker, and the AI-powered ingestion pipeline automatically deduplicates, categorizes, tags, and encrypts everything in seconds.
             </p>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Migration Workflow</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 32 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Import Workflow</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
               {[
-                { step: "1", text: "Open the Import tab in the top navigation bar." },
-                { step: "2", text: "Select your source platform (ChatGPT, Claude, Perplexity, Gemini, Grok, or Microsoft Copilot)." },
-                { step: "3", text: "Locker displays a custom prompt tailored to extract that chatbot's internal memory store. Click Copy Prompt." },
-                { step: "4", text: "Paste the prompt into your chat session with that LLM. The AI will output all its saved memories and inferred preferences in a structured JSON/markdown code block." },
-                { step: "5", text: "Paste the output code block into the Locker import panel and select a project workspace scope." },
-                { step: "6", text: "Click Parse with AI. Locker will automatically deduplicate, categorize (rules, projects, or references), and tag the raw dump." },
-                { step: "7", text: "Verify the parsed facts on screen and click Batch Import Memories to encrypt and save them." }
+                { step: "1", title: "Open Import Tab", text: "Click Import in the top navigation bar" },
+                { step: "2", title: "Select Source Platform", text: "Choose your source: ChatGPT, Claude, Perplexity, Gemini, Grok, or Microsoft Copilot" },
+                { step: "3", title: "Copy Custom Prompt", text: "Locker displays a tailored extraction prompt optimized for that platform's memory structure. Click Copy Prompt to copy to clipboard" },
+                { step: "4", title: "Extract from Source", text: "Open the source AI platform in another tab. Paste the prompt into a chat session and let the AI generate its complete memory dump (saved memory slots, custom instructions, learned preferences)" },
+                { step: "5", title: "Paste into Locker", text: "Copy the AI's output (usually a JSON or markdown code block). Return to Locker and paste it into the Import textarea. Select a destination scope (Personal, Team, Organization) or project workspace key" },
+                { step: "6", title: "Parse with AI", text: "Click Parse with AI. Locker's ingestion engine runs Llama 3.3 to automatically deduplicate, categorize (Rules/Projects/References), assign tags, and extract entities for the knowledge graph" },
+                { step: "7", title: "Review & Adjust", text: "Preview the parsed facts on screen. Adjust categories, tags, or scopes as needed. Remove items that are incorrect or irrelevant" },
+                { step: "8", title: "Batch Import", text: "Click Batch Import Memories. Locker encrypts everything with your vault DEK, stores in D1, generates vector embeddings on Vectorize, and inserts into the knowledge graph" }
               ].map((s) => (
                 <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
                   <div style={{
@@ -734,22 +735,103 @@ function DocsPage() {
                     display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
                     border: "1px solid rgba(168,85,247,0.2)"
                   }}>{s.step}</div>
-                  <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
                 </div>
               ))}
             </div>
 
             <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Supported Platforms</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
-                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>🤖 ChatGPT & Claude</h4>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>Extracts both explicit saved memory slots, custom system instructions, and implicit behavioral inferences.</p>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>🤖 ChatGPT</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>Extracts explicit Memory entries (Settings → Personalization → Memory), custom instructions, and behavioral preferences inferred from conversation history.</p>
               </div>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
-                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>🔍 Perplexity & Gemini</h4>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>Pulls details from Perplexity personalization slots and Gemini "Saved Info" panels verbatim.</p>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>🧠 Claude</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>Exports custom instructions, project context from previous conversations, and inferred preferences about your workflow and coding style.</p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>🔍 Perplexity</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>Pulls Personalization settings, saved knowledge snippets, and research preferences from your Perplexity account verbatim.</p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>✨ Gemini</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>Exports from "Saved Info" panels, saved prompts, and conversation history summaries that Gemini remembers about you.</p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>⚡ Grok</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>Extracts custom context, personality settings, and conversation memory from your Grok account on xAI.</p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>🪟 Microsoft Copilot</h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>Pulls from Copilot's settings, saved conversations, and learned preferences about your work and interests.</p>
               </div>
             </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Import Features</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🤖 AI-Powered Parsing
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Llama 3.3-70B automatically categorizes facts (Rules, Projects, References), removes duplicates within the batch, and assigns appropriate tags without manual work.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔄 Cross-Reference Deduplication
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Locker compares incoming memories against existing vault memories using vector similarity. Duplicates are automatically merged; related facts are linked via the knowledge graph.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  ✏️ Pre-Import Review
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Before committing, preview all parsed facts. Adjust categories, tags, and scopes to match your vault structure. Remove irrelevant or incorrect items.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔒 Full Encryption
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  All imported memories are encrypted with AES-256-GCM using your vault's DEK before storage. Plaintext is never persisted.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  📊 Batch Operations
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Import hundreds or thousands of facts in one operation. Locker handles bulk encryption, indexing, and graph extraction efficiently in the background.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔗 Entity Extraction
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Workers AI automatically extracts named entities (services, libraries, APIs, databases) and creates relationship edges in the knowledge graph for multi-hop retrieval.
+                </p>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Best Practices</h3>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.8, gap: 8, display: "flex", flexDirection: "column" }}>
+              <li><strong>Start with one platform:</strong> Begin by importing from your primary AI assistant (ChatGPT or Claude). Test the workflow and review results before importing from others.</li>
+              <li><strong>Review parsed results carefully:</strong> Before clicking Batch Import, scan the categorizations and tags. Adjust outliers to match your vault conventions.</li>
+              <li><strong>Set appropriate scope:</strong> Choose Personal or Team scope based on whether the facts are personal learnings or shared team guidelines.</li>
+              <li><strong>Assign project workspace keys:</strong> If importing project-specific context, assign it to a corresponding workspace key to keep memories organized by project.</li>
+              <li><strong>Remove duplicates post-import:</strong> Even with deduplication, manually review imported memories for unexpected duplicates or contradictions. Archive or delete as needed.</li>
+              <li><strong>Gradually migrate not bulk migrate:</strong> Rather than importing all memories at once, import in waves by category or time period. This lets you refine processes and catch issues early.</li>
+            </ul>
           </div>
         );
       case "team-collaboration":
@@ -757,66 +839,161 @@ function DocsPage() {
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Team Collaboration</h2>
             <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Establish shared coding standards and stack specifications for your entire development team. Group members, assign roles, and connect shared workspace keys to eliminate drift across local developer environments.
+              Establish shared coding standards, stack specifications, and technical guidelines for your entire development team. Locker's team and organization structure lets you group members, assign roles, and scope memories to specific teams — eliminating drift and ensuring every developer has access only to the context they need.
             </p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 32 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Organizations vs. Teams</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)", margin: "0 0 8px 0" }}>🏢 Organizations</h3>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                  Billing hubs that manage member seat allocations, subscription quotas, and general workspace keys. Enforces strict administrative boundaries.
-                </p>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: "0 0 12px 0", display: "flex", alignItems: "center", gap: 8 }}>
+                  🏢 Organizations
+                </h4>
+                <ul style={{ paddingLeft: 16, color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.7, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>Top-level scope:</strong> Organizations are the root billing and administrative hub for your entire company or workspace.</li>
+                  <li><strong>Billing management:</strong> Control seat allocations, manage subscriptions, and enforce organization-wide quotas.</li>
+                  <li><strong>Shared workspace keys:</strong> Create organization-level project workspace keys that multiple teams inherit and share.</li>
+                  <li><strong>Global memories:</strong> Store organization-wide architectural decisions, security standards, and compliance guidelines visible to all members.</li>
+                  <li><strong>One per login:</strong> Each Locker account has one primary organization; teams nest within it.</li>
+                </ul>
               </div>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)", margin: "0 0 8px 0" }}>👥 Teams</h3>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                  Granular sub-groups (e.g. <code>frontend-team</code>, <code>devops-team</code>). Restrict memory blocks or project scopes to specific teams so developers only receive relevant context.
-                </p>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: "0 0 12px 0", display: "flex", alignItems: "center", gap: 8 }}>
+                  👥 Teams
+                </h4>
+                <ul style={{ paddingLeft: 16, color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.7, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>Granular sub-groups:</strong> Create specialized teams (e.g., <code>frontend-team</code>, <code>backend-team</code>, <code>devops-team</code>, <code>data-team</code>).</li>
+                  <li><strong>Scoped memories:</strong> Restrict technical guidelines and project context to specific teams so developers only see relevant instructions.</li>
+                  <li><strong>Team-level workspace keys:</strong> Assign team-specific project keys (e.g., <code>my-org:frontend:next-js-app</code>) to isolate rule sets by team.</li>
+                  <li><strong>Flexible membership:</strong> A developer can belong to multiple teams (frontend and shared-backend infrastructure) and access memories from all of them.</li>
+                  <li><strong>Multiple teams:</strong> Create as many teams as needed; there is no limit.</li>
+                </ul>
               </div>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>User Roles & Governance</h3>
-            <div style={{ 
-              border: "1px solid var(--border)", 
-              borderRadius: 12, 
-              overflow: "hidden", 
-              background: "var(--surface2)", 
-              marginBottom: 32,
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>User Roles & Permissions</h3>
+            <div style={{
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              overflow: "hidden",
+              background: "var(--surface2)",
+              marginBottom: 28,
               width: "100%",
               overflowX: "auto"
             }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left", minWidth: 500 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left", minWidth: 550 }}>
                 <thead>
                   <tr style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
                     <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Role</th>
-                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Permissions & Access Boundaries</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Scope</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Permissions</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
                     <td style={{ padding: "14px 16px", fontWeight: "bold", color: "var(--accent)" }}>Owner</td>
-                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.5 }}>Full billing control, seat upgrades, organization deletion, role modification, and member pruning.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)" }}>Organization</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.6 }}>Full billing control (seat upgrades, plan changes), organization deletion, admin role assignment, member removal, and vault deletion. Complete read-write access to all organization and team memories.</td>
                   </tr>
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
                     <td style={{ padding: "14px 16px", fontWeight: "bold", color: "var(--accent)" }}>Admin</td>
-                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.5 }}>Create teams, issue email invitations, delete/update shared organization memories, and edit general team lists.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)" }}>Organization or Team</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.6 }}>Create and manage teams, send email invitations to developers, create/edit/delete organization or team memories, manage team memberships. Cannot modify billing or delete organization.</td>
                   </tr>
                   <tr>
                     <td style={{ padding: "14px 16px", fontWeight: "bold", color: "var(--text)" }}>Member</td>
-                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.5 }}>Read-only access or read-write access to specific scoped memory cards based on team memberships.</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)" }}>Team(s)</td>
+                    <td style={{ padding: "14px 16px", color: "var(--text-muted)", lineHeight: 1.6 }}>Read-only or read-write access to memories scoped to their team(s). Access organization-wide shared memories (read-only by default). Cannot manage members or create teams.</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <div style={{ background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.15)", borderRadius: 12, padding: 18 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                📩 Inviting Members
-              </h3>
-              <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                Owners and Admins can invite new developers from the <strong>Organization</strong> view by typing their email. Locker generates a cryptographically signed magic link valid for 48 hours and sends an invitation email using Cloudflare's built-in Email Worker bindings.
-              </p>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Setting Up Your Organization & Teams</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Create Organization", text: "When you first sign up, Locker creates your primary organization. Customize the name and settings from Admin → Organization Settings" },
+                { step: "2", title: "Create Teams", text: "Go to Admin → Teams and click Create Team. Enter a name (e.g., 'Backend Team', 'Frontend Team'). Teams automatically inherit your organization's workspace keys" },
+                { step: "3", title: "Invite Members", text: "Click Invite Members in the Organization or Team view. Enter developer email addresses. Locker sends a 48-hour magic link; they click to accept and join" },
+                { step: "4", title: "Assign Team Membership", text: "Once members join, assign them to specific teams. An admin can manage team membership from the Teams view" },
+                { step: "5", title: "Set Memory Scopes", text: "When creating memories, choose Organization (visible to all), Team (visible only to that team), or Personal scope" },
+                { step: "6", title: "Assign Workspace Keys", text: "For team-specific projects, create team-scoped workspace keys. When exporting rules, specify the key to generate team-specific .cursorrules, CLAUDE.md, etc." }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
             </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Inviting Members</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Navigate to Organization or Team", text: "Go to Admin → Organization (or Teams → Select Team)" },
+                { step: "2", title: "Click Invite Members", text: "Look for an Invite Members, Add Member, or + Invite button" },
+                { step: "3", title: "Enter Email Address", text: "Type the email address of the developer you want to invite (e.g., alice@company.com)" },
+                { step: "4", title: "Select Role (Optional)", text: "Choose Member role (default). Admins can select Admin if granting management permissions" },
+                { step: "5", title: "Send Invitation", text: "Click Send Invitation or Invite. Locker generates a cryptographically signed magic link valid for 48 hours" },
+                { step: "6", title: "Share Link or Wait for Email", text: "The recipient receives an email from Locker with the invitation link. They click the link and follow signup/login, then automatically join your organization/team" },
+                { step: "7", title: "Verify Membership", text: "Return to the Members view. Once the invitee accepts, they appear in the member list with their assigned role" }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Memory Scoping & Access Control</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🌐 Organization Scope
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Memories visible to all organization members. Use for company-wide architectural decisions, security standards, and compliance guidelines that every developer needs to know.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  👥 Team Scope
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Memories visible only to members of a specific team. Perfect for team-specific coding standards, technology choices, and deployment workflows that don't apply org-wide.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔒 Personal Scope
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Memories visible only to you. Use for private notes, experiments, or sensitive information that should not be shared with the team.
+                </p>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Best Practices</h3>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.8, gap: 8, display: "flex", flexDirection: "column" }}>
+              <li><strong>Name teams by function:</strong> Use clear, functional names like "Frontend", "Backend", "DevOps", "Data Engineering" so developers instantly know which team to join and what memories are relevant.</li>
+              <li><strong>Scope memories carefully:</strong> Organization scope for broad standards; team scope for specialized practices. Avoid over-sharing; team members should only see what they need.</li>
+              <li><strong>Assign team-specific workspace keys:</strong> For team-scoped rules, create workspace keys like <code>my-org:frontend:next-app</code> to keep rule sets isolated and prevent accidental mixing.</li>
+              <li><strong>Use templates across teams:</strong> Create organization-scoped templates for standard stacks all teams use, and team-scoped templates for team-specific variants.</li>
+              <li><strong>Manage admin access carefully:</strong> Only grant Admin role to developers who will actively manage team membership and create shared memories. Most developers should be Members.</li>
+              <li><strong>Review org memories quarterly:</strong> Periodically audit organization-wide memories to remove outdated standards and keep shared context fresh and accurate.</li>
+            </ul>
           </div>
         );
       case "managing-memories":
@@ -824,50 +1001,144 @@ function DocsPage() {
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Managing Memories</h2>
             <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Locker provides a flexible interface for managing your long-term memory vault. Memories can be created, updated, and purged either through the browser-based dashboard or directly by connected AI developer tools using Model Context Protocol (MCP).
+              Locker provides flexible, powerful interfaces for managing your long-term memory vault. You can create, update, search, archive, and delete memories through the browser dashboard, the mobile-friendly vault view, or programmatically via AI agents using Model Context Protocol (MCP). Full encryption, audit trails, and approval workflows protect your memories at every step.
             </p>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Managing Memories in the UI</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginBottom: 32 }}>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
-                <strong style={{ display: "block", color: "var(--text)", marginBottom: 4 }}>🧠 Creating Memories</strong>
-                <span style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  Click the <strong>New Memory</strong> button at the top right of the dashboard. Select a Category (Rules, Projects, or References), write the Fact text, add custom tags, and optionally associate it with a specific <strong>Project Workspace</strong> key to isolate instructions.
-                </span>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Managing Memories via the Dashboard</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Create a Memory", text: "Click New Memory at the top right. Select a Category (Rules, Projects, or References), enter your fact, add custom tags (e.g., #authentication, #database, #frontend), optionally set a project workspace scope, and click Save" },
+                { step: "2", title: "View & Search", text: "Browse all memories in the main vault view. Use the search bar to find by keyword, or filter by category, tags, or scope. The search uses hybrid GraphRAG, combining keyword matching, semantic similarity, and graph relationships" },
+                { step: "3", title: "Edit a Memory", text: "Click the pencil (edit) icon on any memory card. Modify the fact text, tags, scope, or category. Locker automatically updates the database and recalculates semantic embeddings on Vectorize" },
+                { step: "4", title: "Delete a Memory", text: "Click the trash icon on a memory card. For user tokens, you may need to provide a passcode or 2FA code. For agent tokens, the deletion is queued for your approval" },
+                { step: "5", title: "Archive Old Memories", text: "Use the archive feature to hide old but still-relevant memories from active searches while retaining them for reference. Archived memories exclude from recall_context by default" },
+                { step: "6", title: "View Metadata & History", text: "Click on a memory to view its full metadata: creation date, last modified, encryption status, graph relationships, and semantic vector score" }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Memory Categories & Tagging</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  📋 Rules
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Coding standards, best practices, and architectural guidelines. Examples: "Use TypeScript strict mode", "Always validate user input server-side", "Restrict API responses to 5MB max".
+                </p>
               </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
-                <strong style={{ display: "block", color: "var(--text)", marginBottom: 4 }}>✏️ Editing & Deleting</strong>
-                <span style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  Click the edit (pencil) icon on any memory card to modify its fields, or the delete icon to remove it. Locker automatically updates the underlying SQL database and recalculates the semantic embeddings on Cloudflare Vectorize.
-                </span>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  📁 Projects
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Project-specific context, architecture decisions, and workflow notes. Examples: "Frontend is built on Next.js 14 with App Router", "Database uses PostgreSQL with Drizzle ORM", "Deployment via GitHub Actions to Vercel".
+                </p>
               </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
-                <strong style={{ display: "block", color: "var(--text)", marginBottom: 4 }}>🚦 Vault Actions Pending Approval</strong>
-                <span style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  All agent-initiated destructive operations are held in an approval queue. This covers three cases: agent <code>update_memory</code> calls (blue cards showing the proposed new fact vs. the current fact), agent <code>delete_memory</code> calls (red cards), and newly proposed facts that contradict existing memories (amber cards). You must log in and click <strong>Approve</strong> to apply the action, or <strong>Deny</strong> to discard it. No change reaches the vault until you explicitly approve.
-                </span>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔗 References
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  External documentation links, API references, and tool guides. Examples: "Drizzle ORM docs: https://orm.drizzle.team", "Our internal wiki: https://wiki.company.com", "Design system Figma link".
+                </p>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Vault Actions & Agent Approval Queue</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              When connected AI agents attempt to create, update, or delete memories, those actions are held in an approval queue. You review and approve/deny changes before they reach the vault:
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔵 Update Requests (Blue Cards)
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Agent wants to refine an existing memory. Shows the current fact and the proposed new version side-by-side. Review the change, then click Approve or Deny.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔴 Delete Requests (Red Cards)
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Agent proposes removing a memory (usually outdated facts). Review context and click Approve to delete, or Deny to keep the memory.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🟡 Contradiction Alerts (Amber Cards)
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  New fact contradicts an existing memory (e.g., "Use Node.js 18" vs. "Use Node.js 20"). Decide which is correct, then approve or deny the proposed change.
+                </p>
               </div>
             </div>
 
             <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Programmatic Management via MCP</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 16 }}>
-              Locker exposes secure endpoints for AI models to retrieve and mutate memories in real time. Connected developer agents utilize these JSON-RPC commands behind the scenes:
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              Connected AI developer agents can manage memories programmatically via MCP tools. Every operation is logged, encrypted, and subject to your security and approval policies:
             </p>
-            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.8, marginBottom: 24, display: "flex", flexDirection: "column", gap: 6 }}>
-              <li><strong>Reading Context:</strong> Models call <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>recall_context</button> for hybrid RRF matches, and <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>search_memories</button> for exact tag/keyword scans.</li>
-              <li><strong>Mutating Store:</strong> Models use <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>commit_memory</button> to suggest facts, <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>update_memory</button> to refine facts, and <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>delete_memory</button> to remove stale data.</li>
-              <li><strong>Credential Vault:</strong> Models use <button onClick={() => setActiveSection("mcp-tools-credentials")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>store_credential</button>, <button onClick={() => setActiveSection("mcp-tools-credentials")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>retrieve_credential</button>, and <button onClick={() => setActiveSection("mcp-tools-credentials")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>delete_credential</button> to manage encrypted secrets. Requires <code>allowCredentials: true</code> on agent tokens.</li>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔍 Reading Context
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Agents call <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>recall_context</button> to search by semantic similarity, or <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>search_memories</button> for keyword/tag-based lookups.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  ✍️ Mutating Store
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Agents use <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>commit_memory</button> to add new facts, <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>update_memory</button> to refine existing ones, or <button onClick={() => setActiveSection("mcp-tools-mutation")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>delete_memory</button> to remove stale data.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔐 Credential Vault
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Agents use <button onClick={() => setActiveSection("mcp-tools-credentials")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>store_credential</button>, <button onClick={() => setActiveSection("mcp-tools-credentials")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>retrieve_credential</button>, and <button onClick={() => setActiveSection("mcp-tools-credentials")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>delete_credential</button> to manage secrets (requires <code>allowCredentials: true</code> on agent token).
+                </p>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Best Practices</h3>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.8, gap: 8, display: "flex", flexDirection: "column" }}>
+              <li><strong>Use consistent tags:</strong> Develop a tagging convention (e.g., #auth, #database, #frontend) and apply it uniformly. This makes search and filtering more reliable for both you and agents.</li>
+              <li><strong>Set appropriate scope:</strong> Use Personal for experiments, Team for shared guidelines, and Organization for company-wide standards. Avoid over-sharing sensitive information.</li>
+              <li><strong>Review agent requests regularly:</strong> Check the Vault Actions queue daily or weekly. Approving or denying requests promptly keeps your vault clean and agents learning from feedback.</li>
+              <li><strong>Archive vs. delete:</strong> Archive outdated but historically useful memories instead of deleting them. This preserves context if you need to reference how practices evolved.</li>
+              <li><strong>Periodically audit & refresh:</strong> Quarterly, review your vault for outdated facts, duplicate entries, and missing context. Keep your memory vault clean and current.</li>
+              <li><strong>Use project workspace keys:</strong> Isolate memories by project to avoid cross-project contamination and ensure agents see only relevant context per project.</li>
             </ul>
+
             <div style={{
               background: "rgba(168, 85, 247, 0.04)",
               border: "1px solid rgba(168, 85, 247, 0.15)",
               borderRadius: 12,
               padding: "16px",
+              marginTop: "28px",
               fontSize: 13,
               color: "var(--text-muted)",
               lineHeight: 1.6,
             }}>
-              <strong>💡 Developer Tip:</strong> For more detailed input schemas, required parameters, and configuration guides for all management tools, head over to the full <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: "bold", textDecoration: "underline", padding: 0, font: "inherit" }}>MCP Tools Reference List</button>.
+              <strong>💡 Developer Tip:</strong> For complete input schemas, required parameters, response formats, and error handling for all MCP tools, see the <button onClick={() => setActiveSection("mcp-tools-retrieval")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: "bold", textDecoration: "underline", padding: 0, font: "inherit" }}>MCP Tools Reference</button> section.
             </div>
           </div>
         );
@@ -875,108 +1146,252 @@ function DocsPage() {
         return (
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Tech Stack Creator</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-              The <strong>Tech Stack Creator</strong> is an interactive step-by-step wizard that allows you to define your workspace's technology profile across 12 architectural categories. Locker utilizes this profile to automatically compile optimized coding rules and agentic instructions.
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              The <strong>Tech Stack Creator</strong> is an interactive step-by-step wizard that helps you define your workspace's complete technology profile across 12 architectural categories. Locker uses your selections and constraints to automatically generate optimized coding standards, best practices, and AI agent instructions tailored to your exact tech choices.
             </p>
 
-            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 22, marginBottom: 28 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                🛠️ 12 Technology Categories
-              </h3>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>The 12 Technology Categories</h3>
+            <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20, marginBottom: 28 }}>
               <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-                Locker segments your stack into modular categories. In the UI, these are displayed as easy-to-use option tags:
+                Locker segments your architecture into 12 independent categories, each representing a critical decision point in your technology choices:
               </p>
-              
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                 {[
-                  { key: "Language", val: "TypeScript, Go, Python, Rust" },
-                  { key: "Runtime", val: "Node.js, Bun, Native Runtimes" },
-                  { key: "Frontend", val: "React, Next.js, Vue, Svelte" },
-                  { key: "Backend", val: "Express, Hono, Django, FastAPI" },
-                  { key: "Database", val: "Cloudflare D1, PG, SQLite, MySQL" },
-                  { key: "ORM Client", val: "Drizzle, Prisma, sqlx, pg" },
-                  { key: "Deploy Platform", val: "Workers, Vercel, Fly.io, AWS" },
-                  { key: "Styling", val: "Tailwind, Vanilla CSS, Styled-Components" },
-                  { key: "Lint & Format", val: "ESLint, Prettier, Biome, Ruff" },
-                  { key: "Test Runner", val: "Vitest, Jest, Playwright" },
-                  { key: "State Manage", val: "Zustand, Redux, Jotai" },
-                  { key: "Build Tool", val: "Vite, Webpack, Esbuild" }
+                  { key: "Language", val: "TypeScript, Go, Python, Rust, C#, Java" },
+                  { key: "Runtime", val: "Node.js, Bun, Deno, .NET, JVM, CPython" },
+                  { key: "Frontend", val: "React, Vue, Svelte, Next.js, Nuxt, Astro" },
+                  { key: "Backend", val: "Express, Hono, FastAPI, Django, Spring, Laravel" },
+                  { key: "Database", val: "PostgreSQL, MySQL, D1, SQLite, MongoDB, DynamoDB" },
+                  { key: "ORM/Query", val: "Drizzle, Prisma, sqlx, TypeORM, Hibernate, Sequelize" },
+                  { key: "Deploy", val: "Cloudflare Workers, Vercel, AWS, Fly.io, Railway, Render" },
+                  { key: "Styling", val: "Tailwind CSS, Vanilla CSS, styled-components, Sass, PostCSS" },
+                  { key: "Lint & Format", val: "ESLint, Prettier, Biome, Ruff, Clippy, rustfmt" },
+                  { key: "Test Runner", val: "Vitest, Jest, Playwright, Pytest, RSpec, xUnit" },
+                  { key: "State Manage", val: "Zustand, Redux, Jotai, Pinia, Recoil, NgRx" },
+                  { key: "Build Tool", val: "Vite, Webpack, esbuild, Turbopack, Parcel, Rollup" }
                 ].map((c) => (
                   <div key={c.key} style={{
-                    fontSize: 11,
-                    padding: "6px 12px",
-                    borderRadius: 20,
+                    fontSize: 12,
+                    padding: "8px 14px",
+                    borderRadius: 8,
                     background: "var(--surface)",
                     border: "1px solid var(--border)",
                     color: "var(--text)",
                     display: "flex",
-                    gap: 6,
-                    alignItems: "center"
+                    flexDirection: "column",
+                    gap: 4,
+                    flex: "1 1 calc(50% - 5px)"
                   }}>
-                    <strong style={{ color: "var(--accent)" }}>{c.key}:</strong>
-                    <span style={{ color: "var(--text-muted)" }}>{c.val}</span>
+                    <strong style={{ color: "var(--accent)", fontSize: 11 }}>{c.key}</strong>
+                    <span style={{ color: "var(--text-muted)", fontSize: 11, lineHeight: 1.4 }}>{c.val}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Workflow Steps</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>How It Works</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
               {[
-                { step: "1", text: "Navigate to the Vault page and click the New Memory button." },
-                { step: "2", text: "Select Tech Stack Creator to launch the step-by-step wizard." },
-                { step: "3", text: "Provide your selections for each of the 12 tech stack categories." },
-                { step: "4", text: "Input any custom negative constraints (e.g., 'no Tailwind inline utilities' or 'do not write raw SQL queries outside repos')." },
-                { step: "5", text: "Click Review Recommended Blueprint to compile rules tailored to your choices. Adjust individual guidelines before saving." },
-                { step: "6", text: "Click Store Memory to save these rules globally or to a specific project scope. The constraints are instantly synced without exposing database structures to local clients." }
+                { step: "1", title: "Launch the Wizard", text: "Open your Vault, click New Memory, and select Tech Stack Creator" },
+                { step: "2", title: "Select Technologies", text: "Step through each of the 12 categories and choose the technologies your team uses. Multiple selections per category are allowed" },
+                { step: "3", title: "Add Custom Constraints", text: "Define negative rules and team-specific guidelines (e.g., 'no inline Tailwind utilities', 'always use TypeScript strict mode', 'require unit tests for utilities')" },
+                { step: "4", title: "Review & Customize", text: "Locker generates a ruleset tailored to your selections. Review each guideline and adjust wording or emphasis to match your team's preferences" },
+                { step: "5", title: "Set Scope", text: "Choose whether to save globally (all projects), to a specific project workspace key, or to a team scope. This determines who sees the rules" },
+                { step: "6", title: "Export or Save", text: "Download the rules as .cursorrules, CLAUDE.md, copilot-instructions.md, or save to your vault for future reference and agent access" }
               ].map((s) => (
-                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 12 }}>
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
                   <div style={{
-                    width: 22, height: 22, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
-                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0,
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
                     border: "1px solid rgba(168,85,247,0.2)"
                   }}>{s.step}</div>
-                  <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
                 </div>
               ))}
             </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Key Features</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🤖 AI-Powered Rule Generation
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Workers AI (Llama 3.3-70B) generates best practices tailored to your exact technology choices. The ruleset balances pragmatism with best practices for your specific stack.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🎯 Custom Constraints
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Add negative rules or team-specific requirements. Locker incorporates these into the generated guidelines to ensure output matches your actual practices and preferences.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  ✏️ Edit & Refine
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Review each generated guideline before saving. Adjust wording, remove irrelevant items, or add specifics that the AI missed to perfectly fit your team's culture.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  📁 Multi-Format Export
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Export generated rules as CLAUDE.md, .cursorrules, copilot-instructions.md, GEMINI.md, or AGENTS.md. One ruleset, multiple agent formats.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  💾 Persist as Memory
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Save the ruleset as a project-scoped memory in your vault. AI agents can recall it via MCP, and you can re-export anytime without regenerating.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔄 Save as Template
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Save your selections and verified ruleset as a reusable template. Load it instantly in future projects to bypass rule regeneration entirely.
+                </p>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Best Practices</h3>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.8, gap: 8, display: "flex", flexDirection: "column" }}>
+              <li><strong>Be thorough with constraints:</strong> The more specific your negative rules, the better Locker can tailor the generated guidelines. Don't assume; explicitly state what your team avoids.</li>
+              <li><strong>Refine before saving:</strong> Take time to review and edit the generated ruleset. Personalize wording to match your team's voice and remove rules that don't apply to your actual workflow.</li>
+              <li><strong>Save as a template:</strong> Once you have a refined ruleset, save it as a template. Future projects can load it and skip regeneration, saving tokens and time.</li>
+              <li><strong>Use with team scope:</strong> When creating team-specific rulesets, assign them to a team workspace key and set the scope to your team. Ensure everyone on the team loads the same baseline.</li>
+              <li><strong>Update regularly:</strong> As your stack evolves (upgrade frameworks, adopt new tools), run the wizard again with updated selections. Keep your team's rules current.</li>
+            </ul>
           </div>
         );
       case "templates":
         return (
           <div>
-            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Blueprint Templates</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-              Blueprint Templates enable teams and individual developers to save, edit, and share standard configuration profiles. Instead of selecting the same 12 categories repeatedly, you can load templates directly to populate your rules baseline instantly.
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Templates</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              Templates are reusable technology stack and rules configurations that save time and maintain consistency across your projects. Instead of selecting the same 12 tech categories and constraints repeatedly, load a template to populate your baseline instantly and skip regeneration of verified rule sets.
             </p>
 
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Creating Templates</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Navigate to Templates", text: "Go to your Vault and click the Templates tab (or Templates section in navigation)" },
+                { step: "2", title: "Click New Template", text: "Click the New Template button or + Add Template" },
+                { step: "3", title: "Configure Stack Selections", text: "Select your preferred technology stack across all 12 categories (Language, Runtime, Frontend, Backend, Database, ORM, Deploy Platform, Styling, Lint & Format, Test Runner, State Management, Build Tool)" },
+                { step: "4", title: "Add Custom Constraints", text: "Define negative rules or guidelines specific to your team (e.g., 'No Tailwind inline utilities', 'Do not write raw SQL outside repos', 'Always use TypeScript strict mode')" },
+                { step: "5", title: "Set Template Metadata", text: "Give your template a clear name (e.g., 'Next.js + Prisma Stack', 'Python FastAPI Backend') and optional description for your team" },
+                { step: "6", title: "Save Template", text: "Click Save Template to persist it to your database. The template is now available for loading in future projects" }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Loading & Using Templates</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Open Stack Creator", text: "From the Vault page, click New Memory and select Tech Stack Creator to launch the wizard" },
+                { step: "2", title: "Load Custom Stack Blueprints", text: "In the wizard, click the Load Custom Stack Blueprints button (usually appears after step 1)" },
+                { step: "3", title: "Select Your Template", text: "A modal appears listing all your saved templates. Click on the template you want to load" },
+                { step: "4", title: "Auto-Populate Selections", text: "The wizard automatically populates all 12 tech categories, custom constraints, and any existing rule recommendations from the template" },
+                { step: "5", title: "Review & Customize (Optional)", text: "You can adjust individual selections or constraints before proceeding. Changes to this session do not modify the original template" },
+                { step: "6", title: "Proceed to Rules Review", text: "Click Next to continue through the wizard. If the template has pre-verified rules, you can use them directly without re-running LLM generation" }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Template Features</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                  💾 Creating Templates
-                </h3>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  💾 Persistent Storage
+                </h4>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                  Go to the <strong>Templates</strong> view and click <strong>New Template</strong>. Set up the stack selections, custom constraints, and rule lists. Save to add the template to your database.
+                  Templates are stored in your vault database alongside your memories. They persist across sessions and are accessible by you and your team members (depending on template scope).
                 </p>
               </div>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
                   ⚡ Instant Loading
-                </h3>
+                </h4>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                  In the Stack Creator wizard, click <strong>Load Custom Stack Blueprints</strong> to choose a template. The selections, constraints, and recommendations load instantly.
+                  Clicking Load Template populates all 12 stack categories, constraints, and previously-generated rules in milliseconds — no network latency or processing time.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🚀 Skip LLM Regeneration
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  If a template has pre-verified rule sets, a "Use Loaded Template Rules" button appears, bypassing LLM generation entirely and jumping directly to review — saving tokens and time.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  👥 Team & Org Scope
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Create templates at Personal, Organization, or Team scope. Organization-scoped templates are shared with all team members automatically, ensuring consistency.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  ✏️ Edit & Version
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Update templates as your tech stack evolves or team practices change. Locker tracks template modifications; loading a template always gives you the latest version.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔄 Immutable Session Scope
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Loading a template does not modify the original. Any changes you make during the Stack Creator session only affect the current project — the template remains unchanged.
                 </p>
               </div>
             </div>
 
-            <div style={{ background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.15)", borderRadius: 12, padding: 18 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                🚀 Bypassing LLM Regeneration
-              </h3>
-              <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                If a template already has verified instruction sets, Locker displays a <strong>"Use Loaded Template Rules"</strong> button. Clicking this skips LLM regeneration completely and sends you directly to the review step, reducing token overhead and conserving processing time.
-              </p>
-            </div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Best Practices</h3>
+            <ul style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.8, gap: 8, display: "flex", flexDirection: "column" }}>
+              <li><strong>Name templates clearly:</strong> Use descriptive names like "Next.js + Tailwind + Vercel" or "FastAPI + PostgreSQL Backend" so team members instantly recognize what the template contains.</li>
+              <li><strong>Document constraints in descriptions:</strong> If your template has unusual negative rules or specialized requirements, note them in the template description for team awareness.</li>
+              <li><strong>Keep templates up-to-date:</strong> When major versions of your stack components change or team practices evolve, update the template to reflect the current state.</li>
+              <li><strong>Scope templates appropriately:</strong> Personal templates are for experimenting; Organization or Team scope templates should be for standardized, vetted stacks your team actually uses.</li>
+              <li><strong>Leverage pre-verified rules:</strong> Once a template's generated rule set has been reviewed and approved by your team, save those rules to the template to enable instant use without LLM regeneration.</li>
+            </ul>
           </div>
         );
       case "export-rules":
@@ -1024,7 +1439,7 @@ function DocsPage() {
               </table>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
                 <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>📥 Method A: Direct UI Downloads</h4>
                 <ol style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.6, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1039,6 +1454,35 @@ function DocsPage() {
                 <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
                   A standalone zero-install CLI tool that authenticates with the Locker API and writes the compiled rules file directly to your workspace. Ideal for pre-commit hooks and CI workflows.
                 </p>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Commands</span>
+                  <button
+                    onClick={() => handleCopy(`# Sync .cursorrules to your project root
+npx locker-sync sync --format cursor --project locker
+
+# Preview without writing (dry-run)
+npx locker-sync sync --format claude --dry-run
+
+# Using environment variable for CI
+LOCKER_API_TOKEN=lkr_... npx locker-sync sync`)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "4px 10px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <CopyIcon size={11} /> Copy
+                  </button>
+                </div>
                 <pre style={{
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
@@ -1058,7 +1502,29 @@ npx locker-sync sync --format claude --dry-run
 # Using environment variable for CI
 LOCKER_API_TOKEN=lkr_... npx locker-sync sync`}</pre>
                 <div style={{ background: "rgba(168,85,247,0.05)", border: "1px solid rgba(168,85,247,0.15)", borderRadius: 8, padding: 10 }}>
-                  <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 6px 0", fontWeight: 700 }}>🔗 Pre-commit Hook (.git/hooks/pre-commit)</p>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, fontWeight: 700 }}>🔗 Pre-commit Hook (.git/hooks/pre-commit)</p>
+                    <button
+                      onClick={() => handleCopy(`#!/bin/sh
+npx locker-sync sync --format cursor --project my-project`)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "3px 8px",
+                        background: "transparent",
+                        border: "1px solid rgba(168,85,247,0.3)",
+                        color: "var(--text-muted)",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <CopyIcon size={10} /> Copy
+                    </button>
+                  </div>
                   <pre style={{ background: "transparent", border: "none", padding: 0, margin: 0, fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)", overflowX: "auto" }}>{`#!/bin/sh
 npx locker-sync sync --format cursor --project my-project`}</pre>
                 </div>
@@ -1069,6 +1535,34 @@ npx locker-sync sync --format cursor --project my-project`}</pre>
                 <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
                   AI developer agents connected via MCP can call Locker's native sync tool to build and write rules files directly inside your active workspace without manual downloads.
                 </p>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>JSON Arguments</span>
+                  <button
+                    onClick={() => handleCopy(`{
+  "name": "sync_workspace_agent_configs",
+  "arguments": {
+    "formatType": "claude", // or cursor, copilot, gemini, agents, antigravity
+    "projectKey": "locker"
+  }
+}`)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "4px 10px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <CopyIcon size={11} /> Copy
+                  </button>
+                </div>
                 <pre style={{
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
@@ -1128,34 +1622,89 @@ npx locker-sync sync --format cursor --project my-project`}</pre>
               </table>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Setup Guide</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 32 }}>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
-                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Step 1 — Generate an API Token</h4>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
-                  In <strong>Settings → API Tokens</strong>, create a token with at minimum the <code>commit_memory</code> permission bit enabled.
-                  To scope the token to an organization or team vault, set the scope accordingly. Copy the raw <code>lkr_…</code> value — it is shown only once.
-                </p>
-              </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
-                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Step 2 — Configure Secrets</h4>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
-                  Set the webhook signing secrets in your Locker deployment's Cloudflare secret store:
-                </p>
-                <pre style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: 10, fontFamily: "monospace", fontSize: 11, color: "var(--text)", overflowX: "auto", margin: 0 }}>{`wrangler secret put GITHUB_WEBHOOK_SECRET
-wrangler secret put LINEAR_WEBHOOK_SECRET`}</pre>
-              </div>
-              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
-                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--accent)" }}>Step 3 — Register the Webhook</h4>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
-                  In GitHub: <strong>Repo → Settings → Webhooks → Add webhook</strong>. Set the Payload URL to your Locker endpoint, Content type to <code>application/json</code>,
-                  and Secret to the value from Step 2. Select the <strong>Pull requests</strong> event only.
-                </p>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
-                  In Linear: <strong>Settings → API → Webhooks → Create webhook</strong>. Point it at the Linear endpoint, set the signing secret, and enable <strong>Issues</strong> events.
-                </p>
-              </div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>GitHub Webhook Setup</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Navigate to Repository Settings", text: "Go to your GitHub repository → Click Settings (top right) → In the left sidebar, click Webhooks" },
+                { step: "2", title: "Add a New Webhook", text: "Click Add webhook (top right) → You'll see a form to configure the webhook" },
+                { step: "3", title: "Configure Payload URL", text: "Enter your Locker endpoint: https://your-domain.com/api/webhooks/github" },
+                { step: "4", title: "Set Content Type", text: "Select application/json from the Content type dropdown" },
+                { step: "5", title: "Add Signing Secret", text: "Paste your GITHUB_WEBHOOK_SECRET (the one you stored in Cloudflare)" },
+                { step: "6", title: "Select Events", text: "Choose \"Let me select individual events\" → Check only \"Pull requests\" → Uncheck everything else" },
+                { step: "7", title: "Enable & Save", text: "Check the Active checkbox → Click Add webhook" }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
             </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Linear Webhook Setup</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Navigate to Workspace Settings", text: "Go to your Linear workspace → Click Settings (bottom left) → Click API" },
+                { step: "2", title: "Access Webhooks", text: "In the left menu under API, find and click Webhooks" },
+                { step: "3", title: "Create New Webhook", text: "Click the button to Create a new webhook" },
+                { step: "4", title: "Configure Webhook URL", text: "Enter your Locker endpoint: https://your-domain.com/api/webhooks/linear" },
+                { step: "5", title: "Set Signing Secret", text: "Paste your LINEAR_WEBHOOK_SECRET (the one you stored in Cloudflare)" },
+                { step: "6", title: "Select Events", text: "Check only Issues events → Uncheck any other event types" },
+                { step: "7", title: "Save & Verify", text: "Click Create webhook → Optionally send a test webhook to verify your endpoint" }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Locker API Token Configuration</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Generate an API Token", text: "Go to Settings → API Tokens → Click Generate Token or + New Token" },
+                { step: "2", title: "Select Token Type", text: "Choose Agent Token (for autonomous webhook processing) or Human Token (if manually triggered)" },
+                { step: "3", title: "Enable Permissions", text: "Ensure commit_memory permission is enabled — this allows the token to write memories to your vault" },
+                { step: "4", title: "Set Scope (Optional)", text: "Choose Personal, Organization, or Team scope to restrict webhook memories. Leave unscoped for vault-wide access" },
+                { step: "5", title: "Copy the Token", text: "The token appears as lkr_xxxxxxxxxxxxxxxxxxxxx — Copy it immediately. It is shown only once" }
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Adding the Authorization Header</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              Both GitHub and Linear require an <strong>Authorization</strong> header containing your Locker API token. Most webhook integrations include this automatically, but if writing custom code to process webhooks, use this header format:
+            </p>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontFamily: "monospace", fontSize: 12, color: "var(--accent)", marginBottom: 28, overflowX: "auto", whiteSpace: "nowrap" }}>
+              Authorization: Bearer lkr_your_token_here
+            </div>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 28 }}>
+              Replace <code>lkr_your_token_here</code> with your actual token copied in the previous step. If webhooks are forwarded through a proxy or relay service, verify that the service passes headers through unchanged.
+            </p>
 
             <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Authentication</h3>
             <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
@@ -1177,7 +1726,7 @@ wrangler secret put LINEAR_WEBHOOK_SECRET`}</pre>
             </ol>
 
             <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Response Shapes</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
               {[
                 { label: "Success", color: "#22c55e", body: `{ "ok": true, "memoryId": "uuid" }` },
                 { label: "Skipped (irrelevant event)", color: "var(--text-muted)", body: `{ "ok": true, "skipped": true }` },
