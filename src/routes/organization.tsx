@@ -573,7 +573,7 @@ function OrganizationPage() {
             </div>
             <div className="mt-6 text-center">
               <Link
-                to="/admin"
+                to="/pricing"
                 className="inline-flex items-center gap-2 px-6 py-2.5 bg-accent hover:bg-accent-hover text-white font-semibold text-sm rounded-lg transition-colors"
               >
                 View Plans & Pricing →

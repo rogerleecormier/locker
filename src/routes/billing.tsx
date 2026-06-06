@@ -422,38 +422,52 @@ export function MyBillingSection() {
                 <p className="text-xs md:text-sm text-text-muted leading-relaxed">
                   You're on the free plan. Upgrade to unlock more memories, recalls, and advanced analytics.
                 </p>
-                {billing?.enableBusinessPlans ? (
-                  <div className="flex gap-2.5 flex-wrap mt-1">
-                    <Button onClick={handleUpgrade} disabled={upgradingId !== null} className="font-bold text-xs select-none h-9 px-4">
+                <div className="flex gap-2.5 flex-wrap mt-1 items-center">
+                  <div className="relative group">
+                    <Button
+                      onClick={billing?.enableBusinessPlans ? handleUpgrade : undefined}
+                      disabled={!billing?.enableBusinessPlans || upgradingId !== null}
+                      className="font-bold text-xs select-none h-9 px-4"
+                    >
                       {upgradingId === "personal" ? "Redirecting to Checkout…" : "Upgrade to Business"}
                     </Button>
-                    {billing?.enableEnterprisePlans && (
-                      <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none">
-                        Contact Sales for Enterprise
-                      </a>
+                    {!billing?.enableBusinessPlans && (
+                      <div className="absolute bottom-full left-0 mb-2 w-56 bg-surface2 border border-border rounded-lg px-3 py-2 text-xs text-text-muted shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                        Business plan upgrades are disabled. Enable them in{" "}
+                        <span className="text-accent font-semibold">Site Admin → Site Configuration</span>.
+                      </div>
                     )}
                   </div>
-                ) : (
-                  <div className="p-3 bg-accent/5 border border-accent/15 rounded-xl flex items-center gap-2 text-xs text-text-muted select-none">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Paid plan upgrades are currently disabled during development.
-                  </div>
-                )}
+                  {billing?.enableEnterprisePlans && (
+                    <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none">
+                      Contact Sales for Enterprise
+                    </a>
+                  )}
+                </div>
               </div>
             )}
 
             {personalPlan === "business" && (
               <div className="flex gap-2.5 flex-wrap items-center mt-1">
-                {billing?.enableEnterprisePlans ? (
-                  <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none">
+                <div className="relative group">
+                  <a
+                    href={billing?.enableEnterprisePlans ? "mailto:enterprise@locker.rcormier.dev" : undefined}
+                    onClick={!billing?.enableEnterprisePlans ? (e) => e.preventDefault() : undefined}
+                    className={`inline-flex items-center justify-center h-9 px-4 rounded-lg border text-xs font-bold transition-all text-center select-none ${
+                      billing?.enableEnterprisePlans
+                        ? "border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5"
+                        : "border-border text-text-muted opacity-50 cursor-not-allowed"
+                    }`}
+                  >
                     Upgrade to Enterprise
                   </a>
-                ) : (
-                  <div className="p-3 bg-accent/5 border border-accent/15 rounded-xl flex items-center gap-2 text-xs text-text-muted select-none">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Enterprise upgrades are currently disabled.
-                  </div>
-                )}
+                  {!billing?.enableEnterprisePlans && (
+                    <div className="absolute bottom-full left-0 mb-2 w-56 bg-surface2 border border-border rounded-lg px-3 py-2 text-xs text-text-muted shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      Enterprise upgrades are disabled. Enable in{" "}
+                      <span className="text-accent font-semibold">Site Admin → Site Configuration</span>.
+                    </div>
+                  )}
+                </div>
                 {billing?.hasBillingCustomer && (
                   <Button onClick={handlePortal} disabled={portalLoading} variant="ghost" className="h-9 text-xs text-error hover:text-error hover:bg-error/5 hover:border-error/25 px-3">
                     {portalLoading ? "Opening…" : "Downgrade / Cancel"}
@@ -480,6 +494,7 @@ export function MyBillingSection() {
                   plan={PLANS[planId]}
                   isCurrentPlan={planId === personalPlan}
                   onSelect={planId === "business" && personalPlan === "free" ? handleUpgrade : undefined}
+                  upgradesEnabled={planId === "enterprise" ? !!billing?.enableEnterprisePlans : !!billing?.enableBusinessPlans}
                 />
               ))}
             </div>
@@ -490,9 +505,25 @@ export function MyBillingSection() {
               <div className="text-xs md:text-sm font-bold text-text mb-0.5">Need Enterprise?</div>
               <div className="text-[11px] text-text-muted leading-relaxed">Unlimited memories, SAML SSO, custom contracts, dedicated support.</div>
             </div>
-            <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-5 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center select-none flex-shrink-0">
-              Contact Sales
-            </a>
+            <div className="relative group flex-shrink-0">
+              <a
+                href={billing?.enableEnterprisePlans ? "mailto:enterprise@locker.rcormier.dev" : undefined}
+                onClick={!billing?.enableEnterprisePlans ? (e) => e.preventDefault() : undefined}
+                className={`inline-flex items-center justify-center h-9 px-5 rounded-lg border text-xs font-bold transition-all text-center select-none ${
+                  billing?.enableEnterprisePlans
+                    ? "border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5"
+                    : "border-border text-text-muted opacity-50 cursor-not-allowed"
+                }`}
+              >
+                Contact Sales
+              </a>
+              {!billing?.enableEnterprisePlans && (
+                <div className="absolute bottom-full right-0 mb-2 w-56 bg-surface2 border border-border rounded-lg px-3 py-2 text-xs text-text-muted shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                  Enterprise upgrades are disabled. Enable in{" "}
+                  <span className="text-accent font-semibold">Site Admin → Site Configuration</span>.
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}
@@ -604,19 +635,49 @@ export function OrgBillingSection() {
                     <div className="flex gap-2 flex-wrap justify-end self-start md:self-auto select-none mt-2 md:mt-0">
                       {orgPlan === "free" && (
                         <>
-                          <Button onClick={() => handleOrgUpgrade(org.id)} disabled={isUpgrading || upgradingId !== null} className="h-9 px-4 font-bold text-xs">
-                            {isUpgrading ? "Redirecting…" : "Upgrade to Business"}
-                          </Button>
-                          <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center">
-                            Enterprise
-                          </a>
+                          <div className="relative group">
+                            <Button
+                              onClick={billing?.enableBusinessPlans ? () => handleOrgUpgrade(org.id) : undefined}
+                              disabled={!billing?.enableBusinessPlans || isUpgrading || upgradingId !== null}
+                              className="h-9 px-4 font-bold text-xs"
+                            >
+                              {isUpgrading ? "Redirecting…" : "Upgrade to Business"}
+                            </Button>
+                            {!billing?.enableBusinessPlans && (
+                              <div className="absolute bottom-full left-0 mb-2 w-56 bg-surface2 border border-border rounded-lg px-3 py-2 text-xs text-text-muted shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                Business plan upgrades are disabled. Enable them in{" "}
+                                <span className="text-accent font-semibold">Site Admin → Site Configuration</span>.
+                              </div>
+                            )}
+                          </div>
+                          {billing?.enableEnterprisePlans && (
+                            <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center">
+                              Enterprise
+                            </a>
+                          )}
                         </>
                       )}
                       {orgPlan === "business" && (
                         <>
-                          <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center">
-                            Upgrade to Enterprise
-                          </a>
+                          <div className="relative group">
+                            <a
+                              href={billing?.enableEnterprisePlans ? "mailto:enterprise@locker.rcormier.dev" : undefined}
+                              onClick={!billing?.enableEnterprisePlans ? (e) => e.preventDefault() : undefined}
+                              className={`inline-flex items-center justify-center h-9 px-4 rounded-lg border text-xs font-bold transition-all text-center ${
+                                billing?.enableEnterprisePlans
+                                  ? "border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5"
+                                  : "border-border text-text-muted opacity-50 cursor-not-allowed"
+                              }`}
+                            >
+                              Upgrade to Enterprise
+                            </a>
+                            {!billing?.enableEnterprisePlans && (
+                              <div className="absolute bottom-full left-0 mb-2 w-56 bg-surface2 border border-border rounded-lg px-3 py-2 text-xs text-text-muted shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                Enterprise upgrades are disabled. Enable in{" "}
+                                <span className="text-accent font-semibold">Site Admin → Site Configuration</span>.
+                              </div>
+                            )}
+                          </div>
                           <Button onClick={() => handleOrgPortal(org.id)} disabled={isPortaling} variant="outline" className="h-9 px-4 font-semibold text-xs">
                             {isPortaling ? "Opening…" : "Manage / Downgrade"}
                           </Button>
@@ -640,7 +701,12 @@ export function OrgBillingSection() {
         <h2 className="text-base font-bold text-text select-none">Available Organization Plans</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {PLAN_ORDER.map((planId) => (
-            <PlanCard key={planId} plan={PLANS[planId]} isCurrentPlan={false} />
+            <PlanCard
+              key={planId}
+              plan={PLANS[planId]}
+              isCurrentPlan={false}
+              upgradesEnabled={planId === "enterprise" ? !!billing?.enableEnterprisePlans : !!billing?.enableBusinessPlans}
+            />
           ))}
         </div>
       </section>
@@ -650,9 +716,25 @@ export function OrgBillingSection() {
           <div className="text-xs md:text-sm font-bold text-text mb-0.5">Need Enterprise for your org?</div>
           <div className="text-[11px] text-text-muted leading-relaxed">Unlimited seats, SAML SSO, custom contracts, SLA support.</div>
         </div>
-        <a href="mailto:enterprise@locker.rcormier.dev" className="inline-flex items-center justify-center h-9 px-5 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5 text-xs font-bold transition-all text-center flex-shrink-0">
-          Contact Sales
-        </a>
+        <div className="relative group flex-shrink-0">
+          <a
+            href={billing?.enableEnterprisePlans ? "mailto:enterprise@locker.rcormier.dev" : undefined}
+            onClick={!billing?.enableEnterprisePlans ? (e) => e.preventDefault() : undefined}
+            className={`inline-flex items-center justify-center h-9 px-5 rounded-lg border text-xs font-bold transition-all text-center ${
+              billing?.enableEnterprisePlans
+                ? "border-amber-500/30 text-amber-400 hover:border-amber-500/50 hover:bg-amber-500/5"
+                : "border-border text-text-muted opacity-50 cursor-not-allowed"
+            }`}
+          >
+            Contact Sales
+          </a>
+          {!billing?.enableEnterprisePlans && (
+            <div className="absolute bottom-full right-0 mb-2 w-56 bg-surface2 border border-border rounded-lg px-3 py-2 text-xs text-text-muted shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+              Enterprise upgrades are disabled. Enable in{" "}
+              <span className="text-accent font-semibold">Site Admin → Site Configuration</span>.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -306,12 +306,14 @@ export function PlanCard({
   onSelect,
   isAdmin = false,
   isLoggedIn = true,
+  upgradesEnabled = true,
 }: {
   plan: typeof PLANS[PlanId];
   isCurrentPlan: boolean;
   onSelect?: () => void;
   isAdmin?: boolean;
   isLoggedIn?: boolean;
+  upgradesEnabled?: boolean;
 }) {
   const featureList: Array<{ key: keyof PlanFeatures; included: boolean }> = [
     { key: "organizations", included: plan.features.organizations },
@@ -436,22 +438,49 @@ export function PlanCard({
               Sign Up
             </button>
           ) : plan.available ? (
-            <button
-              onClick={onSelect}
-              style={{
-                width: "100%",
-                padding: "10px 0",
-                background: isBusiness ? "var(--accent)" : "transparent",
-                border: isBusiness ? "none" : "1px solid var(--border)",
-                color: isBusiness ? "#fff" : "var(--text-muted)",
-                fontWeight: 600,
-                fontSize: 13,
-                borderRadius: 8,
-                cursor: "pointer",
-              }}
-            >
-              Upgrade to {plan.label}
-            </button>
+            <div style={{ position: "relative" }} className="group">
+              <button
+                onClick={upgradesEnabled ? onSelect : undefined}
+                disabled={!upgradesEnabled}
+                style={{
+                  width: "100%",
+                  padding: "10px 0",
+                  background: upgradesEnabled && isBusiness ? "var(--accent)" : "var(--surface2)",
+                  border: upgradesEnabled && isBusiness ? "none" : "1px solid var(--border)",
+                  color: upgradesEnabled && isBusiness ? "#fff" : "var(--text-muted)",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  borderRadius: 8,
+                  cursor: upgradesEnabled ? "pointer" : "not-allowed",
+                  opacity: upgradesEnabled ? 1 : 0.6,
+                }}
+              >
+                Upgrade to {plan.label}
+              </button>
+              {!upgradesEnabled && (
+                <div style={{
+                  position: "absolute",
+                  bottom: "110%",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  width: 220,
+                  background: "var(--surface2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                  textAlign: "center",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+                  zIndex: 50,
+                  pointerEvents: "none",
+                  opacity: 0,
+                }} className="group-hover:opacity-100 transition-opacity">
+                  {plan.id === "business" ? "Business" : "Enterprise"} plan upgrades are disabled.{" "}
+                  Enable in <strong style={{ color: "var(--accent)" }}>Site Admin → Site Configuration</strong>.
+                </div>
+              )}
+            </div>
           ) : (
             <button
               disabled

@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PLANS, PLAN_ORDER } from "~/lib/plans";
 import { PlanCard } from "~/components/PaywallGate";
+import { useBillingData } from "~/routes/billing";
 
 export const Route = createFileRoute("/pricing")({
   component: PricingPage,
@@ -8,6 +9,7 @@ export const Route = createFileRoute("/pricing")({
 
 function PricingPage() {
   const navigate = useNavigate();
+  const { data: billing } = useBillingData();
 
   return (
     <div>
@@ -46,6 +48,7 @@ function PricingPage() {
             isCurrentPlan={false}
             isLoggedIn={false}
             onSelect={() => planId === "free" ? navigate({ to: "/signup" }) : null}
+            upgradesEnabled={planId === "enterprise" ? !!billing?.enableEnterprisePlans : !!billing?.enableBusinessPlans}
           />
         ))}
       </div>
@@ -89,12 +92,29 @@ function PricingPage() {
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
           Enterprise plan includes SAML SSO, unlimited seats, custom contracts, and dedicated support.
         </p>
-        <a
-          href="mailto:enterprise@locker.rcormier.dev?subject=Enterprise%20Plan%20Inquiry"
-          style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 22px", background: "transparent", border: "1px solid rgba(245,158,11,0.4)", color: "#f59e0b", fontWeight: 600, fontSize: 13, borderRadius: 8, textDecoration: "none" }}
-        >
-          Contact Sales →
-        </a>
+        <div style={{ position: "relative", display: "inline-block" }} className="group">
+          <a
+            href={billing?.enableEnterprisePlans ? "mailto:enterprise@locker.rcormier.dev?subject=Enterprise%20Plan%20Inquiry" : undefined}
+            onClick={!billing?.enableEnterprisePlans ? (e) => e.preventDefault() : undefined}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 22px",
+              background: "transparent",
+              border: billing?.enableEnterprisePlans ? "1px solid rgba(245,158,11,0.4)" : "1px solid var(--border)",
+              color: billing?.enableEnterprisePlans ? "#f59e0b" : "var(--text-muted)",
+              fontWeight: 600, fontSize: 13, borderRadius: 8, textDecoration: "none",
+              opacity: billing?.enableEnterprisePlans ? 1 : 0.5,
+              cursor: billing?.enableEnterprisePlans ? "pointer" : "not-allowed",
+            }}
+          >
+            Contact Sales →
+          </a>
+          {!billing?.enableEnterprisePlans && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 bg-surface2 border border-border rounded-lg px-3 py-2 text-xs text-text-muted shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50" style={{ textAlign: "left" }}>
+              Enterprise upgrades are disabled. Enable in{" "}
+              <span className="text-accent font-semibold">Site Admin → Site Configuration</span>.
+            </div>
+          )}
+        </div>
       </div>
     </div>
     </div>
