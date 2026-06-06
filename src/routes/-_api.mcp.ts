@@ -51,6 +51,46 @@ function extractText(result: unknown): string {
   return "";
 }
 
+type PackableMemory = {
+  fact: string;
+  category: string;
+  tags: string;
+  authorityType?: string;
+};
+
+async function packPrompt(ai: Ai, query: string, items: PackableMemory[]): Promise<string> {
+  if (items.length === 0) return "";
+  const chunks = items.map((m, i) => {
+    const tagStr = m.tags ? ` [tags: ${m.tags}]` : "";
+    const auth = m.authorityType === "authoritative" ? " [authoritative]" : "";
+    return `${i + 1}. [${m.category}${auth}${tagStr}] ${m.fact}`;
+  }).join("\n");
+
+  const systemPrompt =
+    "You are a context-compression assistant. Your job is to synthesize a list of memory fragments into a single, highly dense system prompt for an AI coding agent. " +
+    "Rules:\n" +
+    "- Deduplicate overlapping facts (keep the most specific or authoritative version).\n" +
+    "- Merge related facts into concise statements.\n" +
+    "- Preserve all concrete details: file paths, URLs, identifiers, version numbers, decisions, constraints.\n" +
+    "- Prioritise [authoritative] items over contributed ones when they conflict.\n" +
+    "- Format the result as a compact bulleted list grouped by category (rules, projects, references, stack).\n" +
+    "- Do NOT add commentary, preamble, or explanation — output only the compressed prompt.\n" +
+    "- Keep the output under 800 tokens.";
+
+  const userMessage =
+    `User query: "${query}"\n\nMemory fragments to compress:\n${chunks}\n\nOutput the optimised system prompt now.`;
+
+  const result = await ai.run("@cf/meta/llama-3-8b-instruct", {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ],
+    max_tokens: 1024,
+  });
+
+  return extractText(result).trim();
+}
+
 const MCP_MANIFEST = {
   jsonrpc: "2.0",
   result: {
@@ -85,6 +125,7 @@ export const ALL_TOOLS = [
         keyword: { type: "string", description: "Optional exact substring filter (case-insensitive)." },
         projectKey: { type: "string", description: "Optional project workspace key (e.g. repository hash or folder slug)." },
         isActive: { type: "boolean", description: "Filter by active status. Defaults to true." },
+        optimize: { type: "boolean", description: "When true, pipe retrieved memories through an LLM to synthesize a single dense, deduplicated system-prompt string optimised for the query. Reduces token usage for the caller. Defaults to false." },
       },
       required: ["query"],
     },
@@ -1034,6 +1075,7 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, "Invalid params: query exceeds max length of 10000 characters");
     }
     const topK = typeof args.topK === "number" ? args.topK : 5;
+    const optimize = !!args.optimize;
     const category = args.category as string | undefined;
     const tag = args.tag as string | undefined;
     const keyword = args.keyword as string | undefined;
@@ -1346,6 +1388,19 @@ export async function handleMcpRequest(
           message: `${jitBlockedIds.length} memory(s) tagged #confidential require developer approval before they can be returned. A notification has been sent. Retry with your JIT token once approved.`,
         };
         await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "jit_access_requested", ipAddress, userAgent, metadata: { jitId, blockedCount: jitBlockedIds.length, toolName: "recall_context" } });
+      }
+
+      if (optimize && payloadResults.length > 0) {
+        // Only pack facts that are visible (skip redacted/pending entries).
+        const packable = payloadResults.filter(
+          (r) => r.fact !== "[REDACTED]" && r.fact !== "[APPROVAL PENDING]"
+        );
+        const optimizedPrompt = await packPrompt(env.AI, query, packable);
+        const responseText = JSON.stringify({
+          optimized_prompt: optimizedPrompt,
+          ...(jitMeta ? { jit: jitMeta } : {}),
+        });
+        return mcpResult(id, { content: [{ type: "text", text: responseText }] });
       }
 
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ results: payloadResults, ...(jitMeta ? { jit: jitMeta } : {}) }) }] });
