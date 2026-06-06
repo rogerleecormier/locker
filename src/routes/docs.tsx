@@ -250,12 +250,17 @@ function DocsPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                   <span style={{ fontSize: 18 }}>⚡</span>
                   <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>
-                    GraphRAG Hybrid Retrieval Engine
+                    GraphRAG Hybrid Retrieval
                   </h3>
                 </div>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                  Powered by Cloudflare Vectorize, Workers AI, and D1. At recall time, three ranked lists are fused via Reciprocal Rank Fusion (RRF, k = 60): a Vectorize semantic rank (bge-m3 embeddings), a keyword rank (term-overlap against plaintext <code>tags</code> and <code>category</code> — no decryption required), and a recency rank (exponential decay, λ = 0.005, half-life ≈ 139 days). The top-20 fused candidates are decrypted ephemerally and re-scored by a Llama-3.3-70B cross-encoder before the final <code>topK</code> results are returned. Authoritative memories always pin to the front. Graph-adjacent memories — surfaced via a <code>memory_graph_edges</code> entity lookup — enter the fused pool alongside Vectorize results. At write time, Workers AI extracts named entity nodes and directed relationship edges from each fact, storing them in <code>memory_graph_nodes</code> / <code>memory_graph_edges</code>.
-                </p>
+                <div style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    <li style={{ marginBottom: 6 }}><strong>RRF Fusion:</strong> Merges semantic (bge-m3), keyword overlap, and recency decay (half-life ≈ 139 days) via Reciprocal Rank Fusion (k=60).</li>
+                    <li style={{ marginBottom: 6 }}><strong>Graph Expansion:</strong> Workers AI extracts entities (services, files) and edges at write time, retrieving related items automatically.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Llama Reranking:</strong> Decrypts top 20 candidates and reranks them via Llama-3.3-70B for maximum relevance.</li>
+                    <li><strong>Prompt Synthesis:</strong> Sets <code>optimize: true</code> to synthesize matched context into a compact system-prompt list.</li>
+                  </ul>
+                </div>
               </div>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -264,9 +269,13 @@ function DocsPage() {
                     End-to-End Encrypted
                   </h3>
                 </div>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                  All memory data is encrypted using AES-256-GCM under a unique per-vault Data Encryption Key (DEK). The DEK is wrapped by a server-side Key Encryption Key — compromising the database or the environment variable alone is insufficient to decrypt any data.
-                </p>
+                <div style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    <li style={{ marginBottom: 6 }}><strong>Envelope Scheme:</strong> AES-256-GCM under a unique per-vault Data Encryption Key (DEK).</li>
+                    <li style={{ marginBottom: 6 }}><strong>Key Wrapping:</strong> DEKs wrapped by server-side Key Encryption Keys (KEK) stored in env vars.</li>
+                    <li><strong>Isolation:</strong> Database compromise alone is completely insufficient to decrypt storage.</li>
+                  </ul>
+                </div>
               </div>
             </div>
 
@@ -342,13 +351,36 @@ function DocsPage() {
               </div>
             </div>
 
-            <div style={{ background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.15)", borderRadius: 12, padding: 18 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                🛡️ Core Security Model
-              </h3>
-              <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                All database items are encrypted using AES-256-GCM under per-vault Data Encryption Keys (DEKs) wrapped by a server-side Key Encryption Key. GraphRAG entity extraction runs on plaintext before encryption so the knowledge graph is built from real fact text; only ciphertext and graph metadata are stored in D1. Secrets are detected at write time using entropy-based DLP — memories containing high-entropy strings or known credential patterns are flagged with <code>isQuarantined</code> and returned as <code>[REDACTED]</code> to MCP callers. API tokens are hashed with PBKDF2-HMAC-SHA256 at 100,000 iterations. Read/write capabilities are regulated via scoped API token bitmasks. Agent tokens are further constrained by Attribute-Based Access Control (ABAC) policies — enforcing category-level boundaries and explicit <code>allowedTags</code>/<code>deniedTags</code> filters so a debugging agent cannot access financial or governance records. Memories tagged <code>#confidential</code> trigger a Just-in-Time (JIT) approval gate: the agent receives <code>[APPROVAL PENDING]</code> and access is unblocked only after the token owner explicitly approves via <code>approve_jit_access</code>.
-              </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginTop: 16 }}>
+              <div style={{ background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.15)", borderRadius: 12, padding: 18 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🛡️ Core Security Model
+                </h3>
+                <div style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    <li style={{ marginBottom: 6 }}><strong>Envelope Cryptography:</strong> Data encrypted via AES-256-GCM with wrapped per-vault DEKs. Plaintext never reaches storage.</li>
+                    <li style={{ marginBottom: 6 }}><strong>GraphRAG Privacy:</strong> Entity extraction runs ephemerally before encryption; D1 stores only ciphertext and graph structure.</li>
+                    <li style={{ marginBottom: 6 }}><strong>DLP Quarantine:</strong> High-entropy secrets and credential formats are flagged at write time, returning <code>[REDACTED]</code> to agents.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Least-Privilege ABAC:</strong> Agent policies restrict operations by category (rules, projects, references, stack) and tag filters.</li>
+                    <li style={{ marginBottom: 6 }}><strong>JIT Approvals:</strong> Memories tagged <code>#confidential</code> trigger an approval gate, releasing temporary access only on human sign-off.</li>
+                    <li><strong>Token Hardening:</strong> API and JIT tokens are hashed with PBKDF2-HMAC-SHA256 at 100,000 iterations.</li>
+                  </ul>
+                </div>
+              </div>
+              <div style={{ background: "rgba(59, 130, 246, 0.04)", border: "1px solid rgba(59, 130, 246, 0.15)", borderRadius: 12, padding: 18 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🤖 AI &amp; LLM Integration
+                </h3>
+                <div style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    <li style={{ marginBottom: 6 }}><strong>Semantic Vectors:</strong> Vectorizes facts via <code>@cf/baai/bge-m3</code> embeddings to power similarity-based context queries.</li>
+                    <li style={{ marginBottom: 6 }}><strong>GraphRAG Extraction:</strong> Runs Workers AI ephemerally on write to extract entity nodes and semantic relationship edges.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Llama Reranking:</strong> Reranks top candidates via a Llama-3.3-70B cross-encoder in the browser session path.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Prompt Synthesis:</strong> Compresses facts into a single dense prompt via Llama-3-8B when <code>optimize: true</code> is passed.</li>
+                    <li><strong>AI Import Ingestion:</strong> Automatically tags, deduplicates, and structures external chatbot console imports via LLM.</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </div>
         );
@@ -457,8 +489,8 @@ function DocsPage() {
             </p>
 
             <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+              display: "flex",
+              flexDirection: "column",
               gap: 20,
               marginBottom: 32
             }}>
@@ -1096,9 +1128,17 @@ function DocsPage() {
         return (
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Context Retrieval Tools</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Context Retrieval tools allow connected AI assistants to discover available workspaces, retrieve relevant long-term memory context, and search memories by keyword. <code>recall_context</code> runs a four-stage pipeline: (1) Cloudflare Vectorize semantic retrieval (bge-m3) over a candidate pool of up to 100 results, (2) a keyword rank via term-overlap against plaintext <code>tags</code> and <code>category</code> columns — no decryption required at this stage, (3) a recency rank via exponential decay (λ = 0.005, half-life ≈ 139 days on <code>timestamp</code>), and (4) Reciprocal Rank Fusion (k = 60) across all three lists. Graph-adjacent memories surfaced via <code>memory_graph_edges</code> enter the fused pool alongside the Vectorize results. The top-20 fused candidates are decrypted ephemerally and re-scored by a Llama-3.3-70B cross-encoder that orders them by contextual relevance to the query — only the final <code>topK</code> results are returned. Authoritative memories always pin to the front regardless of score. Pass <code>optimize: true</code> to additionally synthesize the returned facts into a single dense system-prompt string, reducing context-window token consumption for the caller.
-            </p>
+            <div style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              <p style={{ margin: "0 0 12px 0" }}>Context Retrieval tools allow connected AI assistants to discover workspaces, search memories, and query long-term context.</p>
+              <p style={{ margin: "0 0 8px 0", fontWeight: 600, color: "var(--text)" }}>The <code>recall_context</code> tool runs an advanced hybrid retrieval pipeline:</p>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                <li style={{ marginBottom: 6 }}><strong>RRF Fusion:</strong> Merges semantic embeddings (bge-m3), keyword overlap, and recency decay (half-life ≈ 139 days) via Reciprocal Rank Fusion (k=60).</li>
+                <li style={{ marginBottom: 6 }}><strong>GraphRAG Expansion:</strong> Hydrates adjacent entity nodes automatically using the Workers AI knowledge graph.</li>
+                <li style={{ marginBottom: 6 }}><strong>Cross-Encoder Reranking:</strong> Decrypts top 20 candidates and reranks them via Llama-3.3-70B for maximum relevance.</li>
+                <li style={{ marginBottom: 6 }}><strong>Authority Pinning:</strong> Pins authoritative organization-level memories directly to the top.</li>
+                <li><strong>LLM Synthesis:</strong> Set <code>optimize: true</code> to summarize the results into a single dense system prompt via Llama-3-8B.</li>
+              </ul>
+            </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {ALL_TOOLS.filter((t) =>
@@ -1167,11 +1207,14 @@ function DocsPage() {
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Memory Mutation Tools</h2>
             <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 12 }}>
-              Memory Mutation tools let connected clients add, update, and delete facts. Behavior differs by token type:
+              Memory Mutation tools let connected clients add, update, and delete facts.
             </p>
-            <div style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.15)", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
-              <strong style={{ color: "var(--accent)" }}>Human tokens</strong> — <code>update_memory</code> and <code>delete_memory</code> execute immediately after MFA/passcode verification (if configured). <code>commit_memory</code> also executes immediately.<br />
-              <strong style={{ color: "#f59e0b" }}>Agent tokens</strong> — <code>update_memory</code> and <code>delete_memory</code> are <strong>never executed immediately</strong>. The request is written to the approval queue (<code>memory_recommendations</code>) and the tool returns <code>{"{ queued: true, recommendationId }"}</code>. The human vault owner must approve the action in the <strong>Vault Actions Pending Approval</strong> panel before any change is applied. <code>commit_memory</code> follows the existing conflict-detection path and may also be queued as a recommendation.
+            <div style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.15)", borderRadius: 10, padding: "16px", marginBottom: 20, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+              <p style={{ margin: "0 0 8px 0", fontWeight: 700, color: "var(--text)" }}>Mutation Behavior by Token Type:</p>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                <li style={{ marginBottom: 6 }}><strong>Human Tokens:</strong> All tool calls (<code>commit_memory</code>, <code>update_memory</code>, <code>delete_memory</code>) execute immediately after passcode or TOTP 2FA verification (if configured).</li>
+                <li><strong>Agent Tokens:</strong> Destructive calls (<code>update_memory</code>, <code>delete_memory</code>) are never executed immediately. They are routed to the <code>memory_recommendations</code> queue (returning <code>{"{ queued: true, recommendationId }"}</code>) and require human approval in the dashboard. <code>commit_memory</code> checks for conflicts and may also queue recommendations.</li>
+              </ul>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1310,11 +1353,12 @@ function DocsPage() {
         return (
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Credential Vault Tools</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 16 }}>
-              Credential Vault tools let connected agents store, list, retrieve, and delete encrypted secrets without exposing them in memory facts. Values are AES-256-GCM encrypted at rest under the same per-vault DEK as memories. Agent tokens must have <code>allowCredentials: true</code> in their ABAC policy to access any credential tool.
-            </p>
-            <div style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
-              <strong style={{ color: "#f59e0b" }}>⚠️ Agent token restriction:</strong> Agent tokens deny credential vault access by default. An <code>AgentPolicy</code> must explicitly set <code>allowCredentials: true</code> for these tools to be available.
+            <div style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 16 }}>
+              <p style={{ margin: "0 0 10px 0" }}>Credential Vault tools allow connected agents to manage secrets securely:</p>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                <li style={{ marginBottom: 6 }}><strong>Encryption:</strong> Credentials are encrypted at rest via AES-256-GCM under the per-vault DEK. Secrets are never exposed in plaintext memory logs.</li>
+                <li><strong>Access Control:</strong> Agent tokens deny credential vault access by default. You must explicitly configure <code>allowCredentials: true</code> in the token's policy.</li>
+              </ul>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
               {ALL_TOOLS.filter((t) =>
@@ -1338,9 +1382,14 @@ function DocsPage() {
               ))}
             </div>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>JIT Access for Confidential Memories</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
-              Memories tagged <code>#confidential</code> require a Just-in-Time (JIT) access grant before an agent can read them. When an agent's <code>recall_context</code> or <code>search_memories</code> call hits a confidential memory, a <code>jitRequestId</code> is returned instead of the fact. The human token owner calls <code>approve_jit_access</code> to grant or deny — on approval, a short-lived Bearer token valid for 15 minutes is returned for the agent to re-run its query.
-            </p>
+            <div style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+              <p style={{ margin: "0 0 10px 0" }}>Memories tagged <code>#confidential</code> trigger an on-demand approval workflow:</p>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                <li style={{ marginBottom: 6 }}><strong>Redaction:</strong> Agents receive a <code>jitRequestId</code> and <code>[APPROVAL PENDING]</code> placeholder instead of the fact.</li>
+                <li style={{ marginBottom: 6 }}><strong>Human Gate:</strong> The token owner must call <code>approve_jit_access</code> to approve or deny the request.</li>
+                <li><strong>Short-lived Token:</strong> On approval, the agent receives a temporary Bearer token valid for 15 minutes to fetch the unredacted memory.</li>
+              </ul>
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {ALL_TOOLS.filter((t) => t.name === "approve_jit_access").map((tool) => (
                 <details key={tool.name} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
@@ -1525,9 +1574,12 @@ function DocsPage() {
               <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
                 ⚡ Rate Limits & Quota Control
               </h3>
-              <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                Every API token or OAuth session has a default rate-limiting window of <strong>60 requests per minute</strong>. Exceeding this rate returns a standard <code>429 Too Many Requests</code> HTTP response. Additionally, storage space limits (number of stored facts or vectorized context entries) are checked before processing mutations, returning error code <code>-32004</code> if limits are breached.
-              </p>
+              <div style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  <li style={{ marginBottom: 6 }}><strong>Rate Limiting:</strong> Maximum of <strong>60 requests per minute</strong> per token/session. Exceeding this triggers a <code>429 Too Many Requests</code> response.</li>
+                  <li><strong>Storage Limits:</strong> Memory and vector capacities are checked at write time, returning error code <code>-32004</code> if exceeded.</li>
+                </ul>
+              </div>
             </div>
           </div>
         );

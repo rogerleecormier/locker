@@ -891,7 +891,15 @@ function LandingPage() {
                 Generate scoped Bearer tokens with per-tool permission bitmasks. Create Agent Tokens with ABAC policies that restrict which memory categories an autonomous agent can read or write — so a debugging bot can never reach your financial projections.
               </p>
               <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                {["Tokens hashed with PBKDF2 at 100k iterations", "Shown once at creation, never again", "Human tokens: bitmask permissions across recall, commit, update, and delete", "Agent tokens: ABAC policy restricts categories (rules/projects/references/stack), tag allowlists/denylists, and credential vault access", "Agent update_memory and delete_memory calls are never executed immediately — queued for human approval in the Vault Actions panel", "Memories tagged #confidential trigger JIT access — agent receives a placeholder until the developer approves via approve_jit_access", "Revoke any token instantly"].map((item) => (
+                {[
+                  "Programmatic tokens hashed with PBKDF2 at 100k iterations",
+                  "Tokens shown only once at creation for security",
+                  "Human tokens: Granular tool-level permission bitmasks",
+                  "Agent tokens: ABAC category filters, tag lists, and credential scope",
+                  "Async approval queue: Agent mutations held for human review",
+                  "JIT access requests: Redacted confidential tags unlocked dynamically",
+                  "Instant, one-click token revocation"
+                ].map((item) => (
                   <li key={item} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-muted)", textAlign: "left" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                     {item}
@@ -919,7 +927,7 @@ function LandingPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
             <Step num="1" title="Build or Import Context" desc="Run the Tech Stack Wizard to output target constraints, or ingest pre-built memory templates and chatbot exports." delay={0} />
-            <Step num="2" title="Extract, Tag & Graph-Enrich" desc="Locker scans for secrets with entropy-based DLP and encrypts facts under a per-vault DEK. Workers AI simultaneously extracts entity nodes and relationship edges, storing them in the knowledge graph so recall can traverse architectural connections later." delay={100} />
+            <Step num="2" title="Extract, Tag & Graph-Enrich" desc="DLP scans and encrypts facts under a per-vault DEK. Workers AI simultaneously extracts entity nodes and edges, building a GraphRAG knowledge graph." delay={100} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
             <Step num="3" title="Bind Universal MCP Endpoint" desc="Expose your Locker context to Cursor, Claude Desktop, Copilot, or CLI clients using your secure bearer token." delay={200} />
@@ -942,14 +950,14 @@ function LandingPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
             {[
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Envelope encryption", desc: "AES-256-GCM with per-vault DEKs wrapped by a KEK. Database + env var must both be compromised to decrypt anything.", delay: 0 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "GraphRAG hybrid retrieval", desc: "Semantic (bge-m3), keyword, and recency ranks fused via RRF with GraphRAG expansion across memory_graph_edges. The in-app session path adds Llama-3.3-70B cross-encoder reranking; the MCP tool supports optimize: true for Llama-3-8B system-prompt synthesis.", delay: 60 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "GraphRAG hybrid retrieval", desc: "Semantic (bge-m3), keyword, and recency ranks fused via RRF with GraphRAG entity expansion. Includes Llama-3.3-70B cross-encoder reranking and optional system-prompt synthesis.", delay: 60 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: "Tech Stack Wizard", desc: "Instantly compile optimized .cursorrules, CLAUDE.md, and AGENTS.md files tailored to your development stack.", delay: 120 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>, title: "Memory Templates", desc: "Deploy pre-built coding guidelines, DevOps runbooks, and SOC2 compliance controls directly to developer agents.", delay: 180 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Review & Approval Queue", desc: "Agent update and delete requests are queued — never executed immediately. The Vault Actions panel shows color-coded cards (red for deletions, blue for edits) so you can approve or deny each action.", delay: 240 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Review & Approval Queue", desc: "Agent mutations are held in the approval queue. The Vault Actions panel displays color-coded cards to easily review, approve, or deny actions.", delay: 240 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>, title: "Authoritative Org Vault", desc: "Lock critical standards inside organization scopes. Authoritative rules always take precedence in agent contexts.", delay: 300 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, title: "Per-Token Scopes", desc: "Configure bitmask permissions to toggle read-only recall_context and write-access commit_memory capabilities.", delay: 360 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>, title: "Cloudflare Edge Native", desc: "Zero-servers to manage. Runs entirely on Cloudflare Workers, Cloudflare D1, and Cloudflare Vectorize.", delay: 420 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>, title: "Non-Destructive DLP", desc: "High-entropy secrets and PII are automatically quarantined at write time. AI agents receive redacted placeholders, while authorized humans unmask facts in the UI.", delay: 480 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>, title: "Non-Destructive DLP", desc: "High-entropy secrets and PII are quarantined at write time. Agents receive redacted placeholders; authorized humans can unmask facts in the dashboard.", delay: 480 },
             ].map((f) => (
               <FeatureCard key={f.title} icon={f.icon} title={f.title} desc={f.desc} delay={f.delay} />
             ))}
