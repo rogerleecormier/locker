@@ -510,4 +510,23 @@ export const systemSettings = sqliteTable("system_settings", {
 
 export type SystemSetting = typeof systemSettings.$inferSelect;
 
+// ── Webhook Event Log ─────────────────────────────────────────────────────────
+// Records inbound GitHub "PR Merged" and Linear "Ticket Done" webhook events.
+// An AI-generated technical summary is encrypted and committed to the memory
+// vault automatically when the event is processed.
+export const webhookEvents = sqliteTable("webhook_events", {
+  id: text("id").primaryKey(),
+  source: text("source", { enum: ["github", "linear"] }).notNull(),
+  eventType: text("event_type", { enum: ["pr.merged", "ticket.done"] }).notNull(),
+  externalId: text("external_id").notNull(),        // PR node_id or Linear issue id
+  projectKey: text("project_key"),                  // vault scope; null = personal
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  memoryId: text("memory_id").references(() => memories.id, { onDelete: "set null" }),
+  encryptedSummary: text("encrypted_summary").notNull(), // AES-256-GCM
+  rawTitle: text("raw_title"),                      // plain-text title for display
+  processedAt: integer("processed_at").notNull(),   // epoch ms
+});
+
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type NewWebhookEvent = typeof webhookEvents.$inferInsert;
 

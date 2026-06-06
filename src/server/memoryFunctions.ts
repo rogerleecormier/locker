@@ -4150,7 +4150,7 @@ async function enrichAuditLogs(
   const tokenIds = [...new Set(logs.map((l) => l.tokenId).filter((t): t is string => !!t && t !== "session"))];
   const memoryIds = [...new Set(logs.map((l) => l.memoryId).filter((m): m is string => !!m))];
 
-  const [userRows, tokenRows, memoryRows] = await Promise.all([
+  const [userRows, tokenRows, versionRows] = await Promise.all([
     userIds.length > 0
       ? db.select({ id: users.id, name: users.name, email: users.email }).from(users)
           .where(sql`${users.id} IN (${sql.join(userIds.map((uid) => sql`${uid}`), sql`, `)})`)
@@ -4161,30 +4161,65 @@ async function enrichAuditLogs(
           .where(sql`${apiTokens.id} IN (${sql.join(tokenIds.map((tid) => sql`${tid}`), sql`, `)})`)
           .all()
       : Promise.resolve([] as { id: string; name: string }[]),
+    // Pull the most-recent plaintext version row for each memory instead of
+    // the encrypted live fact — memoryVersions stores pre-encryption plaintext.
     memoryIds.length > 0
-      ? db.select({ id: memories.id, fact: memories.fact }).from(memories)
-          .where(sql`${memories.id} IN (${sql.join(memoryIds.map((mid) => sql`${mid}`), sql`, `)})`)
+      ? db.select({ memoryId: memoryVersions.memoryId, fact: memoryVersions.fact })
+          .from(memoryVersions)
+          .where(sql`${memoryVersions.memoryId} IN (${sql.join(memoryIds.map((mid) => sql`${mid}`), sql`, `)})`)
+          .orderBy(desc(memoryVersions.timestamp))
           .all()
-      : Promise.resolve([] as { id: string; fact: string }[]),
+      : Promise.resolve([] as { memoryId: string; fact: string }[]),
   ]);
 
   const userMap = new Map(userRows.map((u) => [u.id, u]));
   const tokenMap = new Map(tokenRows.map((t) => [t.id, t.name]));
-  const memoryMap = new Map(memoryRows.map((m) => [m.id, m.fact]));
+  // Keep only the first (most-recent) version per memoryId.
+  const memorySnippetMap = new Map<string, string>();
+  for (const v of versionRows) {
+    if (!memorySnippetMap.has(v.memoryId)) {
+      memorySnippetMap.set(v.memoryId, v.fact.slice(0, 120) + (v.fact.length > 120 ? "…" : ""));
+    }
+  }
 
   return logs.map((log) => {
     const userInfo = userMap.get(log.userId);
     const tokenName = log.tokenId && log.tokenId !== "session"
       ? (tokenMap.get(log.tokenId) ?? log.tokenId.slice(0, 8) + "…")
       : (log.tokenId === "session" ? "Session" : null);
-    const rawFact = log.memoryId ? (memoryMap.get(log.memoryId) ?? null) : null;
-    const memorySnippet = rawFact ? rawFact.slice(0, 100) + (rawFact.length > 100 ? "…" : "") : null;
+    const memorySnippet = log.memoryId ? (memorySnippetMap.get(log.memoryId) ?? null) : null;
+
+    // Parse query and tool name for display — same logic as agent-activity dashboard.
+    let query: string | null = null;
+    let toolName: string | null = null;
+    try {
+      if (log.metadata) {
+        const meta = JSON.parse(log.metadata as string) as Record<string, unknown>;
+        if (typeof meta.query === "string") query = meta.query;
+      }
+    } catch { /* leave null */ }
+    const ua = (log.userAgent as string | null | undefined) ?? "";
+    if (ua) {
+      const ual = ua.toLowerCase();
+      if (ual.includes("cursor")) toolName = "Cursor";
+      else if (ual.includes("claude-desktop") || ual.includes("claude desktop")) toolName = "Claude Desktop";
+      else if (ual.includes("claude-code") || ual.includes("claude code")) toolName = "Claude Code";
+      else if (ual.includes("windsurf")) toolName = "Windsurf";
+      else if (ual.includes("cline")) toolName = "Cline";
+      else if (ual.includes("copilot")) toolName = "GitHub Copilot";
+      else if (ual.includes("continue")) toolName = "Continue";
+      else if (ual.includes("zed")) toolName = "Zed";
+      else toolName = ua.split("/")[0] || null;
+    }
+
     return {
       ...log,
       userName: userInfo?.name ?? null,
       userEmail: userInfo?.email ?? null,
       tokenName,
       memorySnippet,
+      query,
+      toolName,
     };
   });
 }
@@ -4840,4 +4875,283 @@ export const listPersonalMemoryRecommendations = createServerFn({ method: "GET" 
       ))
       .orderBy(desc(memoryRecommendations.createdAt))
       .all();
+  });
+
+// ── Agent Activity Dashboard ──────────────────────────────────────────────────
+
+export type AgentActivityEntry = {
+  id: string;
+  timestamp: number;
+  action: string;
+  toolName: string | null;
+  userAgent: string | null;
+  ipAddress: string | null;
+  memoryId: string | null;
+  tokenId: string | null;
+  query: string | null;
+  matchCount: number | null;
+  semanticScore: number | null;
+  injectedFacts: Array<{ id: string; fact: string; category: string; tags: string; score: number | null }>;
+  projectKey: string | null;
+  rawMetadata: Record<string, string | number | boolean | null> | null;
+};
+
+const AgentActivitySchema = z.object({
+  limit: z.number().int().min(1).max(500).optional(),
+  action: z.string().optional(),
+  toolName: z.string().optional(),
+});
+
+export const getAgentActivityLogs = createServerFn({ method: "GET" })
+  .inputValidator((data) => AgentActivitySchema.parse(data ?? {}))
+  .handler(async ({ data, context }): Promise<AgentActivityEntry[]> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const pageLimit = data.limit ?? 200;
+
+    const conditions = [eq(auditLogs.userId, user.id)];
+    if (data.action) conditions.push(eq(auditLogs.action, data.action as any));
+
+    const rows = await db
+      .select()
+      .from(auditLogs)
+      .where(and(...conditions))
+      .orderBy(desc(auditLogs.timestamp))
+      .limit(pageLimit)
+      .all();
+
+    return rows.map((row) => {
+      let meta: Record<string, unknown> | null = null;
+      try {
+        if (row.metadata) meta = JSON.parse(row.metadata);
+      } catch {
+        // leave null
+      }
+
+      // Derive the tool name from the User-Agent header.
+      // Common patterns: "cursor/", "claude-desktop/", "claude-code/", "windsurf/"
+      let toolName: string | null = null;
+      if (row.userAgent) {
+        const ua = row.userAgent.toLowerCase();
+        if (ua.includes("cursor")) toolName = "Cursor";
+        else if (ua.includes("claude-desktop") || ua.includes("claude desktop")) toolName = "Claude Desktop";
+        else if (ua.includes("claude-code") || ua.includes("claude code")) toolName = "Claude Code";
+        else if (ua.includes("windsurf")) toolName = "Windsurf";
+        else if (ua.includes("cline")) toolName = "Cline";
+        else if (ua.includes("copilot")) toolName = "GitHub Copilot";
+        else if (ua.includes("continue")) toolName = "Continue";
+        else if (ua.includes("zed")) toolName = "Zed";
+        else if (row.userAgent.length > 0) toolName = row.userAgent.split("/")[0] ?? row.userAgent;
+      }
+
+      // Filter to a specific toolName if requested
+      if (data.toolName && toolName !== data.toolName) return null as unknown as AgentActivityEntry;
+
+      const injectedFacts: AgentActivityEntry["injectedFacts"] = [];
+      if (meta && Array.isArray((meta as any).injectedFacts)) {
+        for (const f of (meta as any).injectedFacts) {
+          injectedFacts.push({
+            id: String(f.id ?? ""),
+            fact: String(f.fact ?? ""),
+            category: String(f.category ?? ""),
+            tags: String(f.tags ?? ""),
+            score: typeof f.score === "number" ? f.score : null,
+          });
+        }
+      }
+
+      return {
+        id: row.id,
+        timestamp: row.timestamp,
+        action: row.action,
+        toolName,
+        userAgent: row.userAgent ?? null,
+        ipAddress: row.ipAddress ?? null,
+        memoryId: row.memoryId ?? null,
+        tokenId: row.tokenId ?? null,
+        query: (meta as any)?.query ?? null,
+        matchCount: typeof (meta as any)?.matchCount === "number" ? (meta as any).matchCount : null,
+        semanticScore: typeof (meta as any)?.semanticScore === "number" ? (meta as any).semanticScore : null,
+        injectedFacts,
+        projectKey: (meta as any)?.projectKey ?? null,
+        rawMetadata: meta as Record<string, string | number | boolean | null> | null,
+      };
+    }).filter((e): e is AgentActivityEntry => e !== null);
+  });
+
+// ── Webhook Secret Management ─────────────────────────────────────────────────
+// Users and org admins store their webhook signing secrets here.
+// Secrets are encrypted with the vault DEK, exactly like other credentials.
+// Team scopes inherit from the parent org — teams have no separate webhook secret.
+
+import { WEBHOOK_SECRET_GITHUB, WEBHOOK_SECRET_LINEAR } from "~/server/webhooks";
+
+export type WebhookSource = "github" | "linear";
+
+const WEBHOOK_CRED_NAMES: Record<WebhookSource, string> = {
+  github: WEBHOOK_SECRET_GITHUB,
+  linear: WEBHOOK_SECRET_LINEAR,
+};
+
+/** Return the vaultId and scopeType/scopeId for the session user's webhook secret storage. */
+async function resolveWebhookVault(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  scopeKey: string | null // null = personal, "org:xxx" = org, "team:xxx" → look up parent org
+): Promise<{ vaultId: string; scopeType: "personal" | "organization"; scopeId: string | null }> {
+  if (!scopeKey || scopeKey === "personal") {
+    return { vaultId: userId, scopeType: "personal", scopeId: null };
+  }
+  if (scopeKey.startsWith("org:")) {
+    const orgId = scopeKey.slice(4);
+    return { vaultId: `org:${orgId}`, scopeType: "organization", scopeId: orgId };
+  }
+  if (scopeKey.startsWith("team:")) {
+    const teamId = scopeKey.slice(5);
+    const row = await db
+      .select({ orgId: teams.orgId })
+      .from(teams)
+      .where(eq(teams.id, teamId))
+      .limit(1)
+      .all();
+    const orgId = row[0]?.orgId ?? null;
+    if (orgId) return { vaultId: `org:${orgId}`, scopeType: "organization", scopeId: orgId };
+  }
+  return { vaultId: userId, scopeType: "personal", scopeId: null };
+}
+
+export const getWebhookSecret = createServerFn({ method: "GET" })
+  .inputValidator((data: unknown) => {
+    const d = data as { source: WebhookSource; scopeKey?: string | null };
+    return { source: d.source, scopeKey: d.scopeKey ?? null };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const { vaultId, scopeType, scopeId } = await resolveWebhookVault(db, user.id, data.scopeKey ?? null);
+    const credName = WEBHOOK_CRED_NAMES[data.source];
+
+    const scopeCondition = vaultId.startsWith("org:") || vaultId.startsWith("team:")
+      ? and(eq(credentials.projectKey, vaultId), eq(credentials.name, credName))
+      : and(eq(credentials.userId, user.id), eq(credentials.name, credName));
+
+    const rows = await (db as any)
+      .select({ id: credentials.id, name: credentials.name })
+      .from(credentials)
+      .where(scopeCondition)
+      .limit(1)
+      .all();
+
+    // Return only whether a secret is configured, not the secret value itself.
+    return { configured: rows.length > 0, source: data.source, scopeKey: data.scopeKey ?? null };
+  });
+
+export const setWebhookSecret = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => {
+    const d = data as { source: WebhookSource; secret: string; scopeKey?: string | null };
+    if (!d.source || !d.secret) throw new Error("source and secret are required");
+    return { source: d.source, secret: d.secret.trim(), scopeKey: d.scopeKey ?? null };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const { vaultId, scopeType, scopeId } = await resolveWebhookVault(db, user.id, data.scopeKey ?? null);
+
+    // If storing for an org, verify the session user is an admin of that org.
+    if (scopeType === "organization" && scopeId) {
+      const membership = await (db as any)
+        .select({ role: organizationMembers.role })
+        .from(organizationMembers)
+        .where(and(eq(organizationMembers.orgId, scopeId), eq(organizationMembers.userId, user.id)))
+        .limit(1)
+        .all();
+      const role = membership[0]?.role;
+      if (role !== "owner" && role !== "admin") {
+        throw new Error("Forbidden: only org owners and admins can configure org webhook secrets");
+      }
+    }
+
+    const credName = WEBHOOK_CRED_NAMES[data.source];
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const encryptedValue = await encrypt(data.secret, vaultKey);
+
+    const isOrgOrTeam = vaultId.startsWith("org:") || vaultId.startsWith("team:");
+    const scopeCondition = isOrgOrTeam
+      ? and(eq(credentials.projectKey, vaultId), eq(credentials.name, credName))
+      : and(eq(credentials.userId, user.id), eq(credentials.name, credName));
+
+    const existing = await (db as any)
+      .select({ id: credentials.id })
+      .from(credentials)
+      .where(scopeCondition)
+      .limit(1)
+      .all();
+
+    if (existing.length > 0) {
+      await (db as any)
+        .update(credentials)
+        .set({ encryptedValue, updatedAt: Date.now() })
+        .where(eq(credentials.id, existing[0].id))
+        .run();
+    } else {
+      await (db as any)
+        .insert(credentials)
+        .values({
+          id: crypto.randomUUID(),
+          userId: user.id,
+          name: credName,
+          encryptedValue,
+          projectKey: vaultId.startsWith("org:") || vaultId.startsWith("team:") ? vaultId : null,
+          scopeType,
+          scopeId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+    }
+
+    return { ok: true, source: data.source, scopeKey: data.scopeKey ?? null };
+  });
+
+export const deleteWebhookSecret = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => {
+    const d = data as { source: WebhookSource; scopeKey?: string | null };
+    if (!d.source) throw new Error("source is required");
+    return { source: d.source, scopeKey: d.scopeKey ?? null };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const { vaultId, scopeType, scopeId } = await resolveWebhookVault(db, user.id, data.scopeKey ?? null);
+
+    if (scopeType === "organization" && scopeId) {
+      const membership = await (db as any)
+        .select({ role: organizationMembers.role })
+        .from(organizationMembers)
+        .where(and(eq(organizationMembers.orgId, scopeId), eq(organizationMembers.userId, user.id)))
+        .limit(1)
+        .all();
+      const role = membership[0]?.role;
+      if (role !== "owner" && role !== "admin") {
+        throw new Error("Forbidden: only org owners and admins can remove org webhook secrets");
+      }
+    }
+
+    const credName = WEBHOOK_CRED_NAMES[data.source];
+    const isOrgOrTeam = vaultId.startsWith("org:") || vaultId.startsWith("team:");
+    const scopeCondition = isOrgOrTeam
+      ? and(eq(credentials.projectKey, vaultId), eq(credentials.name, credName))
+      : and(eq(credentials.userId, user.id), eq(credentials.name, credName));
+
+    await (db as any).delete(credentials).where(scopeCondition).run();
+
+    return { ok: true, source: data.source, scopeKey: data.scopeKey ?? null };
   });

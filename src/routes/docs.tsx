@@ -349,6 +349,20 @@ function DocsPage() {
                   </button>
                 </div>
               </div>
+
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>◎</span> Agent Activity Dashboard
+                </h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.6 }}>
+                  Visualize every memory operation your AI tools perform. The timeline maps each <code>recall_context</code> event to the exact client (Cursor, Claude Desktop, Windsurf…), the semantic similarity scores of returned memories, and the facts injected into the model's context — so you can debug AI hallucinations caused by stale or missing context in seconds.
+                </p>
+                <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
+                  <button onClick={() => setActiveSection("agent-activity")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
+                    Agent Activity Dashboard Guide →
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginTop: 16 }}>
@@ -1076,6 +1090,109 @@ npx locker-sync sync --format cursor --project my-project`}</pre>
             </div>
           </div>
         );
+      case "webhooks":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Webhook Integrations</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              Locker can automatically capture knowledge from your engineering workflow. When a GitHub pull request is merged
+              or a Linear ticket is completed, Locker ephemerally reads the diff or ticket description, pipes it through Workers AI
+              to generate a concise technical summary, and commits the encrypted result directly to your vault — scoped to the
+              correct project key. No manual <code>commit_memory</code> calls required.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Supported Events</h3>
+            <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--surface2)", marginBottom: 32 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                <thead>
+                  <tr style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Source</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Event</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Endpoint</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Trigger Condition</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { source: "GitHub", event: "Pull Request", endpoint: "POST /api/webhooks/github", trigger: 'action = "closed" and pull_request.merged = true' },
+                    { source: "Linear", event: "Issue Update", endpoint: "POST /api/webhooks/linear", trigger: "state.name matches done / completed / finished / closed / merged" },
+                  ].map((row, i, arr) => (
+                    <tr key={row.source} style={{ borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
+                      <td style={{ padding: "12px 16px", fontWeight: 600, color: "var(--text)" }}>{row.source}</td>
+                      <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>{row.event}</td>
+                      <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--accent)" }}>{row.endpoint}</td>
+                      <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}>{row.trigger}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Setup Guide</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 32 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Step 1 — Generate an API Token</h4>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  In <strong>Settings → API Tokens</strong>, create a token with at minimum the <code>commit_memory</code> permission bit enabled.
+                  To scope the token to an organization or team vault, set the scope accordingly. Copy the raw <code>lkr_…</code> value — it is shown only once.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Step 2 — Configure Secrets</h4>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Set the webhook signing secrets in your Locker deployment's Cloudflare secret store:
+                </p>
+                <pre style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: 10, fontFamily: "monospace", fontSize: 11, color: "var(--text)", overflowX: "auto", margin: 0 }}>{`wrangler secret put GITHUB_WEBHOOK_SECRET
+wrangler secret put LINEAR_WEBHOOK_SECRET`}</pre>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--accent)" }}>Step 3 — Register the Webhook</h4>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  In GitHub: <strong>Repo → Settings → Webhooks → Add webhook</strong>. Set the Payload URL to your Locker endpoint, Content type to <code>application/json</code>,
+                  and Secret to the value from Step 2. Select the <strong>Pull requests</strong> event only.
+                </p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+                  In Linear: <strong>Settings → API → Webhooks → Create webhook</strong>. Point it at the Linear endpoint, set the signing secret, and enable <strong>Issues</strong> events.
+                </p>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Authentication</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              Every webhook request must include a valid Locker API token in the <code>Authorization</code> header.
+              This token determines which user's vault receives the committed memory and which project key is applied.
+            </p>
+            <pre style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 14, fontFamily: "monospace", fontSize: 12, color: "var(--text)", overflowX: "auto", marginBottom: 32 }}>{`Authorization: Bearer lkr_your_token_here`}</pre>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>How It Works</h3>
+            <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.8, marginBottom: 32 }}>
+              <li><strong>Signature verification</strong> — HMAC-SHA256 signature validated against the configured secret before any processing begins.</li>
+              <li><strong>Event filtering</strong> — Only merged PRs and tickets in a "done" terminal state are processed; all other events return <code>{`{ok: true, skipped: true}`}</code>.</li>
+              <li><strong>Idempotency</strong> — Each event is keyed by <code>(source, external_id)</code>. Replayed webhooks return <code>{`{ok: true, duplicate: true}`}</code> without re-committing.</li>
+              <li><strong>Content fetch</strong> — The diff URL (GitHub) or ticket description (Linear) is fetched ephemerally and never written to disk in plain text.</li>
+              <li><strong>AI summarisation</strong> — Workers AI (<code>llama-3.1-8b-instruct-fp8</code>) generates a 3–5 sentence technical summary focused on what changed and why.</li>
+              <li><strong>Vault encryption</strong> — The summary and full fact string are encrypted with AES-256-GCM using the vault DEK for the resolved project key before any D1 write.</li>
+              <li><strong>Memory commit</strong> — A <code>projects</code>-category memory tagged <code>#webhook #github</code> or <code>#webhook #linear</code> is inserted and becomes immediately searchable via <code>recall_context</code>.</li>
+              <li><strong>Audit trail</strong> — A row is inserted in <code>webhook_events</code> capturing the encrypted summary, raw title, and commit reference for compliance.</li>
+            </ol>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Response Shapes</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+              {[
+                { label: "Success", color: "#22c55e", body: `{ "ok": true, "memoryId": "uuid" }` },
+                { label: "Skipped (irrelevant event)", color: "var(--text-muted)", body: `{ "ok": true, "skipped": true }` },
+                { label: "Duplicate (replay)", color: "var(--text-muted)", body: `{ "ok": true, "duplicate": true }` },
+                { label: "Auth failure", color: "#ef4444", body: `{ "error": "Unauthorized: ..." }` },
+              ].map((r) => (
+                <div key={r.label} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: r.color, margin: "0 0 8px 0", textTransform: "uppercase", letterSpacing: "0.05em" }}>{r.label}</p>
+                  <pre style={{ background: "var(--surface)", borderRadius: 6, padding: 8, fontFamily: "monospace", fontSize: 11, color: "var(--text)", margin: 0, overflowX: "auto" }}>{r.body}</pre>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+
       case "mcp-about":
         return (
           <div>
@@ -1723,6 +1840,109 @@ npx locker-sync sync --format claude --dry-run`}</pre>
             </div>
           </div>
         );
+      case "agent-activity":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Agent Activity Dashboard</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              The Agent Activity Dashboard gives developers full observability into every memory operation performed by your AI tools.
+              Navigate to <strong>Admin → Agent Activity</strong> (under the Personal section) to access it.
+              It answers the question: "Which tool recalled which memories, with what confidence, and what context was injected into the model?"
+            </p>
+
+            <div style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 12, padding: 20, marginBottom: 28 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: "0 0 12px 0", display: "flex", alignItems: "center", gap: 8 }}>
+                <span>◎</span> Why This Matters
+              </h3>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+                AI hallucinations often stem from <strong>outdated or missing context</strong> — facts that were never committed, expired, or recalled
+                incorrectly. The Activity Dashboard maps every <code>recall_context</code> event to the exact memories returned,
+                their semantic similarity scores, and the raw user-agent of the calling tool, so you can pinpoint stale context
+                in seconds rather than guessing.
+              </p>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 28 }}>
+              {[
+                { icon: "◈", title: "Tool identification", desc: "Each event is tagged with the AI client that made the call — Cursor, Claude Desktop, Claude Code, Windsurf, Cline, GitHub Copilot, Continue, Zed, or any other MCP-compatible tool detected from the User-Agent header." },
+                { icon: "⚡", title: "Semantic similarity scores", desc: "Every recalled memory includes a 0–100% similarity score computed from the bge-m3 embedding distance. Low scores on returned facts highlight potential false-positive recalls." },
+                { icon: "📋", title: "Injected facts inspector", desc: "Expand any recall event to see the exact facts — decrypted content, category, tags, and score — that were injected into the model's context window." },
+                { icon: "🔍", title: "Query tracing", desc: "The original query string sent by the agent is stored with every recall event, letting you correlate what the model asked for with what it actually received." },
+              ].map(({ icon, title, desc }) => (
+                <div key={title} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
+                  <div style={{ fontSize: 18, marginBottom: 8 }}>{icon}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>{title}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>{desc}</div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Event Timeline</h3>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 16 }}>
+              The timeline displays all memory operations in reverse-chronological order (most recent first), auto-refreshing every 30 seconds.
+              Each event card shows:
+            </p>
+            <ul style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.8, paddingLeft: 20, marginBottom: 24 }}>
+              <li><strong>Action type</strong> — recall_context, commit_memory, update_memory, delete_memory, search_memories, JIT events, and more.</li>
+              <li><strong>Tool badge</strong> — the AI client identified from the HTTP User-Agent string.</li>
+              <li><strong>Query preview</strong> — the search string the agent sent (always visible without expanding).</li>
+              <li><strong>Result count</strong> — how many memories were returned from the vault.</li>
+              <li><strong>Timestamp</strong> — date and time to the second.</li>
+            </ul>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 24 }}>
+              Clicking any card expands a detail panel with: token ID, IP address, memory ID, project scope,
+              the raw User-Agent string, the injected facts list, and a collapsible raw metadata block for
+              advanced debugging.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Filtering & Search</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
+              {[
+                ["Text search", "Full-text filter across query strings, tool names, action names, and injected fact content. Case-insensitive."],
+                ["Action filter", "Quick-filter buttons for: All, Recall, Commit, Update, Delete, Search, and JIT events."],
+                ["Tool filter", "Dropdown to narrow events to a specific AI client — e.g. see only what Cursor recalled today."],
+              ].map(([label, desc]) => (
+                <div key={label as string} style={{ display: "flex", gap: 10, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", flexShrink: 0, minWidth: 110 }}>{label as string}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>{desc as string}</span>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Stats Bar</h3>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 24 }}>
+              The top of the page displays four key metrics computed from the filtered event list:
+              <strong> Total Events</strong>, <strong>Recalls</strong>, <strong>Avg Results / Recall</strong>, and <strong>Top Tool</strong>.
+              These update live as you apply filters, giving an at-a-glance summary of agent behavior patterns.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Similarity Score Colors</h3>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
+              {[
+                { color: "#22c55e", label: "≥ 80%", desc: "High confidence match" },
+                { color: "#f59e0b", label: "60–79%", desc: "Moderate match" },
+                { color: "#ef4444", label: "< 60%", desc: "Low confidence — possible false positive" },
+              ].map(({ color, label, desc }) => (
+                <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, background: `${color}11`, border: `1px solid ${color}44`, borderRadius: 8, padding: "8px 14px" }}>
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                  <span style={{ fontWeight: 700, fontSize: 12, color }}>{label}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{desc}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 12, padding: 16 }}>
+              <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                <span>💡</span> Debugging Tip
+              </h4>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+                If your agent is generating incorrect or outdated code suggestions, open Activity, find the most recent <code>recall_context</code> event
+                for that tool, and inspect the injected facts. If the returned facts are stale (old timestamps, wrong category, low score),
+                update those memories in the <strong>Memories</strong> tab — the next recall will surface the corrected context.
+              </p>
+            </div>
+          </div>
+        );
       default:
         return null;
     }
@@ -1882,6 +2102,7 @@ npx locker-sync sync --format claude --dry-run`}</pre>
             <option value="stack-creator">Tech Stack Creator</option>
             <option value="templates">Blueprint Templates</option>
             <option value="export-rules">Exporting Agent Rules</option>
+            <option value="agent-activity">Agent Activity Dashboard</option>
           </optgroup>
           <optgroup label="MCP Reference">
             <option value="mcp-about">About MCP</option>
@@ -1937,6 +2158,12 @@ npx locker-sync sync --format claude --dry-run`}</pre>
               </button>
               <button onClick={() => setActiveSection("export-rules")} className={`sidebar-button ${activeSection === "export-rules" ? "active" : ""}`}>
                 <span>💾</span> Exporting Agent Rules
+              </button>
+              <button onClick={() => setActiveSection("webhooks")} className={`sidebar-button ${activeSection === "webhooks" ? "active" : ""}`}>
+                <span>🔗</span> Webhook Integrations
+              </button>
+              <button onClick={() => setActiveSection("agent-activity")} className={`sidebar-button ${activeSection === "agent-activity" ? "active" : ""}`}>
+                <span>◎</span> Agent Activity Dashboard
               </button>
             </div>
 

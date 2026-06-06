@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from '@tanstack/react-router'
 import { InfoTooltip } from "~/components/InfoTooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
@@ -15,7 +15,11 @@ import {
   setDeletionPasscode,
   removeDeletionPasscode,
   getPasscodeStatus,
+  getWebhookSecret,
+  setWebhookSecret,
+  deleteWebhookSecret,
   type ApiTokenPublic,
+  type WebhookSource,
 } from "~/server/memoryFunctions";
 import { MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE } from "~/db/schema";
 import { PageContainer } from "~/components/PageContainer";
@@ -1171,10 +1175,190 @@ export function SessionsSection() {
   );
 }
 
+// ── WebhookSecretsSection ──────────────────────────────────────────────────
+
+const WEBHOOK_SOURCES: { source: WebhookSource; label: string; color: string; endpointSuffix: string }[] = [
+  { source: "github", label: "GitHub", color: "#6e40c9", endpointSuffix: "/api/webhooks/github" },
+  { source: "linear", label: "Linear", color: "#5E6AD2", endpointSuffix: "/api/webhooks/linear" },
+];
+
+function WebhookSecretRow({
+  source,
+  label,
+  color,
+  endpointSuffix,
+  scopeKey,
+}: {
+  source: WebhookSource;
+  label: string;
+  color: string;
+  endpointSuffix: string;
+  scopeKey: string | null;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const origin = typeof window === "undefined" ? "https://locker.rcormier.dev" : window.location.origin;
+  const endpoint = `${origin}${endpointSuffix}`;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["webhook-secret", source, scopeKey],
+    queryFn: () => getWebhookSecret({ data: { source, scopeKey } }),
+  });
+
+  const configured = data?.configured ?? false;
+
+  async function handleSave() {
+    if (!inputValue.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await setWebhookSecret({ data: { source, secret: inputValue.trim(), scopeKey } });
+      qc.invalidateQueries({ queryKey: ["webhook-secret", source, scopeKey] });
+      setEditing(false);
+      setInputValue("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to save secret");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Remove ${label} webhook secret? This will break any active webhooks until a new secret is configured.`)) return;
+    try {
+      await deleteWebhookSecret({ data: { source, scopeKey } });
+      qc.invalidateQueries({ queryKey: ["webhook-secret", source, scopeKey] });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to remove secret");
+    }
+  }
+
+  return (
+    <div className="border border-border rounded-xl bg-surface2 overflow-hidden">
+      <div className="flex items-center justify-between p-4 gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${color}22`, border: `1px solid ${color}44` }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-text">{label}</div>
+            <div className="text-[11px] text-text-muted font-mono truncate mt-0.5">{endpoint}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {isLoading ? (
+            <span className="text-[11px] text-text-muted">Loading…</span>
+          ) : configured ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-500/10 text-green-500 border border-green-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> Configured
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface text-text-muted border border-border">
+              Not set
+            </span>
+          )}
+          {configured && !editing && (
+            <Button variant="ghost" size="sm" onClick={handleDelete} className="text-[11px] text-red-400 hover:text-red-300 px-2">
+              Remove
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => { setEditing((v) => !v); setInputValue(""); setError(null); }} className="text-[11px] px-3">
+            {editing ? "Cancel" : configured ? "Update" : "Configure"}
+          </Button>
+        </div>
+      </div>
+
+      {editing && (
+        <div className="border-t border-border px-4 py-3 flex flex-col gap-2">
+          <Label className="text-[11px] text-text-muted">Paste the signing secret you generated in {label}</Label>
+          <div className="flex gap-2">
+            <Input
+              type="password"
+              placeholder={`${label} webhook signing secret`}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+              className="font-mono text-xs flex-1"
+              autoFocus
+            />
+            <Button size="sm" onClick={handleSave} disabled={saving || !inputValue.trim()} className="px-4">
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          {error && <p className="text-[11px] text-red-400">{error}</p>}
+          <p className="text-[10px] text-text-muted leading-relaxed">
+            The secret is stored encrypted in your vault and never exposed in plain text.
+            Use this endpoint URL when registering the webhook in {label}:
+            {" "}<code className="text-accent">{endpoint}</code>
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function WebhookSecretsSection() {
+  const { data: workspaces = [] } = useQuery({
+    queryKey: ["workspaces"],
+    queryFn: () => getUserWorkspaces(),
+  });
+
+  // Only show scopes that are relevant: personal + orgs (teams inherit from org).
+  const displayScopes = workspaces.filter((w) => w.type === "personal" || w.type === "org");
+
+  return (
+    <div className="flex flex-col gap-6 py-2">
+      <div>
+        <h2 className="text-base font-bold text-text mb-1">Webhook Integrations</h2>
+        <p className="text-xs text-text-muted leading-relaxed max-w-2xl">
+          Configure signing secrets to enable automatic memory commits when a GitHub PR is merged
+          or a Linear ticket is completed. Each scope (personal, org) stores its own secret — team
+          members inherit the secret from their parent org.
+        </p>
+      </div>
+
+      {displayScopes.map((ws) => (
+        <div key={ws.key} className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">{ws.label}</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          {WEBHOOK_SOURCES.map((s) => (
+            <WebhookSecretRow
+              key={`${ws.key}-${s.source}`}
+              source={s.source}
+              label={s.label}
+              color={s.color}
+              endpointSuffix={s.endpointSuffix}
+              scopeKey={ws.key === "personal" ? null : ws.key}
+            />
+          ))}
+        </div>
+      ))}
+
+      <div className="bg-surface2 border border-border rounded-xl p-4 text-[12px] text-text-muted leading-relaxed">
+        <p className="font-semibold text-text mb-2">How to register the webhook</p>
+        <ol className="list-decimal list-inside flex flex-col gap-1">
+          <li><strong>GitHub:</strong> Repo → Settings → Webhooks → Add webhook. Set Payload URL to the endpoint above, Content type to <code className="text-accent">application/json</code>, and paste your secret. Select <em>Pull requests</em> event only.</li>
+          <li><strong>Linear:</strong> Settings → API → Webhooks → Create webhook. Point to the Linear endpoint, set the signing secret, and enable <em>Issues</em> events.</li>
+          <li>Create a Locker API token with <code className="text-accent">commit_memory</code> permission, scoped to the vault you want memories committed to, and pass it in the webhook's <code className="text-accent">Authorization: Bearer lkr_…</code> header.</li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 // ── standalone /settings page ──────────────────────────────────────────────
 
 function SettingsPage() {
-  const [tab, setTab] = useState<"profile" | "tokens" | "mcp" | "security" | "sessions">("profile");
+  const [tab, setTab] = useState<"profile" | "tokens" | "mcp" | "security" | "sessions" | "webhooks">("profile");
 
   const tabs = [
     { id: "profile" as const, label: "Profile", tooltip: "Update your display name and email address." },
@@ -1182,6 +1366,7 @@ function SettingsPage() {
     { id: "sessions" as const, label: "Sessions", tooltip: "View and revoke active login sessions across devices." },
     { id: "tokens" as const, label: "API Tokens", tooltip: "Create tokens that let AI clients authenticate with your memories via the MCP endpoint." },
     { id: "mcp" as const, label: "MCP Endpoint", tooltip: "Your personal MCP server URL — paste this into your AI client (e.g. Claude, Cursor) to enable memory retrieval." },
+    { id: "webhooks" as const, label: "Webhooks", tooltip: "Configure GitHub and Linear webhook secrets so merged PRs and completed tickets are automatically committed to your vault." },
   ];
 
   return (
@@ -1229,6 +1414,7 @@ function SettingsPage() {
           {tab === "sessions" && <SessionsSection />}
           {tab === "tokens" && <ApiTokensSection />}
           {tab === "mcp" && <McpEndpointSection />}
+          {tab === "webhooks" && <WebhookSecretsSection />}
         </div>
       </PageContainer>
     </div>

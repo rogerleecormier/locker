@@ -10,6 +10,8 @@ export type AdminSection =
   | "personal-mcp"
   | "personal-usage"
   | "personal-billing"
+  | "personal-activity"
+  | "personal-webhooks"
   // Org
   | "orgs"
   | "org-billing"
@@ -38,6 +40,8 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "personal-mcp",      label: "MCP Endpoint",     icon: "🔌", category: "personal" },
   { id: "personal-usage",    label: "My Usage",         icon: "📈", category: "personal" },
   { id: "personal-billing",  label: "My Billing",       icon: "💳", category: "personal" },
+  { id: "personal-activity", label: "Agent Activity",   icon: "◎",  category: "personal" },
+  { id: "personal-webhooks", label: "Webhooks",          icon: "🔗", category: "personal" },
   // Org
   { id: "orgs", label: "Organizations", icon: "🏢", category: "org" },
   { id: "org-billing", label: "Org Billing", icon: "💰", category: "org" },

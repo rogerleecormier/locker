@@ -38,10 +38,12 @@ import {
   exportAuditLogsCsv,
   getSiteAuditLogs,
   exportSiteAuditLogsCsv,
+  getAgentActivityLogs,
+  type AgentActivityEntry,
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
 import { MyUsageSection, MyBillingSection, OrgBillingSection, useBillingData } from "~/routes/billing";
-import { ProfileSection, ApiTokensSection, McpEndpointSection, TwoFactorSection, PasscodeSection, SessionsSection } from "~/routes/settings";
+import { ProfileSection, ApiTokensSection, McpEndpointSection, TwoFactorSection, PasscodeSection, SessionsSection, WebhookSecretsSection } from "~/routes/_settings-components";
 import {
   getUserOrgsAndTeams,
   createOrganizationSelfServe,
@@ -138,7 +140,7 @@ function AuditLogRow({ log, showOrg = false }: { log: any; showOrg?: boolean }) 
 
         {/* Content */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* User + token */}
+          {/* User + token + tool */}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 4 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
               {log.userName ?? "Unknown User"}
@@ -155,6 +157,15 @@ function AuditLogRow({ log, showOrg = false }: { log: any; showOrg?: boolean }) 
                 🔑 {log.tokenName}
               </span>
             )}
+            {log.toolName && (
+              <span style={{
+                fontSize: 10, padding: "1px 6px", borderRadius: 8,
+                background: "var(--surface)", color: "var(--text-muted)",
+                border: "1px solid var(--border)", fontWeight: 600,
+              }}>
+                ◎ {log.toolName}
+              </span>
+            )}
             {showOrg && log.orgName && (
               <span style={{
                 fontSize: 10, padding: "1px 6px", borderRadius: 8,
@@ -166,7 +177,14 @@ function AuditLogRow({ log, showOrg = false }: { log: any; showOrg?: boolean }) 
             )}
           </div>
 
-          {/* Memory snippet */}
+          {/* Query string (recall/search events) */}
+          {log.query && (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+              Query: <span style={{ color: "var(--text)", fontStyle: "italic" }}>{log.query}</span>
+            </div>
+          )}
+
+          {/* Memory snippet (plaintext from version history) */}
           {log.memorySnippet && (
             <div style={{
               fontSize: 11, color: "var(--text-muted)", fontStyle: "italic",
@@ -462,6 +480,208 @@ function SiteAuditLogsSection() {
 }
 
 
+// ── Agent Activity Section (all authenticated users, own events only) ─────────
+
+const ACTION_COLORS_INLINE: Record<string, string> = {
+  recall_context: "var(--accent)",
+  commit_memory: "#22c55e",
+  update_memory: "#f59e0b",
+  delete_memory: "#ef4444",
+  search_memories: "#818cf8",
+  get_memory_summary: "#64748b",
+  recall_context_abac_denied: "#ef4444",
+  jit_access_requested: "#f59e0b",
+  jit_access_approved: "#22c55e",
+  jit_access_denied: "#ef4444",
+};
+
+const ACTION_LABELS_INLINE: Record<string, string> = {
+  recall_context: "Recalled Context",
+  commit_memory: "Committed Memory",
+  update_memory: "Updated Memory",
+  delete_memory: "Deleted Memory",
+  search_memories: "Searched Memories",
+  get_memory_summary: "Fetched Summary",
+  export_memories: "Exported Memories",
+  recall_context_abac_denied: "Recall Denied (ABAC)",
+  jit_access_requested: "JIT Access Requested",
+  jit_access_approved: "JIT Approved",
+  jit_access_denied: "JIT Denied",
+  update_memory_queued: "Update Queued",
+  delete_memory_queued: "Delete Queued",
+};
+
+function ActivityRow({ entry }: { entry: AgentActivityEntry }) {
+  const [expanded, setExpanded] = useState(false);
+  const color = ACTION_COLORS_INLINE[entry.action] ?? "var(--text-muted)";
+  const label = ACTION_LABELS_INLINE[entry.action] ?? entry.action;
+
+  return (
+    <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+      <div onClick={() => setExpanded((p) => !p)} style={{ padding: "12px 14px", cursor: "pointer", display: "flex", gap: 12, alignItems: "flex-start" }}>
+        {/* Action badge */}
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, background: `${color}22`, color, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: `1px solid ${color}55`, whiteSpace: "nowrap" }}>
+          {label}
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Tool + token row */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: entry.query ? 4 : 0 }}>
+            {entry.toolName && (
+              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8, background: "var(--surface)", color: "var(--text-muted)", border: "1px solid var(--border)", fontWeight: 600 }}>
+                ◎ {entry.toolName}
+              </span>
+            )}
+            {entry.tokenId && entry.tokenId !== "session" && (
+              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8, background: "rgba(168,85,247,0.1)", color: "var(--accent)", border: "1px solid rgba(168,85,247,0.2)", fontWeight: 600 }}>
+                🔑 {entry.tokenId.slice(0, 8)}…
+              </span>
+            )}
+            {entry.matchCount !== null && (
+              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{entry.matchCount} result{entry.matchCount !== 1 ? "s" : ""}</span>
+            )}
+          </div>
+
+          {/* Query */}
+          {entry.query && (
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              Query: <span style={{ color: "var(--text)", fontStyle: "italic" }}>{entry.query}</span>
+            </div>
+          )}
+        </div>
+
+        <div style={{ flexShrink: 0, textAlign: "right" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{new Date(entry.timestamp).toLocaleString()}</div>
+          {entry.ipAddress && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>IP: {entry.ipAddress}</div>}
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{expanded ? "▲" : "▼"}</div>
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ borderTop: "1px solid var(--border)", padding: "10px 14px", background: "var(--surface)", fontSize: 11, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {entry.tokenId && <span><span style={{ color: "var(--text-muted)" }}>Token:</span> <code style={{ fontSize: 10 }}>{entry.tokenId}</code></span>}
+            {entry.memoryId && <span><span style={{ color: "var(--text-muted)" }}>Memory:</span> <code style={{ fontSize: 10 }}>{entry.memoryId}</code></span>}
+            {entry.projectKey && <span><span style={{ color: "var(--text-muted)" }}>Scope:</span> <code style={{ fontSize: 10 }}>{entry.projectKey}</code></span>}
+          </div>
+          {entry.userAgent && <div style={{ color: "var(--text-muted)", wordBreak: "break-all" }}>UA: {entry.userAgent}</div>}
+          {entry.injectedFacts.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Injected facts ({entry.injectedFacts.length})
+              </div>
+              {entry.injectedFacts.map((f, i) => (
+                <div key={f.id || i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px" }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", background: "var(--accent-dim)", borderRadius: 4, color: "var(--accent)", textTransform: "uppercase" }}>{f.category}</span>
+                    <span style={{ fontSize: 9, color: "var(--text-muted)" }}>{f.tags}</span>
+                    {f.score !== null && (
+                      <span style={{ fontSize: 9, fontWeight: 700, color: f.score >= 0.8 ? "#22c55e" : f.score >= 0.6 ? "#f59e0b" : "#ef4444" }}>
+                        {Math.round(f.score * 100)}% match
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text)", fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{f.fact || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>encrypted</span>}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {entry.rawMetadata && Object.keys(entry.rawMetadata).length > 0 && (
+            <pre style={{ margin: 0, fontSize: 10, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", overflowX: "auto", color: "var(--text-muted)" }}>
+              {JSON.stringify(entry.rawMetadata, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ACTIVITY_FILTER_ACTIONS = [
+  { value: "", label: "All" },
+  { value: "recall_context", label: "Recall" },
+  { value: "commit_memory", label: "Commit" },
+  { value: "update_memory", label: "Update" },
+  { value: "delete_memory", label: "Delete" },
+  { value: "search_memories", label: "Search" },
+  { value: "jit_access_requested", label: "JIT" },
+];
+
+function AgentActivitySection() {
+  const [actionFilter, setActionFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const { data: rawEntries = [] as AgentActivityEntry[], isLoading, isError } = useQuery({
+    queryKey: ["agent-activity-admin", actionFilter],
+    queryFn: (): Promise<AgentActivityEntry[]> => getAgentActivityLogs({ data: { limit: 200, action: actionFilter || undefined } }) as Promise<AgentActivityEntry[]>,
+    staleTime: 15000,
+    refetchInterval: 30000,
+  });
+
+  const entries = rawEntries.filter((e) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      e.query?.toLowerCase().includes(q) ||
+      e.toolName?.toLowerCase().includes(q) ||
+      e.action.toLowerCase().includes(q) ||
+      e.injectedFacts.some((f) => f.fact.toLowerCase().includes(q))
+    );
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+        Every memory operation your AI tools have performed — which tool called, what it asked for, and what was injected into its context window.
+      </p>
+
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 180 }}>
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search queries, facts, tools…"
+            style={{ width: "100%", paddingLeft: 10, paddingRight: 10, paddingTop: 6, paddingBottom: 6, fontSize: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", color: "var(--text)", outline: "none", boxSizing: "border-box" }}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {ACTIVITY_FILTER_ACTIONS.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => setActionFilter(value)}
+              style={{ padding: "4px 10px", fontSize: 11, fontWeight: actionFilter === value ? 700 : 500, background: actionFilter === value ? "var(--accent-dim)" : "var(--surface)", border: `1px solid ${actionFilter === value ? "var(--accent)" : "var(--border)"}`, color: actionFilter === value ? "var(--accent)" : "var(--text-muted)", borderRadius: 20, cursor: "pointer" }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading activity…</p>}
+      {isError && <p style={{ color: "var(--error)", fontSize: 13 }}>Failed to load activity.</p>}
+
+      {!isLoading && !isError && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {entries.length === 0 ? (
+            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+              {rawEntries.length === 0 ? "No activity yet. Connect an AI tool and make a recall." : "No events match your filters."}
+            </p>
+          ) : (
+            entries.map((entry) => <ActivityRow key={entry.id} entry={entry} />)
+          )}
+        </div>
+      )}
+
+      {!isLoading && entries.length > 0 && (
+        <p style={{ textAlign: "center", fontSize: 10, color: "var(--text-muted)", margin: 0 }}>
+          Auto-refreshes every 30 s — {entries.length} event{entries.length !== 1 ? "s" : ""} shown
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AdminPage() {
   const [activeSection, setActiveSection] = useState<AdminSection>("personal-account");
 
@@ -753,6 +973,10 @@ function AdminPage() {
 
       {/* ── MY BILLING ──────────────────────────────────────────────────── */}
       {activeSection === "personal-billing" && <MyBillingSection />}
+
+      {activeSection === "personal-activity" && <AgentActivitySection />}
+
+      {activeSection === "personal-webhooks" && <WebhookSecretsSection />}
 
       {/* ── SYSTEM OVERVIEW ─────────────────────────────────────────────── */}
       {activeSection === "system" && (

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { InfoTooltip } from "~/components/InfoTooltip";
+import { LockerPadlock } from "~/components/LockerLogo";
 import {
   getMemories,
   bulkDeleteMemories,
@@ -1089,10 +1090,7 @@ function MemoryTable({
 
       {!hasMore && filtered.length > 0 && (
         <div className="py-6 px-4 text-center border border-border rounded-xl text-text-muted bg-surface2 flex flex-col items-center gap-1.5 select-none">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
+          <LockerPadlock size={14} />
           <span className="text-[11px] font-semibold">Vault list fully loaded ({filtered.length} entries)</span>
         </div>
       )}

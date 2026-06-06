@@ -1,4 +1,5 @@
 import { PLANS, PLAN_ORDER, FEATURE_DESCRIPTIONS, type PlanId, type PlanFeatures } from "~/lib/plans";
+import { LockerPadlock } from "~/components/LockerLogo";
 import { useState, useEffect, useRef } from "react";
 
 export function PlanBadge({ plan }: { plan: PlanId }) {
@@ -79,9 +80,7 @@ export function PaywallGate({ feature, currentPlan, requiredPlan, children, comp
         gap: 10,
         fontSize: 13,
       }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-          <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </svg>
+        <LockerPadlock size={16} />
         <span style={{ color: "var(--text-muted)" }}>
           <strong style={{ color: "var(--text)" }}>{featureInfo.label}</strong> is available on the{" "}
           <strong style={{ color: "var(--accent)" }}>{requiredPlanObj.label}</strong> plan.
@@ -112,9 +111,7 @@ export function PaywallGate({ feature, currentPlan, requiredPlan, children, comp
         justifyContent: "center",
         marginBottom: 20,
       }}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </svg>
+        <LockerPadlock size={24} />
       </div>
       <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>
         {featureInfo.label}

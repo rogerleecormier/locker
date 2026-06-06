@@ -13,6 +13,7 @@ import { archiveContradictingMemories } from "./server/memoryFunctions";
 import { isEncrypted, decrypt, deriveUserKey, getOrCreateVaultKey, decryptEphemeral, EphemeralPlaintext } from "./server/crypto";
 import { logAudit } from "./server/enterprise";
 import { handleStripeWebhook } from "./server/billing";
+import { handleWebhookRequest } from "./server/webhooks";
 
 const handler = createStartHandler(defaultStreamHandler);
 
@@ -38,7 +39,13 @@ export default {
       return handleStripeWebhook(request, env);
     }
 
+    if (url.pathname === "/api/webhooks/github" && request.method === "POST") {
+      return handleWebhookRequest(request, env, "github");
+    }
 
+    if (url.pathname === "/api/webhooks/linear" && request.method === "POST") {
+      return handleWebhookRequest(request, env, "linear");
+    }
 
 
 

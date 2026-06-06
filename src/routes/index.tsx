@@ -4,6 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { PLATFORMS } from "../lib/platforms";
 import { PLANS, PLAN_ORDER } from "~/lib/plans";
 import { PlanCard } from "~/components/PaywallGate";
+import { LockerPadlock } from "~/components/LockerLogo";
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
@@ -743,7 +744,7 @@ function PlaygroundCard() {
           overflow: "hidden",
         }}>
           <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <LockerPadlock size={14} />
             <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Vault</span>
             <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-muted)", background: "var(--accent-dim)", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>{memories.length} memories</span>
           </div>
@@ -879,18 +880,7 @@ function LandingPage() {
           {/* lock icon animated */}
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
             <div style={{ width: 64, height: 64, borderRadius: 18, background: "var(--accent-dim)", border: "1px solid rgba(168,85,247,0.35)", display: "flex", alignItems: "center", justifyContent: "center", animation: "float 4s ease-in-out infinite", opacity: heroVisible ? 1 : 0, transition: "opacity 0.6s ease" }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-hero)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <defs>
-                  <linearGradient id="logo-grad-hero" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="var(--accent)" />
-                    <stop offset="100%" stopColor="#a855f7" />
-                  </linearGradient>
-                </defs>
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" strokeWidth="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" strokeWidth="2" />
-                <path d="M9 14.5h6M9 16.5h6M9 18.5h6M11 11v11M13 11v11" strokeWidth="1" opacity="0.6" />
-                <rect x="9.5" y="14" width="5" height="5" rx="0.5" fill="var(--accent)" stroke="url(#logo-grad-hero)" strokeWidth="1" />
-              </svg>
+              <LockerPadlock size={28} />
             </div>
           </div>
 
@@ -1141,12 +1131,12 @@ function LandingPage() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-            <Step num="1" title="Build or Import Context" desc="Run the Tech Stack Wizard to output target constraints, or ingest pre-built memory templates and chatbot exports." delay={0} />
-            <Step num="2" title="Extract, Tag & Graph-Enrich" desc="DLP scans and encrypts facts under a per-vault DEK. Workers AI simultaneously extracts entity nodes and edges, building a GraphRAG knowledge graph." delay={100} />
+            <Step num="1" title="Build or Import Context" desc="Run the Tech Stack Wizard to output target constraints, or ingest pre-built memory templates and chatbot exports. Alternatively, register GitHub or Linear webhooks to auto-commit on PR merge or ticket completion." delay={0} />
+            <Step num="2" title="Extract, Tag & Graph-Enrich" desc="DLP scans and encrypts facts under a per-vault DEK. Workers AI simultaneously extracts entity nodes and edges, building a GraphRAG knowledge graph. Webhook events are AI-summarised and encrypted before any D1 write." delay={100} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
             <Step num="3" title="Bind Universal MCP Endpoint" desc="Expose your Locker context to Cursor, Claude Desktop, Copilot, or CLI clients using your secure bearer token." delay={200} />
-            <Step num="4" title="Execute with Precise Context" desc="IDE agents access updated codebase context and organizational rules automatically on every prompt cycle." delay={300} />
+            <Step num="4" title="Execute with Precise Context" desc="IDE agents access updated codebase context and organizational rules automatically on every prompt cycle — including webhook-sourced summaries tagged #webhook for instant recall." delay={300} />
           </div>
         </div>
       </Section>
@@ -1164,15 +1154,17 @@ function LandingPage() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
             {[
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Envelope encryption", desc: "AES-256-GCM with per-vault DEKs wrapped by a KEK. Database + env var must both be compromised to decrypt anything.", delay: 0 },
+              { icon: <LockerPadlock size={20} />, title: "Envelope encryption", desc: "AES-256-GCM with per-vault DEKs wrapped by a KEK. Database + env var must both be compromised to decrypt anything.", delay: 0 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "GraphRAG hybrid retrieval", desc: "Semantic (bge-m3), keyword, and recency ranks fused via RRF with GraphRAG entity expansion. Includes Llama-3.3-70B cross-encoder reranking and optional system-prompt synthesis.", delay: 60 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>, title: "Tech Stack Wizard & CLI Sync", desc: "Generate .cursorrules, CLAUDE.md, and AGENTS.md from your stack wizard. Push rules to disk with npx locker-sync sync — or wire it into your pre-commit hook for automatic sync.", delay: 120 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>, title: "Memory Templates", desc: "Deploy pre-built coding guidelines, DevOps runbooks, and SOC2 compliance controls directly to developer agents.", delay: 180 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: "Review & Approval Queue", desc: "Agent mutations are held in the approval queue. The Vault Actions panel displays color-coded cards to easily review, approve, or deny actions.", delay: 240 },
+              { icon: <LockerPadlock size={20} />, title: "Review & Approval Queue", desc: "Agent mutations are held in the approval queue. The Vault Actions panel displays color-coded cards to easily review, approve, or deny actions.", delay: 240 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>, title: "Authoritative Org Vault", desc: "Lock critical standards inside organization scopes. Authoritative rules always take precedence in agent contexts.", delay: 300 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, title: "Per-Token Scopes", desc: "Configure bitmask permissions to toggle read-only recall_context and write-access commit_memory capabilities.", delay: 360 },
-              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>, title: "Cloudflare Edge Native", desc: "Zero-servers to manage. Runs entirely on Cloudflare Workers, Cloudflare D1, and Cloudflare Vectorize.", delay: 420 },
+              { icon: <LockerPadlock size={20} />, title: "Cloudflare Edge Native", desc: "Zero-servers to manage. Runs entirely on Cloudflare Workers, Cloudflare D1, and Cloudflare Vectorize.", delay: 420 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>, title: "Non-Destructive DLP", desc: "High-entropy secrets and PII are quarantined at write time. Agents receive redacted placeholders; authorized humans can unmask facts in the dashboard.", delay: 480 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>, title: "Webhook Auto-Commit", desc: "GitHub PR Merged and Linear Ticket Done events automatically pipe diff/description through Workers AI and commit an encrypted technical summary to your vault — no manual commit_memory calls needed.", delay: 540 },
+              { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M3 12h.01M7.05 7.05l.007.007M12 3v.01M16.95 7.05l.007.007M21 12h.01M16.95 16.95l.007.007M12 21v-.01M7.05 16.95l-.007.007"/></svg>, title: "Agent Activity Dashboard", desc: "Timeline view of every memory operation performed by your AI tools. See which client (Cursor, Claude Desktop, Windsurf…) recalled which memories, their semantic similarity scores, and the exact facts injected into the model's context window — making AI hallucinations instantly debuggable.", delay: 600 },
             ].map((f) => (
               <FeatureCard key={f.title} icon={f.icon} title={f.title} desc={f.desc} delay={f.delay} />
             ))}
@@ -1288,10 +1280,7 @@ function LandingPage() {
         <div style={{ maxWidth: 600, margin: "0 auto", padding: "80px 24px", textAlign: "center" }}>
           <FadeIn>
             <div style={{ width: 56, height: 56, borderRadius: 16, background: "var(--accent-dim)", border: "1px solid rgba(168,85,247,0.35)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
+              <LockerPadlock size={24} />
             </div>
             <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", marginBottom: 14 }}>
               Deploy Secure Context Storage

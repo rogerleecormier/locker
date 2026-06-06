@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { QueryClientProvider, type QueryClient, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminStatus } from "~/routes/admin";
+import { LockerLogo } from "~/components/LockerLogo";
 import { getUserWorkspaces, getUserPlan, listNotifications, markNotificationRead } from "~/server/memoryFunctions";
 import { PlanBadge } from "~/components/PaywallGate";
 import type { PlanId } from "~/lib/plans";
@@ -124,19 +125,7 @@ function LandingNav() {
   return (
     <nav style={navStyles.nav}>
       <div style={navStyles.brand}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-landing)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <defs>
-            <linearGradient id="logo-grad-landing" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="var(--accent)" />
-              <stop offset="100%" stopColor="#a855f7" />
-            </linearGradient>
-          </defs>
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" strokeWidth="2" />
-          <path d="M7 11V7a5 5 0 0 1 10 0v4" strokeWidth="2" />
-          <path d="M9 14.5h6M9 16.5h6M9 18.5h6M11 11v11M13 11v11" strokeWidth="1" opacity="0.6" />
-          <rect x="9.5" y="14" width="5" height="5" rx="0.5" fill="var(--accent)" stroke="url(#logo-grad-landing)" strokeWidth="1" />
-        </svg>
-        <Link to="/" style={{ ...navStyles.brandName, textDecoration: "none", color: "var(--text)" }}>Locker</Link>
+        <LockerLogo size={18} />
       </div>
       <div style={{ flex: 1 }} />
       <div style={navStyles.right}>
@@ -233,19 +222,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
       <nav className="flex items-center justify-between px-4 md:px-6 h-[52px] bg-surface border-b border-border sticky top-0 z-50">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 mr-4 select-none">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-nav)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <defs>
-                <linearGradient id="logo-grad-nav" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="var(--accent)" />
-                  <stop offset="100%" stopColor="#a855f7" />
-                </linearGradient>
-              </defs>
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" strokeWidth="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" strokeWidth="2" />
-              <path d="M9 14.5h6M9 16.5h6M9 18.5h6M11 11v11M13 11v11" strokeWidth="1" opacity="0.6" />
-              <rect x="9.5" y="14" width="5" height="5" rx="0.5" fill="var(--accent)" stroke="url(#logo-grad-nav)" strokeWidth="1" />
-            </svg>
-            <Link to="/" className="font-bold text-base text-text tracking-tight no-underline hover:text-accent-hover transition-colors">Locker</Link>
+            <LockerLogo size={18} />
           </div>
 
           <div className="hidden md:flex items-center gap-1 select-none">
@@ -540,19 +517,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
         <div className="flex flex-col gap-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 select-none">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad-mobile)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <defs>
-                  <linearGradient id="logo-grad-mobile" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="var(--accent)" />
-                    <stop offset="100%" stopColor="#a855f7" />
-                  </linearGradient>
-                </defs>
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" strokeWidth="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" strokeWidth="2" />
-                <path d="M9 14.5h6M9 16.5h6M9 18.5h6M11 11v11M13 11v11" strokeWidth="1" opacity="0.6" />
-                <rect x="9.5" y="14" width="5" height="5" rx="0.5" fill="var(--accent)" stroke="url(#logo-grad-mobile)" strokeWidth="1" />
-              </svg>
-              <span className="font-bold text-text tracking-tight">Locker</span>
+              <LockerLogo size={18} />
             </div>
             <button
               onClick={() => setMobileMenuOpen(false)}
