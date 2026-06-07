@@ -44,8 +44,13 @@ async function ensureDemoUser(
   env: CloudflareEnv,
 ): Promise<void> {
   if (demoUserEnsured) return;
-  const email = "demo@locker.rcormier.dev";
-  const password = "demopassword123";
+  const email = env.DEMO_EMAIL;
+  const password = env.DEMO_PASSWORD;
+
+  if (!email || !password) {
+    demoUserEnsured = true;
+    return;
+  }
 
   try {
     const existing = await db.query.users.findFirst({

@@ -24,6 +24,8 @@ export type CloudflareEnv = {
   STRIPE_WEBHOOK_SECRET?: string;
   GITHUB_WEBHOOK_SECRET?: string;
   LINEAR_WEBHOOK_SECRET?: string;
+  DEMO_EMAIL?: string;
+  DEMO_PASSWORD?: string;
   RATE_LIMITER?: {
     limit: (options: { key: string }) => Promise<{ success: boolean }>;
   };

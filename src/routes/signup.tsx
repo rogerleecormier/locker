@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signUp, signIn } from "~/lib/authClient";
 import { useQuery } from "@tanstack/react-query";
 import { getSystemSettings } from "~/routes/admin";
+import { getDemoCredentials } from "~/server/demo";
 
 export const Route = createFileRoute("/signup")({
   component: SignupPage,
@@ -27,10 +28,12 @@ function SignupPage() {
     setError("");
     setLoading(true);
     try {
-      const result = await signIn.email({
-        email: "demo@locker.rcormier.dev",
-        password: "demopassword123",
-      });
+      const creds = await getDemoCredentials();
+      if (!creds.email || !creds.password) {
+        setError("Demo login is not available.");
+        return;
+      }
+      const result = await signIn.email({ email: creds.email, password: creds.password });
       if (result.error) {
         setError(result.error.message ?? "Demo login failed");
       } else {

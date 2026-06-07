@@ -43,6 +43,21 @@ function ConsentPage() {
         setLoading(null);
         return;
       }
+      // Validate the redirect URL to prevent open redirect to non-HTTP(S) schemes
+      // (e.g. javascript:, data:). The auth server enforces registered redirect URIs;
+      // this is a defense-in-depth check on the client.
+      try {
+        const parsed = new URL(redirectTo);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+          setError("Invalid redirect URL.");
+          setLoading(null);
+          return;
+        }
+      } catch {
+        setError("Invalid redirect URL.");
+        setLoading(null);
+        return;
+      }
       window.location.href = redirectTo;
     } catch {
       setError("Network error. Please try again.");
