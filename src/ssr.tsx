@@ -15,6 +15,12 @@ import { isEncrypted, decrypt, deriveUserKey, getOrCreateVaultKey, decryptEpheme
 import { logAudit } from "./server/enterprise";
 import { handleStripeWebhook } from "./server/billing";
 import { handleWebhookRequest } from "./server/webhooks";
+import {
+  isStaticPath,
+  checkIpRateLimit,
+  checkTokenRateLimit,
+  tooManyRequests,
+} from "./server/rateLimit";
 
 const handler = createStartHandler(defaultStreamHandler);
 
@@ -51,6 +57,25 @@ export default {
   async fetch(request: Request, env: CloudflareEnv, ctx: ExecutionContext) {
     const url = new URL(request.url);
     const ip = request.headers.get("cf-connecting-ip") ?? "";
+
+    // ── Rate limiting ──────────────────────────────────────────────────────
+    if (!isStaticPath(url.pathname)) {
+      const authHeader = request.headers.get("Authorization") ?? "";
+      const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+      const isMcpEndpoint = url.pathname === "/api/mcp";
+
+      if (isMcpEndpoint && bearerToken) {
+        // Token-based cap for authenticated MCP callers: 300 req/min
+        const rl = await checkTokenRateLimit(bearerToken, env, ctx);
+        if (rl.limited) return tooManyRequests(rl.retryAfter);
+      } else if (!bearerToken) {
+        // IP-based cap for unauthenticated traffic: 60 req/min
+        const rl = await checkIpRateLimit(request, env, ctx);
+        if (rl.limited) return tooManyRequests(rl.retryAfter);
+      }
+    }
+    // ── End rate limiting ──────────────────────────────────────────────────
+
     // Log all requests from Anthropic's IP range (160.79.104.0/21)
     if (ip.startsWith("160.79.")) {
       const auth = request.headers.get("Authorization");
