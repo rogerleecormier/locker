@@ -57,23 +57,23 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.39.0",
     "@cloudflare/workers-types": "4.20260526.1",
+    "@testing-library/jest-dom": "^6.0.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.0.0",
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
-    "drizzle-kit": "0.31.10",
-    "typescript": "6.0.3",
-    "vite": "8.0.14",
-    "vitest": "^4.1.8",
-    "wrangler": "4.95.0",
+    "drizzle-kit": "^0.18.1",
     "eslint": "^9.0.0",
-    "typescript-eslint": "^8.0.0",
     "eslint-plugin-react-hooks": "^5.0.0",
+    "jsdom": "^25.0.0",
     "prettier": "^3.0.0",
     "prettier-plugin-tailwindcss": "^0.6.0",
-    "@testing-library/react": "^16.0.0",
-    "@testing-library/user-event": "^14.0.0",
-    "@testing-library/jest-dom": "^6.0.0",
-    "jsdom": "^25.0.0"
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.0.0",
+    "vite": "8.0.14",
+    "vitest": "^4.1.8",
+    "wrangler": "4.95.0"
   }
 }
