@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { signIn } from "~/lib/authClient";
 import { LockerLogo } from "~/components/LockerLogo";
+import { getDemoCredentials } from "~/server/demo";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -19,10 +20,12 @@ function LoginPage() {
     setError("");
     setDemoLoading(true);
     try {
-      const result = await signIn.email({
-        email: "demo@locker.rcormier.dev",
-        password: "demopassword123",
-      });
+      const creds = await getDemoCredentials();
+      if (!creds.email || !creds.password) {
+        setError("Demo login is not available.");
+        return;
+      }
+      const result = await signIn.email({ email: creds.email, password: creds.password });
       if (result.error) {
         setError(result.error.message ?? "Demo login failed. Try again shortly.");
       } else {

@@ -17,6 +17,35 @@ import { handleWebhookRequest } from "./server/webhooks";
 
 const handler = createStartHandler(defaultStreamHandler);
 
+function addSecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  headers.set(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "connect-src 'self' https://api.stripe.com https://*.stripe.com",
+      "font-src 'self' data:",
+      "frame-src 'none'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; "),
+  );
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: CloudflareEnv, ctx: ExecutionContext) {
     const url = new URL(request.url);
@@ -182,9 +211,10 @@ export default {
       console.log(`[unhandled] ${request.method} ${url.pathname} ua:${ua.slice(0, 40)}`);
     }
 
-    return handler(request, {
+    const pageResponse = await handler(request, {
       context: { cloudflare: { env, ctx } } as Record<string, unknown>,
     });
+    return addSecurityHeaders(pageResponse);
   },
   async queue(batch: MessageBatch<unknown>, env: CloudflareEnv, ctx: ExecutionContext) {
     const db = drizzle(env.DB, { schema: { memories } });

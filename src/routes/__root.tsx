@@ -15,6 +15,7 @@ import type { PlanId } from "~/lib/plans";
 import { type ReactNode, useState, useEffect, useRef } from "react";
 import { useSession, signOut } from "~/lib/authClient";
 import { cn } from "~/lib/utils";
+import { ErrorBoundary } from "~/components/ErrorBoundary";
 import "~/global.css";
 
 interface RouterContext {
@@ -65,7 +66,9 @@ function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <RootDocument>
         <AuthGate>
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </AuthGate>
       </RootDocument>
     </QueryClientProvider>
@@ -220,7 +223,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
 
   return (
     <>
-      <nav className="flex items-center justify-between px-4 md:px-6 h-[52px] bg-surface border-b border-border sticky top-0 z-50">
+      <nav aria-label="Main navigation" className="flex items-center justify-between px-4 md:px-6 h-[52px] bg-surface border-b border-border sticky top-0 z-50">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 mr-4 select-none">
             <LockerLogo size={18} />
@@ -257,6 +260,9 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
           <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
             <button
               onClick={() => setShowNotifications(!showNotifications)}
+              aria-label={unreadCount > 0 ? `Notifications — ${unreadCount} unread` : "Notifications"}
+              aria-haspopup="true"
+              aria-expanded={showNotifications}
               style={{
                 background: "transparent",
                 border: "none",
@@ -269,14 +275,13 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
                 borderRadius: 6,
                 transition: "background 0.15s",
               }}
-              title="Notifications"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                 <path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </svg>
               {unreadCount > 0 && (
-                <span style={{
+                <span aria-hidden="true" style={{
                   position: "absolute",
                   top: 0,
                   right: 0,
@@ -428,7 +433,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
           {/* Desktop profile & sign out */}
           <div className="hidden md:flex items-center gap-3 select-none">
             <span className="text-xs text-text-muted truncate max-w-[160px] font-medium">{user.name || user.email}</span>
-            <button onClick={handleSignOut} className="px-3 py-1.5 border border-border text-text-muted hover:text-text hover:border-accent/40 rounded-lg text-xs font-medium bg-transparent cursor-pointer transition-colors">
+            <button onClick={handleSignOut} aria-label="Sign out of your account" className="px-3 py-1.5 border border-border text-text-muted hover:text-text hover:border-accent/40 rounded-lg text-xs font-medium bg-transparent cursor-pointer transition-colors">
               Sign out
             </button>
           </div>
@@ -436,10 +441,12 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
           {/* Mobile menu trigger */}
           <button
             onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open navigation menu"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-menu"
             className="flex md:hidden items-center justify-center p-2 rounded-lg hover:bg-surface2 text-text-muted hover:text-text transition-colors cursor-pointer"
-            title="Open Menu"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="4" y1="12" x2="20" y2="12" />
               <line x1="4" y1="6" x2="20" y2="6" />
               <line x1="4" y1="18" x2="20" y2="18" />
@@ -480,6 +487,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
                 <span style={{ fontWeight: 700, fontSize: 12, color: "var(--accent)" }}>{t.title}</span>
                 <button
                   onClick={() => setToasts((prev) => prev.filter((toast) => toast.id !== t.id))}
+                  aria-label="Dismiss notification"
                   style={{
                     background: "transparent",
                     border: "none",
@@ -490,7 +498,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
                     lineHeight: 1
                   }}
                 >
-                  ×
+                  <span aria-hidden="true">×</span>
                 </button>
               </div>
               <p style={{ fontSize: 11, color: "var(--text)", margin: 0, lineHeight: 1.4 }}>{t.message}</p>
@@ -501,6 +509,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
 
       {/* Mobile Menu Drawer Overlay */}
       <div
+        aria-hidden="true"
         className={cn(
           "fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden transition-opacity duration-300",
           mobileMenuOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
@@ -510,6 +519,10 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
 
       {/* Mobile Menu Drawer Content */}
       <div
+        id="mobile-menu"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation menu"
         className={cn(
           "fixed top-0 right-0 h-full w-[280px] bg-surface border-l border-border p-6 flex flex-col justify-between z-50 md:hidden transition-transform duration-300 ease-in-out transform shadow-2xl",
           mobileMenuOpen ? "translate-x-0" : "translate-x-full"
@@ -522,9 +535,10 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
             </div>
             <button
               onClick={() => setMobileMenuOpen(false)}
+              aria-label="Close navigation menu"
               className="text-text-muted hover:text-text p-1 text-lg cursor-pointer"
             >
-              ✕
+              <span aria-hidden="true">✕</span>
             </button>
           </div>
 
