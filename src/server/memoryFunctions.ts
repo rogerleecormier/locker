@@ -215,9 +215,19 @@ async function getUserName(db: ReturnType<typeof getDb>, userId: string, encKey:
   return "The user";
 }
 
+// projectKey must be empty/null (personal), "org:<uuid>", or "team:<uuid>"
+const zProjectKeyFn = z
+  .string()
+  .max(128)
+  .refine(
+    (v) => v === "" || v === "personal" || /^org:[0-9a-f-]{36}$/.test(v) || /^team:[0-9a-f-]{36}$/.test(v),
+    { message: "projectKey must be empty, 'personal', 'org:<uuid>', or 'team:<uuid>'" }
+  )
+  .optional();
+
 const ParseMemoriesWithAISchema = z.object({
   text: z.string().min(1, "text is required").max(16000, "Text exceeds the maximum length of 16,000 characters").transform((s) => s.trim()),
-});
+}).strict();
 
 export const parseMemoriesWithAI = createServerFn({ method: "POST" })
   .inputValidator((data) => ParseMemoriesWithAISchema.parse(data))
@@ -285,12 +295,12 @@ Rules:
 const CompareImportedMemoriesSchema = z.object({
   items: z.array(z.object({
     fact: z.string().min(1).max(10000).transform((s) => s.trim()),
-    category: z.string().max(32).optional(),
+    category: z.enum(["rules", "projects", "references"]).optional(),
     tags: z.string().max(500).optional(),
-    projectKey: z.string().max(128).optional(),
-  })).max(200, "Cannot compare more than 200 items at once"),
-  projectKey: z.string().max(128).optional(),
-});
+    projectKey: zProjectKeyFn,
+  }).strict()).max(200, "Cannot compare more than 200 items at once"),
+  projectKey: zProjectKeyFn,
+}).strict();
 
 function getVectorFilter(userId: string, projectKey: string | undefined): Record<string, any> {
   const filter: Record<string, any> = {};
@@ -548,13 +558,13 @@ const ExecuteImportActionsSchema = z.object({
     fact: z.string().min(1).max(10000).transform((s) => s.trim()),
     category: z.enum(["rules", "projects", "references"]),
     tags: z.string().max(500).optional(),
-    projectKey: z.string().max(128).optional(),
+    projectKey: zProjectKeyFn,
     action: z.enum(["import", "skip", "update", "archive_and_import", "exclude"]),
-    matchedMemoryId: z.string().optional(),
-  })).max(200),
+    matchedMemoryId: z.string().uuid().optional(),
+  }).strict()).max(200),
   source: z.string().max(64).default("manual").transform((s) => s.trim().toLowerCase()),
-  projectKey: z.string().max(128).optional(),
-});
+  projectKey: zProjectKeyFn,
+}).strict();
 
 export const executeImportActions = createServerFn({ method: "POST" })
   .inputValidator((data) => ExecuteImportActionsSchema.parse(data))
@@ -796,8 +806,8 @@ export const executeImportActions = createServerFn({ method: "POST" })
   });
 
 const GetMemoriesSchema = z.object({
-  projectKey: z.string().max(128).optional(),
-});
+  projectKey: zProjectKeyFn,
+}).strict();
 
 export const getMemories = createServerFn({ method: "GET" })
   .inputValidator((data) => GetMemoriesSchema.parse(data))
@@ -1092,13 +1102,13 @@ type AddMemoryInput = {
 };
 
 const AddMemorySchema = z.object({
-  fact: z.string().min(1, "fact is required").max(10000),
+  fact: z.string().min(1, "fact is required").max(10000).transform((s) => s.trim()),
   category: z.enum(["rules", "projects", "references"]),
   tags: z.string().max(500).default("").transform((s) => s.trim()),
-  projectKey: z.string().max(128).optional().transform((s) => s?.trim()),
+  projectKey: zProjectKeyFn,
   isLocked: z.boolean().optional(),
   authorityType: z.enum(["authoritative", "contributed"]).optional(),
-});
+}).strict();
 
 export const addMemory = createServerFn({ method: "POST" })
   .inputValidator((data) => AddMemorySchema.parse(data))
@@ -1295,16 +1305,16 @@ type BatchImportInput = {
 
 const BatchImportItemSchema = z.object({
   fact: z.string().max(10000).default("").transform((s) => s.trim()),
-  category: z.string().max(32).optional(),
+  category: z.enum(["rules", "projects", "references"]).optional(),
   tags: z.string().max(500).optional(),
-  projectKey: z.string().max(128).optional(),
-});
+  projectKey: zProjectKeyFn,
+}).strict();
 
 const BatchImportSchema = z.object({
   items: z.array(BatchImportItemSchema).max(500, "Cannot import more than 500 items at once"),
   source: z.string().max(64).default("manual").transform((s) => s.trim().toLowerCase()),
-  projectKey: z.string().max(128).optional(),
-});
+  projectKey: zProjectKeyFn,
+}).strict();
 
 export const batchImportMemories = createServerFn({ method: "POST" })
   .inputValidator((data) => BatchImportSchema.parse(data))
@@ -1667,7 +1677,7 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
     return { imported: newRows.length, skipped: allRows.length - newRows.length };
   });
 
-const IdSchema = z.object({ id: z.string().uuid("id must be a valid UUID") });
+const IdSchema = z.object({ id: z.string().uuid("id must be a valid UUID") }).strict();
 
 export const deleteMemory = createServerFn({ method: "POST" })
   .inputValidator((data) => IdSchema.parse(data))
@@ -1761,7 +1771,7 @@ const UpdateMemorySchema = z.object({
   fact: z.string().min(1, "fact is required").max(10000).transform((s) => s.trim()),
   category: z.enum(["rules", "projects", "references"]),
   tags: z.string().max(500).default("").transform((s) => s.trim()),
-});
+}).strict();
 
 export const updateMemory = createServerFn({ method: "POST" })
   .inputValidator((data) => UpdateMemorySchema.parse(data))
@@ -1963,10 +1973,10 @@ export const archiveMemory = createServerFn({ method: "POST" })
   });
 
 const GetArchivedMemoriesSchema = z.object({
-  projectKey: z.string().max(128).optional(),
+  projectKey: zProjectKeyFn,
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
-});
+}).strict();
 
 export const getArchivedMemories = createServerFn({ method: "POST" })
   .inputValidator((data) => GetArchivedMemoriesSchema.parse(data))
@@ -2100,8 +2110,11 @@ export const permanentlyDeleteArchivedMemory = createServerFn({ method: "POST" }
 
 const MoveMemoriesSchema = z.object({
   ids: z.array(z.string().uuid()).min(1, "ids must be a non-empty array").max(200),
-  targetProjectKey: z.string().min(1).max(128).transform((s) => s.trim()),
-});
+  targetProjectKey: z.string().min(1).max(128).transform((s) => s.trim()).refine(
+    (v) => v === "personal" || /^org:[0-9a-f-]{36}$/.test(v) || /^team:[0-9a-f-]{36}$/.test(v),
+    { message: "targetProjectKey must be 'personal', 'org:<uuid>', or 'team:<uuid>'" }
+  ),
+}).strict();
 
 export const moveMemories = createServerFn({ method: "POST" })
   .inputValidator((data) => MoveMemoriesSchema.parse(data))
@@ -2213,7 +2226,7 @@ export const moveMemories = createServerFn({ method: "POST" })
 
 const BulkIdsSchema = z.object({
   ids: z.array(z.string().uuid()).min(1, "ids must be a non-empty array").max(200),
-});
+}).strict();
 
 export const bulkDeleteMemories = createServerFn({ method: "POST" })
   .inputValidator((data) => BulkIdsSchema.parse(data))
@@ -2348,9 +2361,9 @@ function keywordScore(row: Memory, queryTokens: Set<string>): number {
 const RecallContextSchema = z.object({
   query: z.string().min(1, "query is required").max(10000).transform((s) => s.trim()),
   topK: z.number().int().min(1).max(50).default(5),
-  projectKey: z.string().max(128).optional().transform((s) => s?.trim()),
+  projectKey: zProjectKeyFn,
   isActive: z.boolean().default(true),
-});
+}).strict();
 
 export const recallContext = createServerFn({ method: "POST" })
   .inputValidator((data) => RecallContextSchema.parse(data))
@@ -2827,7 +2840,7 @@ export const getUserPlan = createServerFn({ method: "GET" }).handler(
 const SaveProfileSchema = z.object({
   name: z.string().max(256).default("").transform((s) => s.trim()),
   location: z.string().max(256).default("").transform((s) => s.trim()),
-});
+}).strict();
 
 export const saveProfile = createServerFn({ method: "POST" })
   .inputValidator((data) => SaveProfileSchema.parse(data))
@@ -2956,7 +2969,7 @@ const CreateApiTokenSchema = z.object({
   allowedTags: z.array(z.string().max(64)).default([]).transform((arr) => arr.map((t) => t.trim().toLowerCase()).filter(Boolean)),
   deniedTags: z.array(z.string().max(64)).default([]).transform((arr) => arr.map((t) => t.trim().toLowerCase()).filter(Boolean)),
   allowCredentials: z.boolean().default(false),
-}).superRefine((val, ctx) => {
+}).strict().superRefine((val, ctx) => {
   if (val.tokenType === "agent" && !val.agentContext) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "agentContext is required for agent tokens", path: ["agentContext"] });
   }
@@ -3029,7 +3042,7 @@ export const revokeApiToken = createServerFn({ method: "POST" })
 const UpdateTokenPermissionsSchema = z.object({
   id: z.string().uuid(),
   permissions: z.number().int().min(0).max(15).transform((n) => n & 15),
-});
+}).strict();
 
 export const updateApiTokenPermissions = createServerFn({ method: "POST" })
   .inputValidator((data) => UpdateTokenPermissionsSchema.parse(data))
@@ -3046,7 +3059,7 @@ export const updateApiTokenPermissions = createServerFn({ method: "POST" })
 const RenewApiTokenSchema = z.object({
   id: z.string().uuid(),
   ttlDays: z.number().int().min(1).max(3650).default(30),
-});
+}).strict();
 
 export const renewApiToken = createServerFn({ method: "POST" })
   .inputValidator((data) => RenewApiTokenSchema.parse(data))
@@ -3252,7 +3265,7 @@ export const rebuildVectorizeIndex = createServerFn({ method: "POST" }).handler(
   }
 );
 
-const MemoryIdSchema = z.object({ memoryId: z.string().uuid("memoryId must be a valid UUID") });
+const MemoryIdSchema = z.object({ memoryId: z.string().uuid("memoryId must be a valid UUID") }).strict();
 
 export const getMemoryTimeline = createServerFn({ method: "POST" })
   .inputValidator((data) => MemoryIdSchema.parse(data))
@@ -3314,7 +3327,7 @@ export const getAuditLogs = createServerFn({ method: "GET" })
       .all();
   });
 
-const VersionIdSchema = z.object({ versionId: z.string().uuid("versionId must be a valid UUID") });
+const VersionIdSchema = z.object({ versionId: z.string().uuid("versionId must be a valid UUID") }).strict();
 
 export const revertMemoryVersion = createServerFn({ method: "POST" })
   .inputValidator((data) => VersionIdSchema.parse(data))
@@ -3403,12 +3416,12 @@ export const revertMemoryVersion = createServerFn({ method: "POST" })
   });
 
 const SubmitRecommendationSchema = z.object({
-  orgId: z.string().min(1).max(128).transform((s) => s.trim()),
+  orgId: z.string().uuid("orgId must be a valid UUID"),
   fact: z.string().min(1, "fact is required").max(10000).transform((s) => s.trim()),
   category: z.enum(["rules", "projects", "references"]),
   tags: z.string().max(500).default("").transform((s) => s.trim()),
-  projectKey: z.string().max(128).optional(),
-});
+  projectKey: zProjectKeyFn,
+}).strict();
 
 export const submitMemoryRecommendation = createServerFn({ method: "POST" })
   .inputValidator((data) => SubmitRecommendationSchema.parse(data))
@@ -3477,7 +3490,7 @@ export const submitMemoryRecommendation = createServerFn({ method: "POST" })
     return { success: true, id: recId };
   });
 
-const OrgIdSchema = z.object({ orgId: z.string().min(1).max(128).transform((s) => s.trim()) });
+const OrgIdSchema = z.object({ orgId: z.string().uuid("orgId must be a valid UUID") }).strict();
 
 export const listMemoryRecommendations = createServerFn({ method: "POST" })
   .inputValidator((data) => OrgIdSchema.parse(data))
@@ -3521,7 +3534,7 @@ const ReviewRecommendationSchema = z.object({
   id: z.string().uuid(),
   action: z.enum(["approve", "reject"]),
   reviewNotes: z.string().max(1000).optional().transform((s) => s?.trim()),
-});
+}).strict();
 
 export const reviewMemoryRecommendation = createServerFn({ method: "POST" })
   .inputValidator((data) => ReviewRecommendationSchema.parse(data))
@@ -3843,7 +3856,7 @@ export const listNotifications = createServerFn({ method: "GET" })
 const MarkNotificationSchema = z.object({
   id: z.string().uuid().optional(),
   all: z.boolean().optional(),
-});
+}).strict();
 
 export const markNotificationRead = createServerFn({ method: "POST" })
   .inputValidator((data) => MarkNotificationSchema.parse(data))
@@ -3869,7 +3882,7 @@ export const markNotificationRead = createServerFn({ method: "POST" })
 
 const EmailSchema = z.object({
   email: z.string().email("valid email is required").max(254).transform((s) => s.toLowerCase().trim()),
-});
+}).strict();
 
 export const sendPasswordResetEmail = createServerFn({ method: "POST" })
   .inputValidator((data) => EmailSchema.parse(data))
@@ -3926,7 +3939,7 @@ export const sendPasswordResetEmail = createServerFn({ method: "POST" })
 const ResetPasswordSchema = z.object({
   token: z.string().uuid("token must be a valid UUID"),
   password: z.string().min(8, "Password must be at least 8 characters").max(256),
-});
+}).strict();
 
 export const resetPassword = createServerFn({ method: "POST" })
   .inputValidator((data) => ResetPasswordSchema.parse(data))
@@ -3963,9 +3976,9 @@ export const resetPassword = createServerFn({ method: "POST" })
   });
 
 const SendVerificationEmailSchema = z.object({
-  userId: z.string().min(1).max(128),
-  email: z.string().email("valid email is required").max(254),
-});
+  userId: z.string().uuid("userId must be a valid UUID"),
+  email: z.string().email("valid email is required").max(254).transform((s) => s.toLowerCase().trim()),
+}).strict();
 
 export const sendVerificationEmail = createServerFn({ method: "POST" })
   .inputValidator((data) => SendVerificationEmailSchema.parse(data))
@@ -4004,7 +4017,7 @@ export const sendVerificationEmail = createServerFn({ method: "POST" })
     return { success: true };
   });
 
-const VerifyEmailSchema = z.object({ token: z.string().uuid("token must be a valid UUID") });
+const VerifyEmailSchema = z.object({ token: z.string().uuid("token must be a valid UUID") }).strict();
 
 export const verifyEmail = createServerFn({ method: "POST" })
   .inputValidator((data) => VerifyEmailSchema.parse(data))
@@ -4112,7 +4125,7 @@ export const listActiveSessions = createServerFn({ method: "GET" }).handler(
   }
 );
 
-const SessionIdSchema = z.object({ sessionId: z.string().min(1).max(256) });
+const SessionIdSchema = z.object({ sessionId: z.string().min(1).max(256) }).strict();
 
 export const revokeSession = createServerFn({ method: "POST" })
   .inputValidator((data) => SessionIdSchema.parse(data))
@@ -4243,10 +4256,10 @@ const AuditLogFilterSchema = z.object({
   offset: z.number().int().min(0).optional(),
   memoryId: z.string().uuid().optional(),
   action: z.string().max(64).optional(),
-  userId: z.string().max(128).optional(),
+  userId: z.string().uuid().optional(),
   dateFrom: z.number().int().min(0).optional(),
   dateTo: z.number().int().min(0).optional(),
-});
+}).strict();
 
 export const getOrgAuditLogs = createServerFn({ method: "POST" })
   .inputValidator((data) => AuditLogFilterSchema.parse(data))
@@ -4316,8 +4329,8 @@ export const getOrgAuditLogs = createServerFn({ method: "POST" })
 
 const ExportAuditCsvSchema = z.object({
   action: z.string().max(64).optional(),
-  userId: z.string().max(128).optional(),
-});
+  userId: z.string().uuid().optional(),
+}).strict();
 
 export const exportAuditLogsCsv = createServerFn({ method: "POST" })
   .inputValidator((data) => ExportAuditCsvSchema.parse(data))
@@ -4394,11 +4407,11 @@ const SiteAuditLogFilterSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
   offset: z.number().int().min(0).optional(),
   action: z.string().max(64).optional(),
-  userId: z.string().max(128).optional(),
-  orgId: z.string().max(128).optional(),
+  userId: z.string().uuid().optional(),
+  orgId: z.string().uuid().optional(),
   dateFrom: z.number().int().min(0).optional(),
   dateTo: z.number().int().min(0).optional(),
-});
+}).strict();
 
 export const getSiteAuditLogs = createServerFn({ method: "POST" })
   .inputValidator((data) => SiteAuditLogFilterSchema.parse(data))
@@ -4461,9 +4474,9 @@ export const getSiteAuditLogs = createServerFn({ method: "POST" })
 
 const ExportSiteAuditCsvSchema = z.object({
   action: z.string().max(64).optional(),
-  userId: z.string().max(128).optional(),
-  orgId: z.string().max(128).optional(),
-});
+  userId: z.string().uuid().optional(),
+  orgId: z.string().uuid().optional(),
+}).strict();
 
 export const exportSiteAuditLogsCsv = createServerFn({ method: "POST" })
   .inputValidator((data) => ExportSiteAuditCsvSchema.parse(data))
@@ -4531,7 +4544,7 @@ export const exportSiteAuditLogsCsv = createServerFn({ method: "POST" })
 
 const AnalyzeProjectSchema = z.object({
   description: z.string().min(1, "description is required").max(4000).transform((s) => s.trim()),
-});
+}).strict();
 
 export const analyzeProjectRequirements = createServerFn({ method: "POST" })
   .inputValidator((data) => AnalyzeProjectSchema.parse(data))
@@ -4653,7 +4666,7 @@ const GenerateStackSchema = z.object({
   styling: StackFieldSchema,
   stateCache: StackFieldSchema,
   bannedProviders: z.array(z.string().max(64)).default([]),
-});
+}).strict();
 
 export const generateStackRecommendation = createServerFn({ method: "POST" })
   .inputValidator((data) => GenerateStackSchema.parse(data))
@@ -4749,7 +4762,7 @@ const MemoryTemplateSchema = z.object({
   description: z.string().min(1, "description is required").max(512).transform((s) => s.trim()),
   category: TemplateCategoryEnum,
   configPayload: z.string().min(1, "configPayload is required").max(50000),
-});
+}).strict();
 
 export const createMemoryTemplate = createServerFn({ method: "POST" })
   .inputValidator((data) => MemoryTemplateSchema.parse(data))
@@ -4828,11 +4841,11 @@ const AgentConfigSchema = z.object({
   codeStyle: z.record(z.string(), z.string()).optional().default({}),
   ruleInclusions: z.array(z.string()).optional().default([]),
   tags: z.string().optional().default(""),
-  projectKey: z.string().optional(),
+  projectKey: zProjectKeyFn,
   exportAsTemplate: z.boolean().optional().default(false),
   templateCategory: TemplateCategoryEnum.optional().default("configs"),
   templateDescription: z.string().max(512).optional().default(""),
-});
+}).strict();
 
 export const saveAgentConfig = createServerFn({ method: "POST" })
   .inputValidator((data) => AgentConfigSchema.parse(data))
@@ -4935,7 +4948,7 @@ export const saveAgentConfig = createServerFn({ method: "POST" })
 
 const SetPasscodeSchema = z.object({
   passcode: z.string().min(4, "Passcode must be at least 4 characters").max(32, "Passcode must be at most 32 characters"),
-});
+}).strict();
 
 export const setDeletionPasscode = createServerFn({ method: "POST" })
   .inputValidator((data) => SetPasscodeSchema.parse(data))
@@ -5024,9 +5037,9 @@ export type AgentActivityEntry = {
 
 const AgentActivitySchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
-  action: z.string().optional(),
-  toolName: z.string().optional(),
-});
+  action: z.string().max(64).optional(),
+  toolName: z.string().max(128).optional(),
+}).strict();
 
 export const getAgentActivityLogs = createServerFn({ method: "GET" })
   .inputValidator((data) => AgentActivitySchema.parse(data ?? {}))
@@ -5247,10 +5260,10 @@ export const setWebhookSecret = createServerFn({ method: "POST" })
 
 const SemanticSearchSchema = z.object({
   query: z.string().min(1).max(500),
-  projectKey: z.string().max(128).optional(),
+  projectKey: zProjectKeyFn,
   category: z.enum(["rules", "projects", "references", "configs"]).optional(),
-  topK: z.number().min(1).max(50).default(20),
-});
+  topK: z.number().int().min(1).max(50).default(20),
+}).strict();
 
 export const semanticSearchMemories = createServerFn({ method: "POST" })
   .inputValidator((data) => SemanticSearchSchema.parse(data))

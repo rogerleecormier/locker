@@ -3,6 +3,7 @@ import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets, credentials, notifications, ABAC_DEFAULT_ALLOW, JIT_PROTECTED_TAG, jitAccessRequests, memoryRecommendations } from "~/db/schema";
 import type { AgentPolicy, MemoryCategory } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
+import { z } from "zod";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { verifyToken, hashToken, extractTokenPrefix, getOrCreateVaultKey, decrypt, encrypt, isEncrypted, decryptEphemeral, EphemeralPlaintext, computeBlindIndex } from "~/server/crypto";
 import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "~/server/enterprise";
@@ -12,6 +13,151 @@ import { getUserEffectivePlan } from "~/server/planGate";
 import { sanitizeMemory } from "~/server/sanitization";
 import { maskSensitiveData, containsSensitiveData } from "~/server/dlp";
 import { extractGraphEntities, persistGraphData, expandByEntityIds } from "~/server/graphRag";
+
+// ─── Shared field validators ───────────────────────────────────────────────────
+const zFact = z.string().min(1).max(10000).transform((s) => s.trim());
+const zTags = z.string().max(500).default("").transform((s) => s.trim());
+const zMemoryCategory = z.enum(["rules", "projects", "references"]);
+const zAllCategory = z.enum(["rules", "projects", "references", "configs"]);
+// projectKey must be empty/null (personal), "org:<uuid>", or "team:<uuid>"
+const zProjectKey = z
+  .string()
+  .max(128)
+  .refine(
+    (v) => v === "" || /^org:[0-9a-f-]{36}$/.test(v) || /^team:[0-9a-f-]{36}$/.test(v),
+    { message: "projectKey must be empty, 'org:<uuid>', or 'team:<uuid>'" }
+  )
+  .optional();
+const zUUID = z.string().uuid();
+const zTOTP = z.string().regex(/^\d{6}$/).optional();
+const zPasscode = z.string().min(1).max(128).optional();
+const zSource = z.string().max(64).default("mcp").transform((s) => s.trim().toLowerCase());
+const zTopK = z.number().int().min(1).max(50).default(5);
+
+// ─── JSON-RPC envelope schema ─────────────────────────────────────────────────
+const JsonRpcEnvelopeSchema = z.object({
+  jsonrpc: z.literal("2.0"),
+  id: z.union([z.string(), z.number(), z.null()]).optional(),
+  method: z.string().max(128),
+  params: z
+    .object({
+      name: z.string().max(128).optional(),
+      arguments: z.record(z.string(), z.unknown()).optional(),
+    })
+    .optional(),
+}).strict();
+
+// ─── Per-tool argument schemas ────────────────────────────────────────────────
+const RecallContextArgsSchema = z.object({
+  query: z.string().min(1).max(10000).transform((s) => s.trim()),
+  topK: zTopK,
+  category: zAllCategory.optional(),
+  tag: z.string().max(256).optional(),
+  keyword: z.string().max(512).optional(),
+  projectKey: zProjectKey,
+  isActive: z.boolean().default(true),
+  optimize: z.boolean().default(false),
+  crossWorkspaceSearch: z.boolean().default(false),
+}).strict();
+
+const SearchMemoriesArgsSchema = z.object({
+  category: zAllCategory.optional(),
+  tag: z.string().max(256).optional(),
+  keyword: z.string().max(512).optional(),
+  limit: z.number().int().min(1).max(200).default(50),
+  offset: z.number().int().min(0).default(0),
+  projectKey: zProjectKey,
+  isActive: z.boolean().default(true),
+}).strict();
+
+const CommitMemoryArgsSchema = z.object({
+  fact: zFact,
+  category: zMemoryCategory.optional(),
+  tags: zTags,
+  source: zSource,
+  projectKey: zProjectKey,
+}).strict();
+
+const UpdateMemoryArgsSchema = z.object({
+  id: zUUID,
+  fact: zFact,
+  category: zMemoryCategory.optional(),
+  tags: zTags,
+  confirm: z.literal(true),
+  totpCode: zTOTP,
+  passcode: zPasscode,
+}).strict();
+
+const DeleteMemoryArgsSchema = z.object({
+  id: zUUID,
+  confirm: z.literal(true),
+  totpCode: zTOTP,
+  passcode: zPasscode,
+}).strict();
+
+const SyncAgentConfigsArgsSchema = z.object({
+  projectKey: z.string().max(128),
+}).strict();
+
+const StoreCredentialArgsSchema = z.object({
+  name: z.string().min(1).max(128).regex(/^[A-Za-z0-9_]+$/, "credential name must be alphanumeric + underscores"),
+  value: z.string().min(1).max(65536),
+  projectKey: zProjectKey,
+}).strict();
+
+const ListCredentialsArgsSchema = z.object({
+  projectKey: zProjectKey,
+}).strict();
+
+const RetrieveCredentialArgsSchema = z.object({
+  name: z.string().min(1).max(128),
+  projectKey: zProjectKey,
+}).strict();
+
+const DeleteCredentialArgsSchema = z.object({
+  name: z.string().min(1).max(128),
+  projectKey: zProjectKey,
+}).strict();
+
+const StoreConfigArgsSchema = z.object({
+  name: z.string().min(1).max(256),
+  content: z.string().min(1).max(50000).transform((s) => s.trim()),
+  projectKey: zProjectKey,
+  tags: zTags,
+}).strict();
+
+const UpdateConfigArgsSchema = z.object({
+  id: zUUID,
+  content: z.string().min(1).max(50000).transform((s) => s.trim()),
+  confirm: z.literal(true),
+  totpCode: zTOTP,
+  passcode: zPasscode,
+}).strict();
+
+const ApproveJitAccessArgsSchema = z.object({
+  jitRequestId: zUUID,
+  decision: z.enum(["approve", "deny"]),
+  reviewNotes: z.string().max(2048).optional(),
+}).strict();
+
+// Mapping of tool name → its args schema (used in the single dispatch point)
+const TOOL_ARG_SCHEMAS: Record<string, z.ZodTypeAny> = {
+  list_accessible_scopes: z.object({}).strict(),
+  get_memory_summary: z.object({}).strict(),
+  recall_context: RecallContextArgsSchema,
+  search_memories: SearchMemoriesArgsSchema,
+  commit_memory: CommitMemoryArgsSchema,
+  update_memory: UpdateMemoryArgsSchema,
+  delete_memory: DeleteMemoryArgsSchema,
+  sync_agent_configs: SyncAgentConfigsArgsSchema,
+  store_credential: StoreCredentialArgsSchema,
+  list_credentials: ListCredentialsArgsSchema,
+  retrieve_credential: RetrieveCredentialArgsSchema,
+  delete_credential: DeleteCredentialArgsSchema,
+  store_config: StoreConfigArgsSchema,
+  update_config: UpdateConfigArgsSchema,
+  approve_jit_access: ApproveJitAccessArgsSchema,
+};
 
 type EmbeddingResponse = {
   shape: number[][];
@@ -1086,19 +1232,27 @@ export async function handleMcpRequest(
     return new Response("Method Not Allowed", { status: 405, headers });
   }
 
-  let body: {
-    jsonrpc?: string;
-    id?: unknown;
-    method?: string;
-    params?: { name?: string; arguments?: Record<string, unknown> };
-  };
-
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return mcpError(null, -32700, "Parse error: invalid JSON");
   }
 
+  // Validate the JSON-RPC envelope structure before touching any field.
+  const envelopeResult = JsonRpcEnvelopeSchema.safeParse(rawBody);
+  if (!envelopeResult.success) {
+    const firstIssue = envelopeResult.error.issues[0];
+    return mcpError(
+      rawBody && typeof rawBody === "object" && "id" in (rawBody as object)
+        ? (rawBody as Record<string, unknown>).id
+        : null,
+      -32600,
+      `Invalid Request: ${firstIssue?.message ?? "malformed JSON-RPC envelope"}`
+    );
+  }
+
+  const body = envelopeResult.data;
   const { id, method, params } = body;
   console.log("[mcp] rpc method:", method, "id:", id);
   const db = drizzle(env.DB);
@@ -1141,7 +1295,20 @@ export async function handleMcpRequest(
   }
 
   const toolName = params?.name;
-  const args = params?.arguments ?? {};
+  const rawArgs = params?.arguments ?? {};
+
+  // Validate and coerce args against the per-tool schema before any handler runs.
+  // Unknown fields are rejected by .strict() schemas, guarding against parameter pollution.
+  let args: Record<string, unknown> = rawArgs;
+  if (toolName && toolName in TOOL_ARG_SCHEMAS) {
+    const argsResult = TOOL_ARG_SCHEMAS[toolName].safeParse(rawArgs);
+    if (!argsResult.success) {
+      const firstIssue = argsResult.error.issues[0];
+      const path = firstIssue?.path?.join(".") ?? "unknown";
+      return mcpError(id, -32602, `Invalid params [${path}]: ${firstIssue?.message ?? "validation failed"}`);
+    }
+    args = argsResult.data as Record<string, unknown>;
+  }
 
   if (toolName === "list_accessible_scopes") {
     const orgIds = claims.accessibleScopes.filter((s) => s.type === "organization" && s.id).map((s) => s.id as string);
@@ -1180,21 +1347,15 @@ export async function handleMcpRequest(
       return mcpError(id, -32001, "Token does not have recall_context permission");
     }
 
-    const query = args.query as string | undefined;
-    if (!query || typeof query !== "string") {
-      return mcpError(id, -32602, "Invalid params: query is required");
-    }
-    if (query.length > 10000) {
-      return mcpError(id, -32602, "Invalid params: query exceeds max length of 10000 characters");
-    }
-    const topK = typeof args.topK === "number" ? args.topK : 5;
-    const optimize = !!args.optimize;
+    const query = args.query as string;
+    const topK = args.topK as number;
+    const optimize = args.optimize as boolean;
     const category = args.category as string | undefined;
     const tag = args.tag as string | undefined;
     const keyword = args.keyword as string | undefined;
-    const crossWorkspaceSearch = !!args.crossWorkspaceSearch;
+    const crossWorkspaceSearch = args.crossWorkspaceSearch as boolean;
     const projectKey = crossWorkspaceSearch ? undefined : resolveProjectKey(claims, args.projectKey as string | undefined);
-    const isActive = typeof args.isActive === "boolean" ? args.isActive : true;
+    const isActive = args.isActive as boolean;
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required for vector query");
@@ -1596,10 +1757,10 @@ export async function handleMcpRequest(
     const category = args.category as string | undefined;
     const tag = args.tag as string | undefined;
     const keyword = args.keyword as string | undefined;
-    const limit = typeof args.limit === "number" ? Math.min(200, Math.max(1, args.limit)) : 50;
-    const offset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
+    const limit = args.limit as number;
+    const offset = args.offset as number;
     const projectKey = resolveProjectKey(claims, args.projectKey as string | undefined);
-    const isActive = typeof args.isActive === "boolean" ? args.isActive : true;
+    const isActive = args.isActive as boolean;
 
     if (!isProjectKeyAllowedByToken(claims.accessibleScopes, projectKey)) {
       return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${projectKey ?? "personal"}'`);
@@ -1838,16 +1999,10 @@ export async function handleMcpRequest(
       return configsCategoryForbidden(id);
     }
 
-    const fact = args.fact as string | undefined;
-    if (!fact || typeof fact !== "string") {
-      return mcpError(id, -32602, "Invalid params: fact is required");
-    }
-    if (fact.length > 10000) {
-      return mcpError(id, -32602, "Invalid params: fact exceeds max length of 10000 characters");
-    }
+    const fact = args.fact as string;
     const category = normalizeCategory(args.category as string | undefined);
-    const source = typeof args.source === "string" ? args.source.trim().toLowerCase() : "mcp";
-    const rawTags = typeof args.tags === "string" ? args.tags.trim() : "";
+    const source = args.source as string;
+    const rawTags = args.tags as string;
     const projectKey = resolveProjectKey(claims, args.projectKey as string | undefined);
 
     if (!claims.userId) {
@@ -1998,25 +2153,11 @@ export async function handleMcpRequest(
       return configsCategoryForbidden(id);
     }
 
-    const memId = args.id as string | undefined;
-    const fact = args.fact as string | undefined;
-    if (!memId || typeof memId !== "string") {
-      return mcpError(id, -32602, "Invalid params: id is required");
-    }
-    if (!fact || typeof fact !== "string") {
-      return mcpError(id, -32602, "Invalid params: fact is required");
-    }
-    if (fact.length > 10000) {
-      return mcpError(id, -32602, "Invalid params: fact exceeds max length of 10000 characters");
-    }
+    const memId = args.id as string;
+    const fact = args.fact as string;
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required for vector upsert");
-    }
-
-    const confirm = args.confirm as boolean | undefined;
-    if (confirm !== true) {
-      return mcpError(id, -32602, "Invalid params: confirm must be set to true");
     }
 
     // ── AGENT APPROVAL GATE ────────────────────────────────────────────────────
@@ -2050,10 +2191,10 @@ export async function handleMcpRequest(
       }
 
       const proposedCategory = args.category !== undefined
-        ? normalizeCategory(args.category as string | undefined)
+        ? normalizeCategory(args.category as string)
         : existing.category;
       const proposedTags = args.tags !== undefined
-        ? (typeof args.tags === "string" ? args.tags.trim() : existing.tags)
+        ? (args.tags as string)
         : existing.tags;
 
       // Decrypt the current fact to display in the approval UI
@@ -2118,7 +2259,7 @@ export async function handleMcpRequest(
 
     if (totpRows.length > 0) {
       const totpCode = args.totpCode as string | undefined;
-      if (!totpCode || typeof totpCode !== "string") {
+      if (!totpCode) {
         return mcpError(id, -32024, "MFA Verification Required: Please provide a valid 6-digit TOTP code.");
       }
       const totpEnvKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, claims.userId);
@@ -2140,7 +2281,7 @@ export async function handleMcpRequest(
         .all();
       if (userRows.length > 0 && userRows[0].writePasscodeHash) {
         const passcode = args.passcode as string | undefined;
-        if (!passcode || typeof passcode !== "string") {
+        if (!passcode) {
           return mcpError(id, -32025, "Passcode Verification Required: Please provide your deletion passcode.");
         }
         const valid = await verifyToken(passcode, userRows[0].writePasscodeHash);
@@ -2245,11 +2386,11 @@ export async function handleMcpRequest(
     }
 
     const category = args.category !== undefined
-      ? normalizeCategory(args.category as string | undefined)
+      ? normalizeCategory(args.category as string)
       : existing.category;
 
     const rawTags = args.tags !== undefined
-      ? (typeof args.tags === "string" ? args.tags.trim() : "")
+      ? (args.tags as string)
       : existing.tags;
 
     const sanitizedFact = sanitizeMemory(fact.trim());
@@ -2323,18 +2464,10 @@ export async function handleMcpRequest(
       return mcpError(id, -32001, "Token does not have delete_memory permission");
     }
 
-    const memId = args.id as string | undefined;
-    if (!memId || typeof memId !== "string") {
-      return mcpError(id, -32602, "Invalid params: id is required");
-    }
+    const memId = args.id as string;
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required");
-    }
-
-    const confirm = args.confirm as boolean | undefined;
-    if (confirm !== true) {
-      return mcpError(id, -32602, "Invalid params: confirm must be set to true");
     }
 
     // ── AGENT APPROVAL GATE ────────────────────────────────────────────────────
@@ -2420,7 +2553,7 @@ export async function handleMcpRequest(
 
     if (totpRows.length > 0) {
       const totpCode = args.totpCode as string | undefined;
-      if (!totpCode || typeof totpCode !== "string") {
+      if (!totpCode) {
         return mcpError(id, -32024, "MFA Verification Required: Please provide a valid 6-digit TOTP code.");
       }
       const totpEnvKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, claims.userId);
@@ -2442,7 +2575,7 @@ export async function handleMcpRequest(
         .all();
       if (userRows.length > 0 && userRows[0].writePasscodeHash) {
         const passcode = args.passcode as string | undefined;
-        if (!passcode || typeof passcode !== "string") {
+        if (!passcode) {
           return mcpError(id, -32025, "Passcode Verification Required: Please provide your deletion passcode.");
         }
         const valid = await verifyToken(passcode, userRows[0].writePasscodeHash);
@@ -2567,11 +2700,7 @@ export async function handleMcpRequest(
       return mcpError(id, -32003, "Forbidden: agent token cannot access configs memories required for workspace config sync");
     }
 
-    const projectKey = args.projectKey as string | undefined;
-
-    if (projectKey === undefined || typeof projectKey !== "string") {
-      return mcpError(id, -32602, "Invalid params: projectKey is required");
-    }
+    const projectKey = args.projectKey as string;
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required for syncing agent configs");
@@ -2786,21 +2915,11 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       return mcpError(id, -32003, "Forbidden: agent token requires allowCredentials=true to store credentials");
     }
 
-    const name = args.name as string | undefined;
-    const value = args.value as string | undefined;
+    const name = args.name as string;
+    const value = args.value as string;
     const projectKey = args.projectKey as string | undefined;
 
-    if (!name || typeof name !== "string") {
-      return mcpError(id, -32602, "Invalid params: name is required");
-    }
-    if (!value || typeof value !== "string") {
-      return mcpError(id, -32602, "Invalid params: value is required");
-    }
-
     const upperName = name.trim().toUpperCase();
-    if (!/^[A-Z0-9_]+$/.test(upperName)) {
-      return mcpError(id, -32602, "Invalid params: credential name must contain only uppercase alphanumeric characters and underscores");
-    }
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required");
@@ -2901,12 +3020,12 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${resolvedProjectKey ?? "personal"}'`);
     }
 
-    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, resolvedProjectKey);
+    const { allowed: vaultAllowed, orgId: listOrgId } = await verifyVaultAccess(db, claims.userId, resolvedProjectKey);
     if (!vaultAllowed) {
       return mcpError(id, -32003, `Forbidden: no access to vault scope '${resolvedProjectKey}'`);
     }
 
-    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "recall", orgId);
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "recall", listOrgId);
     if (!quotaCheck.allowed) {
       return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
     }
@@ -2922,7 +3041,7 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       .all();
 
     await logAudit(db, {
-      orgId,
+      orgId: listOrgId,
       userId: claims.userId,
       tokenId: claims.tokenId,
       action: "list_credentials",
@@ -2945,12 +3064,8 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       return mcpError(id, -32003, "Forbidden: agent token requires allowCredentials=true to retrieve credentials");
     }
 
-    const name = args.name as string | undefined;
+    const name = args.name as string;
     const projectKey = args.projectKey as string | undefined;
-
-    if (!name || typeof name !== "string") {
-      return mcpError(id, -32602, "Invalid params: name is required");
-    }
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required");
@@ -3021,12 +3136,8 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       return mcpError(id, -32003, "Forbidden: agent token requires allowCredentials=true to delete credentials");
     }
 
-    const name = args.name as string | undefined;
+    const name = args.name as string;
     const projectKey = args.projectKey as string | undefined;
-
-    if (!name || typeof name !== "string") {
-      return mcpError(id, -32602, "Invalid params: name is required");
-    }
 
     if (!claims.userId) {
       throw new Error("Unauthorized: userId is required");
@@ -3077,19 +3188,10 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       return mcpError(id, -32003, "Forbidden: agent tokens cannot store configs directly. Use commit_memory with category 'projects' and tag '#config-request' to request a human review.");
     }
 
-    const name = args.name as string | undefined;
-    const content = args.content as string | undefined;
-    if (!name || typeof name !== "string") {
-      return mcpError(id, -32602, "Invalid params: name is required");
-    }
-    if (!content || typeof content !== "string") {
-      return mcpError(id, -32602, "Invalid params: content is required");
-    }
-    if (content.length > 50000) {
-      return mcpError(id, -32602, "Invalid params: content exceeds max length of 50000 characters");
-    }
+    const name = args.name as string;
+    const content = args.content as string;
 
-    const rawTags = typeof args.tags === "string" ? args.tags.trim() : "";
+    const rawTags = args.tags as string;
     const projectKey = resolveProjectKey(claims, args.projectKey as string | undefined);
 
     if (!isProjectKeyAllowedByToken(claims.accessibleScopes, projectKey)) {
@@ -3187,20 +3289,8 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       return mcpError(id, -32001, "Token does not have update_memory permission");
     }
 
-    const memId = args.id as string | undefined;
-    const content = args.content as string | undefined;
-    if (!memId || typeof memId !== "string") {
-      return mcpError(id, -32602, "Invalid params: id is required");
-    }
-    if (!content || typeof content !== "string") {
-      return mcpError(id, -32602, "Invalid params: content is required");
-    }
-    if (content.length > 50000) {
-      return mcpError(id, -32602, "Invalid params: content exceeds max length of 50000 characters");
-    }
-    if (args.confirm !== true) {
-      return mcpError(id, -32602, "Invalid params: confirm must be set to true");
-    }
+    const memId = args.id as string;
+    const content = args.content as string;
 
     // Agent tokens must queue their update for human approval.
     if (claims.isAgent) {
@@ -3346,16 +3436,9 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       return mcpError(id, -32001, "Token does not have recall_context permission");
     }
 
-    const jitRequestId = args.jitRequestId as string | undefined;
-    const decision = args.decision as "approve" | "deny" | undefined;
+    const jitRequestId = args.jitRequestId as string;
+    const decision = args.decision as "approve" | "deny";
     const reviewNotes = args.reviewNotes as string | undefined;
-
-    if (!jitRequestId || typeof jitRequestId !== "string") {
-      return mcpError(id, -32602, "Invalid params: jitRequestId is required");
-    }
-    if (decision !== "approve" && decision !== "deny") {
-      return mcpError(id, -32602, "Invalid params: decision must be 'approve' or 'deny'");
-    }
 
     const jitRows = await db
       .select()
