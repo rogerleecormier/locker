@@ -15,6 +15,7 @@ import type { PlanId } from "~/lib/plans";
 import { type ReactNode, useState, useEffect, useRef } from "react";
 import { useSession, signOut } from "~/lib/authClient";
 import { cn } from "~/lib/utils";
+import { ErrorBoundary } from "~/components/ErrorBoundary";
 import "~/global.css";
 
 interface RouterContext {
@@ -65,7 +66,9 @@ function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <RootDocument>
         <AuthGate>
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </AuthGate>
       </RootDocument>
     </QueryClientProvider>

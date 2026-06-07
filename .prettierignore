@@ -1,0 +1,4 @@
+dist/
+.wrangler/
+drizzle/
+node_modules/
