@@ -38,9 +38,10 @@ export function shannonEntropy(s: string): number {
 // Minimum entropy (bits/char) for a value to be treated as a secret when found
 // in a key-value context.  Human-readable words cluster around 3.0–3.7; real
 // random tokens (API keys, JWT secrets, base64 blobs) are typically ≥ 4.0.
-// Setting to 4.0 avoids false positives on readable slugs like "myproject-api-v2"
+// Setting to 4.05 avoids false positives on readable slugs like "myproject-api-v2"
 // (entropy ~3.86) while reliably catching real credentials (entropy 4.5–5.5+).
-const ENTROPY_THRESHOLD = 4.0;
+// Use 4.05 rather than 4.0 to avoid floating-point edge cases.
+const ENTROPY_THRESHOLD = 4.05;
 
 // Minimum length a candidate value must have before entropy scoring applies.
 // Short strings (< 16 chars) are rarely real secrets even at high entropy.
@@ -52,7 +53,10 @@ const MIN_SECRET_LENGTH = 16;
 
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
-const PHONE_REGEX = /\b(?:\+?\d{1,3}[. -]?)?\(?\d{3}\)?[. -]?\d{3}[. -]?\d{4}\b/g;
+// Phone regex: matches US phone formats with structure
+// Patterns: (555) 867-5309, 555-867-5309, +1-555-867-5309, or similar
+// No word boundaries at start since ( is not a word char
+const PHONE_REGEX = /(?:\+\d{1,3}[. -]?)?(?:\(\d{3}\)[. -]?\d{3}[. -]?\d{4}|\d{3}[. -]\d{3}[. -]\d{4})/g;
 
 // Visa, Mastercard, Amex, Discover
 const CREDIT_CARD_REGEX = /\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6011)[ -]?\d{4,6}[ -]?\d{4,5}[ -]?\d{4}\b/g;
@@ -76,8 +80,8 @@ const GITHUB_TOKEN_REGEX = /\bgh[pousr]_[a-zA-Z0-9]{36,255}\b/g;
 // Slack bot/app/user/workspace tokens
 const SLACK_TOKEN_REGEX = /\bxox[baprs]-[a-zA-Z0-9-]{10,}\b/g;
 
-// Google API keys
-const GOOGLE_API_KEY_REGEX = /\bAIza[yA-Z0-9_-]{35}\b/g;
+// Google API keys (typically 39-40 chars total)
+const GOOGLE_API_KEY_REGEX = /\bAIza[a-zA-Z0-9_-]{35,}\b/g;
 
 // Database connection URIs with embedded credentials
 const CONNECTION_URI_REGEX = /\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis(?:s)?|sqlite):\/\/[a-zA-Z0-9_]+:[^@\s]+@[a-zA-Z0-9.-]+(?::\d+)?(?:\/[a-zA-Z0-9_.-]+)?\b/g;

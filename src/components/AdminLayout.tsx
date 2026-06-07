@@ -20,6 +20,7 @@ export type AdminSection =
   | "teams"
   // Site
   | "system"
+  | "user-management"
   | "site-config"
   | "billing-manage"
   | "site-audit-logs";
@@ -49,10 +50,11 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "users", label: "Users", icon: "👥", category: "org" },
   { id: "teams", label: "Teams", icon: "👤", category: "org" },
   // Site
-  { id: "system", label: "System Overview", icon: "⚙️", category: "site" },
-  { id: "site-config", label: "Configuration", icon: "🔧", category: "site" },
-  { id: "billing-manage", label: "Billing Management", icon: "📊", category: "site" },
-  { id: "site-audit-logs", label: "All Org Logs", icon: "🔒", category: "site" },
+  { id: "system",          label: "System Overview",   icon: "⚙️", category: "site" },
+  { id: "user-management", label: "User Management",   icon: "🧑‍💼", category: "site" },
+  { id: "site-config",     label: "Configuration",     icon: "🔧", category: "site" },
+  { id: "billing-manage",  label: "Billing Management",icon: "📊", category: "site" },
+  { id: "site-audit-logs", label: "All Org Logs",      icon: "🔒", category: "site" },
 ];
 
 const SECTIONS = [

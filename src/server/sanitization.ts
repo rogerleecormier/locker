@@ -25,7 +25,7 @@ const ADVERSARIAL_PATTERNS = [
   /\.env\s+file/i,
   /external\s+http\s+request/i,
   /send\s+(?:the\s+)?\.env/i,
-  /leak\s+(?:key|token|credential|secret|password)/i,
+  /leak\s+(?:the\s+)?(?:key|token|credential|secret|password)/i,
   /transmit\s+to\s+http/i,
   /http\s+request\s+to\s+exfiltrat/i,
 ];

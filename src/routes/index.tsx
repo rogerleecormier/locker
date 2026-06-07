@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { PLANS, PLAN_ORDER } from "~/lib/plans";
+import { PLANS, SELF_SERVE_PLAN_ORDER } from "~/lib/plans";
 import { PlanCard } from "~/components/PaywallGate";
 import { LockerPadlock } from "~/components/LockerLogo";
 import { FadeIn, Counter } from "~/components/landing/LandingAnimations";
@@ -411,7 +411,7 @@ function LandingPage() {
           </p>
         </FadeIn>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 40, textAlign: "left" }}>
-          {PLAN_ORDER.map((planId) => (
+          {SELF_SERVE_PLAN_ORDER.map((planId) => (
             <FadeIn key={planId}>
               <PlanCard
                 plan={PLANS[planId]}

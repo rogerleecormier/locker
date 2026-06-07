@@ -6,11 +6,13 @@ export function PlanBadge({ plan }: { plan: PlanId }) {
   const styles: Record<PlanId, React.CSSProperties> = {
     free: { color: "var(--text-muted)", background: "var(--surface2)", border: "1px solid var(--border)" },
     business: { color: "#a855f7", background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.3)" },
+    business_comp: { color: "#a855f7", background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.3)" },
     enterprise: { color: "#f59e0b", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)" },
   };
   const labels: Record<PlanId, string> = {
     free: "Personal",
     business: "Business",
+    business_comp: "Business",
     enterprise: "Enterprise",
   };
   return (
@@ -33,6 +35,7 @@ export function RequiredPlanChip({ plan }: { plan: PlanId }) {
   const colors: Record<PlanId, string> = {
     free: "transparent",
     business: "#a855f7",
+    business_comp: "#a855f7",
     enterprise: "#f59e0b",
   };
   return (

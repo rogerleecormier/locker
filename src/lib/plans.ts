@@ -1,4 +1,4 @@
-export type PlanId = "free" | "business" | "enterprise";
+export type PlanId = "free" | "business" | "business_comp" | "enterprise";
 
 export type PlanLimits = {
   maxMemories: number;
@@ -91,6 +91,34 @@ export const PLANS: Record<PlanId, Plan> = {
       crossWorkspaceSearch: true,
     },
   },
+  business_comp: {
+    id: "business_comp",
+    label: "Business (Comp)",
+    price: "Complimentary",
+    priceNote: "Admin granted",
+    available: false,
+    limits: {
+      maxMemories: 10000,
+      maxMonthlyRecalls: 50000,
+      maxMonthlyCommits: 10000,
+      maxMonthlyTokens: 1000000,
+      maxApiTokens: 50,
+      maxOrgMembers: 50,
+      maxTeams: 20,
+      maxTeamMembers: 50,
+    },
+    features: {
+      organizations: true,
+      teams: true,
+      sharedVault: true,
+      auditLogs: true,
+      usageAnalytics: true,
+      bulkExport: true,
+      priorityAI: false,
+      customProjectKeys: true,
+      crossWorkspaceSearch: true,
+    },
+  },
   enterprise: {
     id: "enterprise",
     label: "Enterprise",
@@ -121,7 +149,10 @@ export const PLANS: Record<PlanId, Plan> = {
   },
 };
 
-export const PLAN_ORDER: PlanId[] = ["free", "business", "enterprise"];
+export const PLAN_ORDER: PlanId[] = ["free", "business", "business_comp", "enterprise"];
+
+/** Plans shown in self-serve billing/pricing UIs — excludes admin-only comp tier. */
+export const SELF_SERVE_PLAN_ORDER: PlanId[] = ["free", "business", "enterprise"];
 
 export function planAtLeast(planA: PlanId, planB: PlanId): boolean {
   return PLAN_ORDER.indexOf(planA) >= PLAN_ORDER.indexOf(planB);
@@ -136,8 +167,18 @@ export function getPlanLimits(planId: PlanId): PlanLimits {
 }
 
 export function resolvePlan(raw: string | null | undefined): PlanId {
-  if (raw === "business" || raw === "enterprise") return raw;
+  if (raw === "business" || raw === "business_comp" || raw === "enterprise") return raw;
   return "free";
+}
+
+/** Returns true if the plan has business-level features (paid or comp). */
+export function isBusinessOrAbove(planId: PlanId): boolean {
+  return planId === "business" || planId === "business_comp" || planId === "enterprise";
+}
+
+/** Returns true if the plan is billed via Stripe (not comp/free). */
+export function isStripeBilled(planId: PlanId): boolean {
+  return planId === "business" || planId === "enterprise";
 }
 
 export const FEATURE_DESCRIPTIONS: Record<keyof PlanFeatures, { label: string; description: string }> = {

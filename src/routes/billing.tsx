@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
-import { PLANS, PLAN_ORDER, resolvePlan, type PlanId } from "~/lib/plans";
+import { PLANS, PLAN_ORDER, SELF_SERVE_PLAN_ORDER, resolvePlan, type PlanId } from "~/lib/plans";
 import { PlanCard, PlanBadge } from "~/components/PaywallGate";
 import { getUserEffectivePlan, getUserUsageStats } from "~/server/planGate";
 import { requireSession } from "~/server/session";
@@ -488,7 +488,7 @@ export function MyBillingSection() {
           <section className="flex flex-col gap-4">
             <h2 className="text-base font-bold text-text select-none">Available Plans</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {PLAN_ORDER.map((planId) => (
+              {SELF_SERVE_PLAN_ORDER.map((planId) => (
                 <PlanCard
                   key={planId}
                   plan={PLANS[planId]}
@@ -700,7 +700,7 @@ export function OrgBillingSection() {
       <section className="flex flex-col gap-4">
         <h2 className="text-base font-bold text-text select-none">Available Organization Plans</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {PLAN_ORDER.map((planId) => (
+          {SELF_SERVE_PLAN_ORDER.map((planId) => (
             <PlanCard
               key={planId}
               plan={PLANS[planId]}

@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AdminLayout, type AdminSection } from "~/components/AdminLayout";
 import { SiteAdminSection, OrgAdminSection, StatBox, AdminCard } from "~/components/AdminSections";
+import { SystemOverviewSection } from "~/components/AdminSystemOverview";
+import { UserManagementSection } from "~/components/AdminUserManagement";
 import {
   getAdminStatus,
   getDbStats,
@@ -43,7 +45,7 @@ import {
   type DuplicateGroup,
 } from "~/server/memoryFunctions";
 import { MyUsageSection, MyBillingSection, OrgBillingSection, useBillingData } from "~/routes/billing";
-import { ProfileSection, ApiTokensSection, McpEndpointSection, TwoFactorSection, PasscodeSection, SessionsSection, WebhookSecretsSection } from "~/routes/_settings-components";
+import { ProfileSection, ApiTokensSection, McpEndpointSection, TwoFactorSection, PasscodeSection, SessionsSection, WebhookSecretsSection } from "~/routes/-_settings-components";
 import {
   getUserOrgsAndTeams,
   createOrganizationSelfServe,
@@ -981,6 +983,15 @@ function AdminPage() {
       {/* ── SYSTEM OVERVIEW ─────────────────────────────────────────────── */}
       {activeSection === "system" && (
         <>
+          <SystemOverviewSection />
+
+          {/* ── Legacy DB / vector tools (collapsible) ── */}
+          <details style={{ marginTop: 16 }}>
+            <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--text-muted)", padding: "8px 0", userSelect: "none" }}>
+              ⚙️ Database & Vector Tools
+            </summary>
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 16 }}>
+
           <SiteAdminSection title="Database Stats" description="Real-time storage metrics" icon="📊">
             {statsQuery.isPending && <p>Loading...</p>}
             {statsQuery.isError && <p style={{ color: "var(--error)" }}>Failed to load stats: {String(statsQuery.error)}</p>}
@@ -1202,8 +1213,14 @@ function AdminPage() {
               </p>
             </div>
           </SiteAdminSection>
+
+            </div>
+          </details>
         </>
       )}
+
+      {/* ── USER MANAGEMENT ─────────────────────────────────────────────────── */}
+      {activeSection === "user-management" && <UserManagementSection />}
 
       {/* ── SITE CONFIGURATION ──────────────────────────────────────────────── */}
       {activeSection === "site-config" && <SiteConfigSection />}

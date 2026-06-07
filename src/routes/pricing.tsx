@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { PLANS, PLAN_ORDER } from "~/lib/plans";
+import { PLANS, SELF_SERVE_PLAN_ORDER } from "~/lib/plans";
 import { PlanCard } from "~/components/PaywallGate";
 import { useBillingData } from "~/routes/billing";
 
@@ -41,7 +41,7 @@ function PricingPage() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 48 }}>
-        {PLAN_ORDER.map((planId) => (
+        {SELF_SERVE_PLAN_ORDER.map((planId) => (
           <PlanCard
             key={planId}
             plan={PLANS[planId]}

@@ -3,7 +3,7 @@ import { AdminGuard } from "./-admin-page";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { sql, eq, and, or, like } from "drizzle-orm";
-import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, systemSettings } from "~/db/schema";
+import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, systemSettings, auditLogs, tokenUsages, webhookEvents } from "~/db/schema";
 import { requireAdmin } from "~/server/session";
 import { updateSubscriptionSeats } from "~/server/billing";
 import { seedNewUserMemory } from "~/server/auth";
@@ -728,6 +728,203 @@ export const updateSystemSetting = createServerFn({ method: "POST" })
 
     return { success: true };
   });
+
+// ── System Metrics ─────────────────────────────────────────────────────────────
+export type PlanDistribution = { plan: string; count: number };
+export type DailyActivity = { date: string; recalls: number; commits: number };
+export type CategoryBreakdown = { category: string; count: number };
+
+export type SystemMetrics = {
+  users: {
+    total: number;
+    newLast7d: number;
+    newLast30d: number;
+    byPlan: PlanDistribution[];
+    recentSignups: Array<{ id: string; name: string; email: string; plan: string; createdAt: number }>;
+  };
+  memories: {
+    total: number;
+    byCategory: CategoryBreakdown[];
+    addedLast7d: number;
+    addedLast30d: number;
+  };
+  activity: {
+    totalRecalls: number;
+    totalCommits: number;
+    last7dActivity: DailyActivity[];
+    topActions: Array<{ action: string; count: number }>;
+  };
+  orgs: {
+    total: number;
+    byPlan: PlanDistribution[];
+    totalMembers: number;
+  };
+  webhooks: {
+    total: number;
+    last7d: number;
+    byStatus: Array<{ status: string; count: number }>;
+  };
+  planEvents: {
+    last30d: Array<{ fromPlan: string; toPlan: string; count: number }>;
+  };
+};
+
+export const getSystemMetrics = createServerFn({ method: "GET" }).handler(
+  async ({ context }): Promise<SystemMetrics> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = drizzle(env.DB, {
+      schema: { users, memories, userPlans, organizations, organizationMembers, auditLogs, tokenUsages, webhookEvents, planEvents },
+    });
+
+    const now = Date.now();
+    const ms7d = 7 * 24 * 60 * 60 * 1000;
+    const ms30d = 30 * 24 * 60 * 60 * 1000;
+
+    // ── Users ────────────────────────────────────────────────────────────────
+    const allUsers = await db.select({ id: users.id, name: users.name, email: users.email, createdAt: users.createdAt }).from(users).all();
+    const allPlans = await db.select({ userId: userPlans.userId, plan: userPlans.plan }).from(userPlans).all();
+    const planMap = new Map(allPlans.map((p) => [p.userId, p.plan]));
+
+    const newLast7d = allUsers.filter((u) => {
+      const ts = u.createdAt instanceof Date ? u.createdAt.getTime() : Number(u.createdAt);
+      return now - ts < ms7d;
+    }).length;
+    const newLast30d = allUsers.filter((u) => {
+      const ts = u.createdAt instanceof Date ? u.createdAt.getTime() : Number(u.createdAt);
+      return now - ts < ms30d;
+    }).length;
+
+    const planCounts = new Map<string, number>();
+    for (const u of allUsers) {
+      const p = planMap.get(u.id) || "free";
+      planCounts.set(p, (planCounts.get(p) || 0) + 1);
+    }
+    const byPlan: PlanDistribution[] = Array.from(planCounts.entries()).map(([plan, count]) => ({ plan, count }));
+
+    const recentSignups = allUsers
+      .sort((a, b) => {
+        const ta = a.createdAt instanceof Date ? a.createdAt.getTime() : Number(a.createdAt);
+        const tb = b.createdAt instanceof Date ? b.createdAt.getTime() : Number(b.createdAt);
+        return tb - ta;
+      })
+      .slice(0, 10)
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        plan: planMap.get(u.id) || "free",
+        createdAt: u.createdAt instanceof Date ? u.createdAt.getTime() : Number(u.createdAt),
+      }));
+
+    // ── Memories ─────────────────────────────────────────────────────────────
+    const allMemories = await db.select({ id: memories.id, category: memories.category, timestamp: memories.timestamp }).from(memories).all();
+
+    const catCounts = new Map<string, number>();
+    for (const m of allMemories) {
+      catCounts.set(m.category, (catCounts.get(m.category) || 0) + 1);
+    }
+    const byCategory: CategoryBreakdown[] = Array.from(catCounts.entries()).map(([category, count]) => ({ category, count }));
+
+    const memAdded7d = allMemories.filter((m) => {
+      return now - Number(m.timestamp) < ms7d;
+    }).length;
+    const memAdded30d = allMemories.filter((m) => {
+      return now - Number(m.timestamp) < ms30d;
+    }).length;
+
+    // ── Activity (audit_logs) ─────────────────────────────────────────────────
+    const recentLogs = await db
+      .select({ action: auditLogs.action, timestamp: auditLogs.timestamp })
+      .from(auditLogs)
+      .where(sql`${auditLogs.timestamp} > ${now - ms30d}`)
+      .all()
+      .catch(() => [] as Array<{ action: string; timestamp: number }>);
+
+    let totalRecalls = 0;
+    let totalCommits = 0;
+    const actionCounts = new Map<string, number>();
+    const dailyMap = new Map<string, { recalls: number; commits: number }>();
+
+    for (const log of recentLogs) {
+      actionCounts.set(log.action, (actionCounts.get(log.action) || 0) + 1);
+      if (log.action === "recall_context" || log.action === "search_memories") totalRecalls++;
+      if (log.action === "commit_memory") totalCommits++;
+
+      const dateStr = new Date(log.timestamp).toISOString().slice(0, 10);
+      const day = dailyMap.get(dateStr) || { recalls: 0, commits: 0 };
+      if (log.action === "recall_context" || log.action === "search_memories") day.recalls++;
+      if (log.action === "commit_memory") day.commits++;
+      dailyMap.set(dateStr, day);
+    }
+
+    // Build last 7 days array (most recent last)
+    const last7dActivity: DailyActivity[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const day = dailyMap.get(d) || { recalls: 0, commits: 0 };
+      last7dActivity.push({ date: d, ...day });
+    }
+
+    const topActions = Array.from(actionCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([action, count]) => ({ action, count }));
+
+    // ── Orgs ─────────────────────────────────────────────────────────────────
+    const allOrgs = await db.select({ id: organizations.id, plan: organizations.plan }).from(organizations).all().catch(() => [] as Array<{ id: string; plan: string }>);
+    const totalMembers = await db.select({ count: sql<number>`count(*)` }).from(organizationMembers).all().then((r) => r[0]?.count ?? 0).catch(() => 0);
+    const orgPlanCounts = new Map<string, number>();
+    for (const o of allOrgs) {
+      orgPlanCounts.set(o.plan, (orgPlanCounts.get(o.plan) || 0) + 1);
+    }
+
+    // ── Webhooks ─────────────────────────────────────────────────────────────
+    const allWebhooks = await db.select({ source: webhookEvents.source, processedAt: webhookEvents.processedAt }).from(webhookEvents).all().catch(() => [] as Array<{ source: string; processedAt: number }>);
+    const webhooksLast7d = allWebhooks.filter((w) => {
+      return now - Number(w.processedAt) < ms7d;
+    }).length;
+    const webhookStatusCounts = new Map<string, number>();
+    for (const w of allWebhooks) {
+      const s = w.source || "unknown";
+      webhookStatusCounts.set(s, (webhookStatusCounts.get(s) || 0) + 1);
+    }
+
+    // ── Plan Events ────────────────────────────────────────────────────────────
+    const recentPlanEvents = await db
+      .select({ fromPlan: planEvents.fromPlan, toPlan: planEvents.toPlan })
+      .from(planEvents)
+      .where(sql`${planEvents.timestamp} > ${now - ms30d}`)
+      .all()
+      .catch(() => [] as Array<{ fromPlan: string; toPlan: string }>);
+    const peKey = (e: { fromPlan: string; toPlan: string }) => `${e.fromPlan}→${e.toPlan}`;
+    const peCounts = new Map<string, number>();
+    for (const e of recentPlanEvents) {
+      peCounts.set(peKey(e), (peCounts.get(peKey(e)) || 0) + 1);
+    }
+    const planEventsLast30d = Array.from(peCounts.entries()).map(([k, count]) => {
+      const [fromPlan, toPlan] = k.split("→");
+      return { fromPlan, toPlan, count };
+    });
+
+    return {
+      users: { total: allUsers.length, newLast7d, newLast30d, byPlan, recentSignups },
+      memories: { total: allMemories.length, byCategory, addedLast7d: memAdded7d, addedLast30d: memAdded30d },
+      activity: { totalRecalls, totalCommits, last7dActivity, topActions },
+      orgs: {
+        total: allOrgs.length,
+        byPlan: Array.from(orgPlanCounts.entries()).map(([plan, count]) => ({ plan, count })),
+        totalMembers,
+      },
+      webhooks: {
+        total: allWebhooks.length,
+        last7d: webhooksLast7d,
+        byStatus: Array.from(webhookStatusCounts.entries()).map(([status, count]) => ({ status, count })),
+      },
+      planEvents: { last30d: planEventsLast30d },
+    };
+  }
+);
 
 export const Route = createFileRoute("/admin")({
   component: AdminGuard,
