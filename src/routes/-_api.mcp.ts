@@ -4,7 +4,7 @@ import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COM
 import type { AgentPolicy, MemoryCategory } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { verifyToken, hashToken, getOrCreateVaultKey, decrypt, encrypt, isEncrypted, decryptEphemeral, EphemeralPlaintext } from "~/server/crypto";
+import { verifyToken, hashToken, extractTokenPrefix, getOrCreateVaultKey, decrypt, encrypt, isEncrypted, decryptEphemeral, EphemeralPlaintext } from "~/server/crypto";
 import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "~/server/enterprise";
 import { verifyTOTP } from "~/server/totp";
 import { PLANS } from "~/lib/plans";
@@ -696,7 +696,10 @@ async function validateBearerToken(
     if (/^[0-9a-f]{64}$/.test(token.tokenHash)) {
       try {
         const upgradedHash = await hashToken(rawToken);
-        await db.update(apiTokens).set({ tokenHash: upgradedHash }).where(eq(apiTokens.id, token.id)).run();
+        await db.update(apiTokens).set({
+          tokenHash: upgradedHash,
+          tokenPrefix: extractTokenPrefix(rawToken),
+        }).where(eq(apiTokens.id, token.id)).run();
         console.log(`[api-token] upgraded SHA-256 hash to PBKDF2 for token ${token.id}`);
       } catch (upgradeErr) {
         console.error("[api-token] PBKDF2 upgrade failed (non-fatal):", upgradeErr);

@@ -66,6 +66,10 @@ export const apiTokens = sqliteTable("api_tokens", {
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   tokenHash: text("tokenHash").notNull().unique(),
+  // First 8 chars of the raw token after the "lkr_" prefix (chars [4,12)).
+  // Used as a cheap indexed pre-filter to avoid a full table scan before PBKDF2.
+  // Not a secret — security still comes from the PBKDF2 hash.
+  tokenPrefix: text("tokenPrefix"),
   permissions: integer("permissions").notNull().default(3), // 0b11 = all tools
   scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
   scopeId: text("scopeId"),
@@ -75,7 +79,9 @@ export const apiTokens = sqliteTable("api_tokens", {
   createdAt: integer("createdAt").notNull(),
   expiresAt: integer("expiresAt"),
   lastUsedAt: integer("lastUsedAt"),
-});
+}, (t) => [
+  index("idx_api_tokens_prefix").on(t.tokenPrefix),
+]);
 
 export const memories = sqliteTable("memories", {
   id: text("id").primaryKey(),

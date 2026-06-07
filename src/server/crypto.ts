@@ -239,6 +239,15 @@ export function isEncrypted(value: string): boolean {
   return /^[0-9a-f]{24}:[0-9a-f]+$/.test(value);
 }
 
+// Extract the 8-character lookup prefix from a raw lkr_... token.
+// Returns chars [4, 12) — the first 8 chars after the "lkr_" prefix.
+// Stored unindexed in tokenPrefix so a single indexed WHERE clause can
+// narrow the PBKDF2 candidate set from O(n) to O(1) on most tables.
+export function extractTokenPrefix(raw: string): string | null {
+  if (!raw.startsWith("lkr_") || raw.length < 12) return null;
+  return raw.slice(4, 12);
+}
+
 // Returns the SHA-256 hex digest of a string.
 // Used for looking up legacy API tokens (pre-PBKDF2) via their stored hash.
 export async function sha256Hex(input: string): Promise<string> {

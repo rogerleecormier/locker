@@ -27,7 +27,7 @@
  */
 
 import { drizzle } from "drizzle-orm/d1";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import {
   apiTokens,
   memories,
@@ -38,7 +38,7 @@ import {
   type NewWebhookEvent,
   type NewMemory,
 } from "~/db/schema";
-import { getOrCreateVaultKey, encrypt, decrypt, isEncrypted, verifyToken } from "~/server/crypto";
+import { getOrCreateVaultKey, encrypt, decrypt, isEncrypted, verifyToken, extractTokenPrefix } from "~/server/crypto";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -411,10 +411,22 @@ async function resolveToken(request: Request, env: CloudflareEnv): Promise<Resol
   if (!authHeader.startsWith("Bearer lkr_")) return null;
 
   const raw = authHeader.slice("Bearer ".length).trim();
+  const prefix = extractTokenPrefix(raw);
   const db = drizzle(env.DB);
-  const rows = await db.select().from(apiTokens).all();
 
-  for (const row of rows) {
+  // Two-pass lookup:
+  //   Pass 1 — indexed prefix hit:  O(1) rows for tokens minted after migration.
+  //   Pass 2 — legacy NULL-prefix:  O(legacy) rows only; shrinks to zero once all
+  //            tokens are rotated. Skip pass 2 entirely if prefix extraction failed.
+  const prefixRows = prefix
+    ? await db.select().from(apiTokens).where(eq(apiTokens.tokenPrefix, prefix)).all()
+    : [];
+
+  const legacyRows = prefix
+    ? await db.select().from(apiTokens).where(isNull(apiTokens.tokenPrefix)).all()
+    : await db.select().from(apiTokens).all(); // no prefix = malformed token; scan all as last resort
+
+  for (const row of [...prefixRows, ...legacyRows]) {
     if (!(await verifyToken(raw, row.tokenHash))) continue;
     if (row.expiresAt && row.expiresAt < Date.now()) continue;
     if (!(row.permissions & MCP_PERM_COMMIT)) continue;

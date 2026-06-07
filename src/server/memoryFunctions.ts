@@ -29,7 +29,7 @@ import {
 } from "~/db/schema";
 import type { D1Database } from "@cloudflare/workers-types";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { encrypt, decrypt, isEncrypted, hashToken, getOrCreateVaultKey, deriveUserKey, decryptEphemeral, EphemeralPlaintext } from "./crypto";
+import { encrypt, decrypt, isEncrypted, hashToken, extractTokenPrefix, getOrCreateVaultKey, deriveUserKey, decryptEphemeral, EphemeralPlaintext } from "./crypto";
 import { extractGraphEntities, persistGraphData, expandByEntityIds } from "./graphRag";
 import { requireSession, requireAdmin } from "./session";
 import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "./enterprise";
@@ -3000,6 +3000,7 @@ export const createApiToken = createServerFn({ method: "POST" })
       userId: user.id,
       name: data.name,
       tokenHash,
+      tokenPrefix: extractTokenPrefix(rawToken),
       permissions: data.permissions,
       scopeType: data.scopeType,
       scopeId: data.scopeId || null,
