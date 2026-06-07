@@ -43,17 +43,34 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 function RootLayout() {
   const { queryClient } = Route.useRouteContext();
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>
+        <RootDocument>
+          <RootInner>
+            <AuthGate>
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
+            </AuthGate>
+          </RootInner>
+        </RootDocument>
+      </ToastProvider>
+    </QueryClientProvider>
+  );
+}
+
+function RootInner({ children }: { children: ReactNode }) {
   const router = useRouter();
   const toast = useToast();
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl+K for search
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         router.navigate({ to: '/memories' });
       }
-      // Shift+? for keyboard shortcuts
       if (e.shiftKey && e.key === '?') {
         e.preventDefault();
         toast.info('Keyboard Shortcuts: Cmd+K or Ctrl+K → Go to Memories | Shift+? → Show this help');
@@ -64,19 +81,7 @@ function RootLayout() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [router, toast]);
 
-  return (
-    <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <RootDocument>
-          <AuthGate>
-            <ErrorBoundary>
-              <Outlet />
-            </ErrorBoundary>
-          </AuthGate>
-        </RootDocument>
-      </ToastProvider>
-    </QueryClientProvider>
-  );
+  return <>{children}</>;
 }
 
 function AuthGate({ children }: { children: ReactNode }) {

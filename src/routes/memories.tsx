@@ -432,6 +432,44 @@ function MemoryDetailPanel({
 }
 
 // ── MEMORIES TABLE ─────────────────────────────────────────────────────────
+type ViewMode = "grid" | "list" | "table";
+
+const VIEW_ICONS = {
+  grid: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
+    </svg>
+  ),
+  list: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" />
+      <line x1="3" y1="12" x2="3.01" y2="12" />
+      <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  ),
+  table: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="3" y1="9" x2="21" y2="9" />
+      <line x1="3" y1="15" x2="21" y2="15" />
+      <line x1="9" y1="9" x2="9" y2="21" />
+    </svg>
+  ),
+};
+
+const CATEGORY_DOT_COLORS: Record<string, string> = {
+  rules: "bg-indigo-400",
+  projects: "bg-emerald-400",
+  references: "bg-amber-400",
+  configs: "bg-purple-400",
+};
+
 function MemoryTable({
   memories,
   filter,
@@ -444,6 +482,8 @@ function MemoryTable({
   workspaces = [],
   currentProjectKey = "personal",
   isSemanticResults = false,
+  viewMode,
+  onViewModeChange,
 }: {
   memories: Memory[];
   filter: string;
@@ -456,6 +496,8 @@ function MemoryTable({
   workspaces?: any[];
   currentProjectKey?: string;
   isSemanticResults?: boolean;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
 }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -464,6 +506,8 @@ function MemoryTable({
   const [bulkTargetWorkspace, setBulkTargetWorkspace] = useState("");
   const [exportMemory, setExportMemory] = useState<Memory | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [tableSortCol, setTableSortCol] = useState<"category" | "fact" | "created">("created");
+  const [tableSortDir, setTableSortDir] = useState<"asc" | "desc">("desc");
 
   const [activeSelectedId, setActiveSelectedId] = useState<string | null>(null);
 
@@ -717,30 +761,50 @@ function MemoryTable({
               <span className="text-text-muted font-medium">
                 {filtered.length} active memories
               </span>
-              {filtered.length > 0 && (
-                <div className="ml-auto flex items-center gap-1.5 flex-wrap">
-                  <Button variant="outline" size="sm" className="h-7 text-xs font-semibold" onClick={() => handleExport(filtered, "json")}>
-                    Export JSON
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-7 text-xs font-semibold" onClick={() => handleExport(filtered, "md")}>
-                    Export MD
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-7 text-xs font-semibold" onClick={onExportZip}>
-                    Export Zip
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setSelected(new Set(filtered.map((m) => m.id)));
-                      setBulkConfirming(true);
-                    }}
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs font-semibold border-error/20 text-error hover:bg-error/5 hover:border-error/30"
-                  >
-                    Delete All
-                  </Button>
+              <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+                {/* View mode toggle */}
+                <div className="flex items-center border border-border rounded-lg overflow-hidden bg-surface2 mr-1">
+                  {(["grid", "list", "table"] as ViewMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      title={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
+                      onClick={() => onViewModeChange(mode)}
+                      className={`h-7 w-7 flex items-center justify-center transition-colors ${
+                        viewMode === mode
+                          ? "bg-accent text-white"
+                          : "text-text-muted hover:text-text hover:bg-surface"
+                      }`}
+                    >
+                      {VIEW_ICONS[mode]}
+                    </button>
+                  ))}
                 </div>
-              )}
+                {filtered.length > 0 && (
+                  <>
+                    <Button variant="outline" size="sm" className="h-7 text-xs font-semibold" onClick={() => handleExport(filtered, "json")}>
+                      Export JSON
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 text-xs font-semibold" onClick={() => handleExport(filtered, "md")}>
+                      Export MD
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 text-xs font-semibold" onClick={onExportZip}>
+                      Export Zip
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setSelected(new Set(filtered.map((m) => m.id)));
+                        setBulkConfirming(true);
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs font-semibold border-error/20 text-error hover:bg-error/5 hover:border-error/30"
+                    >
+                      Delete All
+                    </Button>
+                  </>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -754,22 +818,219 @@ function MemoryTable({
         </div>
       </div>
 
-      {/* Grid container responsive */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-        {visibleMemories.map((m) => (
-          <MemoryCard
-            key={m.id}
-            memory={m}
-            selected={selected.has(m.id)}
-            onToggleSelect={toggleOne}
-            onExport={(mem) => { setExportMemory(mem); setShowExportModal(true); }}
-            workspaces={workspaces}
-            currentProjectKey={currentProjectKey}
-            isSelected={activeSelectedId === m.id}
-            onSelect={() => setActiveSelectedId(m.id)}
-          />
-        ))}
-      </div>
+      {/* ── GRID VIEW ── */}
+      {viewMode === "grid" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {visibleMemories.map((m) => (
+            <MemoryCard
+              key={m.id}
+              memory={m}
+              selected={selected.has(m.id)}
+              onToggleSelect={toggleOne}
+              onExport={(mem) => { setExportMemory(mem); setShowExportModal(true); }}
+              workspaces={workspaces}
+              currentProjectKey={currentProjectKey}
+              isSelected={activeSelectedId === m.id}
+              onSelect={() => setActiveSelectedId(m.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* ── LIST VIEW ── */}
+      {viewMode === "list" && (
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+          {visibleMemories.map((m, idx) => {
+            const tags = m.tags ? m.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
+            const isActive = activeSelectedId === m.id;
+            return (
+              <div
+                key={m.id}
+                onClick={() => setActiveSelectedId(m.id)}
+                className={`flex items-center gap-3 px-3 h-11 cursor-pointer select-none transition-colors ${
+                  idx < visibleMemories.length - 1 ? "border-b border-border" : ""
+                } ${isActive ? "bg-accent/8 border-l-2 border-l-accent" : "hover:bg-surface2"}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(m.id)}
+                  onChange={(e) => { e.stopPropagation(); toggleOne(m.id); }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-3.5 w-3.5 shrink-0 rounded-sm border-border text-accent accent-accent cursor-pointer"
+                />
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${CATEGORY_DOT_COLORS[m.category] ?? "bg-text-muted"}`}
+                  title={m.category}
+                />
+                <span className="flex-1 text-xs font-medium text-text truncate min-w-0">
+                  {m.fact}
+                </span>
+                <div className="hidden sm:flex items-center gap-1 shrink-0">
+                  {tags.slice(0, 3).map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-1.5 py-0.5 rounded-sm text-[10px] bg-tag-bg border border-tag-border text-text-muted font-medium"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                  {tags.length > 3 && (
+                    <span className="text-[10px] text-text-muted">+{tags.length - 3}</span>
+                  )}
+                </div>
+                <span className="text-[10px] text-text-muted shrink-0 hidden md:block">
+                  {new Date(m.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                </span>
+                <button
+                  type="button"
+                  title="Open details"
+                  onClick={(e) => { e.stopPropagation(); setActiveSelectedId(m.id); }}
+                  className="shrink-0 h-6 w-6 flex items-center justify-center text-text-muted hover:text-text rounded-md hover:bg-surface transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── TABLE VIEW ── */}
+      {viewMode === "table" && (() => {
+        function toggleTableSort(col: "category" | "fact" | "created") {
+          if (tableSortCol === col) {
+            setTableSortDir((d) => d === "asc" ? "desc" : "asc");
+          } else {
+            setTableSortCol(col);
+            setTableSortDir("asc");
+          }
+        }
+
+        const sorted = [...visibleMemories].sort((a, b) => {
+          let cmp = 0;
+          if (tableSortCol === "category") cmp = a.category.localeCompare(b.category);
+          else if (tableSortCol === "fact") cmp = a.fact.localeCompare(b.fact);
+          else cmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+          return tableSortDir === "asc" ? cmp : -cmp;
+        });
+
+        const SortIcon = ({ col }: { col: "category" | "fact" | "created" }) => (
+          <svg
+            width="10" height="10" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+            className={`inline ml-1 transition-opacity ${tableSortCol === col ? "opacity-100" : "opacity-30"}`}
+          >
+            {tableSortCol === col && tableSortDir === "desc"
+              ? <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></>
+              : <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="5 12 12 5 19 12" /></>
+            }
+          </svg>
+        );
+
+        return (
+          <div className="bg-surface border border-border rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-surface2 border-b border-border">
+                    <th className="w-8 px-3 py-2 text-left">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                        onChange={toggleSelectAll}
+                        className="h-3.5 w-3.5 rounded-sm border-border text-accent accent-accent cursor-pointer"
+                      />
+                    </th>
+                    <th
+                      className="px-3 py-2 text-left font-bold text-text-muted uppercase tracking-wider text-[10px] cursor-pointer hover:text-text select-none whitespace-nowrap"
+                      onClick={() => toggleTableSort("category")}
+                    >
+                      Category<SortIcon col="category" />
+                    </th>
+                    <th
+                      className="px-3 py-2 text-left font-bold text-text-muted uppercase tracking-wider text-[10px] cursor-pointer hover:text-text select-none"
+                      onClick={() => toggleTableSort("fact")}
+                    >
+                      Fact<SortIcon col="fact" />
+                    </th>
+                    <th className="px-3 py-2 text-left font-bold text-text-muted uppercase tracking-wider text-[10px] select-none hidden sm:table-cell">
+                      Tags
+                    </th>
+                    <th
+                      className="px-3 py-2 text-left font-bold text-text-muted uppercase tracking-wider text-[10px] cursor-pointer hover:text-text select-none whitespace-nowrap hidden md:table-cell"
+                      onClick={() => toggleTableSort("created")}
+                    >
+                      Created<SortIcon col="created" />
+                    </th>
+                    <th className="w-8 px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((m, idx) => {
+                    const tags = m.tags ? m.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
+                    const isActive = activeSelectedId === m.id;
+                    return (
+                      <tr
+                        key={m.id}
+                        onClick={() => setActiveSelectedId(m.id)}
+                        className={`cursor-pointer transition-colors ${idx < sorted.length - 1 ? "border-b border-border" : ""} ${
+                          isActive ? "bg-accent/8" : "hover:bg-surface2"
+                        }`}
+                      >
+                        <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(m.id)}
+                            onChange={() => toggleOne(m.id)}
+                            className="h-3.5 w-3.5 rounded-sm border-border text-accent accent-accent cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${CATEGORY_DOT_COLORS[m.category] ?? "bg-text-muted"}`} />
+                            <span className="font-semibold text-text capitalize">{m.category}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 max-w-xs">
+                          <span className="text-text font-medium line-clamp-1 block">{m.fact}</span>
+                        </td>
+                        <td className="px-3 py-2 hidden sm:table-cell">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {tags.slice(0, 3).map((tag) => (
+                              <span key={tag} className="px-1.5 py-0.5 rounded-sm text-[10px] bg-tag-bg border border-tag-border text-text-muted font-medium whitespace-nowrap">
+                                {tag}
+                              </span>
+                            ))}
+                            {tags.length > 3 && <span className="text-[10px] text-text-muted">+{tags.length - 3}</span>}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-text-muted whitespace-nowrap hidden md:table-cell">
+                          {new Date(m.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </td>
+                        <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            title="Open details"
+                            onClick={() => setActiveSelectedId(m.id)}
+                            className="h-6 w-6 flex items-center justify-center text-text-muted hover:text-text rounded-md hover:bg-surface transition-colors"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Sentinel loading more */}
       {hasMore && (
@@ -831,6 +1092,21 @@ function Dashboard() {
   const [showNewMemoryModal, setShowNewMemoryModal] = useState(false);
   const [showAgentConfigBuilder, setShowAgentConfigBuilder] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState<string | null>(null);
+
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("locker-view-mode");
+      if (saved === "grid" || saved === "list" || saved === "table") return saved;
+    }
+    return "grid";
+  });
+
+  function handleViewModeChange(mode: ViewMode) {
+    setViewMode(mode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("locker-view-mode", mode);
+    }
+  }
 
   // Filter conditions
   const [searchQuery, setSearchQuery] = useState("");
@@ -1385,6 +1661,8 @@ function Dashboard() {
               workspaces={workspaces}
               currentProjectKey={projectKey}
               isSemanticResults
+              viewMode={viewMode}
+              onViewModeChange={handleViewModeChange}
             />
           ) : (
             <div className="text-center py-16 px-4 text-text-muted bg-surface border border-border rounded-xl select-none">
@@ -1403,6 +1681,8 @@ function Dashboard() {
             onExportZip={triggerExport}
             workspaces={workspaces}
             currentProjectKey={projectKey}
+            viewMode={viewMode}
+            onViewModeChange={handleViewModeChange}
           />
         )}
       </PageContainer>
