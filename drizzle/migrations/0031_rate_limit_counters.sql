@@ -1,8 +1,8 @@
 CREATE TABLE IF NOT EXISTS rate_limit_counters (
-  key        TEXT    NOT NULL,
-  "window"   INTEGER NOT NULL,
-  count      INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (key, "window")
+  key         TEXT    NOT NULL,
+  minuteStart INTEGER NOT NULL,
+  count       INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (key, minuteStart)
 );
 
-CREATE INDEX IF NOT EXISTS idx_rlc_window ON rate_limit_counters ("window");
+CREATE INDEX IF NOT EXISTS idx_rlc_minuteStart ON rate_limit_counters (minuteStart);
