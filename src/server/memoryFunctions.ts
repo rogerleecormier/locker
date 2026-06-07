@@ -5244,6 +5244,69 @@ export const setWebhookSecret = createServerFn({ method: "POST" })
     return { ok: true, source: data.source, scopeKey: data.scopeKey ?? null };
   });
 
+const SemanticSearchSchema = z.object({
+  query: z.string().min(1).max(500),
+  projectKey: z.string().max(128).optional(),
+  category: z.enum(["rules", "projects", "references", "configs"]).optional(),
+  topK: z.number().min(1).max(50).default(20),
+});
+
+export const semanticSearchMemories = createServerFn({ method: "POST" })
+  .inputValidator((data) => SemanticSearchSchema.parse(data))
+  .handler(async ({ data, context }): Promise<Memory[]> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const { scopeType, scopeId } = parseScope(data.projectKey);
+    const { allowed: vaultAllowed } = await verifyVaultAccess(db, user.id, scopeType, scopeId);
+    if (!vaultAllowed) {
+      throw new Error(`Forbidden: no access to vault scope '${data.projectKey ?? "personal"}'`);
+    }
+
+    const embedding = await generateEmbedding(env.AI, data.query);
+
+    const filter = getVectorFilter(user.id, data.projectKey);
+    if (data.category) {
+      filter.category = data.category;
+    }
+
+    const vectorResult = await env.VECTOR_INDEX.query(embedding, {
+      topK: data.topK,
+      filter,
+      returnMetadata: "none",
+    });
+
+    const matches = vectorResult.matches ?? [];
+    if (matches.length === 0) return [];
+
+    const matchIds = matches.map((m) => m.id);
+    const scoreMap = new Map(matches.map((m) => [m.id, m.score]));
+
+    const DB_CHUNK = 50;
+    const rows: Memory[] = [];
+    for (let i = 0; i < matchIds.length; i += DB_CHUNK) {
+      const chunk = matchIds.slice(i, i + DB_CHUNK);
+      const chunkRows = await db
+        .select()
+        .from(memories)
+        .where(
+          and(
+            sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`,
+            eq(memories.isActive, true)
+          )
+        )
+        .all();
+      rows.push(...chunkRows);
+    }
+
+    const decrypted = await decryptMemories(rows, env.DB, env.ENCRYPTION_KEY);
+
+    decrypted.sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0));
+
+    return decrypted;
+  });
+
 export const deleteWebhookSecret = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => {
     const d = data as { source: WebhookSource; scopeKey?: string | null };

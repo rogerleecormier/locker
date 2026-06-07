@@ -15,6 +15,7 @@ import {
   listPersonalMemoryRecommendations,
   reviewMemoryRecommendation,
   unmaskMemory,
+  semanticSearchMemories,
 } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 import { PageContainer } from "~/components/PageContainer";
@@ -442,6 +443,7 @@ function MemoryTable({
   onExportZip,
   workspaces = [],
   currentProjectKey = "personal",
+  isSemanticResults = false,
 }: {
   memories: Memory[];
   filter: string;
@@ -453,6 +455,7 @@ function MemoryTable({
   onExportZip: () => void;
   workspaces?: any[];
   currentProjectKey?: string;
+  isSemanticResults?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -837,6 +840,42 @@ function Dashboard() {
   const [dateEnd, setDateEnd] = useState("");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
+  // Semantic search state
+  const [semanticMode, setSemanticMode] = useState(false);
+  const [debouncedSemanticQuery, setDebouncedSemanticQuery] = useState("");
+  const semanticDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!semanticMode || !searchQuery.trim()) {
+      setDebouncedSemanticQuery("");
+      return;
+    }
+    if (semanticDebounceRef.current) clearTimeout(semanticDebounceRef.current);
+    semanticDebounceRef.current = setTimeout(() => {
+      setDebouncedSemanticQuery(searchQuery.trim());
+    }, 400);
+    return () => {
+      if (semanticDebounceRef.current) clearTimeout(semanticDebounceRef.current);
+    };
+  }, [searchQuery, semanticMode]);
+
+  const {
+    data: semanticResults,
+    isFetching: isSemanticFetching,
+  } = useQuery({
+    queryKey: ["semantic-search", debouncedSemanticQuery, projectKey],
+    queryFn: () =>
+      semanticSearchMemories({
+        data: {
+          query: debouncedSemanticQuery,
+          projectKey: projectKey === "personal" ? undefined : projectKey,
+          topK: 20,
+        },
+      }),
+    enabled: semanticMode && debouncedSemanticQuery.length > 0,
+    staleTime: 30_000,
+  });
+
   // Onboarding state
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingSteps, setOnboardingSteps] = useState<Record<string, boolean>>({
@@ -1166,62 +1205,92 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Stats selector cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {[
-            { label: "Total", value: memories.length, color: "text", category: "" },
-            { label: "Configs", value: totalByCategory.configs, color: "purple-400", category: "configs" },
-            { label: "Rules", value: totalByCategory.rules, color: "indigo-400", category: "rules" },
-            { label: "Projects", value: totalByCategory.projects, color: "emerald-400", category: "projects" },
-            { label: "References", value: totalByCategory.references, color: "amber-400", category: "references" },
-          ].map((cat) => {
-            const isActive = categoryFilter === cat.category;
-            return (
-              <button
-                key={cat.label}
-                onClick={() => setCategoryFilter(isActive ? "" : cat.category)}
-                className={`relative flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-200 cursor-pointer select-none bg-linear-to-br from-accent/3 to-accent/0 ${
-                  isActive
-                    ? "border-accent bg-accent/8 shadow-md shadow-accent/5 ring-1 ring-accent/10"
-                    : "border-border hover:border-accent/30 hover:shadow-xs hover:shadow-accent/3 hover:-translate-y-0.5"
-                }`}
-              >
-                <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider block mb-1.5 select-none">
-                  {cat.label}
-                </span>
-                <span className={`text-2xl font-bold leading-none text-${cat.color}`}>
-                  {cat.value}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Stats selector cards — hidden in semantic mode */}
+        {!semanticMode && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              { label: "Total", value: memories.length, color: "text", category: "" },
+              { label: "Configs", value: totalByCategory.configs, color: "purple-400", category: "configs" },
+              { label: "Rules", value: totalByCategory.rules, color: "indigo-400", category: "rules" },
+              { label: "Projects", value: totalByCategory.projects, color: "emerald-400", category: "projects" },
+              { label: "References", value: totalByCategory.references, color: "amber-400", category: "references" },
+            ].map((cat) => {
+              const isActive = categoryFilter === cat.category;
+              return (
+                <button
+                  key={cat.label}
+                  onClick={() => setCategoryFilter(isActive ? "" : cat.category)}
+                  className={`relative flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-200 cursor-pointer select-none bg-linear-to-br from-accent/3 to-accent/0 ${
+                    isActive
+                      ? "border-accent bg-accent/8 shadow-md shadow-accent/5 ring-1 ring-accent/10"
+                      : "border-border hover:border-accent/30 hover:shadow-xs hover:shadow-accent/3 hover:-translate-y-0.5"
+                  }`}
+                >
+                  <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider block mb-1.5 select-none">
+                    {cat.label}
+                  </span>
+                  <span className={`text-2xl font-bold leading-none text-${cat.color}`}>
+                    {cat.value}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Search bar & filter controls */}
         <div className="flex flex-col gap-4 bg-surface border border-border p-4 rounded-xl shadow-xs">
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--color-text-muted)"
-                strokeWidth="2.5"
-                className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
+              {isSemanticFetching ? (
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin pointer-events-none" />
+              ) : (
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--color-text-muted)"
+                  strokeWidth="2.5"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              )}
               <Input
                 type="search"
                 aria-label="Search memories"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search semantic facts by text, guidelines content, or tags..."
+                placeholder={
+                  semanticMode
+                    ? "Semantic search: describe what you're looking for..."
+                    : "Search semantic facts by text, guidelines content, or tags..."
+                }
                 className="pl-9 h-9.5 text-xs md:text-sm bg-surface2 border border-border rounded-lg"
               />
             </div>
+
+            {/* Semantic toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                setSemanticMode((prev) => !prev);
+                setDebouncedSemanticQuery("");
+              }}
+              title={semanticMode ? "Disable semantic search" : "Enable semantic search"}
+              className={`h-9.5 px-3 flex items-center gap-1.5 font-bold text-xs rounded-lg border transition-all select-none whitespace-nowrap ${
+                semanticMode
+                  ? "border-accent bg-accent/10 text-accent hover:bg-accent/15"
+                  : "border-border bg-surface2 text-text-muted hover:border-accent/40 hover:text-text"
+              }`}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
+                <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Semantic
+            </button>
 
             <Button
               variant="outline"
@@ -1234,8 +1303,24 @@ function Dashboard() {
             </Button>
           </div>
 
-          {/* Advanced filters */}
-          {showAdvancedFilters && (
+          {/* Semantic search status line */}
+          {semanticMode && debouncedSemanticQuery && !isSemanticFetching && (
+            <div className="flex items-center gap-2 text-[11px] text-text-muted animate-in fade-in duration-150">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="var(--color-accent)" className="shrink-0">
+                <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>
+                Semantic results for: <span className="text-text font-semibold">"{debouncedSemanticQuery}"</span>
+                {" "}—{" "}
+                <span className="text-accent font-semibold">
+                  {semanticResults?.length ?? 0} result{(semanticResults?.length ?? 0) !== 1 ? "s" : ""}
+                </span>
+              </span>
+            </div>
+          )}
+
+          {/* Advanced filters — hidden in semantic mode */}
+          {showAdvancedFilters && !semanticMode && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-border/40 animate-in slide-in-from-top duration-200">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="filter-sort">Sort By</Label>
@@ -1281,6 +1366,31 @@ function Dashboard() {
           <div className="text-center py-16 px-4 text-error bg-error/5 border border-error/20 rounded-xl select-none">
             Error loading memories. Check your server status.
           </div>
+        ) : semanticMode && debouncedSemanticQuery ? (
+          isSemanticFetching ? (
+            <div className="text-center py-20">
+              <span className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin inline-block mb-3" />
+              <p className="text-text-muted text-xs font-semibold">Running semantic search...</p>
+            </div>
+          ) : semanticResults && semanticResults.length > 0 ? (
+            <MemoryTable
+              memories={semanticResults}
+              filter=""
+              categoryFilter=""
+              sortBy="newest"
+              dateStart=""
+              dateEnd=""
+              onShowHistory={(id) => setShowHistoryModal(id)}
+              onExportZip={triggerExport}
+              workspaces={workspaces}
+              currentProjectKey={projectKey}
+              isSemanticResults
+            />
+          ) : (
+            <div className="text-center py-16 px-4 text-text-muted bg-surface border border-border rounded-xl select-none">
+              No semantic matches found. Try different keywords.
+            </div>
+          )
         ) : (
           <MemoryTable
             memories={memories}
