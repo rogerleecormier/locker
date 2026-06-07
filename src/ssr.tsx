@@ -4,6 +4,7 @@ import {
 } from "@tanstack/react-start/server";
 import { handleMcpRequest } from "./routes/-_api.mcp";
 import { createAuth } from "./server/auth";
+import { runSetup } from "./server/setup";
 import { handleMemoryVersionCleanup } from "./scheduled/cleanup-versions";
 import type { CloudflareEnv, ArchiveMessage } from "./types/cloudflare";
 import { drizzle } from "drizzle-orm/d1";
@@ -58,6 +59,30 @@ export default {
 
     if (url.pathname === "/api/mcp") {
       return handleMcpRequest(request, env, ctx);
+    }
+
+    // One-time deployment setup: seed the Claude OAuth client and demo user.
+    // Gated by BETTER_AUTH_SECRET so it is never callable without credentials.
+    // Safe to call repeatedly — all operations are idempotent.
+    if (url.pathname === "/api/admin/setup" && request.method === "POST") {
+      const authHeader = request.headers.get("Authorization");
+      const expectedToken = `Bearer ${env.BETTER_AUTH_SECRET}`;
+      if (!authHeader || authHeader !== expectedToken) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const result = await runSetup(env);
+        return Response.json({ ok: true, result });
+      } catch (err) {
+        console.error("[setup] /api/admin/setup failed:", err);
+        return new Response(JSON.stringify({ error: "Setup failed", detail: String(err) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
     }
 
     if (url.pathname === "/api/export" && request.method === "POST") {
@@ -230,6 +255,10 @@ export default {
   },
   async scheduled(controller: ScheduledController, env: CloudflareEnv, ctx: ExecutionContext) {
     console.log(`[scheduled] Running scheduled event at ${new Date(controller.scheduledTime).toISOString()}`);
+    // Run setup idempotently on every cron tick — ensures the Claude OAuth
+    // client and demo user are always present after env-var rotation or
+    // new deployments without needing a separate deploy step.
+    ctx.waitUntil(runSetup(env).catch((err) => console.error("[scheduled] runSetup failed:", err)));
     try {
       await handleMemoryVersionCleanup(env, ctx);
     } catch (err) {
