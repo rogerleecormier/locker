@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -457,7 +457,10 @@ export const jitAccessRequests = sqliteTable("jit_access_requests", {
   reviewedAt: integer("reviewedAt"),
   reviewedBy: text("reviewedBy").references(() => users.id),
   reviewNotes: text("reviewNotes"),
-});
+}, (t) => [
+  index("idx_jit_access_requests_token_status").on(t.tokenId, t.status),
+  index("idx_jit_access_requests_status").on(t.status),
+]);
 
 export type JitAccessRequest = typeof jitAccessRequests.$inferSelect;
 export type NewJitAccessRequest = typeof jitAccessRequests.$inferInsert;
