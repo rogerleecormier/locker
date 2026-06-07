@@ -274,15 +274,16 @@ function IngestPanel() {
   const [pasteText, setPasteText] = useState("");
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
-  
+
   // Comparisons states
   const [comparisons, setComparisons] = useState<ImportComparisonItem[] | null>(null);
   const [activeTab, setActiveTab] = useState<ComparisonStatus | "all">("new");
   const [resolvedActions, setResolvedActions] = useState<Record<string, "import" | "skip" | "update" | "archive_and_import" | "exclude">>({});
-  
+
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number; details?: string } | null>(null);
   const [source, setSource] = useState<string>("manual");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const comparisonsRef = useRef<HTMLDivElement>(null);
 
   async function handleFileRead(file: File) {
     setParseError(null);
@@ -548,12 +549,20 @@ function IngestPanel() {
               ))}
             </div>
             <Button
-              onClick={() => {
+              onClick={async () => {
                 if (templateSelection.length > 0) {
                   setSelectedTemplate(null);
                   setTemplateSelection(null);
-                  const formatted = templateSelection.map(t => ({ fact: t.fact, category: t.category, tags: t.tags }));
-                  compareImportedMemories({ data: { items: formatted } }).then(res => {
+                  setParseError(null);
+                  setComparisons(null);
+                  setResolvedActions({});
+                  try {
+                    const formatted = templateSelection.map(t => ({ fact: t.fact, category: t.category, tags: t.tags }));
+                    const res = await compareImportedMemories({ data: { items: formatted } });
+                    if (res.length === 0) {
+                      setParseError("No valid memories found in templates.");
+                      return;
+                    }
                     setComparisons(res);
                     const initialActions: Record<string, "import" | "skip" | "update" | "archive_and_import" | "exclude"> = {};
                     res.forEach((item) => {
@@ -569,7 +578,10 @@ function IngestPanel() {
                     });
                     setResolvedActions(initialActions);
                     setActiveTab("new");
-                  });
+                    setTimeout(() => comparisonsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+                  } catch (err) {
+                    setParseError((err as Error).message || "Failed to analyze templates");
+                  }
                 }
               }}
               className="h-9 px-4 font-bold text-xs select-none w-fit mt-1"
@@ -586,7 +598,7 @@ function IngestPanel() {
         )}
 
         {comparisons && (
-          <div className="flex flex-col gap-3">
+          <div ref={comparisonsRef} className="flex flex-col gap-3">
             <div className="flex justify-between items-center select-none gap-4">
               <strong className="text-accent text-xs font-bold uppercase tracking-wider">Review & Edit Comparisons</strong>
               <span className="text-xs text-text-muted font-medium">{comparisons.length} extracted memory fact{comparisons.length !== 1 ? "s" : ""}</span>
