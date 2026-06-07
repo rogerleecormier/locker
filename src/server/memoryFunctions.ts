@@ -668,19 +668,21 @@ export const executeImportActions = createServerFn({ method: "POST" })
               if (!tagsList.includes(source)) tagsList.push(source);
               const finalTags = tagsList.join(", ");
 
-              await db.update(memories)
-                .set({ fact: encryptedFact, category, tags: finalTags, timestamp: Date.now(), isQuarantined })
-                .where(eq(memories.id, matchedMemoryId));
-
-              await db.insert(memoryVersions).values({
-                id: crypto.randomUUID(),
-                memoryId: matchedMemoryId,
-                fact: encryptedFact,
-                category,
-                tags: finalTags,
-                changedBy: user.id,
-                changeReason: "updated",
-                timestamp: Date.now(),
+              const updateTimestamp = Date.now();
+              await db.transaction(async (tx) => {
+                await tx.update(memories)
+                  .set({ fact: encryptedFact, category, tags: finalTags, timestamp: updateTimestamp, isQuarantined })
+                  .where(eq(memories.id, matchedMemoryId));
+                await tx.insert(memoryVersions).values({
+                  id: crypto.randomUUID(),
+                  memoryId: matchedMemoryId,
+                  fact: encryptedFact,
+                  category,
+                  tags: finalTags,
+                  changedBy: user.id,
+                  changeReason: "updated",
+                  timestamp: updateTimestamp,
+                });
               });
 
               const [embedding] = await Promise.all([
@@ -743,17 +745,18 @@ export const executeImportActions = createServerFn({ method: "POST" })
               isQuarantined,
             };
 
-            await db.insert(memories).values(newRow);
-
-            await db.insert(memoryVersions).values({
-              id: crypto.randomUUID(),
-              memoryId: id,
-              fact: encryptedFact,
-              category,
-              tags: finalTags,
-              changedBy: user.id,
-              changeReason: "created",
-              timestamp,
+            await db.transaction(async (tx) => {
+              await tx.insert(memories).values(newRow);
+              await tx.insert(memoryVersions).values({
+                id: crypto.randomUUID(),
+                memoryId: id,
+                fact: encryptedFact,
+                category,
+                tags: finalTags,
+                changedBy: user.id,
+                changeReason: "created",
+                timestamp,
+              });
             });
 
             let entityIds: string[] = [];
@@ -1220,18 +1223,18 @@ export const addMemory = createServerFn({ method: "POST" })
       isQuarantined,
     };
 
-    await db.insert(memories).values(newRow);
-
-    // Record Memory Version
-    await db.insert(memoryVersions).values({
-      id: crypto.randomUUID(),
-      memoryId: id,
-      fact: encryptedFact,
-      category: data.category,
-      tags: finalTags,
-      changedBy: user.id,
-      changeReason: "created",
-      timestamp,
+    await db.transaction(async (tx) => {
+      await tx.insert(memories).values(newRow);
+      await tx.insert(memoryVersions).values({
+        id: crypto.randomUUID(),
+        memoryId: id,
+        fact: encryptedFact,
+        category: data.category,
+        tags: finalTags,
+        changedBy: user.id,
+        changeReason: "created",
+        timestamp,
+      });
     });
 
     // Persist GraphRAG entity nodes and edges, then embed entity IDs into Vectorize metadata.
@@ -1611,30 +1614,30 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
     if (newRows.length === 0) return { imported: 0, skipped: allRows.length };
 
     const CHUNK_SIZE = 10;
-    for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
-      await db.insert(memories).values(
-        newRows.slice(i, i + CHUNK_SIZE).map(({ id, userId, fact, category, tags, timestamp: ts, projectKey: pk, isQuarantined }) => ({
-          id, userId, fact, category, tags, timestamp: ts, isActive: true, projectKey: pk, isQuarantined,
-        }))
-      );
-    }
-
-    // Insert new memory versions for imported memories
-    for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
-      const chunk = newRows.slice(i, i + CHUNK_SIZE);
-      await db.insert(memoryVersions).values(
-        chunk.map((row) => ({
-          id: crypto.randomUUID(),
-          memoryId: row.id,
-          fact: row.fact,
-          category: row.category,
-          tags: row.tags,
-          changedBy: user.id,
-          changeReason: "imported",
-          timestamp: row.timestamp,
-        }))
-      );
-    }
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
+        await tx.insert(memories).values(
+          newRows.slice(i, i + CHUNK_SIZE).map(({ id, userId, fact, category, tags, timestamp: ts, projectKey: pk, isQuarantined }) => ({
+            id, userId, fact, category, tags, timestamp: ts, isActive: true, projectKey: pk, isQuarantined,
+          }))
+        );
+      }
+      for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
+        const chunk = newRows.slice(i, i + CHUNK_SIZE);
+        await tx.insert(memoryVersions).values(
+          chunk.map((row) => ({
+            id: crypto.randomUUID(),
+            memoryId: row.id,
+            fact: row.fact,
+            category: row.category,
+            tags: row.tags,
+            changedBy: user.id,
+            changeReason: "imported",
+            timestamp: row.timestamp,
+          }))
+        );
+      }
+    });
 
     const vectorBatch: VectorizeVector[] = newRows.map((row) => ({
       id: row.id,
