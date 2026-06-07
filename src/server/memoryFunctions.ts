@@ -4820,8 +4820,8 @@ export const deleteMemoryTemplate = createServerFn({ method: "POST" })
 const AgentConfigSchema = z.object({
   name: z.string().min(1).max(128).transform((s) => s.trim()),
   systemPrompt: z.string().max(50000).optional().default("").transform((s) => s.trim()),
-  techStack: z.record(z.string()).optional().default({}),
-  codeStyle: z.record(z.string()).optional().default({}),
+  techStack: z.record(z.string(), z.string()).optional().default({}),
+  codeStyle: z.record(z.string(), z.string()).optional().default({}),
   ruleInclusions: z.array(z.string()).optional().default([]),
   tags: z.string().optional().default(""),
   projectKey: z.string().optional(),
@@ -4874,7 +4874,6 @@ export const saveAgentConfig = createServerFn({ method: "POST" })
     await db.insert(memories).values({
       id: memId,
       userId: user.id,
-      name: data.name,
       fact: encryptedFact,
       category: "configs",
       tags: finalTags,

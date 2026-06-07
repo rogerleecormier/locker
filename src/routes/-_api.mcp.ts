@@ -2601,7 +2601,7 @@ export async function handleMcpRequest(
             /^## System Prompt\n[\s\S]*?(?=\n## |\n---|\s*$)/,
             ""
           ).trim();
-          const name = item.row.name ?? item.row.id;
+          const name = raw.match(/^\[config:([^\]]*)\]/)?.[1] || item.row.id;
           return `## ${name}\n\n${deduped}`;
         })
         // Drop any block that ended up empty after deduplication.

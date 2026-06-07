@@ -17,13 +17,13 @@ import {
   listPersonalMemoryRecommendations,
   reviewMemoryRecommendation,
   unmaskMemory,
-  addMemory,
 } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 import { PageContainer } from "~/components/PageContainer";
 import { PageHeader } from "~/components/PageHeader";
 import { MemoryCard } from "~/components/MemoryCard";
 import { AgentConfigBuilder } from "~/components/AgentConfigBuilder";
+import { NewMemoryModal } from "~/components/NewMemoryModal";
 import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
 import { Label, Input, Textarea, Select } from "~/components/ui/input";
@@ -1171,24 +1171,8 @@ function MemoryTable({
 function Dashboard() {
   const queryClient = useQueryClient();
   const [projectKey, setProjectKey] = useState("personal");
-  const [showNewMemoryForm, setShowNewMemoryForm] = useState(false);
+  const [showNewMemoryModal, setShowNewMemoryModal] = useState(false);
   const [showAgentConfigBuilder, setShowAgentConfigBuilder] = useState(false);
-
-  // Inline new memory form state
-  const [newFact, setNewFact] = useState("");
-  const [newCategory, setNewCategory] = useState<"rules" | "projects" | "references">("references");
-  const [newTags, setNewTags] = useState("");
-
-  const addMemoryMutation = useMutation({
-    mutationFn: () => addMemory({ data: { fact: newFact, category: newCategory, tags: newTags, projectKey: projectKey === "personal" ? undefined : projectKey } }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["memories"] });
-      setNewFact("");
-      setNewTags("");
-      setNewCategory("references");
-      setShowNewMemoryForm(false);
-    },
-  });
   const [showHistoryModal, setShowHistoryModal] = useState<string | null>(null);
 
   // Filter conditions
@@ -1312,17 +1296,7 @@ function Dashboard() {
         actions={
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
-              onClick={() => setShowAgentConfigBuilder(true)}
-              className="flex items-center gap-1.5 h-9 font-semibold"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-              </svg>
-              Build Agent Config
-            </Button>
-            <Button
-              onClick={() => setShowNewMemoryForm((v) => !v)}
+              onClick={() => setShowNewMemoryModal(true)}
               className="flex items-center gap-1.5 h-9 font-bold"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -1369,54 +1343,6 @@ function Dashboard() {
           )}
         </div>
       </PageHeader>
-
-      {/* Inline new memory form */}
-      {showNewMemoryForm && (
-        <div className="border-b border-border bg-surface2 px-6 py-5 animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="max-w-2xl flex flex-col gap-3">
-            <Textarea
-              rows={3}
-              value={newFact}
-              onChange={(e) => setNewFact(e.target.value)}
-              placeholder="e.g. Prefers using TypeScript strict mode with explicit return types on all functions…"
-              className="resize-none text-sm"
-              autoFocus
-            />
-            <div className="flex items-center gap-3 flex-wrap">
-              <Select
-                value={newCategory}
-                onChange={(e: any) => setNewCategory(e.target.value)}
-                className="h-8 text-xs w-36"
-              >
-                <option value="rules">Rules</option>
-                <option value="projects">Projects</option>
-                <option value="references">References</option>
-              </Select>
-              <Input
-                value={newTags}
-                onChange={(e) => setNewTags(e.target.value)}
-                placeholder="Tags (comma separated)"
-                className="h-8 text-xs flex-1 min-w-[160px]"
-              />
-              <div className="flex items-center gap-2 ml-auto">
-                <Button variant="ghost" className="h-8 text-xs" onClick={() => { setShowNewMemoryForm(false); setNewFact(""); setNewTags(""); }}>
-                  Cancel
-                </Button>
-                <Button
-                  className="h-8 text-xs font-bold"
-                  onClick={() => addMemoryMutation.mutate()}
-                  disabled={addMemoryMutation.isPending || !newFact.trim()}
-                >
-                  {addMemoryMutation.isPending ? "Saving…" : "Commit Memory"}
-                </Button>
-              </div>
-            </div>
-            {addMemoryMutation.isError && (
-              <p className="text-xs text-error">{(addMemoryMutation.error as any)?.message ?? "Failed to save"}</p>
-            )}
-          </div>
-        </div>
-      )}
 
       <PageContainer>
         {/* Pending Agent Action + Conflict Review Banner */}
@@ -1719,6 +1645,14 @@ function Dashboard() {
       <AgentConfigBuilder
         isOpen={showAgentConfigBuilder}
         onClose={() => setShowAgentConfigBuilder(false)}
+      />
+
+      <NewMemoryModal
+        isOpen={showNewMemoryModal}
+        onClose={() => setShowNewMemoryModal(false)}
+        onSaved={invalidate}
+        projectKey={projectKey}
+        onOpenAgentConfigBuilder={() => setShowAgentConfigBuilder(true)}
       />
 
       {/* History modal */}

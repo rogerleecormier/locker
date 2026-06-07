@@ -37,7 +37,11 @@ type VariableConfig = {
 
 type ParsedPayload = {
   rules: string[];
+  ruleInclusions?: string[];
   variables?: VariableConfig[];
+  techStack?: Record<string, string>;
+  systemPrompt?: string;
+  codeStyle?: Record<string, string>;
   language?: string;
   frontend?: string;
   hosting?: string;
@@ -52,6 +56,10 @@ type ParsedPayload = {
   componentLibrary?: string;
   bannedProviders?: string[];
 };
+
+function getPayloadValue(payload: ParsedPayload, key: string) {
+  return payload.techStack?.[key] || (payload as any)[key];
+}
 
 function downloadFile(content: string, filename: string, contentType: string) {
   const blob = new Blob([content], { type: contentType });
@@ -376,7 +384,8 @@ function TemplatesPage() {
         payload = JSON.parse(importingTemplate.configPayload);
       } catch (e) {}
 
-      const instantiatedRules = (payload.rules || []).map((rule) => {
+      const rules = payload.ruleInclusions || payload.rules || [];
+      const instantiatedRules = rules.map((rule) => {
         let finalRule = rule;
         Object.entries(importVariables).forEach(([k, v]) => {
           finalRule = finalRule.replaceAll(`{{${k}}}`, v);
@@ -386,21 +395,31 @@ function TemplatesPage() {
 
       let factText = `# ${importingTemplate.name}\n${importingTemplate.description}\n\n`;
 
-      if (importingTemplate.category === "configs" && (payload.language || payload.frontend)) {
+      if (importingTemplate.category === "configs" && payload.systemPrompt) {
+        factText += `## System Prompt:\n${payload.systemPrompt}\n\n`;
+      }
+
+      if (importingTemplate.category === "configs" && (getPayloadValue(payload, "language") || getPayloadValue(payload, "frontend"))) {
         factText += `## Tech Stack Preferences:\n`;
-        if (payload.language) factText += `- Language: ${payload.language}\n`;
-        if (payload.frontend) factText += `- Frontend: ${payload.frontend}\n`;
-        if (payload.hosting) factText += `- Hosting: ${payload.hosting}\n`;
-        if (payload.database) factText += `- Database: ${payload.database}\n`;
-        if (payload.orm) factText += `- ORM/DB Access: ${payload.orm}\n`;
-        if (payload.auth) factText += `- Authentication: ${payload.auth}\n`;
-        if (payload.styling) factText += `- Styling: ${payload.styling}\n`;
-        if (payload.stateCache) factText += `- State/Cache: ${payload.stateCache}\n`;
-        if (payload.componentLibrary) factText += `- Component Library: ${payload.componentLibrary}\n`;
-        if (payload.search && payload.search !== "None") factText += `- Full-Text Search: ${payload.search}\n`;
-        if (payload.vector && payload.vector !== "None") factText += `- Vector Database: ${payload.vector}\n`;
-        if (payload.storage) factText += `- Storage: ${payload.storage}\n`;
+        if (getPayloadValue(payload, "language")) factText += `- Language: ${getPayloadValue(payload, "language")}\n`;
+        if (getPayloadValue(payload, "frontend")) factText += `- Frontend: ${getPayloadValue(payload, "frontend")}\n`;
+        if (getPayloadValue(payload, "hosting")) factText += `- Hosting: ${getPayloadValue(payload, "hosting")}\n`;
+        if (getPayloadValue(payload, "database")) factText += `- Database: ${getPayloadValue(payload, "database")}\n`;
+        if (getPayloadValue(payload, "orm")) factText += `- ORM/DB Access: ${getPayloadValue(payload, "orm")}\n`;
+        if (getPayloadValue(payload, "auth")) factText += `- Authentication: ${getPayloadValue(payload, "auth")}\n`;
+        if (getPayloadValue(payload, "styling")) factText += `- Styling: ${getPayloadValue(payload, "styling")}\n`;
+        if (getPayloadValue(payload, "stateCache")) factText += `- State/Cache: ${getPayloadValue(payload, "stateCache")}\n`;
+        if (getPayloadValue(payload, "componentLibrary")) factText += `- Component Library: ${getPayloadValue(payload, "componentLibrary")}\n`;
+        if (getPayloadValue(payload, "search") && getPayloadValue(payload, "search") !== "None") factText += `- Full-Text Search: ${getPayloadValue(payload, "search")}\n`;
+        if (getPayloadValue(payload, "vector") && getPayloadValue(payload, "vector") !== "None") factText += `- Vector Database: ${getPayloadValue(payload, "vector")}\n`;
+        if (getPayloadValue(payload, "storage")) factText += `- Storage: ${getPayloadValue(payload, "storage")}\n`;
         factText += `\n`;
+      }
+
+      if (importingTemplate.category === "configs" && payload.codeStyle && Object.keys(payload.codeStyle).length > 0) {
+        factText += `## Code Style Preferences:\n`;
+        factText += Object.entries(payload.codeStyle).map(([k, v]) => `- ${k}: ${v}`).join("\n");
+        factText += `\n\n`;
       }
 
       factText += `## Guidelines & Constraints:\n`;

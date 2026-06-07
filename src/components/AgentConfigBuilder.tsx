@@ -1,7 +1,12 @@
 import * as React from "react";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { saveAgentConfig, getUserWorkspaces } from "~/server/memoryFunctions";
+import {
+  createMemoryTemplate,
+  getUserWorkspaces,
+  saveAgentConfig,
+  updateMemoryTemplate,
+} from "~/server/memoryFunctions";
 import { Button } from "./ui/button";
 import { Label, Input, Textarea, Select } from "./ui/input";
 import {
@@ -15,8 +20,8 @@ import {
 import { FIELD_OPTIONS, DEFAULT_STACK_PREFERENCES } from "~/lib/stackFields";
 
 // ── Zod schemas (mirrors server-side AgentConfigSchema) ───────────────────────
-const TechStackSchema = z.record(z.string());
-const CodeStyleSchema = z.record(z.string());
+const TechStackSchema = z.record(z.string(), z.string());
+const CodeStyleSchema = z.record(z.string(), z.string());
 
 const AgentConfigFormSchema = z.object({
   name: z.string().min(1, "Name is required").max(128),
@@ -90,7 +95,16 @@ const CATEGORY_PRESET_RULES: Record<TemplateCategoryValue, string[]> = {
   ],
 };
 
-const STEPS = ["Metadata", "System Prompt", "Tech Stack", "Style & Rules", "Export Options"] as const;
+const STEPS = [
+  "Metadata",
+  "Core Tech",
+  "Infrastructure",
+  "Additional Specs",
+  "Rules",
+  "Code Style",
+  "System Prompt",
+  "Export Options",
+] as const;
 
 const DEFAULT_SYSTEM_PROMPT = `# Locker Memory Vault Integration — Custom Instructions
 
@@ -147,23 +161,12 @@ function StackPillField({ label, options, value, onChange }: StackPillFieldProps
 interface AgentConfigBuilderProps {
   isOpen: boolean;
   onClose: () => void;
+  mode?: "memory" | "template";
+  editingTemplate?: any;
 }
 
-export function AgentConfigBuilder({ isOpen, onClose }: AgentConfigBuilderProps) {
-  const queryClient = useQueryClient();
-  const [step, setStep] = React.useState(1);
-  const [validationError, setValidationError] = React.useState<string | null>(null);
-
-  // Step 1: Metadata
-  const [name, setName] = React.useState("");
-  const [tags, setTags] = React.useState("");
-  const [projectKey, setProjectKey] = React.useState("personal");
-
-  // Step 2: System Prompt
-  const [systemPrompt, setSystemPrompt] = React.useState(DEFAULT_SYSTEM_PROMPT);
-
-  // Step 3: Tech Stack
-  const [techStack, setTechStack] = React.useState<Record<string, string>>({
+function getDefaultTechStack() {
+  return {
     language: DEFAULT_STACK_PREFERENCES.language,
     frontend: DEFAULT_STACK_PREFERENCES.frontend,
     hosting: DEFAULT_STACK_PREFERENCES.hosting,
@@ -176,18 +179,69 @@ export function AgentConfigBuilder({ isOpen, onClose }: AgentConfigBuilderProps)
     search: DEFAULT_STACK_PREFERENCES.search,
     vector: DEFAULT_STACK_PREFERENCES.vector,
     componentLibrary: DEFAULT_STACK_PREFERENCES.componentLibrary,
-  });
+  };
+}
+
+function normalizeTemplatePayload(editingTemplate: any) {
+  if (!editingTemplate?.configPayload) return null;
+  try {
+    const payload = JSON.parse(editingTemplate.configPayload);
+    return {
+      systemPrompt: payload.systemPrompt || "",
+      techStack: {
+        ...getDefaultTechStack(),
+        ...(payload.techStack || {}),
+        language: payload.techStack?.language || payload.language || DEFAULT_STACK_PREFERENCES.language,
+        frontend: payload.techStack?.frontend || payload.frontend || DEFAULT_STACK_PREFERENCES.frontend,
+        hosting: payload.techStack?.hosting || payload.hosting || DEFAULT_STACK_PREFERENCES.hosting,
+        database: payload.techStack?.database || payload.database || DEFAULT_STACK_PREFERENCES.database,
+        orm: payload.techStack?.orm || payload.orm || DEFAULT_STACK_PREFERENCES.orm,
+        auth: payload.techStack?.auth || payload.auth || DEFAULT_STACK_PREFERENCES.auth,
+        styling: payload.techStack?.styling || payload.styling || DEFAULT_STACK_PREFERENCES.styling,
+        stateCache: payload.techStack?.stateCache || payload.stateCache || DEFAULT_STACK_PREFERENCES.stateCache,
+        storage: payload.techStack?.storage || payload.storage || DEFAULT_STACK_PREFERENCES.storage,
+        search: payload.techStack?.search || payload.search || DEFAULT_STACK_PREFERENCES.search,
+        vector: payload.techStack?.vector || payload.vector || DEFAULT_STACK_PREFERENCES.vector,
+        componentLibrary: payload.techStack?.componentLibrary || payload.componentLibrary || DEFAULT_STACK_PREFERENCES.componentLibrary,
+      },
+      codeStyle: payload.codeStyle || {},
+      rules: payload.ruleInclusions || payload.rules || [],
+      tags: payload.tags || "",
+    };
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
+
+export function AgentConfigBuilder({ isOpen, onClose, mode = "memory", editingTemplate }: AgentConfigBuilderProps) {
+  const queryClient = useQueryClient();
+  const isTemplateMode = mode === "template";
+  const isEdit = !!editingTemplate;
+  const [step, setStep] = React.useState(1);
+  const [validationError, setValidationError] = React.useState<string | null>(null);
+
+  // Step 1: Metadata
+  const [name, setName] = React.useState("");
+  const [tags, setTags] = React.useState("");
+  const [projectKey, setProjectKey] = React.useState("personal");
+
+  // Step 2: System Prompt
+  const [systemPrompt, setSystemPrompt] = React.useState(DEFAULT_SYSTEM_PROMPT);
+
+  // Step 3: Tech Stack
+  const [techStack, setTechStack] = React.useState<Record<string, string>>(getDefaultTechStack());
 
   // Step 4: Style + Rules
   const [codeStyle, setCodeStyle] = React.useState<Record<string, string>>({});
   const [newStyleKey, setNewStyleKey] = React.useState("");
   const [newStyleVal, setNewStyleVal] = React.useState("");
-  const [ruleInclusions, setRuleInclusions] = React.useState<string[]>([]);
+  const [ruleInclusions, setRuleInclusions] = React.useState<string[]>(CATEGORY_PRESET_RULES.configs);
   const [newRule, setNewRule] = React.useState("");
   const [templateCategory, setTemplateCategory] = React.useState<TemplateCategoryValue>("configs");
 
   // Step 5: Export Options
-  const [exportAsTemplate, setExportAsTemplate] = React.useState(false);
+  const [exportAsTemplate, setExportAsTemplate] = React.useState(isTemplateMode);
   const [templateDescription, setTemplateDescription] = React.useState("");
 
   const totalSteps = STEPS.length;
@@ -198,43 +252,35 @@ export function AgentConfigBuilder({ isOpen, onClose }: AgentConfigBuilderProps)
   });
   const workspaces = Array.isArray(workspacesList) ? workspacesList : [];
 
-  // Load category presets when templateCategory changes
   React.useEffect(() => {
-    const presets = CATEGORY_PRESET_RULES[templateCategory];
-    if (presets && ruleInclusions.length === 0) {
-      setRuleInclusions(presets);
-    }
-  }, [templateCategory]);
+    if (!isOpen) return;
 
-  React.useEffect(() => {
-    if (!isOpen) {
-      setStep(1);
-      setValidationError(null);
+    setStep(1);
+    setValidationError(null);
+    setTemplateCategory("configs");
+    setExportAsTemplate(isTemplateMode);
+
+    if (editingTemplate) {
+      const payload = normalizeTemplatePayload(editingTemplate);
+      setName(editingTemplate.name || "");
+      setTemplateDescription(editingTemplate.description || "");
+      setTags(payload?.tags || "");
+      setProjectKey("personal");
+      setSystemPrompt(payload?.systemPrompt || DEFAULT_SYSTEM_PROMPT);
+      setTechStack(payload?.techStack || getDefaultTechStack());
+      setCodeStyle(payload?.codeStyle || {});
+      setRuleInclusions(payload?.rules?.length ? payload.rules : CATEGORY_PRESET_RULES.configs);
+    } else {
       setName("");
       setTags("");
       setProjectKey("personal");
       setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
-      setTechStack({
-        language: DEFAULT_STACK_PREFERENCES.language,
-        frontend: DEFAULT_STACK_PREFERENCES.frontend,
-        hosting: DEFAULT_STACK_PREFERENCES.hosting,
-        database: DEFAULT_STACK_PREFERENCES.database,
-        orm: DEFAULT_STACK_PREFERENCES.orm,
-        auth: DEFAULT_STACK_PREFERENCES.auth,
-        styling: DEFAULT_STACK_PREFERENCES.styling,
-        stateCache: DEFAULT_STACK_PREFERENCES.stateCache,
-        storage: DEFAULT_STACK_PREFERENCES.storage,
-        search: DEFAULT_STACK_PREFERENCES.search,
-        vector: DEFAULT_STACK_PREFERENCES.vector,
-        componentLibrary: DEFAULT_STACK_PREFERENCES.componentLibrary,
-      });
+      setTechStack(getDefaultTechStack());
       setCodeStyle({});
-      setRuleInclusions([]);
-      setTemplateCategory("configs");
-      setExportAsTemplate(false);
+      setRuleInclusions(CATEGORY_PRESET_RULES.configs);
       setTemplateDescription("");
     }
-  }, [isOpen]);
+  }, [editingTemplate, isOpen, isTemplateMode]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -246,14 +292,34 @@ export function AgentConfigBuilder({ isOpen, onClose }: AgentConfigBuilderProps)
         ruleInclusions,
         tags,
         projectKey: projectKey === "personal" ? undefined : projectKey,
-        exportAsTemplate,
-        templateCategory,
+        exportAsTemplate: isTemplateMode ? true : exportAsTemplate,
+        templateCategory: "configs",
         templateDescription,
       };
 
       const result = AgentConfigFormSchema.safeParse(formData);
       if (!result.success) {
-        throw new Error(result.error.errors[0]?.message ?? "Validation error");
+        throw new Error(result.error.issues[0]?.message ?? "Validation error");
+      }
+
+      if (isTemplateMode) {
+        const configPayload = JSON.stringify({
+          systemPrompt: result.data.systemPrompt,
+          techStack: result.data.techStack,
+          codeStyle: result.data.codeStyle,
+          ruleInclusions: result.data.ruleInclusions,
+          tags: result.data.tags,
+        });
+        const payload = {
+          name: result.data.name,
+          description: result.data.templateDescription || `Agent config: ${result.data.name}`,
+          category: "configs" as const,
+          configPayload,
+        };
+        if (isEdit) {
+          return updateMemoryTemplate({ data: { ...payload, id: editingTemplate.id } });
+        }
+        return createMemoryTemplate({ data: payload });
       }
 
       return saveAgentConfig({ data: result.data });
@@ -283,19 +349,21 @@ export function AgentConfigBuilder({ isOpen, onClose }: AgentConfigBuilderProps)
 
   const stepLabel = STEPS[step - 1];
   const isLastStep = step === totalSteps;
-  const canAdvance = step === 1 ? name.trim().length > 0 : true;
+  const canAdvance = step === 1 ? name.trim().length > 0 && (!isTemplateMode || templateDescription.trim().length > 0) : true;
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-[720px]">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-[1120px] min-w-0 overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Agent Config Builder</DialogTitle>
+          <DialogTitle>{isTemplateMode ? "Agent Config Template Builder" : "Agent Config Builder"}</DialogTitle>
           <DialogDescription>
-            Build and commit a structured agent configuration to your Locker vault under the protected <code className="text-xs font-mono text-accent bg-accent/10 px-1 py-0.5 rounded">configs</code> category.
+            {isTemplateMode
+              ? "Build and commit a reusable agent configuration template with the same stack, rules, style, and prompt setup."
+              : <>Build and commit a structured agent configuration to your Locker vault under the protected <code className="text-xs font-mono text-accent bg-accent/10 px-1 py-0.5 rounded">configs</code> category.</>}
           </DialogDescription>
 
           {/* Step tab bar */}
-          <div className="flex border-b border-border mt-3 -mb-2 overflow-x-auto no-scrollbar">
+          <div className="flex max-w-full min-w-0 border-b border-border mt-3 -mb-2 overflow-x-auto no-scrollbar">
             {STEPS.map((label, i) => {
               const s = i + 1;
               const active = step === s;
@@ -325,7 +393,7 @@ export function AgentConfigBuilder({ isOpen, onClose }: AgentConfigBuilderProps)
           </div>
         </DialogHeader>
 
-        <div className="py-2 overflow-y-auto max-h-[60vh] pr-1 flex flex-col gap-4">
+        <div className="py-2 overflow-y-auto overflow-x-hidden max-h-[60vh] pr-1 flex flex-col gap-4 min-w-0">
           {validationError && (
             <div className="p-3 bg-error/10 border border-error/20 rounded-lg text-error text-xs font-medium">
               {validationError}
@@ -344,120 +412,97 @@ export function AgentConfigBuilder({ isOpen, onClose }: AgentConfigBuilderProps)
                   placeholder="e.g. claude-code-baseline, my-next-app-rules"
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="acb-tags">Tags</Label>
-                <Input
-                  id="acb-tags"
-                  value={tags}
-                  onChange={(e) => setTags(e.target.value)}
-                  placeholder="e.g. architecture, baseline, llm-config"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="acb-workspace">Destination Workspace</Label>
-                <Select
-                  id="acb-workspace"
-                  value={projectKey}
-                  onChange={(e) => setProjectKey(e.target.value)}
-                >
-                  {workspaces.map((w: any) => (
-                    <option key={w.key} value={w.key}>{w.label}</option>
-                  ))}
-                </Select>
-              </div>
+              {isTemplateMode ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="acb-tmpl-desc">Template Description</Label>
+                  <Textarea
+                    id="acb-tmpl-desc"
+                    value={templateDescription}
+                    onChange={(e) => setTemplateDescription(e.target.value)}
+                    placeholder="Describe the purpose and scope of this template for future users..."
+                    rows={3}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="acb-tags">Tags</Label>
+                    <Input
+                      id="acb-tags"
+                      value={tags}
+                      onChange={(e) => setTags(e.target.value)}
+                      placeholder="e.g. architecture, baseline, llm-config"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="acb-workspace">Destination Workspace</Label>
+                    <Select
+                      id="acb-workspace"
+                      value={projectKey}
+                      onChange={(e) => setProjectKey(e.target.value)}
+                    >
+                      {workspaces.map((w: any) => (
+                        <option key={w.key} value={w.key}>{w.label}</option>
+                      ))}
+                    </Select>
+                  </div>
+                </>
+              )}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="acb-tmpl-cat">Config Type</Label>
                 <Select
                   id="acb-tmpl-cat"
                   value={templateCategory}
-                  onChange={(e) => {
-                    setTemplateCategory(e.target.value as TemplateCategoryValue);
-                    setRuleInclusions([]);
-                  }}
+                  disabled
+                  onChange={(e) => setTemplateCategory(e.target.value as TemplateCategoryValue)}
                 >
                   {TEMPLATE_CATEGORY_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </Select>
                 <span className="text-[10px] text-text-muted leading-relaxed">
-                  Selecting a type pre-fills rule presets and determines the template category if you export later.
+                  Agent Config builders are locked to the protected configs category.
                 </span>
               </div>
             </>
           )}
 
-          {/* Step 2: System Prompt (optional) */}
-          {stepLabel === "System Prompt" && (
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="acb-prompt">System Prompt / LLM Instructions</Label>
-                <span className="text-[10px] text-text-muted border border-border rounded-full px-2 py-0.5 leading-tight">Optional</span>
-              </div>
-              <Textarea
-                id="acb-prompt"
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder="Paste your agent system prompt, coding directives, or LLM parameter block here…"
-                rows={14}
-                className="font-mono text-xs leading-relaxed"
-              />
-              <span className="text-[10px] text-text-muted">
-                {systemPrompt.length.toLocaleString()} / 50,000 characters
-              </span>
-            </div>
-          )}
-
-          {/* Step 3: Tech Stack */}
-          {stepLabel === "Tech Stack" && (
+          {/* Stack: Core Tech */}
+          {stepLabel === "Core Tech" && (
             <div className="flex flex-col gap-3">
               <StackPillField label="Language" options={FIELD_OPTIONS.language} value={techStack.language ?? ""} onChange={(v) => setTechStack({ ...techStack, language: v })} />
               <StackPillField label="Frontend" options={FIELD_OPTIONS.frontend} value={techStack.frontend ?? ""} onChange={(v) => setTechStack({ ...techStack, frontend: v })} />
-              <StackPillField label="Hosting" options={FIELD_OPTIONS.hosting} value={techStack.hosting ?? ""} onChange={(v) => setTechStack({ ...techStack, hosting: v })} />
-              <StackPillField label="Database" options={FIELD_OPTIONS.database} value={techStack.database ?? ""} onChange={(v) => setTechStack({ ...techStack, database: v })} />
-              <StackPillField label="ORM / Data Access" options={FIELD_OPTIONS.orm} value={techStack.orm ?? ""} onChange={(v) => setTechStack({ ...techStack, orm: v })} />
-              <StackPillField label="Auth" options={FIELD_OPTIONS.auth} value={techStack.auth ?? ""} onChange={(v) => setTechStack({ ...techStack, auth: v })} />
               <StackPillField label="Styling" options={FIELD_OPTIONS.styling} value={techStack.styling ?? ""} onChange={(v) => setTechStack({ ...techStack, styling: v })} />
-              <StackPillField label="State & Cache" options={FIELD_OPTIONS.stateCache} value={techStack.stateCache ?? ""} onChange={(v) => setTechStack({ ...techStack, stateCache: v })} />
-              <StackPillField label="File Storage" options={FIELD_OPTIONS.storage} value={techStack.storage ?? ""} onChange={(v) => setTechStack({ ...techStack, storage: v })} />
-              <StackPillField label="Search" options={FIELD_OPTIONS.search} value={techStack.search ?? ""} onChange={(v) => setTechStack({ ...techStack, search: v })} />
-              <StackPillField label="Vector / AI Storage" options={FIELD_OPTIONS.vector} value={techStack.vector ?? ""} onChange={(v) => setTechStack({ ...techStack, vector: v })} />
               <StackPillField label="Component Library" options={FIELD_OPTIONS.componentLibrary} value={techStack.componentLibrary ?? ""} onChange={(v) => setTechStack({ ...techStack, componentLibrary: v })} />
             </div>
           )}
 
-          {/* Step 4: Style & Rules */}
-          {stepLabel === "Style & Rules" && (
-            <>
-              <div className="bg-surface2 border border-border p-4 rounded-xl flex flex-col gap-3">
-                <span className="text-[10px] font-bold text-accent uppercase tracking-wider">Code Style Preferences</span>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <Label className="text-[9px]">Preference Key</Label>
-                    <Input value={newStyleKey} onChange={(e) => setNewStyleKey(e.target.value)} className="h-8 text-xs font-mono" placeholder="e.g. indentation" />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Label className="text-[9px]">Value</Label>
-                    <Input value={newStyleVal} onChange={(e) => setNewStyleVal(e.target.value)} className="h-8 text-xs" placeholder="e.g. 2-space tabs" />
-                  </div>
-                </div>
-                <Button onClick={addStyleEntry} disabled={!newStyleKey.trim() || !newStyleVal.trim()} size="sm" variant="outline">+ Add Style Entry</Button>
-                {Object.entries(codeStyle).length > 0 && (
-                  <div className="flex flex-col gap-1.5 mt-1 border border-border rounded-lg p-3 bg-surface max-h-32 overflow-y-auto no-scrollbar">
-                    {Object.entries(codeStyle).map(([k, v]) => (
-                      <div key={k} className="flex justify-between items-center text-xs">
-                        <span><span className="font-mono font-bold text-accent mr-2">{k}</span>{v}</span>
-                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-error hover:bg-error/5"
-                          onClick={() => { const s = { ...codeStyle }; delete s[k]; setCodeStyle(s); }}>✕</Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+          {/* Stack: Infrastructure */}
+          {stepLabel === "Infrastructure" && (
+            <div className="flex flex-col gap-3">
+              <StackPillField label="Hosting" options={FIELD_OPTIONS.hosting} value={techStack.hosting ?? ""} onChange={(v) => setTechStack({ ...techStack, hosting: v })} />
+              <StackPillField label="Database" options={FIELD_OPTIONS.database} value={techStack.database ?? ""} onChange={(v) => setTechStack({ ...techStack, database: v })} />
+              <StackPillField label="ORM / Data Access" options={FIELD_OPTIONS.orm} value={techStack.orm ?? ""} onChange={(v) => setTechStack({ ...techStack, orm: v })} />
+              <StackPillField label="State & Cache" options={FIELD_OPTIONS.stateCache} value={techStack.stateCache ?? ""} onChange={(v) => setTechStack({ ...techStack, stateCache: v })} />
+              <StackPillField label="File Storage" options={FIELD_OPTIONS.storage} value={techStack.storage ?? ""} onChange={(v) => setTechStack({ ...techStack, storage: v })} />
+            </div>
+          )}
 
+          {/* Stack: Additional Specs */}
+          {stepLabel === "Additional Specs" && (
+            <div className="flex flex-col gap-3">
+              <StackPillField label="Auth" options={FIELD_OPTIONS.auth} value={techStack.auth ?? ""} onChange={(v) => setTechStack({ ...techStack, auth: v })} />
+              <StackPillField label="Search" options={FIELD_OPTIONS.search} value={techStack.search ?? ""} onChange={(v) => setTechStack({ ...techStack, search: v })} />
+              <StackPillField label="Vector / AI Storage" options={FIELD_OPTIONS.vector} value={techStack.vector ?? ""} onChange={(v) => setTechStack({ ...techStack, vector: v })} />
+            </div>
+          )}
+
+          {/* Step 5: Rules */}
+          {stepLabel === "Rules" && (
               <div className="flex flex-col gap-3">
                 <Label>Rule Inclusions</Label>
                 <div className="text-[10px] text-text-muted">
-                  Pre-filled with <strong>{TEMPLATE_CATEGORY_OPTIONS.find(o => o.value === templateCategory)?.label ?? templateCategory}</strong> presets. Add or remove rules as needed.
+                  Pre-filled with Agent Config presets. Add or remove rules as needed.
                 </div>
                 <div className="flex gap-2">
                   <Input
@@ -483,31 +528,83 @@ export function AgentConfigBuilder({ isOpen, onClose }: AgentConfigBuilderProps)
                   </div>
                 )}
               </div>
-            </>
           )}
 
-          {/* Step 5: Export Options */}
+          {/* Step 6: Code Style */}
+          {stepLabel === "Code Style" && (
+            <div className="bg-surface2 border border-border p-4 rounded-xl flex flex-col gap-3">
+              <span className="text-[10px] font-bold text-accent uppercase tracking-wider">Code Style Preferences</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[9px]">Preference Key</Label>
+                  <Input value={newStyleKey} onChange={(e) => setNewStyleKey(e.target.value)} className="h-8 text-xs font-mono" placeholder="e.g. indentation" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[9px]">Value</Label>
+                  <Input value={newStyleVal} onChange={(e) => setNewStyleVal(e.target.value)} className="h-8 text-xs" placeholder="e.g. 2-space tabs" />
+                </div>
+              </div>
+              <Button onClick={addStyleEntry} disabled={!newStyleKey.trim() || !newStyleVal.trim()} size="sm" variant="outline">+ Add Style Entry</Button>
+              {Object.entries(codeStyle).length > 0 && (
+                <div className="flex flex-col gap-1.5 mt-1 border border-border rounded-lg p-3 bg-surface max-h-32 overflow-y-auto no-scrollbar">
+                  {Object.entries(codeStyle).map(([k, v]) => (
+                    <div key={k} className="flex justify-between items-center text-xs">
+                      <span><span className="font-mono font-bold text-accent mr-2">{k}</span>{v}</span>
+                      <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-error hover:bg-error/5"
+                        onClick={() => { const s = { ...codeStyle }; delete s[k]; setCodeStyle(s); }}>✕</Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 7: System Prompt (optional) */}
+          {stepLabel === "System Prompt" && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="acb-prompt">System Prompt / LLM Instructions</Label>
+                <span className="text-[10px] text-text-muted border border-border rounded-full px-2 py-0.5 leading-tight">Optional</span>
+              </div>
+              <Textarea
+                id="acb-prompt"
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="Paste your agent system prompt, coding directives, or LLM parameter block here..."
+                rows={14}
+                className="font-mono text-xs leading-relaxed"
+              />
+              <span className="text-[10px] text-text-muted">
+                {systemPrompt.length.toLocaleString()} / 50,000 characters
+              </span>
+            </div>
+          )}
+
+          {/* Step 8: Export Options */}
           {stepLabel === "Export Options" && (
             <div className="flex flex-col gap-4">
               <div className="flex items-start gap-3 p-4 bg-surface2 border border-border rounded-xl">
                 <input
                   type="checkbox"
                   id="acb-export-tmpl"
-                  checked={exportAsTemplate}
+                  checked={isTemplateMode ? true : exportAsTemplate}
+                  disabled={isTemplateMode}
                   onChange={(e) => setExportAsTemplate(e.target.checked)}
-                  className="mt-0.5 cursor-pointer h-4 w-4 rounded accent-accent"
+                  className="mt-0.5 cursor-pointer h-4 w-4 rounded accent-accent disabled:cursor-not-allowed disabled:opacity-70"
                 />
                 <div className="flex flex-col gap-1">
-                  <label htmlFor="acb-export-tmpl" className="text-sm font-semibold cursor-pointer">
+                  <label htmlFor="acb-export-tmpl" className={`text-sm font-semibold ${isTemplateMode ? "cursor-default" : "cursor-pointer"}`}>
                     Export as Reusable Template
                   </label>
                   <span className="text-xs text-text-muted leading-relaxed">
-                    Also saves this config as a local template in the Templates library so it can be imported by other workspaces or team members. Templates are UI-only and never exposed via the MCP tool schema.
+                    {isTemplateMode
+                      ? "Template builders always save as reusable templates, so this option is selected and locked."
+                      : "Also saves this config as a local template in the Templates library so it can be imported by other workspaces or team members. Templates are UI-only and never exposed via the MCP tool schema."}
                   </span>
                 </div>
               </div>
 
-              {exportAsTemplate && (
+              {!isTemplateMode && exportAsTemplate && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="acb-tmpl-desc">Template Description</Label>
                   <Textarea
@@ -524,12 +621,12 @@ export function AgentConfigBuilder({ isOpen, onClose }: AgentConfigBuilderProps)
                 <span className="text-xs font-bold text-accent uppercase tracking-wider">Summary</span>
                 <div className="text-xs text-text space-y-1">
                   <div><span className="text-text-muted">Config Name:</span> {name || "—"}</div>
-                  <div><span className="text-text-muted">Workspace:</span> {projectKey}</div>
+                  {!isTemplateMode && <div><span className="text-text-muted">Workspace:</span> {projectKey}</div>}
                   <div><span className="text-text-muted">Type:</span> {TEMPLATE_CATEGORY_OPTIONS.find(o => o.value === templateCategory)?.label}</div>
                   <div><span className="text-text-muted">System Prompt:</span> {systemPrompt.trim() ? `${systemPrompt.trim().length.toLocaleString()} chars` : <span className="text-text-muted/60 italic">not set</span>}</div>
                   <div><span className="text-text-muted">Rules:</span> {ruleInclusions.length} inclusions</div>
                   <div><span className="text-text-muted">Tech Stack:</span> {Object.keys(techStack).filter(k => techStack[k]).length} fields</div>
-                  <div><span className="text-text-muted">Export as Template:</span> {exportAsTemplate ? "Yes" : "No"}</div>
+                  <div><span className="text-text-muted">Export as Template:</span> {isTemplateMode || exportAsTemplate ? "Yes" : "No"}</div>
                 </div>
               </div>
             </div>
@@ -551,9 +648,13 @@ export function AgentConfigBuilder({ isOpen, onClose }: AgentConfigBuilderProps)
             ) : (
               <Button
                 onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !name.trim()}
+                disabled={saveMutation.isPending || !name.trim() || (isTemplateMode && !templateDescription.trim())}
               >
-                {saveMutation.isPending ? "Saving…" : "Commit to Vault as Agent Config"}
+                {saveMutation.isPending
+                  ? "Saving…"
+                  : isTemplateMode
+                  ? "Commit to Vault as Template"
+                  : "Commit to Vault as Agent Config"}
               </Button>
             )}
           </div>

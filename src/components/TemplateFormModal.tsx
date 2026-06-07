@@ -23,7 +23,7 @@ const CATEGORY_OPTIONS = [
 ];
 
 // Step definitions per category type
-const CONFIGS_STEPS = ["Metadata", "Core Tech", "Infrastructure", "Additional Specs", "Rules"];
+const CONFIGS_STEPS = ["Metadata", "Core Tech", "Infrastructure", "Additional Specs", "Rules", "Code Style", "System Prompt", "Export Options"];
 const OTHER_STEPS = ["Metadata", "Variables", "Rules"];
 
 function StackPillField({ label, options, value, onChange }: { label: string; options: string[]; value: string; onChange: (v: string) => void }) {
@@ -85,6 +85,10 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
   // Last step: Rules
   const [rules, setRules] = React.useState<string[]>([]);
   const [newRule, setNewRule] = React.useState("");
+  const [codeStyle, setCodeStyle] = React.useState<Record<string, string>>({});
+  const [newStyleKey, setNewStyleKey] = React.useState("");
+  const [newStyleVal, setNewStyleVal] = React.useState("");
+  const [systemPrompt, setSystemPrompt] = React.useState("");
 
   const isStack = formCategory === "configs";
   const steps = isStack ? CONFIGS_STEPS : OTHER_STEPS;
@@ -100,21 +104,27 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
         const payload = JSON.parse(editingTemplate.configPayload);
         setRules(payload.rules || []);
         if (editingTemplate.category === "configs") {
-          setStackLanguage(payload.language || DEFAULT_STACK_PREFERENCES.language);
-          setStackFrontend(payload.frontend || DEFAULT_STACK_PREFERENCES.frontend);
-          setStackHosting(payload.hosting || DEFAULT_STACK_PREFERENCES.hosting);
-          setStackDatabase(payload.database || DEFAULT_STACK_PREFERENCES.database);
-          setStackOrm(payload.orm || DEFAULT_STACK_PREFERENCES.orm);
-          setStackAuth(payload.auth || DEFAULT_STACK_PREFERENCES.auth);
-          setStackStyling(payload.styling || DEFAULT_STACK_PREFERENCES.styling);
-          setStackSearch(payload.search || DEFAULT_STACK_PREFERENCES.search);
-          setStackVector(payload.vector || DEFAULT_STACK_PREFERENCES.vector);
-          setStackStorage(payload.storage || DEFAULT_STACK_PREFERENCES.storage);
-          setStackStateCache(payload.stateCache || DEFAULT_STACK_PREFERENCES.stateCache);
-          setStackComponentLibrary(payload.componentLibrary || DEFAULT_STACK_PREFERENCES.componentLibrary);
+          const techStack = payload.techStack || {};
+          setRules(payload.ruleInclusions || payload.rules || []);
+          setStackLanguage(techStack.language || payload.language || DEFAULT_STACK_PREFERENCES.language);
+          setStackFrontend(techStack.frontend || payload.frontend || DEFAULT_STACK_PREFERENCES.frontend);
+          setStackHosting(techStack.hosting || payload.hosting || DEFAULT_STACK_PREFERENCES.hosting);
+          setStackDatabase(techStack.database || payload.database || DEFAULT_STACK_PREFERENCES.database);
+          setStackOrm(techStack.orm || payload.orm || DEFAULT_STACK_PREFERENCES.orm);
+          setStackAuth(techStack.auth || payload.auth || DEFAULT_STACK_PREFERENCES.auth);
+          setStackStyling(techStack.styling || payload.styling || DEFAULT_STACK_PREFERENCES.styling);
+          setStackSearch(techStack.search || payload.search || DEFAULT_STACK_PREFERENCES.search);
+          setStackVector(techStack.vector || payload.vector || DEFAULT_STACK_PREFERENCES.vector);
+          setStackStorage(techStack.storage || payload.storage || DEFAULT_STACK_PREFERENCES.storage);
+          setStackStateCache(techStack.stateCache || payload.stateCache || DEFAULT_STACK_PREFERENCES.stateCache);
+          setStackComponentLibrary(techStack.componentLibrary || payload.componentLibrary || DEFAULT_STACK_PREFERENCES.componentLibrary);
           setBannedProviders(payload.bannedProviders || DEFAULT_STACK_PREFERENCES.bannedProviders);
+          setCodeStyle(payload.codeStyle || {});
+          setSystemPrompt(payload.systemPrompt || "");
         } else {
           setVariables(payload.variables || []);
+          setCodeStyle({});
+          setSystemPrompt("");
         }
       } catch (e) {
         console.error(e);
@@ -138,6 +148,8 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
       setStackStorage(DEFAULT_STACK_PREFERENCES.storage);
       setStackStateCache(DEFAULT_STACK_PREFERENCES.stateCache);
       setStackComponentLibrary(DEFAULT_STACK_PREFERENCES.componentLibrary);
+      setCodeStyle({});
+      setSystemPrompt("");
       setCurrentStep(1);
     }
   }, [editingTemplate, isOpen]);
@@ -159,6 +171,8 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
         payload.stateCache = stackStateCache;
         payload.componentLibrary = stackComponentLibrary;
         payload.bannedProviders = bannedProviders;
+        payload.codeStyle = codeStyle;
+        payload.systemPrompt = systemPrompt.trim();
       } else {
         payload.variables = variables;
       }
@@ -191,6 +205,13 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
     setNewRule("");
   };
 
+  const addStyleEntry = () => {
+    if (!newStyleKey.trim() || !newStyleVal.trim()) return;
+    setCodeStyle({ ...codeStyle, [newStyleKey.trim()]: newStyleVal.trim() });
+    setNewStyleKey("");
+    setNewStyleVal("");
+  };
+
   const isMetadataValid = formName.trim() && formDescription.trim();
   const isLastStep = currentStep === totalSteps;
 
@@ -198,7 +219,7 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-[680px]">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-[1120px] min-w-0 overflow-hidden">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Template" : "New Memory Template"}</DialogTitle>
           <DialogDescription>
@@ -206,7 +227,7 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
           </DialogDescription>
 
           {/* Step tab bar */}
-          <div className="flex border-b border-border mt-3 -mb-2 overflow-x-auto no-scrollbar">
+          <div className="flex max-w-full min-w-0 border-b border-border mt-3 -mb-2 overflow-x-auto no-scrollbar">
             {steps.map((label, i) => {
               const s = i + 1;
               const active = currentStep === s;
@@ -236,7 +257,7 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
           </div>
         </DialogHeader>
 
-        <div className="py-2 overflow-y-auto max-h-[60vh] pr-1">
+        <div className="py-2 overflow-y-auto overflow-x-hidden max-h-[60vh] pr-1 min-w-0">
 
           {/* Step 1: Metadata */}
           {stepLabel === "Metadata" && (
@@ -374,6 +395,91 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
               </div>
             </div>
           )}
+
+          {/* Stack: Code Style */}
+          {stepLabel === "Code Style" && (
+            <div className="bg-surface2 border border-border p-4 rounded-xl flex flex-col gap-3">
+              <span className="text-[10px] font-bold text-accent uppercase tracking-wider">Code Style Preferences</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[9px]">Preference Key</Label>
+                  <Input value={newStyleKey} onChange={(e) => setNewStyleKey(e.target.value)} className="h-8 text-xs font-mono" placeholder="e.g. indentation" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[9px]">Value</Label>
+                  <Input value={newStyleVal} onChange={(e) => setNewStyleVal(e.target.value)} className="h-8 text-xs" placeholder="e.g. 2-space tabs" />
+                </div>
+              </div>
+              <Button onClick={addStyleEntry} disabled={!newStyleKey.trim() || !newStyleVal.trim()} size="sm" variant="outline">+ Add Style Entry</Button>
+              {Object.entries(codeStyle).length > 0 && (
+                <div className="flex flex-col gap-1.5 mt-1 border border-border rounded-lg p-3 bg-surface max-h-32 overflow-y-auto no-scrollbar">
+                  {Object.entries(codeStyle).map(([k, v]) => (
+                    <div key={k} className="flex justify-between items-center text-xs">
+                      <span><span className="font-mono font-bold text-accent mr-2">{k}</span>{v}</span>
+                      <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-error hover:bg-error/5" onClick={() => { const s = { ...codeStyle }; delete s[k]; setCodeStyle(s); }}>✕</Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Stack: System Prompt */}
+          {stepLabel === "System Prompt" && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="tmpl-system-prompt">System Prompt / LLM Instructions</Label>
+                <span className="text-[10px] text-text-muted border border-border rounded-full px-2 py-0.5 leading-tight">Optional</span>
+              </div>
+              <Textarea
+                id="tmpl-system-prompt"
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="Paste your agent system prompt, coding directives, or LLM parameter block here..."
+                rows={14}
+                className="font-mono text-xs leading-relaxed"
+              />
+              <span className="text-[10px] text-text-muted">
+                {systemPrompt.length.toLocaleString()} / 50,000 characters
+              </span>
+            </div>
+          )}
+
+          {/* Stack: Export Options */}
+          {stepLabel === "Export Options" && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-start gap-3 p-4 bg-surface2 border border-border rounded-xl">
+                <input
+                  type="checkbox"
+                  id="tmpl-export-reusable"
+                  checked
+                  disabled
+                  readOnly
+                  className="mt-0.5 h-4 w-4 rounded accent-accent disabled:cursor-not-allowed disabled:opacity-70"
+                />
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="tmpl-export-reusable" className="text-sm font-semibold cursor-default">
+                    Export as Reusable Template
+                  </label>
+                  <span className="text-xs text-text-muted leading-relaxed">
+                    Template builders always save as reusable templates, so this option is selected and locked.
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 border border-accent/20 bg-accent/5 rounded-xl flex flex-col gap-2">
+                <span className="text-xs font-bold text-accent uppercase tracking-wider">Summary</span>
+                <div className="text-xs text-text space-y-1">
+                  <div><span className="text-text-muted">Template Name:</span> {formName || "—"}</div>
+                  <div><span className="text-text-muted">Type:</span> Agent Config</div>
+                  <div><span className="text-text-muted">System Prompt:</span> {systemPrompt.trim() ? `${systemPrompt.trim().length.toLocaleString()} chars` : <span className="text-text-muted/60 italic">not set</span>}</div>
+                  <div><span className="text-text-muted">Rules:</span> {rules.length} inclusions</div>
+                  <div><span className="text-text-muted">Code Style:</span> {Object.keys(codeStyle).length} preferences</div>
+                  <div><span className="text-text-muted">Export as Template:</span> Yes</div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="flex justify-between items-center sm:justify-between">
@@ -390,7 +496,7 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
               </Button>
             ) : (
               <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || rules.length === 0}>
-                {saveMutation.isPending ? "Saving..." : isEdit ? "Save Changes" : "Create Blueprint"}
+                {saveMutation.isPending ? "Saving..." : isStack ? "Commit to Vault as Template" : isEdit ? "Save Changes" : "Create Blueprint"}
               </Button>
             )}
           </div>
