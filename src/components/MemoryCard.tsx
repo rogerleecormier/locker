@@ -3,6 +3,7 @@ import { useToast } from "~/components/ui/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { deleteMemory, moveMemories, archiveMemory } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
+import { getMemoryStaleness } from "~/lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -90,10 +91,8 @@ export function MemoryCard({
         .filter(Boolean)
     : [];
 
-  const lastAccessed = memory.lastAccessedAt
-    ? Date.now() - memory.lastAccessedAt
-    : Date.now() - memory.timestamp;
-  const isStale = lastAccessed > 90 * 24 * 60 * 60 * 1000;
+  const staleness = getMemoryStaleness(memory);
+  const isStale = staleness.level === "stale" || staleness.level === "never-used";
 
   return (
     <div
@@ -192,13 +191,36 @@ export function MemoryCard({
           className="flex justify-between items-center gap-2"
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="text-[11px] text-text-muted font-medium select-none">
-            {new Date(memory.timestamp).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-text-muted font-medium select-none">
+              {new Date(memory.timestamp).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </span>
+            {staleness.level === "fresh" ? (
+              <span
+                title={staleness.label}
+                className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block shrink-0"
+              />
+            ) : staleness.level === "aging" ? (
+              <span className="inline-flex items-center gap-1 select-none" title={staleness.label}>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block shrink-0" />
+                <span className="text-[9px] text-text-muted">{staleness.label.replace("Last used ", "")}</span>
+              </span>
+            ) : staleness.level === "stale" ? (
+              <span className="inline-flex items-center gap-1 select-none" title={staleness.label}>
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block shrink-0" />
+                <span className="text-[9px] text-text-muted">{staleness.label.replace("Last used ", "")}</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 select-none" title="Never recalled by an AI agent">
+                <span className="w-1.5 h-1.5 rounded-full bg-text-muted/40 inline-block shrink-0" />
+                <span className="text-[9px] text-text-muted">Never recalled</span>
+              </span>
+            )}
+          </div>
 
           <div className="flex gap-1.5 items-center">
             {moving ? (

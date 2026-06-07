@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { InfoTooltip } from "~/components/InfoTooltip";
+import { getMemoryStaleness } from "~/lib/utils";
 import { LockerPadlock } from "~/components/LockerLogo";
 import {
   getMemories,
@@ -306,6 +307,16 @@ function MemoryDetailPanel({
           )}
         </div>
 
+        {/* Last recalled */}
+        <div className="flex flex-col gap-2 p-3 bg-surface2 border border-border rounded-lg">
+          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Last Recalled</span>
+          <span className="text-[11px] text-text font-medium">
+            {memory.lastAccessedAt
+              ? new Date(memory.lastAccessedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              : "Never"}
+          </span>
+        </div>
+
         {/* Change Actions */}
         {hasChanges && (
           <div className="flex gap-2 py-2 mt-1">
@@ -535,7 +546,7 @@ function MemoryTable({
   memories: Memory[];
   filter: string;
   categoryFilter: string;
-  sortBy: 'newest' | 'oldest' | 'alphabetical';
+  sortBy: 'newest' | 'oldest' | 'alphabetical' | 'stale';
   dateStart: string;
   dateEnd: string;
   onShowHistory: (id: string) => void;
@@ -571,6 +582,8 @@ function MemoryTable({
     }
   }
 
+  const STALE_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
+
   const filtered = useMemo(() => {
     const q = filter.toLowerCase();
     const startDate = dateStart ? new Date(dateStart).getTime() : null;
@@ -586,7 +599,11 @@ function MemoryTable({
       const matchesDate =
         (!startDate || mTime >= startDate) &&
         (!endDate || mTime <= endDate + 86400000);
-      return matchesCat && matchesText && matchesDate;
+      const matchesStale =
+        sortBy !== "stale" ||
+        !m.lastAccessedAt ||
+        Date.now() - m.lastAccessedAt > STALE_THRESHOLD_MS;
+      return matchesCat && matchesText && matchesDate && matchesStale;
     });
 
     if (sortBy === 'newest') {
@@ -595,6 +612,8 @@ function MemoryTable({
       results.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     } else if (sortBy === 'alphabetical') {
       results.sort((a, b) => a.fact.localeCompare(b.fact));
+    } else if (sortBy === 'stale') {
+      results.sort((a, b) => (a.lastAccessedAt ?? 0) - (b.lastAccessedAt ?? 0));
     }
 
     return results;
@@ -1158,7 +1177,7 @@ function Dashboard() {
   // Filter conditions
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'alphabetical'>('newest');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'alphabetical' | 'stale'>('newest');
   const [dateStart, setDateStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -1651,6 +1670,7 @@ function Dashboard() {
                   <option value="newest">Newest first</option>
                   <option value="oldest">Oldest first</option>
                   <option value="alphabetical">Alphabetical</option>
+                  <option value="stale">Stale (30+ days)</option>
                 </Select>
               </div>
 
