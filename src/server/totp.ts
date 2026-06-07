@@ -4,7 +4,6 @@ import { eq, and } from "drizzle-orm";
 import { totpSecrets, users } from "~/db/schema";
 import { requireSession } from "~/server/session";
 import { encrypt, decrypt, getOrCreateVaultKey } from "~/server/crypto";
-import { deriveUserKey } from "~/server/crypto";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };

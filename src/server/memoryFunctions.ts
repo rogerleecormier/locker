@@ -195,7 +195,7 @@ function parseFactsFromText(raw: string): Array<{ fact: string }> {
     .map((f) => ({ fact: f }));
 }
 
-async function getUserName(db: ReturnType<typeof getDb>, userId: string, encKey: string): Promise<string> {
+async function getUserName(db: ReturnType<typeof getDb>, userId: string, env: CloudflareEnv): Promise<string> {
   try {
     const userRow = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).get();
     if (userRow?.name) {
@@ -206,7 +206,8 @@ async function getUserName(db: ReturnType<typeof getDb>, userId: string, encKey:
       r.tags.split(",").map((t) => t.trim()).includes("profile-name")
     );
     if (nameRow) {
-      const fact = await decryptFact(nameRow.fact, encKey);
+      const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, userId);
+      const fact = await decryptFact(nameRow.fact, vaultKey);
       return fact.replace(/^Name is\s+/i, "").trim();
     }
   } catch (err) {
@@ -235,7 +236,7 @@ export const parseMemoriesWithAI = createServerFn({ method: "POST" })
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
-    const name = await getUserName(db, user.id, env.ENCRYPTION_KEY);
+    const name = await getUserName(db, user.id, env);
 
     const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
       messages: [
