@@ -1634,7 +1634,8 @@ function Dashboard() {
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
               <Input
-                type="text"
+                type="search"
+                aria-label="Search memories"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search semantic facts by text, guidelines content, or tags..."

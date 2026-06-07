@@ -20,12 +20,14 @@ Label.displayName = "Label";
 // ── INPUT ──────────────────────────────────────────────────────────────────
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type = "text", ...props }, ref) => {
+  ({ className, type = "text", "aria-invalid": ariaInvalid, ...props }, ref) => {
     return (
       <input
         type={type}
+        aria-invalid={ariaInvalid}
         className={cn(
           "flex h-9 w-full rounded-md border border-border bg-surface2 px-3 py-1 text-sm shadow-xs transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-text-muted focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-accent focus-visible:border-accent disabled:cursor-not-allowed disabled:opacity-50",
+          ariaInvalid && "border-error focus-visible:ring-error",
           className
         )}
         ref={ref}
