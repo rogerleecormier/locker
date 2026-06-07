@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { memoryGraphNodes, memoryGraphEdges } from "~/db/schema";
 import type { D1Database } from "@cloudflare/workers-types";
 
@@ -96,14 +96,22 @@ export async function persistGraphData(
     const normalLabel = entity.label.trim().slice(0, 128);
     if (!normalLabel) continue;
 
+    // SQLite `IS` is NULL-safe equality; use it only for null, plain `=` for non-null strings.
+    const projectKeyClause =
+      projectKey === null
+        ? isNull(memoryGraphNodes.projectKey)
+        : eq(memoryGraphNodes.projectKey, projectKey);
+
     // Check for an existing node with the same (userId, projectKey, label) tuple.
     const existing = await db
       .select({ id: memoryGraphNodes.id })
       .from(memoryGraphNodes)
       .where(
-        sql`${memoryGraphNodes.userId} = ${userId}
-          AND ${memoryGraphNodes.label} = ${normalLabel}
-          AND (${memoryGraphNodes.projectKey} IS ${projectKey} OR ${memoryGraphNodes.projectKey} = ${projectKey ?? ""})`
+        and(
+          eq(memoryGraphNodes.userId, userId),
+          eq(memoryGraphNodes.label, normalLabel),
+          projectKeyClause
+        )
       )
       .limit(1)
       .all();
