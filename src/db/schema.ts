@@ -98,7 +98,12 @@ export const memories = sqliteTable("memories", {
   authorityType: text("authorityType", { enum: ["authoritative", "contributed"] }).notNull().default("contributed"),
   lastAccessedAt: integer("lastAccessedAt"),
   isQuarantined: integer("isQuarantined", { mode: "boolean" }).notNull().default(false),
-});
+  // Salted SHA-256 of the normalised tag list (salt = vaultId).
+  // Allows DB-layer tag pre-filtering before any decryption occurs.
+  blind_index_hash: text("blind_index_hash"),
+}, (t) => [
+  index("idx_memories_blind_index").on(t.blind_index_hash),
+]);
 
 // ── better-auth jwt plugin ─────────────────────────────────────────────────────
 

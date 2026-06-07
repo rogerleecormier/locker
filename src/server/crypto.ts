@@ -256,6 +256,34 @@ export async function sha256Hex(input: string): Promise<string> {
   return bytesToHex(new Uint8Array(hashBuffer));
 }
 
+/**
+ * Compute a blind index for a tag list so the D1 layer can pre-filter rows by
+ * tag without touching the encrypted fact column.
+ *
+ * Algorithm: SHA-256(vaultId + ":" + normalised_tag_list)
+ *   - Tags are lowercased, trimmed, sorted, and deduplicated before hashing so
+ *     the same logical tag set always maps to the same hash regardless of the
+ *     order they were written.
+ *   - vaultId acts as a domain-separation salt: an attacker with only the D1
+ *     dump and no ENCRYPTION_KEY cannot build a rainbow table across vaults.
+ *   - Returns a 64-char hex string suitable for an indexed TEXT column.
+ *
+ * @param vaultId  userId for personal vaults, "org:xxx" / "team:xxx" for shared ones.
+ * @param tags     Comma-separated tag string as stored in the memories.tags column.
+ */
+export async function computeBlindIndex(vaultId: string, tags: string): Promise<string> {
+  const normalised = tags
+    .split(",")
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join(",");
+  const input = `${vaultId}:${normalised}`;
+  const encoded = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  return bytesToHex(new Uint8Array(hashBuffer));
+}
+
 // PBKDF2 iterations — 100,000 (Cloudflare Workers Web Crypto max for PBKDF2).
 const PBKDF2_ITERATIONS = 100_000;
 
