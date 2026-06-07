@@ -67,11 +67,14 @@ export function MemoryCard({
     },
   });
 
+  const [dropdownOpen, setDropdownOpen] = React.useState(false);
+
   const archiveMutation = useMutation({
     mutationFn: () => archiveMemory({ data: { id: memory.id } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
       queryClient.invalidateQueries({ queryKey: ["memories-archived"] });
+      setDropdownOpen(false);
     },
     onError: (err: Error) => {
       alert("Failed to archive memory: " + err.message);
@@ -227,7 +230,7 @@ export function MemoryCard({
                 </Button>
               </div>
             ) : (
-              <DropdownMenu>
+              <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"

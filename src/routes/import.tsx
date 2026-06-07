@@ -550,6 +550,8 @@ function IngestPanel() {
             <Button
               onClick={() => {
                 if (templateSelection.length > 0) {
+                  setSelectedTemplate(null);
+                  setTemplateSelection(null);
                   const formatted = templateSelection.map(t => ({ fact: t.fact, category: t.category, tags: t.tags }));
                   compareImportedMemories({ data: { items: formatted } }).then(res => {
                     setComparisons(res);
@@ -567,8 +569,6 @@ function IngestPanel() {
                     });
                     setResolvedActions(initialActions);
                     setActiveTab("new");
-                    setSelectedTemplate(null);
-                    setTemplateSelection(null);
                   });
                 }
               }}
