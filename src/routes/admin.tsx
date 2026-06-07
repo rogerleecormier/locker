@@ -683,6 +683,130 @@ export const removeUserFromOrgAdmin = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+export const promoteToSiteAdminAdmin = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { userId: string } => {
+    const d = data as { userId: string };
+    return { userId: d.userId };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean; message: string }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+
+    // Note: In production, you'd want to update ADMIN_USER_ID via environment config or a database table.
+    // For now, this function grants business_comp plan and documents the promotion.
+    // The actual site admin designation depends on your deployment setup.
+
+    const db = drizzle(env.DB, { schema: { userPlans, featureOverrides, users } });
+
+    // Verify user exists
+    const userRows = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.id, data.userId))
+      .all();
+
+    if (userRows.length === 0) {
+      throw new Error("User not found.");
+    }
+
+    const userEmail = userRows[0].email;
+
+    // Grant business_comp plan (admin tier)
+    const existing = await db
+      .select()
+      .from(userPlans)
+      .where(eq(userPlans.userId, data.userId))
+      .all();
+
+    const now = Date.now();
+    if (existing.length > 0) {
+      await db
+        .update(userPlans)
+        .set({
+          plan: "business_comp",
+          planActivatedAt: now,
+          updatedAt: new Date(),
+        })
+        .where(eq(userPlans.userId, data.userId));
+    } else {
+      await db
+        .insert(userPlans)
+        .values({
+          userId: data.userId,
+          plan: "business_comp",
+          planActivatedAt: now,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+    }
+
+    // Revoke any conflicting feature overrides
+    await db
+      .delete(featureOverrides)
+      .where(eq(featureOverrides.userId, data.userId));
+
+    console.log(`[admin] Promoted user ${userEmail} (${data.userId}) to site admin tier`);
+
+    return {
+      success: true,
+      message: `Promoted ${userEmail} to Site Admin. Update your ADMIN_USER_ID environment variable to ${data.userId} to grant full admin access.`,
+    };
+  });
+
+export const removeAdminStatusAdmin = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { userId: string } => {
+    const d = data as { userId: string };
+    return { userId: d.userId };
+  })
+  .handler(async ({ data, context }): Promise<{ success: boolean; message: string }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireAdmin(env);
+
+    // Prevent self-removal of admin status
+    if (data.userId === user.id) {
+      throw new Error("Cannot remove admin status from yourself. Ask another admin to do it.");
+    }
+
+    const db = drizzle(env.DB, { schema: { userPlans, users } });
+
+    // Verify user exists
+    const userRows = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.id, data.userId))
+      .all();
+
+    if (userRows.length === 0) {
+      throw new Error("User not found.");
+    }
+
+    const userEmail = userRows[0].email;
+
+    // Downgrade from business_comp to free
+    const existing = await db
+      .select()
+      .from(userPlans)
+      .where(eq(userPlans.userId, data.userId))
+      .all();
+
+    if (existing.length > 0 && existing[0].plan === "business_comp") {
+      await db
+        .update(userPlans)
+        .set({
+          plan: "free",
+          updatedAt: new Date(),
+        })
+        .where(eq(userPlans.userId, data.userId));
+    }
+
+    console.log(`[admin] Removed admin status from user ${userEmail} (${data.userId})`);
+
+    return {
+      success: true,
+      message: `Removed admin status from ${userEmail}. Their plan is now Free.`,
+    };
+  });
+
 export type SystemSettingsData = {
   enableSignups: boolean;
   enableBusinessPlans: boolean;

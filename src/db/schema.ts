@@ -216,7 +216,7 @@ export const JIT_PROTECTED_TAG = "#confidential";
 export const organizations = sqliteTable("organizations", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  plan: text("plan").notNull().default("free"), // 'free' | 'pro' | 'enterprise'
+  plan: text("plan", { enum: ["free", "business", "business_comp", "enterprise"] }).notNull().default("free"),
   settings: text("settings").notNull().default("{}"), // JSON settings
   billingCustomerId: text("billingCustomerId"),
   billingSubscriptionId: text("billingSubscriptionId"),
@@ -273,7 +273,7 @@ export const tokenUsages = sqliteTable("token_usages", {
 
 export const orgQuotas = sqliteTable("org_quotas", {
   orgId: text("orgId").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
-  plan: text("plan").notNull().default("free"),
+  plan: text("plan", { enum: ["free", "business", "business_comp", "enterprise"] }).notNull().default("free"),
   monthlyMemories: integer("monthlyMemories").notNull().default(100),
   monthlyRecalls: integer("monthlyRecalls").notNull().default(1000),
   monthlyCommits: integer("monthlyCommits").notNull().default(500),
@@ -304,7 +304,7 @@ export type MemoryVersion = typeof memoryVersions.$inferSelect;
 // ── User Plans & Billing ──────────────────────────────────────────────────────
 export const userPlans = sqliteTable("user_plans", {
   userId: text("userId").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  plan: text("plan").notNull().default("free"),
+  plan: text("plan", { enum: ["free", "business", "business_comp", "enterprise"] }).notNull().default("free"),
   billingCustomerId: text("billingCustomerId"),
   billingSubscriptionId: text("billingSubscriptionId"),
   planActivatedAt: integer("planActivatedAt"),
@@ -391,7 +391,7 @@ export const rateLimitCounters = sqliteTable("rate_limit_counters", {
 export const featureOverrides = sqliteTable("feature_overrides", {
   id: text("id").primaryKey(),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  planId: text("planId").notNull(), // 'free' | 'business' | 'enterprise'
+  planId: text("planId", { enum: ["free", "business", "business_comp", "enterprise"] }).notNull(),
   reason: text("reason"), // e.g., 'admin', 'beta_access', 'custom_deal'
   grantedBy: text("grantedBy").notNull().references(() => users.id, { onDelete: "restrict" }),
   grantedAt: integer("grantedAt").notNull(),

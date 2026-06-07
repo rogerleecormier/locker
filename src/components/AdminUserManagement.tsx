@@ -11,6 +11,9 @@ import {
   resetUserPasswordAdmin,
   assignUserToOrgAdmin,
   removeUserFromOrgAdmin,
+  promoteToSiteAdminAdmin,
+  removeAdminStatusAdmin,
+  getAdminStatus,
   type UserDetails,
 } from "~/routes/admin";
 
@@ -104,8 +107,11 @@ function PlanBadge({ plan }: { plan: string }) {
 export function UserManagementSection() {
   const qc = useQueryClient();
 
+  const adminStatusQ = useQuery({ queryKey: ["admin-status"], queryFn: () => getAdminStatus() });
   const usersQ  = useQuery({ queryKey: ["admin-users-mgmt"], queryFn: () => listAllUsersAndDetails() });
   const orgsQ   = useQuery({ queryKey: ["admin-orgs-mgmt"],  queryFn: () => listAllOrgsAndQuotas() });
+
+  const currentUserId = adminStatusQ.data?.userId || null;
 
   // ── Filters & search ─────────────────────────────────────────────────────
   const [search,    setSearch]    = useState("");
@@ -121,6 +127,8 @@ export function UserManagementSection() {
     | { type: "password";user: UserDetails }
     | { type: "orgs";    user: UserDetails }
     | { type: "delete";  user: UserDetails }
+    | { type: "promote"; user: UserDetails }
+    | { type: "remove-admin"; user: UserDetails }
     | { type: "reset-success"; password: string }
     | null
   >(null);
@@ -193,6 +201,24 @@ export function UserManagementSection() {
   const removeOrgMut = useMutation({
     mutationFn: (d: { userId: string; orgId: string }) => removeUserFromOrgAdmin({ data: d }),
     onSuccess: () => { refetch(); orgsQ.refetch(); },
+    onError: (e: Error) => alert(e.message),
+  });
+  const promoteMut = useMutation({
+    mutationFn: (userId: string) => promoteToSiteAdminAdmin({ data: { userId } }),
+    onSuccess: (res) => {
+      refetch();
+      alert(`✅ ${res.message}`);
+      setModal(null);
+    },
+    onError: (e: Error) => alert(e.message),
+  });
+  const removeAdminMut = useMutation({
+    mutationFn: (userId: string) => removeAdminStatusAdmin({ data: { userId } }),
+    onSuccess: (res) => {
+      refetch();
+      alert(`✅ ${res.message}`);
+      setModal(null);
+    },
     onError: (e: Error) => alert(e.message),
   });
 
@@ -322,6 +348,8 @@ export function UserManagementSection() {
                       <ActionBtn label="Plan"  color="#22c55e" onClick={() => openPlan(u)} />
                       <ActionBtn label="🔑 PW"  color="#f59e0b" onClick={() => { setPwValue(""); setModal({ type: "password", user: u }); }} />
                       <ActionBtn label="Orgs"  color="#3b82f6" onClick={() => setModal({ type: "orgs", user: u })} />
+                      {u.id !== currentUserId && u.plan === "business_comp" && <ActionBtn label="⊗ Admin" color="#ef4444" onClick={() => setModal({ type: "remove-admin", user: u })} />}
+                      {u.id !== currentUserId && u.plan !== "business_comp" && <ActionBtn label="👑 Admin" color="#f59e0b" onClick={() => setModal({ type: "promote", user: u })} />}
                       <ActionBtn label="Delete" color="#ef4444" onClick={() => setModal({ type: "delete", user: u })} danger />
                     </div>
                   </td>
@@ -564,6 +592,68 @@ export function UserManagementSection() {
             </div>
 
             <button style={btnGhost} onClick={() => setModal(null)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Promote to Site Admin ── */}
+      {modal?.type === "promote" && (
+        <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) setModal(null); }}>
+          <div style={box}>
+            <ModalHeader title="Promote to Site Admin" onClose={() => setModal(null)} />
+            <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", fontSize: 13, color: "var(--text)" }}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>👑 {modal.user.name}</div>
+              <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
+                This will grant <strong>business_comp plan</strong> (full Business features, no billing) and set their role as a site administrator.
+              </div>
+            </div>
+            <div style={{ padding: "12px 16px", borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
+              <strong>Next steps:</strong>
+              <div style={{ marginTop: 8 }}>
+                After promotion, update your <code style={{ background: "var(--surface)", padding: "2px 4px", borderRadius: 3 }}>ADMIN_USER_ID</code> environment variable to:
+              </div>
+              <div style={{ marginTop: 6, padding: "8px 12px", background: "var(--surface)", borderRadius: 6, fontFamily: "monospace", fontSize: 11, color: "var(--accent)", wordBreak: "break-all" }}>
+                {modal.user.id}
+              </div>
+              <div style={{ marginTop: 8 }}>
+                Then redeploy your application to grant full admin access.
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button style={btnGhost} onClick={() => setModal(null)}>Cancel</button>
+              <button
+                style={{ ...btnPrimary, background: "#f59e0b" }}
+                disabled={promoteMut.isPending}
+                onClick={() => promoteMut.mutate(modal.user.id)}
+              >
+                {promoteMut.isPending ? "Promoting…" : "Promote to Admin"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Remove Admin Status ── */}
+      {modal?.type === "remove-admin" && (
+        <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) setModal(null); }}>
+          <div style={box}>
+            <ModalHeader title="Remove Admin Status" onClose={() => setModal(null)} />
+            <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", fontSize: 13, color: "var(--text)" }}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>⊗ {modal.user.name}</div>
+              <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
+                This will remove admin status from <strong>{modal.user.name}</strong> and downgrade their plan from <strong>Business (Comp)</strong> to <strong>Free</strong>.
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button style={btnGhost} onClick={() => setModal(null)}>Cancel</button>
+              <button
+                style={btnDanger}
+                disabled={removeAdminMut.isPending}
+                onClick={() => removeAdminMut.mutate(modal.user.id)}
+              >
+                {removeAdminMut.isPending ? "Removing…" : "Remove Admin Status"}
+              </button>
+            </div>
           </div>
         </div>
       )}
