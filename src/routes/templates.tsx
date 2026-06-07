@@ -296,6 +296,7 @@ function TemplatesPage() {
   // Import State
   const [importWorkspace, setImportWorkspace] = useState("personal");
   const [importVariables, setImportVariables] = useState<Record<string, string>>({});
+  const [importError, setImportError] = useState<string | null>(null);
 
   // Queries
   const { data: templates = [], isLoading } = useQuery({
@@ -318,12 +319,28 @@ function TemplatesPage() {
   });
 
   const importMut = useMutation({
-    mutationFn: (data: any) => addMemory({ data }),
-    onSuccess: () => {
+    mutationFn: async (data: any) => {
+      try {
+        console.log("[importMut] Starting import...");
+        const result = await addMemory({ data });
+        console.log("[importMut] Import completed");
+        return result;
+      } catch (err) {
+        console.error("[importMut] Error:", err);
+        throw err;
+      }
+    },
+    onSuccess: (result) => {
+      console.log("[importMut] Success:", result);
       queryClient.invalidateQueries({ queryKey: ["memories"] });
       setImportingTemplate(null);
       setImportVariables({});
+      setImportError(null);
       alert("Successfully imported template rules into your Memories!");
+    },
+    onError: (error) => {
+      console.error("[importMut] Error callback:", error);
+      setImportError((error as Error).message || "Failed to import template");
     },
   });
 
@@ -332,7 +349,9 @@ function TemplatesPage() {
   };
 
   const startImport = (tmpl: any) => {
+    console.log("[startImport] Opening import modal for:", tmpl.name);
     setImportingTemplate(tmpl);
+    setImportError(null);
     let payload: ParsedPayload = { rules: [] };
     try {
       payload = JSON.parse(tmpl.configPayload);
@@ -346,59 +365,66 @@ function TemplatesPage() {
     setImportWorkspace("personal");
   };
 
-  const handleImportSubmit = () => {
+  const handleImportSubmit = async () => {
     if (!importingTemplate) return;
-    let payload: ParsedPayload = { rules: [] };
+
     try {
-      payload = JSON.parse(importingTemplate.configPayload);
-    } catch (e) {}
+      setImportError(null);
 
-    const instantiatedRules = (payload.rules || []).map((rule) => {
-      let finalRule = rule;
-      Object.entries(importVariables).forEach(([k, v]) => {
-        finalRule = finalRule.replaceAll(`{{${k}}}`, v);
+      let payload: ParsedPayload = { rules: [] };
+      try {
+        payload = JSON.parse(importingTemplate.configPayload);
+      } catch (e) {}
+
+      const instantiatedRules = (payload.rules || []).map((rule) => {
+        let finalRule = rule;
+        Object.entries(importVariables).forEach(([k, v]) => {
+          finalRule = finalRule.replaceAll(`{{${k}}}`, v);
+        });
+        return finalRule;
       });
-      return finalRule;
-    });
 
-    let factText = `# ${importingTemplate.name}\n${importingTemplate.description}\n\n`;
-    if (importingTemplate.category === "stack") {
-      factText += `## Stack Preferences:\n`;
-      factText += `- Language: ${payload.language}\n`;
-      factText += `- Frontend: ${payload.frontend}\n`;
-      factText += `- Hosting: ${payload.hosting}\n`;
-      factText += `- Database: ${payload.database}\n`;
-      factText += `- ORM/DB Access: ${payload.orm}\n`;
-      factText += `- Authentication: ${payload.auth}\n`;
-      factText += `- Styling: ${payload.styling}\n`;
-      factText += `- State/Cache: ${payload.stateCache}\n`;
-      if (payload.componentLibrary) {
-        factText += `- Component Library: ${payload.componentLibrary}\n`;
+      let factText = `# ${importingTemplate.name}\n${importingTemplate.description}\n\n`;
+      if (importingTemplate.category === "stack") {
+        factText += `## Stack Preferences:\n`;
+        factText += `- Language: ${payload.language}\n`;
+        factText += `- Frontend: ${payload.frontend}\n`;
+        factText += `- Hosting: ${payload.hosting}\n`;
+        factText += `- Database: ${payload.database}\n`;
+        factText += `- ORM/DB Access: ${payload.orm}\n`;
+        factText += `- Authentication: ${payload.auth}\n`;
+        factText += `- Styling: ${payload.styling}\n`;
+        factText += `- State/Cache: ${payload.stateCache}\n`;
+        if (payload.componentLibrary) {
+          factText += `- Component Library: ${payload.componentLibrary}\n`;
+        }
+        if (payload.search && payload.search !== "None") {
+          factText += `- Full-Text Search: ${payload.search}\n`;
+        }
+        if (payload.vector && payload.vector !== "None") {
+          factText += `- Vector Database: ${payload.vector}\n`;
+        }
+        factText += `- Storage: ${payload.storage}\n`;
+        if (payload.bannedProviders && payload.bannedProviders.length > 0) {
+          factText += `- Banned Providers: ${payload.bannedProviders.join(", ")}\n`;
+        }
+        factText += `\n`;
       }
-      if (payload.search && payload.search !== "None") {
-        factText += `- Full-Text Search: ${payload.search}\n`;
-      }
-      if (payload.vector && payload.vector !== "None") {
-        factText += `- Vector Database: ${payload.vector}\n`;
-      }
-      factText += `- Storage: ${payload.storage}\n`;
-      if (payload.bannedProviders && payload.bannedProviders.length > 0) {
-        factText += `- Banned Providers: ${payload.bannedProviders.join(", ")}\n`;
-      }
-      factText += `\n`;
+
+      factText += `## Guidelines & Constraints:\n`;
+      factText += instantiatedRules.map((r) => `- ${r}`).join("\n");
+
+      const categoryForMemory = importingTemplate.category === "stack" ? "stack" : "rules";
+
+      importMut.mutate({
+        fact: factText,
+        category: categoryForMemory,
+        tags: `imported, template, ${importingTemplate.category}`,
+        projectKey: importWorkspace === "personal" ? undefined : importWorkspace,
+      });
+    } catch (err) {
+      setImportError((err as Error).message || "Failed to prepare import");
     }
-
-    factText += `## Guidelines & Constraints:\n`;
-    factText += instantiatedRules.map((r) => `- ${r}`).join("\n");
-
-    const categoryForMemory = importingTemplate.category === "stack" ? "stack" : "rules";
-
-    importMut.mutate({
-      fact: factText,
-      category: categoryForMemory,
-      tags: `imported, template, ${importingTemplate.category}`,
-      projectKey: importWorkspace === "personal" ? undefined : importWorkspace,
-    });
   };
 
   const totalByCategory = useMemo(() => {
@@ -619,6 +645,20 @@ function TemplatesPage() {
             </DialogHeader>
 
             <div className="py-4 flex flex-col gap-5 overflow-y-auto max-h-[60vh] pr-1 select-none">
+              {/* Error Display */}
+              {importError && (
+                <div className="p-3 bg-error/10 border border-error/20 rounded-lg text-error text-xs font-medium flex items-start justify-between gap-2 group">
+                  <p className="select-text flex-1">{importError}</p>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(importError)}
+                    className="shrink-0 px-2 py-1 rounded text-[10px] font-bold opacity-0 group-hover:opacity-100 bg-error/20 hover:bg-error/30 transition-all"
+                    title="Copy error"
+                  >
+                    Copy
+                  </button>
+                </div>
+              )}
+
               {/* Locker Workspace Destination */}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="import-workspace">Destination Workspace</Label>
@@ -686,7 +726,10 @@ function TemplatesPage() {
                 Cancel
               </Button>
               <Button
-                onClick={handleImportSubmit}
+                onClick={() => {
+                  console.log("[Button] Confirm Import clicked");
+                  handleImportSubmit();
+                }}
                 disabled={importMut.isPending}
               >
                 {importMut.isPending ? "Importing..." : "Confirm Import"}

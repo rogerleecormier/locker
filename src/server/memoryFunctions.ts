@@ -1090,7 +1090,7 @@ type AddMemoryInput = {
 
 const AddMemorySchema = z.object({
   fact: z.string().min(1, "fact is required").max(10000),
-  category: z.enum(["rules", "projects", "references"]),
+  category: z.enum(["rules", "projects", "references", "stack"]),
   tags: z.string().max(500).default("").transform((s) => s.trim()),
   projectKey: z.string().max(128).optional().transform((s) => s?.trim()),
   isLocked: z.boolean().optional(),
@@ -1101,8 +1101,10 @@ export const addMemory = createServerFn({ method: "POST" })
   .inputValidator((data) => AddMemorySchema.parse(data))
   .handler(async ({ data, context }): Promise<Memory> => {
     const { env } = (context as unknown as CFContext).cloudflare;
+    console.log("[addMemory] Starting...");
     const user = await requireSession(env);
     const db = getDb(env);
+    console.log("[addMemory] User authenticated");
 
     if (!user.id) {
       throw new Error("Unauthorized: userId is required for vector insert");
@@ -1113,21 +1115,26 @@ export const addMemory = createServerFn({ method: "POST" })
     if (!vaultAllowed) {
       throw new Error(`Forbidden: no access to vault scope '${data.projectKey ?? "personal"}'`);
     }
+    console.log("[addMemory] Vault access verified");
 
     await checkMemoryLimit(db, user.id);
+    console.log("[addMemory] Memory limit checked");
 
     const quotaCheck = await checkQuota(db, user.id, "session", "commit", orgId);
     if (!quotaCheck.allowed) {
       throw new Error(`Quota Exceeded: ${quotaCheck.reason}`);
     }
+    console.log("[addMemory] Quota checked");
 
     const sanitizedFact = sanitizeMemory(data.fact);
     if (!sanitizedFact) {
       throw new Error("Invalid memory fact: content was empty or contained adversarial instructions");
     }
+    console.log("[addMemory] Fact sanitized");
 
     // DLP Quarantine Check: flag if sensitive data is detected, but keep raw fact.
     const isQuarantined = containsSensitiveData(sanitizedFact);
+    console.log("[addMemory] DLP check complete, quarantined:", isQuarantined);
 
     const id = crypto.randomUUID();
     const timestamp = Date.now();
@@ -1135,11 +1142,14 @@ export const addMemory = createServerFn({ method: "POST" })
     const vaultId = (scopeType === "team" || scopeType === "organization") ? data.projectKey! : user.id;
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const encryptedFact = await encryptFact(sanitizedFact, vaultKey);
+    console.log("[addMemory] Fact encrypted");
 
+    console.log("[addMemory] Starting embedding and graph extraction...");
     const [embedding, graphExtraction] = await Promise.all([
       generateEmbedding(env.AI, sanitizedFact),
       extractGraphEntities(env.AI, sanitizedFact),
     ]);
+    console.log("[addMemory] Embedding and graph extraction complete");
     const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
     const tagsList = data.tags.split(",").map(t => t.trim()).filter(Boolean);

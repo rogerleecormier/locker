@@ -324,7 +324,7 @@ function IngestPanel() {
   }
 
   const executeMutation = useMutation({
-    mutationFn: ({ items, source }: { items: Array<{ fact: string; category: "rules" | "projects" | "references"; tags?: string; action: "import" | "skip" | "update" | "archive_and_import" | "exclude"; matchedMemoryId?: string }>; source: string }) =>
+    mutationFn: ({ items, source }: { items: Array<{ fact: string; category: "rules" | "projects" | "references"; tags: string; action: "import" | "skip" | "update" | "archive_and_import" | "exclude"; matchedMemoryId?: string }>; source: string }) =>
       executeImportActions({ data: { items, source } }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
@@ -332,18 +332,21 @@ function IngestPanel() {
       setComparisons(null);
       setResolvedActions({});
       setParseError(null);
-      
+
       const importedCount = result.imported;
       const skippedCount = result.skipped;
       const updatedCount = result.updated;
       const archivedCount = result.archived;
-      
+
       setImportResult({
         imported: importedCount + updatedCount,
         skipped: skippedCount,
         details: `Imported: ${importedCount} new. Updated: ${updatedCount}. Archived: ${archivedCount}. Skipped: ${skippedCount}.`
       });
       setTimeout(() => setImportResult(null), 10000);
+    },
+    onError: (error) => {
+      setParseError((error as Error).message || "Import failed");
     },
   });
 
@@ -392,15 +395,27 @@ function IngestPanel() {
 
   function handleImport() {
     if (!comparisons) return;
-    
-    const itemsToExecute = comparisons.map((item) => ({
-      fact: item.fact,
-      category: item.category,
-      tags: item.tags,
-      action: resolvedActions[item.tempId] || "exclude",
-      matchedMemoryId: item.matchedMemory?.id,
-    }));
-    
+
+    const itemsToExecute = comparisons
+      .filter(item => resolvedActions[item.tempId] !== "exclude")
+      .map((item) => {
+        const category = (item.category === "rules" || item.category === "projects" || item.category === "references")
+          ? item.category
+          : "references";
+        return {
+          fact: item.fact,
+          category,
+          tags: item.tags || "",
+          action: resolvedActions[item.tempId] || "exclude",
+          matchedMemoryId: item.matchedMemory?.id,
+        };
+      });
+
+    if (itemsToExecute.length === 0) {
+      alert("No items selected for import");
+      return;
+    }
+
     executeMutation.mutate({ items: itemsToExecute, source });
   }
 
