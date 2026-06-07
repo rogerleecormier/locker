@@ -98,6 +98,9 @@ export const memories = sqliteTable("memories", {
   authorityType: text("authorityType", { enum: ["authoritative", "contributed"] }).notNull().default("contributed"),
   lastAccessedAt: integer("lastAccessedAt"),
   isQuarantined: integer("isQuarantined", { mode: "boolean" }).notNull().default(false),
+  // 'ui' = written via ConfigBuilder UI, 'mcp' = written via store_config/update_config MCP tool.
+  // Only configs-category memories use this field; other categories leave it null.
+  sourceType: text("source_type", { enum: ["ui", "mcp"] }),
   // Salted SHA-256 of the normalised tag list (salt = vaultId).
   // Allows DB-layer tag pre-filtering before any decryption occurs.
   blind_index_hash: text("blind_index_hash"),
@@ -428,11 +431,31 @@ export const memoryTemplates = sqliteTable("memory_templates", {
   name: text("name").notNull(),
   description: text("description").notNull(),
   category: text("category", { enum: ["configs", "compliance", "project_management", "product_management", "devops", "devsecops", "cicd"] }).notNull().default("configs"),
-  configPayload: text("config_payload").notNull(), // JSON string tracking directories, rules, constraints
+  configPayload: text("config_payload").notNull(), // JSON: { techStack, codeStyle, ruleInclusions, systemPrompt, tags, bannedProviders }
+  // Structured fields added in migration 0032 (unified Agent Configs)
+  params: text("params"),            // JSON: Record<string, string> — arbitrary key/value parameters
+  variables: text("variables"),      // JSON: Array<{ key: string; description: string; default: string }>
+  systemProperties: text("system_properties"), // JSON: Record<string, string> — env/runtime system properties
+  workflowCategory: text("workflow_category", { enum: ["configs", "compliance", "project_management", "product_management", "devops", "devsecops", "cicd"] }),
   createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at"),
 });
 
 export type MemoryTemplate = typeof memoryTemplates.$inferSelect;
+
+// Structured config payload type used by ConfigBuilder UI
+export interface ConfigPayload {
+  systemPrompt?: string;
+  techStack?: Record<string, string>;
+  codeStyle?: Record<string, string>;
+  ruleInclusions?: string[];
+  tags?: string;
+  bannedProviders?: string[];
+  // Extended fields from unified Agent Configs
+  params?: Record<string, string>;
+  variables?: Array<{ key: string; description: string; default: string }>;
+  systemProperties?: Record<string, string>;
+}
 
 // ── Envelope Encryption — Vault Keys ─────────────────────────────────────────
 // Stores one wrapped Data Encryption Key (DEK) per vault.

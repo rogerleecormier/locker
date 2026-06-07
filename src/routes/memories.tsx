@@ -22,7 +22,7 @@ import type { Memory } from "~/db/schema";
 import { PageContainer } from "~/components/PageContainer";
 import { PageHeader } from "~/components/PageHeader";
 import { MemoryCard } from "~/components/MemoryCard";
-import { AgentConfigBuilder } from "~/components/AgentConfigBuilder";
+import { ConfigBuilder } from "~/components/ConfigBuilder";
 import { NewMemoryModal } from "~/components/NewMemoryModal";
 import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
@@ -1754,7 +1754,7 @@ function Dashboard() {
         )}
       </PageContainer>
 
-      <AgentConfigBuilder
+      <ConfigBuilder
         isOpen={showAgentConfigBuilder}
         onClose={() => setShowAgentConfigBuilder(false)}
       />

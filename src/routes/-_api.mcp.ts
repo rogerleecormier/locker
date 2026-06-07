@@ -2837,8 +2837,12 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
 
 `;
 
+      // Workspace ID header block injected into every compiled file (after boilerplate, before configs).
+      const workspaceId = resolvedProjectKey ?? claims.userId;
+      const workspaceHeader = `## ${workspaceId}\n\n`;
+
       const buildMarkdown = (header: string) =>
-        `${lockerBoilerplate}# ${header}\n\n${configSection}---\n*Generated at: ${generatedAt}*\n`;
+        `${lockerBoilerplate}# ${header}\n\n${workspaceHeader}${configSection}---\n*Generated at: ${generatedAt}*\n`;
 
       const outputConfigs: Array<{ targetPath: string; markdown: string }> = [
         {
@@ -2860,6 +2864,7 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
               name: "Workspace Agent Config",
               description: "Agent config synced from Locker configs vault",
               globs: ["*"],
+              workspaceId,
               lockerBoilerplate: lockerBoilerplate.trim(),
               rules: cursorRules,
             },
@@ -3252,6 +3257,7 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       scopeId,
       isQuarantined,
       blind_index_hash: configBlindIndexHash,
+      sourceType: "mcp",
     });
 
     await db.insert(memoryVersions).values({
@@ -3276,7 +3282,7 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       },
     }]);
 
-    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "store_config", memoryId: memId, ipAddress, userAgent, metadata: { name, projectKey, quarantined: isQuarantined } });
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "store_config", memoryId: memId, ipAddress, userAgent, metadata: { name, projectKey, quarantined: isQuarantined, sourceType: "mcp" } });
     await logTokenUsage(db, claims.tokenId, "commit", estimateEmbeddingTokens(sanitized));
 
     return mcpResult(id, {

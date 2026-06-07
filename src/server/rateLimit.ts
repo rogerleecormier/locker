@@ -40,9 +40,9 @@ async function checkD1(
   // Atomically increment and read the new count in one round-trip.
   const result = await db
     .prepare(
-      `INSERT INTO rate_limit_counters (key, window, count)
+      `INSERT INTO rate_limit_counters (key, "window", count)
        VALUES (?1, ?2, 1)
-       ON CONFLICT (key, window) DO UPDATE SET count = count + 1
+       ON CONFLICT (key, "window") DO UPDATE SET count = count + 1
        RETURNING count`,
     )
     .bind(key, window)
@@ -60,7 +60,7 @@ async function checkD1(
 export function pruneOldWindows(ctx: ExecutionContext, db: D1Database): void {
   const cutoff = Math.floor(Date.now() / 1000) - 120;
   ctx.waitUntil(
-    db.prepare("DELETE FROM rate_limit_counters WHERE window < ?1").bind(cutoff).run(),
+    db.prepare(`DELETE FROM rate_limit_counters WHERE "window" < ?1`).bind(cutoff).run(),
   );
 }
 

@@ -4758,11 +4758,22 @@ export const listMemoryTemplates = createServerFn({ method: "GET" })
 
 const TemplateCategoryEnum = z.enum(["configs", "compliance", "project_management", "product_management", "devops", "devsecops", "cicd"]);
 
+const TemplateVariableSchema = z.object({
+  key: z.string().min(1).max(64),
+  description: z.string().max(256).optional().default(""),
+  default: z.string().max(512).optional().default(""),
+});
+
 const MemoryTemplateSchema = z.object({
   name: z.string().min(1, "name is required").max(128).transform((s) => s.trim()),
   description: z.string().min(1, "description is required").max(512).transform((s) => s.trim()),
   category: TemplateCategoryEnum,
   configPayload: z.string().min(1, "configPayload is required").max(50000),
+  // Extended structured fields (migration 0032)
+  params: z.record(z.string(), z.string()).optional(),
+  variables: z.array(TemplateVariableSchema).optional(),
+  systemProperties: z.record(z.string(), z.string()).optional(),
+  workflowCategory: TemplateCategoryEnum.optional(),
 }).strict();
 
 export const createMemoryTemplate = createServerFn({ method: "POST" })
@@ -4772,15 +4783,20 @@ export const createMemoryTemplate = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = drizzle(env.DB);
     const id = crypto.randomUUID();
+    const now = Date.now();
     const result = await db.insert(memoryTemplates).values({
       id,
       name: data.name,
       description: data.description,
       category: data.category,
       configPayload: data.configPayload,
-      createdAt: Math.floor(Date.now() / 1000),
+      params: data.params ? JSON.stringify(data.params) : null,
+      variables: data.variables?.length ? JSON.stringify(data.variables) : null,
+      systemProperties: data.systemProperties ? JSON.stringify(data.systemProperties) : null,
+      workflowCategory: data.workflowCategory ?? data.category,
+      createdAt: Math.floor(now / 1000),
+      updatedAt: now,
     }).returning();
-    // Audit log: template created
     await logAudit(db, {
       orgId: null,
       userId: user.id,
@@ -4803,10 +4819,14 @@ export const updateMemoryTemplate = createServerFn({ method: "POST" })
         description: data.description,
         category: data.category,
         configPayload: data.configPayload,
+        params: data.params ? JSON.stringify(data.params) : null,
+        variables: data.variables?.length ? JSON.stringify(data.variables) : null,
+        systemProperties: data.systemProperties ? JSON.stringify(data.systemProperties) : null,
+        workflowCategory: data.workflowCategory ?? data.category,
+        updatedAt: Date.now(),
       })
       .where(eq(memoryTemplates.id, data.id))
       .returning();
-    // Audit log: template updated
     await logAudit(db, {
       orgId: null,
       userId: user.id,
@@ -4840,6 +4860,13 @@ const AgentConfigSchema = z.object({
   systemPrompt: z.string().max(50000).optional().default("").transform((s) => s.trim()),
   techStack: z.record(z.string(), z.string()).optional().default({}),
   codeStyle: z.record(z.string(), z.string()).optional().default({}),
+  params: z.record(z.string(), z.string()).optional().default({}),
+  variables: z.array(z.object({
+    key: z.string().min(1).max(64),
+    description: z.string().max(256).optional().default(""),
+    default: z.string().max(512).optional().default(""),
+  })).optional().default([]),
+  systemProperties: z.record(z.string(), z.string()).optional().default({}),
   ruleInclusions: z.array(z.string()).optional().default([]),
   tags: z.string().optional().default(""),
   projectKey: zProjectKeyFn,
@@ -4866,10 +4893,17 @@ export const saveAgentConfig = createServerFn({ method: "POST" })
     const styleLines = Object.entries(data.codeStyle).map(([k, v]) => `- ${k}: ${v}`).join("\n");
     const ruleLines = data.ruleInclusions.map((r) => `- ${r}`).join("\n");
 
+    const paramLines = Object.entries(data.params).map(([k, v]) => `- ${k}: ${v}`).join("\n");
+    const propLines = Object.entries(data.systemProperties).map(([k, v]) => `- ${k}: ${v}`).join("\n");
+    const varLines = data.variables.map((v) => `- ${v.key}${v.default ? ` (default: ${v.default})` : ""}${v.description ? ` — ${v.description}` : ""}`).join("\n");
+
     let factContent = `[config:${data.name}]`;
     if (data.systemPrompt) factContent += `\n\n## System Prompt\n${data.systemPrompt}`;
     if (stackLines) factContent += `\n\n## Tech Stack\n${stackLines}`;
     if (styleLines) factContent += `\n\n## Code Style\n${styleLines}`;
+    if (paramLines) factContent += `\n\n## Parameters\n${paramLines}`;
+    if (varLines) factContent += `\n\n## Variables\n${varLines}`;
+    if (propLines) factContent += `\n\n## System Properties\n${propLines}`;
     if (ruleLines) factContent += `\n\n## Rule Inclusions\n${ruleLines}`;
 
     const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : user.id;
@@ -4901,6 +4935,7 @@ export const saveAgentConfig = createServerFn({ method: "POST" })
       scopeType,
       scopeId,
       isQuarantined,
+      sourceType: "ui",
     });
 
     await db.insert(memoryVersions).values({
@@ -4923,15 +4958,24 @@ export const saveAgentConfig = createServerFn({ method: "POST" })
         codeStyle: data.codeStyle,
         ruleInclusions: data.ruleInclusions,
         tags: data.tags,
+        params: data.params,
+        variables: data.variables,
+        systemProperties: data.systemProperties,
       });
       templateId = crypto.randomUUID();
+      const now = Date.now();
       await db.insert(memoryTemplates).values({
         id: templateId,
         name: data.name,
         description: data.templateDescription || `Agent config: ${data.name}`,
         category: data.templateCategory,
         configPayload,
-        createdAt: Math.floor(Date.now() / 1000),
+        params: Object.keys(data.params).length ? JSON.stringify(data.params) : null,
+        variables: data.variables.length ? JSON.stringify(data.variables) : null,
+        systemProperties: Object.keys(data.systemProperties).length ? JSON.stringify(data.systemProperties) : null,
+        workflowCategory: data.templateCategory,
+        createdAt: Math.floor(now / 1000),
+        updatedAt: now,
       });
     }
 

@@ -49,16 +49,6 @@
       "name": "SE_EMAIL"
     }
   ],
-  "rate_limiters": [
-    {
-      "binding": "RATE_LIMITER",
-      "namespace_id": "1001",
-      "simple": {
-        "limit": 1000,
-        "period": 60
-      }
-    }
-  ],
   "triggers": {
     "crons": [
       "0 2 * * *"

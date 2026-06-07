@@ -11,7 +11,7 @@ import {
 import { PageContainer } from "~/components/PageContainer";
 import { PageHeader } from "~/components/PageHeader";
 import { TemplateRow } from "~/components/TemplateRow";
-import { TemplateFormModal } from "~/components/TemplateFormModal";
+import { ConfigBuilder } from "~/components/ConfigBuilder";
 import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
 import { Label, Input, Select } from "~/components/ui/input";
@@ -636,7 +636,8 @@ function TemplatesPage() {
 
       {/* CREATE/EDIT MODAL */}
       {(showCreateModal || editingTemplate) && (
-        <TemplateFormModal
+        <ConfigBuilder
+          mode="template"
           editingTemplate={editingTemplate}
           isOpen={showCreateModal || !!editingTemplate}
           onClose={() => {
