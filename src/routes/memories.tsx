@@ -17,12 +17,13 @@ import {
   listPersonalMemoryRecommendations,
   reviewMemoryRecommendation,
   unmaskMemory,
+  addMemory,
 } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 import { PageContainer } from "~/components/PageContainer";
 import { PageHeader } from "~/components/PageHeader";
 import { MemoryCard } from "~/components/MemoryCard";
-import { NewMemoryModal } from "~/components/NewMemoryModal";
+import { AgentConfigBuilder } from "~/components/AgentConfigBuilder";
 import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
 import { Label, Input, Textarea, Select } from "~/components/ui/input";
@@ -64,7 +65,7 @@ function exportToJson(memoriesToExport: Memory[]) {
 }
 
 function exportToMarkdown(memoriesToExport: Memory[]) {
-  const categories = ["rules", "projects", "references", "stack"];
+  const categories = ["rules", "projects", "references", "configs"];
   let doc = `# Locker Memory Vault Export\n\nGenerated on ${new Date().toLocaleString()}\n\n`;
 
   categories.forEach((cat) => {
@@ -117,12 +118,12 @@ function compileRulesContent({
   } else {
     const filtered = allMemories.filter((m) => {
       if (!m.isActive) return false;
-      if (m.category === "stack") return true;
+      if (m.category === "configs") return true;
       const tagsList = (m.tags || "").split(",").map((t: string) => t.trim().toLowerCase());
       return (
         tagsList.includes("architecture") ||
         tagsList.includes("baseline") ||
-        tagsList.includes("stack") ||
+        tagsList.includes("config") ||
         tagsList.includes("blueprint")
       );
     });
@@ -574,7 +575,7 @@ function MemoryDetailPanel({
               <option value="rules">Rules</option>
               <option value="projects">Projects</option>
               <option value="references">References</option>
-              <option value="stack">Stack</option>
+              <option value="configs">Configs</option>
             </Select>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -1170,7 +1171,24 @@ function MemoryTable({
 function Dashboard() {
   const queryClient = useQueryClient();
   const [projectKey, setProjectKey] = useState("personal");
-  const [showNewMemory, setShowNewMemory] = useState(false);
+  const [showNewMemoryForm, setShowNewMemoryForm] = useState(false);
+  const [showAgentConfigBuilder, setShowAgentConfigBuilder] = useState(false);
+
+  // Inline new memory form state
+  const [newFact, setNewFact] = useState("");
+  const [newCategory, setNewCategory] = useState<"rules" | "projects" | "references">("references");
+  const [newTags, setNewTags] = useState("");
+
+  const addMemoryMutation = useMutation({
+    mutationFn: () => addMemory({ data: { fact: newFact, category: newCategory, tags: newTags, projectKey: projectKey === "personal" ? undefined : projectKey } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      setNewFact("");
+      setNewTags("");
+      setNewCategory("references");
+      setShowNewMemoryForm(false);
+    },
+  });
   const [showHistoryModal, setShowHistoryModal] = useState<string | null>(null);
 
   // Filter conditions
@@ -1231,7 +1249,7 @@ function Dashboard() {
   });
 
   const totalByCategory = useMemo(() => {
-    const counts: Record<string, number> = { stack: 0, rules: 0, projects: 0, references: 0 };
+    const counts: Record<string, number> = { configs: 0, rules: 0, projects: 0, references: 0 };
     for (const m of memories) {
       if (counts[m.category] !== undefined) {
         counts[m.category]++;
@@ -1292,16 +1310,28 @@ function Dashboard() {
         count={memories.length}
         countLabel="entries"
         actions={
-          <Button
-            onClick={() => setShowNewMemory(true)}
-            className="flex items-center gap-1.5 h-9 font-bold"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            New Memory
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowAgentConfigBuilder(true)}
+              className="flex items-center gap-1.5 h-9 font-semibold"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+              </svg>
+              Build Agent Config
+            </Button>
+            <Button
+              onClick={() => setShowNewMemoryForm((v) => !v)}
+              className="flex items-center gap-1.5 h-9 font-bold"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              New Memory
+            </Button>
+          </div>
         }
       >
         <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-6">
@@ -1339,6 +1369,54 @@ function Dashboard() {
           )}
         </div>
       </PageHeader>
+
+      {/* Inline new memory form */}
+      {showNewMemoryForm && (
+        <div className="border-b border-border bg-surface2 px-6 py-5 animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="max-w-2xl flex flex-col gap-3">
+            <Textarea
+              rows={3}
+              value={newFact}
+              onChange={(e) => setNewFact(e.target.value)}
+              placeholder="e.g. Prefers using TypeScript strict mode with explicit return types on all functions…"
+              className="resize-none text-sm"
+              autoFocus
+            />
+            <div className="flex items-center gap-3 flex-wrap">
+              <Select
+                value={newCategory}
+                onChange={(e: any) => setNewCategory(e.target.value)}
+                className="h-8 text-xs w-36"
+              >
+                <option value="rules">Rules</option>
+                <option value="projects">Projects</option>
+                <option value="references">References</option>
+              </Select>
+              <Input
+                value={newTags}
+                onChange={(e) => setNewTags(e.target.value)}
+                placeholder="Tags (comma separated)"
+                className="h-8 text-xs flex-1 min-w-[160px]"
+              />
+              <div className="flex items-center gap-2 ml-auto">
+                <Button variant="ghost" className="h-8 text-xs" onClick={() => { setShowNewMemoryForm(false); setNewFact(""); setNewTags(""); }}>
+                  Cancel
+                </Button>
+                <Button
+                  className="h-8 text-xs font-bold"
+                  onClick={() => addMemoryMutation.mutate()}
+                  disabled={addMemoryMutation.isPending || !newFact.trim()}
+                >
+                  {addMemoryMutation.isPending ? "Saving…" : "Commit Memory"}
+                </Button>
+              </div>
+            </div>
+            {addMemoryMutation.isError && (
+              <p className="text-xs text-error">{(addMemoryMutation.error as any)?.message ?? "Failed to save"}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <PageContainer>
         {/* Pending Agent Action + Conflict Review Banner */}
@@ -1512,7 +1590,7 @@ function Dashboard() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {[
             { label: "Total", value: memories.length, color: "text", category: "" },
-            { label: "Stacks", value: totalByCategory.stack, color: "purple-400", category: "stack" },
+            { label: "Configs", value: totalByCategory.configs, color: "purple-400", category: "configs" },
             { label: "Rules", value: totalByCategory.rules, color: "indigo-400", category: "rules" },
             { label: "Projects", value: totalByCategory.projects, color: "emerald-400", category: "projects" },
             { label: "References", value: totalByCategory.references, color: "amber-400", category: "references" },
@@ -1638,12 +1716,9 @@ function Dashboard() {
         )}
       </PageContainer>
 
-      {/* New memory wizard modal */}
-      <NewMemoryModal
-        isOpen={showNewMemory}
-        onClose={() => setShowNewMemory(false)}
-        onSaved={invalidate}
-        projectKey={projectKey}
+      <AgentConfigBuilder
+        isOpen={showAgentConfigBuilder}
+        onClose={() => setShowAgentConfigBuilder(false)}
       />
 
       {/* History modal */}

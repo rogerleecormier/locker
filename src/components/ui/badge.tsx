@@ -2,7 +2,7 @@ import * as React from "react";
 import { cn } from "~/lib/utils";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "default" | "secondary" | "success" | "error" | "accent" | "stack" | "rules" | "projects" | "references" | "governance" | "devops" | "compliance" | "documentation";
+  variant?: "default" | "secondary" | "success" | "error" | "accent" | "configs" | "stack" | "rules" | "projects" | "references" | "governance" | "devops" | "devsecops" | "compliance" | "documentation" | "cicd" | "project_management" | "product_management";
 }
 
 function Badge({ className, variant = "default", ...props }: BadgeProps) {
@@ -16,16 +16,15 @@ function Badge({ className, variant = "default", ...props }: BadgeProps) {
           "border-success/30 bg-success/10 text-success": variant === "success",
           "border-error/30 bg-error/10 text-error": variant === "error",
           "border-accent/40 bg-accent-dim text-accent-hover": variant === "accent",
-          // Categories
-          "border-purple-500/40 bg-purple-500/10 text-purple-400": variant === "stack",
+          // Memory Categories
+          "border-purple-500/40 bg-purple-500/10 text-purple-400": variant === "configs" || variant === "stack",
           "border-indigo-500/40 bg-indigo-500/10 text-indigo-400": variant === "rules",
           "border-emerald-500/40 bg-emerald-500/10 text-emerald-400": variant === "projects" || variant === "governance",
           "border-amber-500/40 bg-amber-500/10 text-amber-400": variant === "references",
-          
           // Template Categories
-          "border-blue-500/40 bg-blue-500/10 text-blue-400": variant === "devops",
-          "border-red-500/40 bg-red-500/10 text-red-400": variant === "compliance",
-          "border-orange-500/40 bg-orange-500/10 text-orange-400": variant === "documentation",
+          "border-blue-500/40 bg-blue-500/10 text-blue-400": variant === "devops" || variant === "cicd",
+          "border-red-500/40 bg-red-500/10 text-red-400": variant === "compliance" || variant === "devsecops",
+          "border-orange-500/40 bg-orange-500/10 text-orange-400": variant === "documentation" || variant === "project_management" || variant === "product_management",
         },
         className
       )}

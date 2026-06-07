@@ -272,7 +272,7 @@ const AGENT_CATEGORY_DEFS = [
   { key: "rules", label: "rules", desc: "Behavioral directives and AI instructions" },
   { key: "projects", label: "projects", desc: "Active work, tasks, in-progress features" },
   { key: "references", label: "references", desc: "Technical references and documentation notes" },
-  { key: "stack", label: "stack", desc: "Architecture, dependencies, framework choices" },
+  { key: "configs", label: "configs", desc: "Agent configs, LLM parameters, architecture blueprints (isolated — grant explicitly)" },
 ] as const;
 
 export function NewTokenModal({ onClose, onCreate }: {
@@ -291,7 +291,7 @@ export function NewTokenModal({ onClose, onCreate }: {
   const [timeLeft, setTimeLeft] = useState(300);
   const [tokenType, setTokenType] = useState<"human" | "agent">("human");
   const [agentContext, setAgentContext] = useState("");
-  const [allowedCategories, setAllowedCategories] = useState<string[]>(["rules", "projects", "references", "stack"]);
+  const [allowedCategories, setAllowedCategories] = useState<string[]>(["rules", "projects", "references"]);
   const [allowCredentials, setAllowCredentials] = useState(false);
 
   const { data: workspacesList = [] } = useQuery({ queryKey: ["workspaces"], queryFn: () => getUserWorkspaces() });

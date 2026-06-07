@@ -83,7 +83,7 @@ const ACTION_META: Record<string, { label: string; icon: string; color: string; 
   revert_version:           { label: "Revert Version",          icon: "↩️", color: "#fbbf24", bg: "rgba(251,191,36,0.1)" },
   approve_recommendation:   { label: "Approve Recommendation",  icon: "✅", color: "#34d399", bg: "rgba(52,211,153,0.1)" },
   reject_recommendation:    { label: "Reject Recommendation",   icon: "❌", color: "#f87171", bg: "rgba(248,113,113,0.1)" },
-  sync_workspace_agent_configs: { label: "Export Agent Config", icon: "📤", color: "#c084fc", bg: "rgba(192,132,252,0.1)" },
+  sync_agent_configs: { label: "Sync Agent Configs", icon: "📤", color: "#c084fc", bg: "rgba(192,132,252,0.1)" },
   create_template:          { label: "Create Template",         icon: "🧩", color: "#34d399", bg: "rgba(52,211,153,0.1)" },
   update_template:          { label: "Update Template",         icon: "🔧", color: "#fbbf24", bg: "rgba(251,191,36,0.1)" },
   delete_template:          { label: "Delete Template",         icon: "🗑️", color: "#f87171", bg: "rgba(248,113,113,0.1)" },
@@ -243,7 +243,7 @@ const ALL_ACTIONS = [
   "commit_memory", "update_memory", "delete_memory",
   "import_memories", "revert_version",
   "approve_recommendation", "reject_recommendation",
-  "sync_workspace_agent_configs",
+  "sync_agent_configs",
   "create_template", "update_template", "delete_template",
   "list_accessible_scopes",
 ];

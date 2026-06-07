@@ -81,7 +81,7 @@ export const memories = sqliteTable("memories", {
   id: text("id").primaryKey(),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   fact: text("fact").notNull(),
-  category: text("category", { enum: ["rules", "projects", "references", "stack"] }).notNull(),
+  category: text("category", { enum: ["rules", "projects", "references", "configs"] }).notNull(),
   tags: text("tags").notNull().default(""),
   timestamp: integer("timestamp").notNull(),
   isActive: integer("isActive", { mode: "boolean" }).notNull().default(true),
@@ -189,7 +189,7 @@ export const MCP_PERM_UPDATE = 1 << 2;   // bit 2
 export const MCP_PERM_DELETE = 1 << 3;   // bit 3
 
 // ── ABAC types for agent tokens ───────────────────────────────────────────────
-export type MemoryCategory = "rules" | "projects" | "references" | "stack";
+export type MemoryCategory = "rules" | "projects" | "references" | "configs";
 
 export type AgentPolicy = {
   agentContext: string;              // human-readable label for the agent, max 128 chars
@@ -204,10 +204,10 @@ export type AgentPolicy = {
   allowCredentials: boolean;         // whether retrieve/store/delete_credential are permitted
 };
 
-// All four current categories are technical — none are sensitive-by-default.
+// "configs" is sensitive-by-default — agent tokens are denied access unless explicitly allowed.
 // Add future categories like "financial" or "legal" here when introduced.
-export const ABAC_SENSITIVE_CATEGORIES: MemoryCategory[] = [];
-export const ABAC_DEFAULT_ALLOW: MemoryCategory[] = ["rules", "projects", "references", "stack"];
+export const ABAC_SENSITIVE_CATEGORIES: MemoryCategory[] = ["configs"];
+export const ABAC_DEFAULT_ALLOW: MemoryCategory[] = ["rules", "projects", "references"];
 
 // Tag that triggers JIT approval rather than a hard ABAC deny.
 export const JIT_PROTECTED_TAG = "#confidential";
@@ -284,7 +284,7 @@ export const memoryVersions = sqliteTable("memory_versions", {
   id: text("id").primaryKey(),
   memoryId: text("memoryId").notNull().references(() => memories.id, { onDelete: "cascade" }),
   fact: text("fact").notNull(),
-  category: text("category", { enum: ["rules", "projects", "references", "stack"] }).notNull(),
+  category: text("category", { enum: ["rules", "projects", "references", "configs"] }).notNull(),
   tags: text("tags").notNull(),
   changedBy: text("changedBy").notNull(), // userId or 'system'
   changeReason: text("changeReason"), // 'created', 'updated', 'contradiction (archived)', etc.
@@ -347,7 +347,7 @@ export const memoryRecommendations = sqliteTable("memory_recommendations", {
   orgId: text("orgId").references(() => organizations.id, { onDelete: "cascade" }),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   fact: text("fact").notNull(),
-  category: text("category", { enum: ["rules", "projects", "references", "stack"] }).notNull(),
+  category: text("category", { enum: ["rules", "projects", "references", "configs"] }).notNull(),
   tags: text("tags").notNull().default(""),
   projectKey: text("projectKey"),
   scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
@@ -416,7 +416,7 @@ export const memoryTemplates = sqliteTable("memory_templates", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description").notNull(),
-  category: text("category", { enum: ["stack", "governance", "devops", "compliance", "documentation"] }).notNull().default("stack"),
+  category: text("category", { enum: ["configs", "compliance", "project_management", "product_management", "devops", "devsecops", "cicd"] }).notNull().default("configs"),
   configPayload: text("config_payload").notNull(), // JSON string tracking directories, rules, constraints
   createdAt: integer("created_at").notNull(),
 });

@@ -1090,7 +1090,7 @@ type AddMemoryInput = {
 
 const AddMemorySchema = z.object({
   fact: z.string().min(1, "fact is required").max(10000),
-  category: z.enum(["rules", "projects", "references", "stack"]),
+  category: z.enum(["rules", "projects", "references"]),
   tags: z.string().max(500).default("").transform((s) => s.trim()),
   projectKey: z.string().max(128).optional().transform((s) => s?.trim()),
   isLocked: z.boolean().optional(),
@@ -2937,7 +2937,7 @@ export const listApiTokens = createServerFn({ method: "GET" }).handler(
 );
  
 
-const AgentCategoryEnum = z.enum(["rules", "projects", "references", "stack"]);
+const AgentCategoryEnum = z.enum(["rules", "projects", "references", "configs"]);
 
 const CreateApiTokenSchema = z.object({
   name: z.string().min(1, "name is required").max(64).transform((s) => s.trim()),
@@ -4738,7 +4738,7 @@ export const listMemoryTemplates = createServerFn({ method: "GET" })
     return db.select().from(memoryTemplates).all();
   });
 
-const TemplateCategoryEnum = z.enum(["stack", "governance", "devops", "compliance", "documentation"]);
+const TemplateCategoryEnum = z.enum(["configs", "compliance", "project_management", "product_management", "devops", "devsecops", "cicd"]);
 
 const MemoryTemplateSchema = z.object({
   name: z.string().min(1, "name is required").max(128).transform((s) => s.trim()),
@@ -4815,6 +4815,119 @@ export const deleteMemoryTemplate = createServerFn({ method: "POST" })
       metadata: { templateId: data.id },
     });
     return { success: true };
+  });
+
+const AgentConfigSchema = z.object({
+  name: z.string().min(1).max(128).transform((s) => s.trim()),
+  systemPrompt: z.string().max(50000).optional().default("").transform((s) => s.trim()),
+  techStack: z.record(z.string()).optional().default({}),
+  codeStyle: z.record(z.string()).optional().default({}),
+  ruleInclusions: z.array(z.string()).optional().default([]),
+  tags: z.string().optional().default(""),
+  projectKey: z.string().optional(),
+  exportAsTemplate: z.boolean().optional().default(false),
+  templateCategory: TemplateCategoryEnum.optional().default("configs"),
+  templateDescription: z.string().max(512).optional().default(""),
+});
+
+export const saveAgentConfig = createServerFn({ method: "POST" })
+  .inputValidator((data) => AgentConfigSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB);
+
+    const projectKey = data.projectKey || null;
+    const { allowed: vaultAllowed } = await verifyVaultAccess(db, user.id, projectKey);
+    if (!vaultAllowed) {
+      throw new Error(`Forbidden: no access to vault scope '${projectKey}'`);
+    }
+
+    // Build the config fact content.
+    const stackLines = Object.entries(data.techStack).map(([k, v]) => `- ${k}: ${v}`).join("\n");
+    const styleLines = Object.entries(data.codeStyle).map(([k, v]) => `- ${k}: ${v}`).join("\n");
+    const ruleLines = data.ruleInclusions.map((r) => `- ${r}`).join("\n");
+
+    let factContent = `[config:${data.name}]`;
+    if (data.systemPrompt) factContent += `\n\n## System Prompt\n${data.systemPrompt}`;
+    if (stackLines) factContent += `\n\n## Tech Stack\n${stackLines}`;
+    if (styleLines) factContent += `\n\n## Code Style\n${styleLines}`;
+    if (ruleLines) factContent += `\n\n## Rule Inclusions\n${ruleLines}`;
+
+    const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : user.id;
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const encryptedFact = await encrypt(factContent, vaultKey);
+
+    const tagsList = data.tags.split(",").map((t) => t.trim()).filter(Boolean);
+    if (!tagsList.includes("config")) tagsList.push("config");
+    const finalTags = tagsList.join(", ");
+
+    let scopeType: "personal" | "organization" | "team" = "personal";
+    let scopeId: string | null = null;
+    if (projectKey?.startsWith("org:")) { scopeType = "organization"; scopeId = projectKey.slice(4); }
+    else if (projectKey?.startsWith("team:")) { scopeType = "team"; scopeId = projectKey.slice(5); }
+
+    const memId = crypto.randomUUID();
+    const timestamp = Date.now();
+    const isQuarantined = containsSensitiveData(factContent);
+
+    await db.insert(memories).values({
+      id: memId,
+      userId: user.id,
+      name: data.name,
+      fact: encryptedFact,
+      category: "configs",
+      tags: finalTags,
+      timestamp,
+      isActive: true,
+      projectKey: projectKey,
+      scopeType,
+      scopeId,
+      isQuarantined,
+    });
+
+    await db.insert(memoryVersions).values({
+      id: crypto.randomUUID(),
+      memoryId: memId,
+      fact: encryptedFact,
+      category: "configs",
+      tags: finalTags,
+      changedBy: user.id,
+      changeReason: "created",
+      timestamp,
+    });
+
+    // Optionally also save as a reusable template.
+    let templateId: string | null = null;
+    if (data.exportAsTemplate) {
+      const configPayload = JSON.stringify({
+        systemPrompt: data.systemPrompt,
+        techStack: data.techStack,
+        codeStyle: data.codeStyle,
+        ruleInclusions: data.ruleInclusions,
+        tags: data.tags,
+      });
+      templateId = crypto.randomUUID();
+      await db.insert(memoryTemplates).values({
+        id: templateId,
+        name: data.name,
+        description: data.templateDescription || `Agent config: ${data.name}`,
+        category: data.templateCategory,
+        configPayload,
+        createdAt: Math.floor(Date.now() / 1000),
+      });
+    }
+
+    await logAudit(db, {
+      orgId: null,
+      userId: user.id,
+      tokenId: "session",
+      action: "save_agent_config",
+      memoryId: memId,
+      metadata: { name: data.name, projectKey, exportAsTemplate: data.exportAsTemplate, templateId },
+    });
+
+    return { success: true, memoryId: memId, templateId };
   });
 
 const SetPasscodeSchema = z.object({

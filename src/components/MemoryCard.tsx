@@ -260,8 +260,8 @@ export function MemoryCard({
                   )}
                   <DropdownMenuItem
                     onClick={() => onExport(memory)}
-                    disabled={memory.category !== "stack"}
-                    className={memory.category !== "stack" ? "opacity-50 cursor-not-allowed" : ""}
+                    disabled={memory.category !== "configs"}
+                    className={memory.category !== "configs" ? "opacity-50 cursor-not-allowed" : ""}
                   >
                     Export
                   </DropdownMenuItem>

@@ -13,15 +13,17 @@ interface TemplateFormModalProps {
 }
 
 const CATEGORY_OPTIONS = [
-  { value: "governance", label: "Governance" },
-  { value: "stack", label: "Stack Blueprint" },
-  { value: "devops", label: "DevOps & CI" },
+  { value: "configs", label: "Agent Config" },
   { value: "compliance", label: "Compliance & Security" },
-  { value: "documentation", label: "Technical Docs" },
+  { value: "project_management", label: "Project Management" },
+  { value: "product_management", label: "Product Management" },
+  { value: "devops", label: "DevOps & CI" },
+  { value: "devsecops", label: "DevSecOps" },
+  { value: "cicd", label: "CI/CD Pipeline" },
 ];
 
 // Step definitions per category type
-const STACK_STEPS = ["Metadata", "Core Tech", "Infrastructure", "Additional Specs", "Rules"];
+const CONFIGS_STEPS = ["Metadata", "Core Tech", "Infrastructure", "Additional Specs", "Rules"];
 const OTHER_STEPS = ["Metadata", "Variables", "Rules"];
 
 function StackPillField({ label, options, value, onChange }: { label: string; options: string[]; value: string; onChange: (v: string) => void }) {
@@ -57,7 +59,7 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
   // Step 1: Metadata
   const [formName, setFormName] = React.useState("");
   const [formDescription, setFormDescription] = React.useState("");
-  const [formCategory, setFormCategory] = React.useState("governance");
+  const [formCategory, setFormCategory] = React.useState("configs");
 
   // Non-stack: Variables
   const [variables, setVariables] = React.useState<Array<{ key: string; description: string; default: string }>>([]);
@@ -84,8 +86,8 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
   const [rules, setRules] = React.useState<string[]>([]);
   const [newRule, setNewRule] = React.useState("");
 
-  const isStack = formCategory === "stack";
-  const steps = isStack ? STACK_STEPS : OTHER_STEPS;
+  const isStack = formCategory === "configs";
+  const steps = isStack ? CONFIGS_STEPS : OTHER_STEPS;
   const totalSteps = steps.length;
 
   React.useEffect(() => {
@@ -97,7 +99,7 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
       try {
         const payload = JSON.parse(editingTemplate.configPayload);
         setRules(payload.rules || []);
-        if (editingTemplate.category === "stack") {
+        if (editingTemplate.category === "configs") {
           setStackLanguage(payload.language || DEFAULT_STACK_PREFERENCES.language);
           setStackFrontend(payload.frontend || DEFAULT_STACK_PREFERENCES.frontend);
           setStackHosting(payload.hosting || DEFAULT_STACK_PREFERENCES.hosting);
@@ -120,7 +122,7 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
     } else {
       setFormName("");
       setFormDescription("");
-      setFormCategory("governance");
+      setFormCategory("configs");
       setRules([]);
       setVariables([]);
       setBannedProviders(DEFAULT_STACK_PREFERENCES.bannedProviders);

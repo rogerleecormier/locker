@@ -1539,9 +1539,8 @@ npx locker-sync sync --format cursor --project my-project`}</pre>
                   <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>JSON Arguments</span>
                   <button
                     onClick={() => handleCopy(`{
-  "name": "sync_workspace_agent_configs",
+  "name": "sync_agent_configs",
   "arguments": {
-    "formatType": "claude", // or cursor, copilot, gemini, agents, antigravity
     "projectKey": "locker"
   }
 }`)}
@@ -1574,9 +1573,8 @@ npx locker-sync sync --format cursor --project my-project`}</pre>
                   color: "var(--text)",
                   overflowX: "auto"
                 }}>{`{
-  "name": "sync_workspace_agent_configs",
+  "name": "sync_agent_configs",
   "arguments": {
-    "formatType": "claude", // or cursor, copilot, gemini, agents, antigravity
     "projectKey": "locker"
   }
 }`}</pre>
@@ -2031,7 +2029,7 @@ npx locker-sync sync --format cursor --project my-project`}</pre>
                   Prefer the CLI? Use <code style={{ color: "var(--accent)" }}>npx locker-sync sync</code>
                 </p>
                 <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0", lineHeight: 1.6 }}>
-                  The <strong>locker-sync</strong> CLI is the recommended developer workflow. It wraps this MCP tool in a zero-install command that resolves your API token, calls <code>sync_workspace_agent_configs</code>, and writes the rules file to disk — all in one step. Perfect for pre-commit hooks.
+                  The <strong>locker-sync</strong> CLI is the recommended developer workflow. It wraps this MCP tool in a zero-install command that resolves your API token, calls <code>sync_agent_configs</code>, and writes all rules files to disk — all in one step. Perfect for pre-commit hooks.
                 </p>
                 <pre style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: 10, margin: 0, fontFamily: "monospace", fontSize: 11, color: "var(--text)", overflowX: "auto" }}>{`# Sync .cursorrules (recommended for developers)
 npx locker-sync sync --format cursor --project my-project
@@ -2043,7 +2041,7 @@ npx locker-sync sync --format claude --dry-run`}</pre>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {ALL_TOOLS.filter((t) =>
-                ["sync_workspace_agent_configs"].includes(t.name)
+                ["sync_agent_configs"].includes(t.name)
               ).map((tool) => (
                 <details key={tool.name} style={{
                   background: "var(--surface2)",

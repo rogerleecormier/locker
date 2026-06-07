@@ -246,14 +246,14 @@ function MemoryTemplatesMockup() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const templates = [
-    { id: "ts-defaults",  name: "TypeScript Defaults",      category: "stack",      rules: 5, vars: 0, desc: "Strict mode, null checks, interface conventions." },
-    { id: "code-review",  name: "Code Review Checklist",    category: "stack",      rules: 6, vars: 0, desc: "Security vulnerabilities, test coverage, error handling." },
+    { id: "ts-defaults",  name: "TypeScript Defaults",      category: "configs",    rules: 5, vars: 0, desc: "Strict mode, null checks, interface conventions." },
+    { id: "code-review",  name: "Code Review Checklist",    category: "configs",    rules: 6, vars: 0, desc: "Security vulnerabilities, test coverage, error handling." },
     { id: "gha-deploy",   name: "GitHub Actions CI/CD",     category: "devops",     rules: 4, vars: 2, desc: "Pipeline caching, lockfile checks, edge deployments." },
     { id: "soc2",         name: "SOC2 Compliance Baseline", category: "compliance", rules: 8, vars: 0, desc: "Audit logging, access controls, token lifetimes." },
   ];
 
   const categoryColor: Record<string, string> = {
-    stack: "#22c55e", devops: "#3b82f6", compliance: "#f59e0b", governance: "#a855f7", documentation: "#06b6d4",
+    configs: "#22c55e", devops: "#3b82f6", compliance: "#f59e0b", governance: "#a855f7", documentation: "#06b6d4",
   };
 
   const handleImport = (id: string) => {
@@ -359,7 +359,7 @@ function ReviewQueueMockup() {
     ));
   };
 
-  const categoryColor: Record<string, string> = { rules: "#a855f7", projects: "#3b82f6", references: "#f59e0b", stack: "#22c55e" };
+  const categoryColor: Record<string, string> = { rules: "#a855f7", projects: "#3b82f6", references: "#f59e0b", configs: "#22c55e" };
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", textAlign: "left" }}>

@@ -993,7 +993,7 @@ describe("Fake-DB integration harness", () => {
   });
 
   it("extracts injectedFacts from metadata", async () => {
-    const facts = [{ id: "f1", fact: "Prefer Drizzle ORM", category: "stack", tags: "#orm", score: 0.85 }];
+    const facts = [{ id: "f1", fact: "Prefer Drizzle ORM", category: "configs", tags: "#orm", score: 0.85 }];
     const rows = [makeFakeAuditRow({ metadata: JSON.stringify({ injectedFacts: facts }) })];
     const result = await runGetAgentActivityLogs(rows);
     expect(result[0].injectedFacts).toHaveLength(1);

@@ -35,6 +35,11 @@ function normalizeCategory(raw: string | undefined): "rules" | "projects" | "ref
   return "references";
 }
 
+// Thrown to signal that a caller attempted to use a generic memory tool on the configs category.
+function configsCategoryForbidden(id: unknown): Response {
+  return mcpError(id, -32003, "Forbidden: The 'configs' category cannot be mutated via generic memory tools. Use 'store_config' or 'update_config'.");
+}
+
 function extractText(result: unknown): string {
   if (typeof result === "string") return result;
   if (result && typeof result === "object") {
@@ -74,7 +79,7 @@ async function packPrompt(ai: Ai, query: string, items: PackableMemory[]): Promi
     "- Merge related facts into concise statements.\n" +
     "- Preserve all concrete details: file paths, URLs, identifiers, version numbers, decisions, constraints.\n" +
     "- Prioritise [authoritative] items over contributed ones when they conflict.\n" +
-    "- Format the result as a compact bulleted list grouped by category (rules, projects, references, stack).\n" +
+    "- Format the result as a compact bulleted list grouped by category (rules, projects, references, configs).\n" +
     "- Do NOT add commentary, preamble, or explanation — output only the compressed prompt.\n" +
     "- Keep the output under 800 tokens.";
 
@@ -125,7 +130,7 @@ export const ALL_TOOLS = [
       properties: {
         query: { type: "string", description: "Natural-language search query." },
         topK: { type: "number", description: "Max results (default: 5)." },
-        category: { type: "string", enum: ["rules", "projects", "references", "stack"], description: "Optional category filter." },
+        category: { type: "string", enum: ["rules", "projects", "references", "configs"], description: "Optional category filter." },
         tag: { type: "string", description: "Optional tag filter (case-insensitive)." },
         keyword: { type: "string", description: "Optional exact substring filter (case-insensitive)." },
         projectKey: { type: "string", description: "Optional project workspace key (e.g. repository hash or folder slug)." },
@@ -141,7 +146,7 @@ export const ALL_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        category: { type: "string", enum: ["rules", "projects", "references", "stack"], description: "Filter by category." },
+        category: { type: "string", enum: ["rules", "projects", "references", "configs"], description: "Filter by category." },
         tag: { type: "string", description: "Filter by tag (case-insensitive)." },
         keyword: { type: "string", description: "Case-insensitive substring search within facts." },
         limit: { type: "number", description: "Max results to return (default: 50, max: 200)." },
@@ -167,7 +172,7 @@ export const ALL_TOOLS = [
       type: "object",
       properties: {
         fact: { type: "string", description: "The factual statement to store." },
-        category: { type: "string", enum: ["rules", "projects", "references", "stack"] },
+        category: { type: "string", enum: ["rules", "projects", "references"] },
         tags: { type: "string", description: "Comma-separated keywords." },
         source: { type: "string", description: "The source chatbot or origin (e.g. chatgpt, claude). Defaults to mcp." },
         projectKey: { type: "string", description: "Optional project workspace key to scope this memory." },
@@ -183,7 +188,7 @@ export const ALL_TOOLS = [
       properties: {
         id: { type: "string", description: "The unique ID of the memory to update." },
         fact: { type: "string", description: "The updated factual statement." },
-        category: { type: "string", enum: ["rules", "projects", "references", "stack"], description: "Optional updated category." },
+        category: { type: "string", enum: ["rules", "projects", "references"], description: "Optional updated category." },
         tags: { type: "string", description: "Optional updated comma-separated keywords/tags." },
         confirm: { type: "boolean", description: "Must be explicitly set to true by human-in-the-loop action." },
         totpCode: { type: "string", description: "6-digit Authenticator TOTP code (required if 2FA is enabled)." },
@@ -207,15 +212,14 @@ export const ALL_TOOLS = [
     },
   },
   {
-    name: "sync_workspace_agent_configs",
-    description: "Syncs workspace agent configuration instructions. Compiles all active stack and architecture memories for the project into a polished configuration file (CLAUDE.md, .cursorrules, .github/copilot-instructions.md, GEMINI.md, AGENTS.md, or .agents/rules/rules.md), returning the content and target path. IMPORTANT: The downstream developer agent is authorized and expected to physically write this returned string contents directly to disk at the specified relative target path upon tool execution completion.",
+    name: "sync_agent_configs",
+    description: "Syncs workspace agent configuration files. Compiles all active configs-category memories for the project and writes them to ALL agent config formats at once: CLAUDE.md, GEMINI.md, AGENTS.md (OpenAI Codex), .cursorrules, .github/copilot-instructions.md, and .agents/rules/rules.md. Returns an array of { markdown, targetPath } objects — one per format. IMPORTANT: Do NOT call recall_context, search_memories, or any other memory tool before calling this tool. This tool is fully self-contained and fetches only the relevant configs memories itself. The downstream developer agent MUST write each returned markdown string to disk at its targetPath using OVERWRITE mode — if the file already exists it must be fully replaced, never appended to. Create any missing parent directories as needed.",
     inputSchema: {
       type: "object",
       properties: {
         projectKey: { type: "string", description: "The project workspace key." },
-        formatType: { type: "string", enum: ["claude", "cursor", "copilot", "gemini", "agents", "antigravity"], description: "Target instruction format (claude, cursor, copilot, gemini, agents, antigravity)." },
       },
-      required: ["projectKey", "formatType"],
+      required: ["projectKey"],
       additionalProperties: false,
     },
   },
@@ -264,6 +268,35 @@ export const ALL_TOOLS = [
         projectKey: { type: "string", description: "Optional workspace project key scope." },
       },
       required: ["name"],
+    },
+  },
+  {
+    name: "store_config",
+    description: "Store an agent configuration in the vault under the protected 'configs' category. Content is envelope-encrypted at rest. Use this instead of commit_memory when the payload is an agent system prompt, LLM parameter set, or architectural config blueprint.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "A unique name for this config (e.g. 'claude-code-baseline')." },
+        content: { type: "string", description: "The raw config content (system prompt, parameter JSON, etc.)." },
+        projectKey: { type: "string", description: "Optional workspace project key to scope this config." },
+        tags: { type: "string", description: "Optional comma-separated tags." },
+      },
+      required: ["name", "content"],
+    },
+  },
+  {
+    name: "update_config",
+    description: "Update an existing agent config entry by its memory ID. For human tokens, executes immediately after TOTP/passcode verification. For agent tokens, the update is queued for human approval.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The memory ID of the config to update." },
+        content: { type: "string", description: "The new config content." },
+        confirm: { type: "boolean", description: "Must be explicitly set to true." },
+        totpCode: { type: "string", description: "6-digit TOTP code (required if 2FA is enabled)." },
+        passcode: { type: "string", description: "Write passcode (required if set and 2FA is disabled)." },
+      },
+      required: ["id", "content", "confirm"],
     },
   },
   {
@@ -333,11 +366,20 @@ function mcpError(id: unknown, code: number, message: string): Response {
 }
 
 // Returns null for human tokens (no filter) or a Set of allowed categories for agent tokens.
+// "configs" is an isolated layer — it is never included in ABAC_DEFAULT_ALLOW and must be
+// granted explicitly in the agent policy's allowedCategories list.
 function resolveAgentCategoryFilter(claims: TokenClaims): Set<MemoryCategory> | null {
   if (!claims.isAgent || !claims.agentPolicy) return null;
   const { allowedCategories, deniedCategories } = claims.agentPolicy;
+  // Start from explicit policy or the default safe set (which excludes "configs").
   const base: MemoryCategory[] = allowedCategories.length > 0 ? allowedCategories : ABAC_DEFAULT_ALLOW;
-  return new Set(base.filter((c) => !deniedCategories.includes(c)));
+  // Always strip "configs" unless the policy explicitly listed it in allowedCategories.
+  const configsExplicit = allowedCategories.includes("configs");
+  return new Set(
+    base
+      .filter((c) => !deniedCategories.includes(c))
+      .filter((c) => c !== "configs" || configsExplicit)
+  );
 }
 
 function checkCategoryAccess(category: string, filter: Set<MemoryCategory> | null): boolean {
@@ -1021,10 +1063,12 @@ export async function handleMcpRequest(
       if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
       if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
-      if (t.name === "sync_workspace_agent_configs") return !!(claims.permissions & MCP_PERM_RECALL);
+      if (t.name === "sync_agent_configs") return !!(claims.permissions & MCP_PERM_RECALL);
       if (t.name === "store_credential") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "delete_credential") return !!(claims.permissions & MCP_PERM_DELETE);
       if (t.name === "list_credentials" || t.name === "retrieve_credential") return !!(claims.permissions & MCP_PERM_RECALL);
+      if (t.name === "store_config") return !!(claims.permissions & MCP_PERM_COMMIT);
+      if (t.name === "update_config") return !!(claims.permissions & MCP_PERM_UPDATE);
       // approve_jit_access is only exposed to human (non-agent) tokens.
       if (t.name === "approve_jit_access") return !!(claims.permissions & MCP_PERM_RECALL) && !claims.isAgent;
       return false;
@@ -1079,7 +1123,7 @@ export async function handleMcpRequest(
       if (t.name === "commit_memory") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "update_memory") return !!(claims.permissions & MCP_PERM_UPDATE);
       if (t.name === "delete_memory") return !!(claims.permissions & MCP_PERM_DELETE);
-      if (t.name === "sync_workspace_agent_configs") return !!(claims.permissions & MCP_PERM_RECALL);
+      if (t.name === "sync_agent_configs") return !!(claims.permissions & MCP_PERM_RECALL);
       if (t.name === "store_credential") return !!(claims.permissions & MCP_PERM_COMMIT);
       if (t.name === "delete_credential") return !!(claims.permissions & MCP_PERM_DELETE);
       if (t.name === "list_credentials" || t.name === "retrieve_credential") return !!(claims.permissions & MCP_PERM_RECALL);
@@ -1702,6 +1746,7 @@ export async function handleMcpRequest(
         rules: 0,
         projects: 0,
         references: 0,
+        configs: 0,
       },
       tags: {} as Record<string, number>,
     };
@@ -1710,7 +1755,7 @@ export async function handleMcpRequest(
       if (summaryCategoryFilter !== null && !summaryCategoryFilter.has(row.category as MemoryCategory)) continue;
       summary.total++;
       if (row.category in summary.categories) {
-        summary.categories[row.category as "rules" | "projects" | "references"]++;
+        summary.categories[row.category as "rules" | "projects" | "references" | "configs"]++;
       }
       if (row.tags) {
         const tagsList = (row.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
@@ -1730,6 +1775,11 @@ export async function handleMcpRequest(
   if (toolName === "commit_memory") {
     if (!(claims.permissions & MCP_PERM_COMMIT)) {
       return mcpError(id, -32001, "Token does not have commit_memory permission");
+    }
+
+    // Block generic writes to the protected configs category.
+    if ((args.category as string | undefined) === "configs") {
+      return configsCategoryForbidden(id);
     }
 
     const fact = args.fact as string | undefined;
@@ -1881,6 +1931,11 @@ export async function handleMcpRequest(
   if (toolName === "update_memory") {
     if (!(claims.permissions & MCP_PERM_UPDATE)) {
       return mcpError(id, -32001, "Token does not have update_memory permission");
+    }
+
+    // Block generic updates to the protected configs category (incoming or existing row).
+    if ((args.category as string | undefined) === "configs") {
+      return configsCategoryForbidden(id);
     }
 
     const memId = args.id as string | undefined;
@@ -2046,6 +2101,11 @@ export async function handleMcpRequest(
       return mcpError(id, -32602, `Memory not found or unauthorized: ${memId}`);
     }
     const existing = rows[0];
+
+    // Block generic update_memory on configs category rows — use update_config instead.
+    if (existing.category === "configs") {
+      return configsCategoryForbidden(id);
+    }
 
     if (!isProjectKeyAllowedByToken(claims.accessibleScopes, existing.projectKey)) {
       return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
@@ -2432,24 +2492,21 @@ export async function handleMcpRequest(
     });
   }
 
-  if (toolName === "sync_workspace_agent_configs") {
+  if (toolName === "sync_agent_configs") {
     if (!(claims.permissions & MCP_PERM_RECALL)) {
       return mcpError(id, -32001, "Token does not have recall_context permission");
     }
-    // ABAC: this tool reads "stack" category memories exclusively
+    // ABAC: this tool reads "configs" category memories exclusively.
+    // Agent tokens must have "configs" explicitly in their allowedCategories policy.
     const syncCategoryFilter = resolveAgentCategoryFilter(claims);
-    if (syncCategoryFilter !== null && !syncCategoryFilter.has("stack")) {
-      return mcpError(id, -32003, "Forbidden: agent token cannot access stack memories required for workspace config sync");
+    if (syncCategoryFilter !== null && !syncCategoryFilter.has("configs")) {
+      return mcpError(id, -32003, "Forbidden: agent token cannot access configs memories required for workspace config sync");
     }
 
     const projectKey = args.projectKey as string | undefined;
-    const formatType = args.formatType as string | undefined;
 
     if (projectKey === undefined || typeof projectKey !== "string") {
       return mcpError(id, -32602, "Invalid params: projectKey is required");
-    }
-    if (!formatType || !["claude", "cursor", "copilot", "gemini", "agents", "antigravity"].includes(formatType)) {
-      return mcpError(id, -32602, "Invalid params: formatType must be claude, cursor, copilot, gemini, agents, or antigravity");
     }
 
     if (!claims.userId) {
@@ -2471,18 +2528,15 @@ export async function handleMcpRequest(
       return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
     }
 
-    // Select all active memories for this workspace
-    const conditions = [
-      resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
-        ? eq(memories.projectKey, resolvedProjectKey)
-        : and(eq(memories.userId, claims.userId), sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`),
-      eq(memories.isActive, true)
-    ];
+    // Select all active configs-category memories for this workspace.
+    const scopeCondition = resolvedProjectKey && (resolvedProjectKey.startsWith("team:") || resolvedProjectKey.startsWith("org:"))
+      ? eq(memories.projectKey, resolvedProjectKey)
+      : and(eq(memories.userId, claims.userId), sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`);
 
     const rows = await db
       .select()
       .from(memories)
-      .where(and(...conditions))
+      .where(and(scopeCondition, eq(memories.isActive, true), eq(memories.category, "configs")))
       .all();
 
     const decryptedMemories: Array<{ row: typeof rows[0]; ephemeralFact: EphemeralPlaintext } | null> = [];
@@ -2504,75 +2558,133 @@ export async function handleMcpRequest(
         }
       }
 
-      const filtered = decryptedMemories.filter((item): item is NonNullable<typeof item> => {
-        if (!item) return false;
-        if (item.row.category === "stack") return true;
-        const tagsList = (item.row.tags || "").split(",").map((t) => t.trim().toLowerCase());
-        return (
-          tagsList.includes("architecture") ||
-          tagsList.includes("baseline") ||
-          tagsList.includes("stack") ||
-          tagsList.includes("blueprint")
-        );
+      const valid = decryptedMemories.filter((item): item is NonNullable<typeof item> => item !== null);
+
+      // Expand collapsed single-line markdown into properly formatted multi-line markdown.
+      // Handles old-format facts where headers and bullets were stored inline on one line.
+      function normalizeFactMarkdown(text: string): string {
+        // Already has real newlines — no normalization needed.
+        if (text.includes("\n")) return text;
+        // Split on markdown headings (##, ###, #) to separate sections.
+        // Then within each section, split on " - " bullet separators.
+        const sections = text.split(/(#{1,3} )/);
+        // sections alternates between: ["pre", "## ", "content", "## ", "content", ...]
+        const rebuilt: string[] = [];
+        for (let i = 0; i < sections.length; i++) {
+          const part = sections[i];
+          if (/^#{1,3} $/.test(part)) {
+            // This is a heading marker — next element is the section content
+            const content = sections[++i] ?? "";
+            // Split section content into intro text and bullet items
+            const bulletParts = content.split(/ - (?=[A-Za-z])/);
+            const intro = bulletParts[0].trimEnd();
+            const bullets = bulletParts.slice(1).map((b) => `- ${b.trimEnd()}`);
+            rebuilt.push(`\n\n${part}${intro}`);
+            if (bullets.length > 0) rebuilt.push(bullets.join("\n"));
+          } else if (part.trim()) {
+            rebuilt.push(part.trim());
+          }
+        }
+        return rebuilt.join("\n").trim();
+      }
+
+      // Build per-config structured blocks, preserving markdown formatting from stored fact content.
+      const configBlocks = valid
+        .filter((item) => !item.row.isQuarantined)
+        .map((item) => {
+          const raw = item.ephemeralFact.get();
+          // Strip the leading [config:name] tag if present, then normalize and return clean markdown.
+          const withoutTag = raw.replace(/^\[config:[^\]]*\]\n?/, "").trim();
+          const normalized = normalizeFactMarkdown(withoutTag);
+          const name = item.row.name ?? item.row.id;
+          return `## ${name}\n\n${normalized}`;
+        });
+
+      const configSection = configBlocks.length > 0 ? configBlocks.join("\n\n---\n\n") + "\n\n" : "";
+
+      // Flat rule list for .cursorrules JSON (extract leaf bullet lines only).
+      const cursorRules = valid.flatMap((item) => {
+        if (item.row.isQuarantined) return [];
+        return item.ephemeralFact.get().split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.startsWith("- "))
+          .map((l) => l.slice(2));
       });
 
-      const lines = filtered.flatMap((item) => {
-        const factText = item.row.isQuarantined ? "[REDACTED]" : item.ephemeralFact.get();
-        return factText.split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => line.startsWith("- ") ? line.slice(2) : line);
-      });
+      const generatedAt = new Date().toISOString();
 
-      let targetPath = "./AGENTS.md";
-      let markdownBody = "";
+      // Authoritative Locker integration boilerplate — injected into every generated config.
+      const lockerBoilerplate = `# Locker Memory Vault Integration — Custom Instructions
 
-      switch (formatType) {
-        case "claude":
-          targetPath = "./CLAUDE.md";
-          markdownBody = `# Claude System Instructions - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Enforced Guidelines\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
-          break;
-        case "cursor":
-          targetPath = "./.cursorrules";
-          markdownBody = JSON.stringify(
+You have access to Locker (MCP memory vault) for user profile, projects, rules, and secrets. Proactively read/write to it throughout our chat without prompting.
+
+1. READ:
+- Start: Call get_memory_summary or list_accessible_scopes on first turn to align context.
+- Before coding/answering: Search relevant guidelines using recall_context (use optimize:true for summaries) or search_memories. Don't assume; check Locker first.
+
+2. WRITE:
+- Automatically call commit_memory when I state preferences, tech stack choices, rules, or project paths.
+- Fact format: Atomic, third-person declarative statements (no "I" or "You").
+- Categories: "rules" (guidelines), "projects" (configs/state), "references" (background). Assign lowercase tags.
+- Update/Delete: If a rule/state changes, find the ID and call update_memory or delete_memory. Prevent duplicate/stale data.
+
+3. SECRETS:
+- Never commit plaintext API keys/secrets to normal memories. Use store_credential and retrieve_credential.
+
+4. PROTOCOLS:
+- Background use: Execute calls silently.
+- Priority: Locker memories supersede your defaults.
+
+`;
+
+      const buildMarkdown = (header: string) =>
+        `${lockerBoilerplate}# ${header}\n\n${configSection}---\n*Generated at: ${generatedAt}*\n`;
+
+      const outputConfigs: Array<{ targetPath: string; markdown: string }> = [
+        {
+          targetPath: "./CLAUDE.md",
+          markdown: buildMarkdown("Claude Agent Config — Workspace Blueprint"),
+        },
+        {
+          targetPath: "./GEMINI.md",
+          markdown: buildMarkdown("Gemini Agent Config — Workspace Blueprint"),
+        },
+        {
+          targetPath: "./AGENTS.md",
+          markdown: buildMarkdown("Developer Agent Rules — Workspace Blueprint"),
+        },
+        {
+          targetPath: "./.cursorrules",
+          markdown: JSON.stringify(
             {
-              name: "Workspace Guidelines",
-              description: "Architectural rules synced from Locker",
+              name: "Workspace Agent Config",
+              description: "Agent config synced from Locker configs vault",
               globs: ["*"],
-              rules: lines,
+              lockerBoilerplate: lockerBoilerplate.trim(),
+              rules: cursorRules,
             },
             null,
             2
-          );
-          break;
-        case "copilot":
-          targetPath = "./.github/copilot-instructions.md";
-          markdownBody = `# Copilot Instructions - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Rules:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
-          break;
-        case "gemini":
-          targetPath = "./GEMINI.md";
-          markdownBody = `# Gemini Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Coding Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
-          break;
-        case "antigravity":
-          targetPath = "./.agents/rules/rules.md";
-          markdownBody = `# Antigravity Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
-          break;
-        case "agents":
-        default:
-          targetPath = "./AGENTS.md";
-          markdownBody = `# Developer Agent Rules - Technical Stack Blueprint\n\nThis blueprint specifies the architectural boundaries, tech stack enforcements, and directory mapping rules for developer agents working in this repository.\n\n${lines.length > 0 ? `## General Guidelines:\n${lines.map((line) => `- ${line}`).join("\n")}\n\n` : ""}---\n*Generated at: ${new Date().toISOString()}*\n`;
-          break;
-       }
+          ),
+        },
+        {
+          targetPath: "./.github/copilot-instructions.md",
+          markdown: buildMarkdown("GitHub Copilot Instructions — Workspace Blueprint"),
+        },
+        {
+          targetPath: "./.agents/rules/rules.md",
+          markdown: buildMarkdown("Antigravity Agent Rules — Workspace Blueprint"),
+        },
+      ];
 
-      // Audit log & token usage
       await logAudit(db, {
         orgId,
         userId: claims.userId,
         tokenId: claims.tokenId,
-        action: "sync_workspace_agent_configs",
+        action: "sync_agent_configs",
         ipAddress,
         userAgent,
-        metadata: { projectKey: resolvedProjectKey, formatType, rulesCount: lines.length },
+        metadata: { projectKey: resolvedProjectKey, formatsCount: outputConfigs.length, configsCount: configBlocks.length },
       });
       await logTokenUsage(db, claims.tokenId, "recall", 0);
 
@@ -2581,19 +2693,16 @@ export async function handleMcpRequest(
           {
             type: "text",
             text: JSON.stringify({
-              markdown: markdownBody,
-              targetPath: targetPath,
+              configs: outputConfigs,
               projectKey: resolvedProjectKey,
-              rulesCount: lines.length,
+              configsCount: configBlocks.length,
             }),
           },
         ],
       });
     } finally {
       for (const item of decryptedMemories) {
-        if (item) {
-          item.ephemeralFact.drop();
-        }
+        if (item) item.ephemeralFact.drop();
       }
     }
   }
@@ -2884,6 +2993,275 @@ export async function handleMcpRequest(
       content: [
         { type: "text", text: JSON.stringify({ success: true, name: upperName }) },
       ],
+    });
+  }
+
+  if (toolName === "store_config") {
+    if (!(claims.permissions & MCP_PERM_COMMIT)) {
+      return mcpError(id, -32001, "Token does not have commit_memory permission");
+    }
+
+    // Agent tokens cannot write configs directly — must be queued.
+    if (claims.isAgent) {
+      return mcpError(id, -32003, "Forbidden: agent tokens cannot store configs directly. Use commit_memory with category 'projects' and tag '#config-request' to request a human review.");
+    }
+
+    const name = args.name as string | undefined;
+    const content = args.content as string | undefined;
+    if (!name || typeof name !== "string") {
+      return mcpError(id, -32602, "Invalid params: name is required");
+    }
+    if (!content || typeof content !== "string") {
+      return mcpError(id, -32602, "Invalid params: content is required");
+    }
+    if (content.length > 50000) {
+      return mcpError(id, -32602, "Invalid params: content exceeds max length of 50000 characters");
+    }
+
+    const rawTags = typeof args.tags === "string" ? args.tags.trim() : "";
+    const projectKey = resolveProjectKey(claims, args.projectKey as string | undefined);
+
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, projectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${projectKey ?? "personal"}'`);
+    }
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, projectKey);
+    if (!vaultAllowed) {
+      return mcpError(id, -32003, `Forbidden: no access to vault scope '${projectKey}'`);
+    }
+
+    const quotaCheck = await checkQuota(db, claims.userId, claims.tokenId, "commit", orgId);
+    if (!quotaCheck.allowed) {
+      return mcpError(id, -32004, `Quota Exceeded: ${quotaCheck.reason}`);
+    }
+
+    const tagsList = rawTags.split(",").map((t) => t.trim()).filter(Boolean);
+    if (!tagsList.includes("config")) tagsList.push("config");
+    const finalTags = tagsList.join(", ");
+
+    const sanitized = sanitizeMemory(content.trim());
+    if (!sanitized) {
+      return mcpError(id, -32602, "Invalid params: content was empty or contained adversarial instructions");
+    }
+
+    const isQuarantined = containsSensitiveData(sanitized);
+    const memId = crypto.randomUUID();
+    const timestamp = Date.now();
+
+    const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const encryptedContent = await encrypt(sanitized, vaultKey);
+
+    const [embedding] = await Promise.all([
+      generateEmbedding(env.AI, sanitized),
+    ]);
+
+    let scopeType: "personal" | "organization" | "team" = "personal";
+    let scopeId: string | null = null;
+    if (projectKey) {
+      if (projectKey.startsWith("org:")) { scopeType = "organization"; scopeId = projectKey.slice(4); }
+      else if (projectKey.startsWith("team:")) { scopeType = "team"; scopeId = projectKey.slice(5); }
+    }
+
+    const factContent = `[config:${name}]\n${sanitized}`;
+    const encryptedFact = await encrypt(factContent, vaultKey);
+
+    await db.insert(memories).values({
+      id: memId,
+      userId: claims.userId,
+      fact: encryptedFact,
+      category: "configs",
+      tags: finalTags,
+      timestamp,
+      isActive: true,
+      projectKey: projectKey || null,
+      scopeType,
+      scopeId,
+      isQuarantined,
+    });
+
+    await db.insert(memoryVersions).values({
+      id: crypto.randomUUID(),
+      memoryId: memId,
+      fact: encryptedFact,
+      category: "configs",
+      tags: finalTags,
+      changedBy: claims.userId,
+      changeReason: "created",
+      timestamp,
+    });
+
+    await env.VECTOR_INDEX.insert([{
+      id: memId,
+      values: embedding,
+      metadata: {
+        userId: claims.userId,
+        category: "configs",
+        tags: finalTags,
+        projectKey: projectKey ?? "",
+      },
+    }]);
+
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "store_config", memoryId: memId, ipAddress, userAgent, metadata: { name, projectKey, quarantined: isQuarantined } });
+    await logTokenUsage(db, claims.tokenId, "commit", estimateEmbeddingTokens(sanitized));
+
+    return mcpResult(id, {
+      content: [{ type: "text", text: JSON.stringify({ success: true, id: memId, name, category: "configs", tags: finalTags, projectKey }) }],
+    });
+  }
+
+  if (toolName === "update_config") {
+    if (!(claims.permissions & MCP_PERM_UPDATE)) {
+      return mcpError(id, -32001, "Token does not have update_memory permission");
+    }
+
+    const memId = args.id as string | undefined;
+    const content = args.content as string | undefined;
+    if (!memId || typeof memId !== "string") {
+      return mcpError(id, -32602, "Invalid params: id is required");
+    }
+    if (!content || typeof content !== "string") {
+      return mcpError(id, -32602, "Invalid params: content is required");
+    }
+    if (content.length > 50000) {
+      return mcpError(id, -32602, "Invalid params: content exceeds max length of 50000 characters");
+    }
+    if (args.confirm !== true) {
+      return mcpError(id, -32602, "Invalid params: confirm must be set to true");
+    }
+
+    // Agent tokens must queue their update for human approval.
+    if (claims.isAgent) {
+      const rows = await db.select().from(memories).where(eq(memories.id, memId)).all();
+      if (!rows.length) return mcpError(id, -32602, `Config memory not found: ${memId}`);
+      const existing = rows[0];
+      if (existing.category !== "configs") return mcpError(id, -32602, "Target memory is not in the configs category");
+
+      if (!isProjectKeyAllowedByToken(claims.accessibleScopes, existing.projectKey)) {
+        return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
+      }
+
+      const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
+      if (!vaultAllowed) return mcpError(id, -32003, `Forbidden: no access to vault scope '${existing.projectKey}'`);
+
+      const sanitized = sanitizeMemory(content.trim());
+      if (!sanitized) return mcpError(id, -32602, "Invalid params: content was empty or contained adversarial instructions");
+
+      const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : claims.userId;
+      const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+      const currentFact = isEncrypted(existing.fact) ? await decrypt(existing.fact, vaultKey) : existing.fact;
+      const agentLabel = claims.agentPolicy?.agentContext ?? "unknown agent";
+      const recId = crypto.randomUUID();
+
+      await db.insert(memoryRecommendations).values({
+        id: recId,
+        orgId: orgId ?? null,
+        userId: claims.userId,
+        fact: currentFact,
+        category: "configs",
+        tags: existing.tags,
+        projectKey: existing.projectKey ?? null,
+        scopeType: existing.scopeType,
+        scopeId: existing.scopeId ?? null,
+        recommendationType: "update",
+        targetMemoryId: memId,
+        status: "pending",
+        proposedFact: sanitized,
+        proposedCategory: "configs",
+        proposedTags: existing.tags,
+        agentContext: agentLabel,
+        createdAt: Date.now(),
+      });
+
+      try {
+        await db.insert(notifications).values({
+          id: crypto.randomUUID(),
+          userId: claims.userId,
+          title: "Agent Config Update Approval Required",
+          message: `Agent "${agentLabel}" wants to update a config memory. Review and approve in your Locker vault.`,
+          type: "warning",
+          status: "unread",
+          linkUrl: "/memories",
+          createdAt: Date.now(),
+        });
+      } catch (e) {
+        console.error("[update_config] notification failed:", e);
+      }
+
+      await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_config_queued", memoryId: memId, ipAddress, userAgent, metadata: { recId, agentContext: agentLabel } });
+      return mcpResult(id, {
+        content: [{ type: "text", text: JSON.stringify({ queued: true, recommendationId: recId, message: "Config update queued for human approval." }) }],
+      });
+    }
+
+    // Human token: MFA / passcode verification then direct update.
+    const totpRows = await db.select().from(totpSecrets).where(and(eq(totpSecrets.userId, claims.userId), eq(totpSecrets.verified, true))).all();
+    if (totpRows.length > 0) {
+      const totpCode = args.totpCode as string | undefined;
+      if (!totpCode) return mcpError(id, -32024, "MFA Verification Required: Please provide a valid 6-digit TOTP code.");
+      const totpEnvKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, claims.userId);
+      const ephemeralSecret = await decryptEphemeral(totpRows[0].secret, totpEnvKey);
+      let verified = false;
+      try { verified = await verifyTOTP(ephemeralSecret.get(), totpCode); } finally { ephemeralSecret.drop(); }
+      if (!verified) return mcpError(id, -32024, "MFA Verification Failed: Invalid TOTP code.");
+    } else {
+      const userRows = await db.select({ writePasscodeHash: users.writePasscodeHash }).from(users).where(eq(users.id, claims.userId)).all();
+      if (userRows.length > 0 && userRows[0].writePasscodeHash) {
+        const passcode = args.passcode as string | undefined;
+        if (!passcode) return mcpError(id, -32025, "Passcode Verification Required: Please provide your deletion passcode.");
+        const valid = await verifyToken(passcode, userRows[0].writePasscodeHash);
+        if (!valid) return mcpError(id, -32025, "Passcode Verification Failed: Invalid deletion passcode.");
+      }
+    }
+
+    const rows = await db.select().from(memories).where(eq(memories.id, memId)).all();
+    if (!rows.length) return mcpError(id, -32602, `Config memory not found: ${memId}`);
+    const existing = rows[0];
+    if (existing.category !== "configs") return mcpError(id, -32602, "Target memory is not in the configs category");
+
+    if (!isProjectKeyAllowedByToken(claims.accessibleScopes, existing.projectKey)) {
+      return mcpError(id, -32003, `Forbidden: API token scope prevents access to vault scope '${existing.projectKey ?? "personal"}'`);
+    }
+    if (existing.userId !== claims.userId) {
+      return mcpError(id, -32003, "Forbidden: You do not have permission to modify this config.");
+    }
+
+    const { allowed: vaultAllowed, orgId } = await verifyVaultAccess(db, claims.userId, existing.projectKey);
+    if (!vaultAllowed) return mcpError(id, -32003, `Forbidden: no access to vault scope '${existing.projectKey}'`);
+
+    const sanitized = sanitizeMemory(content.trim());
+    if (!sanitized) return mcpError(id, -32602, "Invalid params: content was empty or contained adversarial instructions");
+
+    const isQuarantined = containsSensitiveData(sanitized);
+    const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : claims.userId;
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const encryptedFact = await encrypt(sanitized, vaultKey);
+    const embedding = await generateEmbedding(env.AI, sanitized);
+
+    await db.update(memories).set({ fact: encryptedFact, timestamp: Date.now(), isQuarantined }).where(eq(memories.id, memId));
+
+    await db.insert(memoryVersions).values({
+      id: crypto.randomUUID(),
+      memoryId: memId,
+      fact: encryptedFact,
+      category: "configs",
+      tags: existing.tags,
+      changedBy: claims.userId,
+      changeReason: "updated",
+      timestamp: Date.now(),
+    });
+
+    await env.VECTOR_INDEX.upsert([{
+      id: memId,
+      values: embedding,
+      metadata: { userId: claims.userId, category: "configs", tags: existing.tags, projectKey: existing.projectKey ?? "" },
+    }]);
+
+    await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_config", memoryId: memId, ipAddress, userAgent, metadata: { quarantined: isQuarantined } });
+    await logTokenUsage(db, claims.tokenId, "commit", estimateEmbeddingTokens(sanitized));
+
+    return mcpResult(id, {
+      content: [{ type: "text", text: JSON.stringify({ success: true, id: memId, category: "configs" }) }],
     });
   }
 

@@ -27,7 +27,7 @@ export const Route = createFileRoute("/templates")({
   component: TemplatesPage,
 });
 
-type TemplateCategory = "stack" | "governance" | "devops" | "compliance" | "documentation";
+type TemplateCategory = "configs" | "compliance" | "project_management" | "product_management" | "devops" | "devsecops" | "cicd";
 
 type VariableConfig = {
   key: string;
@@ -385,36 +385,28 @@ function TemplatesPage() {
       });
 
       let factText = `# ${importingTemplate.name}\n${importingTemplate.description}\n\n`;
-      if (importingTemplate.category === "stack") {
-        factText += `## Stack Preferences:\n`;
-        factText += `- Language: ${payload.language}\n`;
-        factText += `- Frontend: ${payload.frontend}\n`;
-        factText += `- Hosting: ${payload.hosting}\n`;
-        factText += `- Database: ${payload.database}\n`;
-        factText += `- ORM/DB Access: ${payload.orm}\n`;
-        factText += `- Authentication: ${payload.auth}\n`;
-        factText += `- Styling: ${payload.styling}\n`;
-        factText += `- State/Cache: ${payload.stateCache}\n`;
-        if (payload.componentLibrary) {
-          factText += `- Component Library: ${payload.componentLibrary}\n`;
-        }
-        if (payload.search && payload.search !== "None") {
-          factText += `- Full-Text Search: ${payload.search}\n`;
-        }
-        if (payload.vector && payload.vector !== "None") {
-          factText += `- Vector Database: ${payload.vector}\n`;
-        }
-        factText += `- Storage: ${payload.storage}\n`;
-        if (payload.bannedProviders && payload.bannedProviders.length > 0) {
-          factText += `- Banned Providers: ${payload.bannedProviders.join(", ")}\n`;
-        }
+
+      if (importingTemplate.category === "configs" && (payload.language || payload.frontend)) {
+        factText += `## Tech Stack Preferences:\n`;
+        if (payload.language) factText += `- Language: ${payload.language}\n`;
+        if (payload.frontend) factText += `- Frontend: ${payload.frontend}\n`;
+        if (payload.hosting) factText += `- Hosting: ${payload.hosting}\n`;
+        if (payload.database) factText += `- Database: ${payload.database}\n`;
+        if (payload.orm) factText += `- ORM/DB Access: ${payload.orm}\n`;
+        if (payload.auth) factText += `- Authentication: ${payload.auth}\n`;
+        if (payload.styling) factText += `- Styling: ${payload.styling}\n`;
+        if (payload.stateCache) factText += `- State/Cache: ${payload.stateCache}\n`;
+        if (payload.componentLibrary) factText += `- Component Library: ${payload.componentLibrary}\n`;
+        if (payload.search && payload.search !== "None") factText += `- Full-Text Search: ${payload.search}\n`;
+        if (payload.vector && payload.vector !== "None") factText += `- Vector Database: ${payload.vector}\n`;
+        if (payload.storage) factText += `- Storage: ${payload.storage}\n`;
         factText += `\n`;
       }
 
       factText += `## Guidelines & Constraints:\n`;
       factText += instantiatedRules.map((r) => `- ${r}`).join("\n");
 
-      const categoryForMemory = importingTemplate.category === "stack" ? "stack" : "rules";
+      const categoryForMemory = "rules";
 
       importMut.mutate({
         fact: factText,
@@ -429,11 +421,13 @@ function TemplatesPage() {
 
   const totalByCategory = useMemo(() => {
     const counts: Record<string, number> = {
-      stack: 0,
-      governance: 0,
-      devops: 0,
+      configs: 0,
       compliance: 0,
-      documentation: 0,
+      project_management: 0,
+      product_management: 0,
+      devops: 0,
+      devsecops: 0,
+      cicd: 0,
     };
     for (const t of templates) {
       if (counts[t.category] !== undefined) {
@@ -480,14 +474,8 @@ function TemplatesPage() {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <line x1="12" y1="5"
-                x2="12"
-                y2="19"
-              />
-              <line x1="5" y1="12"
-                x2="19"
-                y2="12"
-              />
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
             New Template
           </Button>
@@ -496,14 +484,16 @@ function TemplatesPage() {
 
       <PageContainer>
         {/* Stats grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 select-none">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 select-none">
           {[
             { label: "Total", value: templates.length, variant: "secondary" as const },
-            { label: "Stacks", value: totalByCategory.stack, variant: "stack" as const },
-            { label: "Governance", value: totalByCategory.governance, variant: "governance" as const },
-            { label: "DevOps", value: totalByCategory.devops, variant: "devops" as const },
+            { label: "Configs", value: totalByCategory.configs, variant: "secondary" as const },
             { label: "Compliance", value: totalByCategory.compliance, variant: "compliance" as const },
-            { label: "Docs", value: totalByCategory.documentation, variant: "documentation" as const },
+            { label: "Proj Mgmt", value: totalByCategory.project_management, variant: "secondary" as const },
+            { label: "Prod Mgmt", value: totalByCategory.product_management, variant: "secondary" as const },
+            { label: "DevOps", value: totalByCategory.devops, variant: "devops" as const },
+            { label: "DevSecOps", value: totalByCategory.devsecops, variant: "secondary" as const },
+            { label: "CI/CD", value: totalByCategory.cicd, variant: "secondary" as const },
           ].map(({ label, value, variant }) => (
             <div
               key={label}
@@ -521,9 +511,19 @@ function TemplatesPage() {
 
         {/* Tabs switcher */}
         <div className="flex gap-1 border-b border-border overflow-x-auto no-scrollbar select-none">
-          {(["all", "stack", "governance", "devops", "compliance", "documentation"] as const).map((tab) => {
+          {(["all", "configs", "compliance", "project_management", "product_management", "devops", "devsecops", "cicd"] as const).map((tab) => {
             const isActive = activeTab === tab;
             const count = tab === "all" ? templates.length : templates.filter((t) => t.category === tab).length;
+            const tabLabel: Record<string, string> = {
+              all: "All Templates",
+              configs: "Configs",
+              compliance: "Compliance",
+              project_management: "Proj Mgmt",
+              product_management: "Prod Mgmt",
+              devops: "DevOps",
+              devsecops: "DevSecOps",
+              cicd: "CI/CD",
+            };
             return (
               <button
                 key={tab}
@@ -534,7 +534,7 @@ function TemplatesPage() {
                     : "border-transparent text-text-muted hover:text-text"
                 }`}
               >
-                {tab === "all" ? "All Templates" : tab}
+                {tabLabel[tab] ?? tab}
                 {count > 0 && <span className="ml-1.5 opacity-70">({count})</span>}
               </button>
             );

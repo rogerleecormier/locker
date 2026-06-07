@@ -6,6 +6,7 @@ import { sql, eq, and, or, like } from "drizzle-orm";
 import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, systemSettings } from "~/db/schema";
 import { requireAdmin } from "~/server/session";
 import { updateSubscriptionSeats } from "~/server/billing";
+import { seedNewUserMemory } from "~/server/auth";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -356,6 +357,8 @@ export const createUserAdmin = createServerFn({ method: "POST" })
         updatedAt: new Date(),
       });
     }
+
+    seedNewUserMemory(userId, env).catch(() => {});
 
     return { success: true, userId };
   });
