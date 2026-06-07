@@ -6,3 +6,4 @@ dist/
 *.local
 src/routeTree.gen.ts
 .dev.vars
+.tanstack/
