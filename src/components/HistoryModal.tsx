@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "~/components/ui/toast";
 import { getMemoryTimeline, revertMemoryVersion } from "~/server/memoryFunctions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "~/components/ui/dialog";
 import { Button } from "~/components/ui/button";
@@ -12,6 +13,7 @@ export function HistoryModal({
   onClose: () => void;
   onReverted: () => void;
 }) {
+  const toast = useToast();
   const { data: versions = [], isLoading, isError } = useQuery({
     queryKey: ["memory-timeline", memoryId],
     queryFn: () => getMemoryTimeline({ data: { memoryId } }),
@@ -26,7 +28,7 @@ export function HistoryModal({
       onReverted();
     },
     onError: (err) => {
-      alert("Revert failed: " + String(err));
+      toast.error("Revert failed: " + String(err));
     },
   });
 

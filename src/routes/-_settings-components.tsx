@@ -1,4 +1,5 @@
 import { InfoTooltip } from "~/components/InfoTooltip";
+import { useToast } from "~/components/ui/toast";
 import { LockerPadlock } from "~/components/LockerLogo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
@@ -68,6 +69,7 @@ function TokenRow({
   onRevoke: (id: string) => void;
   onUpdatePerms: (id: string, perms: number) => void;
 }) {
+  const toast = useToast();
   const [expanded, setExpanded] = useState(false);
   const [perms, setPerms] = useState(token.permissions);
   const [renewTtl, setRenewTtl] = useState<number | null>(null);
@@ -154,7 +156,7 @@ function TokenRow({
                           setRenewTtl(null);
                         })
                         .catch((err) => {
-                          alert("Failed to renew token: " + (err.message || "Unknown error"));
+                          toast.error("Failed to renew token: " + (err.message || "Unknown error"));
                           setRenewTtl(null);
                         })
                         .finally(() => setRenewing(false));

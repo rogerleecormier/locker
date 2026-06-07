@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { useToast } from "~/components/ui/toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
@@ -151,6 +152,7 @@ export const Route = createFileRoute("/invite")({
 
 function InvitePage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const { data: session, isPending: sessionPending } = useSession();
 
   const token = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("token") ?? "" : "";
@@ -168,7 +170,7 @@ function InvitePage() {
       navigate({ to: "/organization" });
     },
     onError: (err: Error) => {
-      alert(err.message);
+      toast.error(err.message);
     },
   });
 
@@ -178,7 +180,7 @@ function InvitePage() {
       navigate({ to: "/" });
     },
     onError: (err: Error) => {
-      alert(err.message);
+      toast.error(err.message);
     },
   });
 

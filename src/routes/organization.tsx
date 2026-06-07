@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { useToast } from "~/components/ui/toast";
 import { InfoTooltip } from "~/components/InfoTooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "~/components/PageHeader";
@@ -655,6 +656,7 @@ function OrganizationPage() {
 
 function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<"vault" | "recommendations" | "members">("vault");
   const [recFact, setRecFact] = useState("");
   const [recCategory, setRecCategory] = useState<"rules" | "projects" | "references">("references");
@@ -693,9 +695,9 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
       setRecTags("");
       setRecProjectKey("");
       refetchRecs();
-      alert("Recommendation submitted for review!");
+      toast.success("Recommendation submitted for review!");
     },
-    onError: (err: Error) => alert(err.message),
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const addDirectMemoryMut = useMutation({
@@ -706,9 +708,9 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
       setDirectProjectKey("");
       refetchOrgMemories();
       queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] });
-      alert("Authoritative memory added!");
+      toast.success("Authoritative memory added!");
     },
-    onError: (err: Error) => alert(err.message),
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const deleteMemoryMut = useMutation({
@@ -717,7 +719,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
       refetchOrgMemories();
       queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] });
     },
-    onError: (err: Error) => alert(err.message),
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const reviewRecMut = useMutation({
@@ -726,7 +728,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
       refetchRecs();
       queryClient.invalidateQueries({ queryKey: ["orgs-and-teams-data"] });
     },
-    onError: (err: Error) => alert(err.message),
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const tabBtn = (id: "vault" | "recommendations" | "members", label: string, tooltip?: string) => {

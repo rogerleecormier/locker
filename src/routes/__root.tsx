@@ -16,6 +16,7 @@ import { type ReactNode, useState, useEffect, useRef } from "react";
 import { useSession, signOut } from "~/lib/authClient";
 import { cn } from "~/lib/utils";
 import { ErrorBoundary } from "~/components/ErrorBoundary";
+import { ToastProvider, useToast } from "~/components/ui/toast";
 import "~/global.css";
 
 interface RouterContext {
@@ -43,6 +44,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootLayout() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
+  const toast = useToast();
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
@@ -54,23 +56,25 @@ function RootLayout() {
       // Shift+? for keyboard shortcuts
       if (e.shiftKey && e.key === '?') {
         e.preventDefault();
-        alert('Keyboard Shortcuts\n\nCmd+K or Ctrl+K: Go to Memories\nShift+?: Show this help');
+        toast.info('Keyboard Shortcuts: Cmd+K or Ctrl+K → Go to Memories | Shift+? → Show this help');
       }
     };
 
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
-  }, [router]);
+  }, [router, toast]);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <RootDocument>
-        <AuthGate>
-          <ErrorBoundary>
-            <Outlet />
-          </ErrorBoundary>
-        </AuthGate>
-      </RootDocument>
+      <ToastProvider>
+        <RootDocument>
+          <AuthGate>
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
+          </AuthGate>
+        </RootDocument>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

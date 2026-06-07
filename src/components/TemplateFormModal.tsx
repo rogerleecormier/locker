@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useToast } from "~/components/ui/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createMemoryTemplate, updateMemoryTemplate } from "~/server/memoryFunctions";
 import { Button } from "./ui/button";
@@ -52,6 +53,7 @@ function StackPillField({ label, options, value, onChange }: { label: string; op
 
 export function TemplateFormModal({ isOpen, onClose, editingTemplate }: TemplateFormModalProps) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const isEdit = !!editingTemplate;
 
   const [currentStep, setCurrentStep] = React.useState(1);
@@ -188,13 +190,13 @@ export function TemplateFormModal({ isOpen, onClose, editingTemplate }: Template
       onClose();
     },
     onError: (err: any) => {
-      alert("Save failed: " + String(err.message || err));
+      toast.error("Save failed: " + String(err.message || err));
     },
   });
 
   const addVariable = () => {
     if (!newVarKey.trim()) return;
-    if (variables.some((v) => v.key === newVarKey.trim())) { alert("Variable key already exists"); return; }
+    if (variables.some((v) => v.key === newVarKey.trim())) { toast.warning("Variable key already exists"); return; }
     setVariables([...variables, { key: newVarKey.trim(), description: newVarDesc.trim(), default: newVarDefault.trim() }]);
     setNewVarKey(""); setNewVarDesc(""); setNewVarDefault("");
   };

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useToast } from "~/components/ui/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { deleteMemory, moveMemories, archiveMemory } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
@@ -34,6 +35,7 @@ export function MemoryCard({
   onSelect,
 }: MemoryCardProps) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const [moving, setMoving] = React.useState(false);
   const [targetWorkspace, setTargetWorkspace] = React.useState("");
@@ -63,7 +65,7 @@ export function MemoryCard({
       setTargetWorkspace("");
     },
     onError: (err: Error) => {
-      alert("Failed to move memory: " + err.message);
+      toast.error("Failed to move memory: " + err.message);
     },
   });
 
@@ -77,7 +79,7 @@ export function MemoryCard({
       setDropdownOpen(false);
     },
     onError: (err: Error) => {
-      alert("Failed to archive memory: " + err.message);
+      toast.error("Failed to archive memory: " + err.message);
     },
   });
 

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
+import { useToast } from "~/components/ui/toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listMemoryTemplates,
@@ -294,6 +295,7 @@ function TemplateTable({
 
 function TemplatesPage() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<"all" | TemplateCategory>("all");
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -344,7 +346,7 @@ function TemplatesPage() {
       setImportingTemplate(null);
       setImportVariables({});
       setImportError(null);
-      alert("Successfully imported template rules into your Memories!");
+      toast.success("Successfully imported template rules into your Memories!");
     },
     onError: (error) => {
       console.error("[importMut] Error callback:", error);

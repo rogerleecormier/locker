@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useToast } from "~/components/ui/toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listAllUsersAndDetails,
@@ -106,6 +107,7 @@ function PlanBadge({ plan }: { plan: string }) {
 // ── Main component ────────────────────────────────────────────────────────────
 export function UserManagementSection() {
   const qc = useQueryClient();
+  const toast = useToast();
 
   const adminStatusQ = useQuery({ queryKey: ["admin-status"], queryFn: () => getAdminStatus() });
   const usersQ  = useQuery({ queryKey: ["admin-users-mgmt"], queryFn: () => listAllUsersAndDetails() });
@@ -166,60 +168,60 @@ export function UserManagementSection() {
   const createMut = useMutation({
     mutationFn: (d: { name: string; email: string; password?: string; plan?: string }) => createUserAdmin({ data: d }),
     onSuccess: () => { refetch(); setModal(null); setCName(""); setCEmail(""); setCPass(""); setCPlan("free"); },
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
   const editMut = useMutation({
     mutationFn: (d: { userId: string; name: string; email: string; emailVerified: boolean }) => updateUserAdmin({ data: d }),
     onSuccess: () => { refetch(); setModal(null); },
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
   const deleteMut = useMutation({
     mutationFn: (userId: string) => deleteUserAdmin({ data: { userId } }),
     onSuccess: () => { refetch(); setModal(null); },
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
   const planMut = useMutation({
     mutationFn: (d: { userId: string; plan: string }) => updateUserPlanAdmin({ data: d }),
     onSuccess: () => { refetch(); setModal(null); },
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
   const setPwMut = useMutation({
     mutationFn: (d: { userId: string; password: string }) => setUserPasswordAdmin({ data: d }),
     onSuccess: () => { setModal(null); setPwValue(""); },
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
   const resetPwMut = useMutation({
     mutationFn: (userId: string) => resetUserPasswordAdmin({ data: { userId } }),
     onSuccess: (res) => { setModal({ type: "reset-success", password: res.password ?? "" }); },
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
   const assignOrgMut = useMutation({
     mutationFn: (d: { userId: string; orgId: string; role: "owner" | "admin" | "member" }) => assignUserToOrgAdmin({ data: d }),
     onSuccess: () => { refetch(); orgsQ.refetch(); },
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
   const removeOrgMut = useMutation({
     mutationFn: (d: { userId: string; orgId: string }) => removeUserFromOrgAdmin({ data: d }),
     onSuccess: () => { refetch(); orgsQ.refetch(); },
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
   const promoteMut = useMutation({
     mutationFn: (userId: string) => promoteToSiteAdminAdmin({ data: { userId } }),
     onSuccess: (res) => {
       refetch();
-      alert(`✅ ${res.message}`);
+      toast.success(res.message);
       setModal(null);
     },
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
   const removeAdminMut = useMutation({
     mutationFn: (userId: string) => removeAdminStatusAdmin({ data: { userId } }),
     onSuccess: (res) => {
       refetch();
-      alert(`✅ ${res.message}`);
+      toast.success(res.message);
       setModal(null);
     },
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   // ── Derived list ──────────────────────────────────────────────────────────

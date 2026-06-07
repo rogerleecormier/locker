@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useToast } from "~/components/ui/toast";
 import { AdminLayout, type AdminSection } from "~/components/AdminLayout";
 import { SiteAdminSection, OrgAdminSection, StatBox, AdminCard } from "~/components/AdminSections";
 import { SystemOverviewSection } from "~/components/AdminSystemOverview";
@@ -685,6 +686,7 @@ function AgentActivitySection() {
 }
 
 function AdminPage() {
+  const toast = useToast();
   const [activeSection, setActiveSection] = useState<AdminSection>("personal-account");
 
   // ── state ──────────────────────────────────────────────────────────────────
@@ -818,13 +820,13 @@ function AdminPage() {
       setRetainSelections({});
       statsQuery.refetch();
       debugQuery.refetch();
-      alert("Successfully resolved duplicates!");
+      toast.success("Successfully resolved duplicates!");
     },
   });
   const migrateMutation = useMutation({
     mutationFn: () => migrateToV2({}),
     onSuccess: (data) => setMigrateResult(data),
-    onError: (err) => alert("Migration failed: " + String(err)),
+    onError: (err) => toast.error("Migration failed: " + String(err)),
   });
 
   const createUserMut = useMutation({
@@ -834,52 +836,52 @@ function AdminPage() {
       setIsCreateModalOpen(false);
       setCreateName(""); setCreateEmail(""); setCreatePassword(""); setCreatePlan("free");
     },
-    onError: (err) => alert("Failed to create user: " + String(err)),
+    onError: (err) => toast.error("Failed to create user: " + String(err)),
   });
   const updateUserMut = useMutation({
     mutationFn: (data: { userId: string; name: string; email: string; emailVerified: boolean }) => updateUserAdmin({ data }),
     onSuccess: () => { usersQuery.refetch(); setIsEditModalOpen(false); },
-    onError: (err) => alert("Failed to update user: " + String(err)),
+    onError: (err) => toast.error("Failed to update user: " + String(err)),
   });
   const deleteUserMut = useMutation({
     mutationFn: (userId: string) => deleteUserAdmin({ data: { userId } }),
     onSuccess: () => usersQuery.refetch(),
-    onError: (err) => alert("Failed to delete user: " + String(err)),
+    onError: (err) => toast.error("Failed to delete user: " + String(err)),
   });
   const updateUserPlanMut = useMutation({
     mutationFn: (data: { userId: string; plan: string }) => updateUserPlanAdmin({ data }),
     onSuccess: () => { usersQuery.refetch(); setIsPlanModalOpen(false); },
-    onError: (err) => alert("Failed to update user plan: " + String(err)),
+    onError: (err) => toast.error("Failed to update user plan: " + String(err)),
   });
   const setUserPasswordMut = useMutation({
     mutationFn: (data: { userId: string; password: string }) => setUserPasswordAdmin({ data }),
-    onSuccess: () => { setIsPasswordModalOpen(false); setPasswordValue(""); alert("Password set successfully!"); },
-    onError: (err) => alert("Failed to set password: " + String(err)),
+    onSuccess: () => { setIsPasswordModalOpen(false); setPasswordValue(""); toast.success("Password set successfully!"); },
+    onError: (err) => toast.error("Failed to set password: " + String(err)),
   });
   const resetUserPasswordMut = useMutation({
     mutationFn: (userId: string) => resetUserPasswordAdmin({ data: { userId } }),
     onSuccess: (res) => { setGeneratedPassword(res.password || ""); setIsResetSuccessModalOpen(true); },
-    onError: (err) => alert("Failed to reset password: " + String(err)),
+    onError: (err) => toast.error("Failed to reset password: " + String(err)),
   });
   const assignUserToOrgMut = useMutation({
     mutationFn: (data: { userId: string; orgId: string; role: "owner" | "admin" | "member" }) => assignUserToOrgAdmin({ data }),
     onSuccess: () => { usersQuery.refetch(); orgsQuery.refetch(); },
-    onError: (err) => alert("Failed to assign user to organization: " + String(err)),
+    onError: (err) => toast.error("Failed to assign user to organization: " + String(err)),
   });
   const removeUserFromOrgMut = useMutation({
     mutationFn: (data: { userId: string; orgId: string }) => removeUserFromOrgAdmin({ data }),
     onSuccess: () => { usersQuery.refetch(); orgsQuery.refetch(); },
-    onError: (err) => alert("Failed to remove user from organization: " + String(err)),
+    onError: (err) => toast.error("Failed to remove user from organization: " + String(err)),
   });
   const updateQuotaMut = useMutation({
     mutationFn: (data: { orgId: string; monthlyMemories: number; monthlyRecalls: number; monthlyCommits: number }) => updateOrgQuota({ data }),
     onSuccess: () => { setEditingOrgQuotaId(null); orgsQuery.refetch(); },
-    onError: (err) => alert("Failed to update quota: " + String(err)),
+    onError: (err) => toast.error("Failed to update quota: " + String(err)),
   });
   const deleteOrgMut = useMutation({
     mutationFn: (id: string) => deleteOrganization({ data: { id } }),
     onSuccess: () => orgsQuery.refetch(),
-    onError: (err) => alert("Failed to delete org: " + String(err)),
+    onError: (err) => toast.error("Failed to delete org: " + String(err)),
   });
 
   const filteredUsers = (usersQuery.data || []).filter(
@@ -890,17 +892,17 @@ function AdminPage() {
 
   // Org/team mutations (self-serve operations for org admins)
   const refetchOrgTeams = () => orgTeamQuery.refetch();
-  const mutOpts = { onSuccess: refetchOrgTeams, onError: (err: Error) => alert(err.message) };
+  const mutOpts = { onSuccess: refetchOrgTeams, onError: (err: Error) => toast.error(err.message) };
 
   const createOrgMut = useMutation({
     mutationFn: (name: string) => createOrganizationSelfServe({ data: { name } }),
     onSuccess: (res) => { setShowCreateOrg(false); setNewOrgName(""); setSelectedOrgKey(`org:${res.orgId}`); refetchOrgTeams(); },
-    onError: (err: Error) => alert(err.message),
+    onError: (err: Error) => toast.error(err.message),
   });
   const addOrgMemberMut = useMutation({
     mutationFn: (data: { orgId: string; email: string; role: "admin" | "member" }) => addOrgMemberByEmail({ data }),
     onSuccess: () => { setOrgInviteEmail(""); refetchOrgTeams(); },
-    onError: (err: Error) => alert(err.message),
+    onError: (err: Error) => toast.error(err.message),
   });
   const updateOrgRoleMut = useMutation({
     mutationFn: (data: { orgId: string; userId: string; role: "owner" | "admin" | "member" }) => updateOrgMemberRole({ data }),
@@ -913,17 +915,17 @@ function AdminPage() {
   const createTeamMut = useMutation({
     mutationFn: (data: { orgId: string; name: string }) => createTeam({ data }),
     onSuccess: () => { setNewTeamName(""); refetchOrgTeams(); },
-    onError: (err: Error) => alert(err.message),
+    onError: (err: Error) => toast.error(err.message),
   });
   const deleteTeamMut = useMutation({
     mutationFn: (teamId: string) => deleteTeam({ data: { teamId } }),
     onSuccess: () => { setSelectedTeamKey(""); refetchOrgTeams(); },
-    onError: (err: Error) => alert(err.message),
+    onError: (err: Error) => toast.error(err.message),
   });
   const addTeamMemberMut = useMutation({
     mutationFn: (data: { teamId: string; email: string; role: string }) => addTeamMemberByEmail({ data }),
     onSuccess: () => { setTeamInviteEmail(""); refetchOrgTeams(); },
-    onError: (err: Error) => alert(err.message),
+    onError: (err: Error) => toast.error(err.message),
   });
   const updateTeamRoleMut = useMutation({
     mutationFn: (data: { teamId: string; userId: string; role: string }) => updateTeamMemberRole({ data }),
@@ -1579,7 +1581,7 @@ function AdminPage() {
             </div>
             <div style={{ display: "flex", gap: "10px", marginTop: "24px", justifyContent: "flex-end" }}>
               <button onClick={() => setIsCreateModalOpen(false)} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontWeight: 600 }}>Cancel</button>
-              <button onClick={() => { if (!createName || !createEmail) { alert("Name and email are required."); return; } createUserMut.mutate({ name: createName, email: createEmail, password: createPassword || undefined, plan: createPlan }); }}
+              <button onClick={() => { if (!createName || !createEmail) { toast.warning("Name and email are required."); return; } createUserMut.mutate({ name: createName, email: createEmail, password: createPassword || undefined, plan: createPlan }); }}
                 disabled={createUserMut.isPending} style={{ padding: "8px 16px", background: "var(--accent)", color: "white", fontWeight: "bold" }}>
                 {createUserMut.isPending ? "Creating..." : "Create User"}
               </button>
@@ -1609,7 +1611,7 @@ function AdminPage() {
             </div>
             <div style={{ display: "flex", gap: "10px", marginTop: "24px", justifyContent: "flex-end" }}>
               <button onClick={() => setIsEditModalOpen(false)} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontWeight: 600 }}>Cancel</button>
-              <button onClick={() => { if (!editName || !editEmail) { alert("Name and email are required."); return; } updateUserMut.mutate({ userId: selectedUser.id, name: editName, email: editEmail, emailVerified: editEmailVerified }); }}
+              <button onClick={() => { if (!editName || !editEmail) { toast.warning("Name and email are required."); return; } updateUserMut.mutate({ userId: selectedUser.id, name: editName, email: editEmail, emailVerified: editEmailVerified }); }}
                 disabled={updateUserMut.isPending} style={{ padding: "8px 16px", background: "var(--accent)", color: "white", fontWeight: "bold" }}>
                 {updateUserMut.isPending ? "Saving..." : "Save Changes"}
               </button>
@@ -1655,7 +1657,7 @@ function AdminPage() {
             </div>
             <div style={{ display: "flex", gap: "10px", marginTop: "24px", justifyContent: "flex-end" }}>
               <button onClick={() => setIsPasswordModalOpen(false)} style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)", fontWeight: 600 }}>Cancel</button>
-              <button onClick={() => { if (passwordValue.length < 8) { alert("Password must be at least 8 characters."); return; } setUserPasswordMut.mutate({ userId: selectedUser.id, password: passwordValue }); }}
+              <button onClick={() => { if (passwordValue.length < 8) { toast.warning("Password must be at least 8 characters."); return; } setUserPasswordMut.mutate({ userId: selectedUser.id, password: passwordValue }); }}
                 disabled={setUserPasswordMut.isPending} style={{ padding: "8px 16px", background: "var(--accent)", color: "white", fontWeight: "bold" }}>
                 {setUserPasswordMut.isPending ? "Setting..." : "Set Password"}
               </button>
@@ -1674,7 +1676,7 @@ function AdminPage() {
               {generatedPassword}
             </div>
             <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-              <button onClick={() => { navigator.clipboard.writeText(generatedPassword); alert("Copied to clipboard!"); }}
+              <button onClick={() => { navigator.clipboard.writeText(generatedPassword); toast.success("Copied to clipboard!"); }}
                 style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text)", fontWeight: 600 }}>Copy Password</button>
               <button onClick={() => { setIsResetSuccessModalOpen(false); setGeneratedPassword(""); }}
                 style={{ padding: "8px 16px", background: "var(--accent)", color: "white", fontWeight: "bold" }}>Done</button>

@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { ExportMemoryModal } from "~/components/ExportMemoryModal";
 import { HistoryModal } from "~/components/HistoryModal";
 import { downloadFile, exportToJson, exportToMarkdown } from "~/lib/memoryExport";
+import { useToast } from "~/components/ui/toast";
 
 export const Route = createFileRoute("/memories")({
   component: Dashboard,
@@ -55,6 +56,7 @@ function MemoryDetailPanel({
   currentProjectKey?: string;
 }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [editFact, setEditFact] = useState(memory.fact);
   const [editCategory, setEditCategory] = useState(memory.category);
   const [editTags, setEditTags] = useState(memory.tags);
@@ -88,10 +90,10 @@ function MemoryDetailPanel({
       queryClient.setQueryData<Memory[]>(["memories"], (old) =>
         old ? old.map((m) => (m.id === updated.id ? updated : m)) : []
       );
-      alert("Changes saved successfully!");
+      toast.success("Changes saved successfully!");
     },
     onError: (err: any) => {
-      alert("Failed to save changes: " + String(err.message || err));
+      toast.error("Failed to save changes: " + String(err.message || err));
     },
   });
 
@@ -104,7 +106,7 @@ function MemoryDetailPanel({
       onClose();
     },
     onError: (err: any) => {
-      alert("Failed to delete memory: " + String(err.message || err));
+      toast.error("Failed to delete memory: " + String(err.message || err));
     },
   });
 
@@ -116,7 +118,7 @@ function MemoryDetailPanel({
       onClose();
     },
     onError: (err: any) => {
-      alert("Failed to archive memory: " + String(err.message || err));
+      toast.error("Failed to archive memory: " + String(err.message || err));
     },
   });
 
@@ -129,10 +131,10 @@ function MemoryDetailPanel({
       queryClient.invalidateQueries({ queryKey: ["memories"] });
       setTargetWorkspace("");
       onClose();
-      alert("Memory moved successfully!");
+      toast.success("Memory moved successfully!");
     },
     onError: (err: any) => {
-      alert("Failed to move memory: " + String(err.message || err));
+      toast.error("Failed to move memory: " + String(err.message || err));
     },
   });
 
@@ -146,10 +148,10 @@ function MemoryDetailPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
       queryClient.invalidateQueries({ queryKey: ["memory-timeline", memory.id] });
-      alert("Reverted memory version successfully!");
+      toast.success("Reverted memory version successfully!");
     },
     onError: (err: any) => {
-      alert("Revert failed: " + String(err.message || err));
+      toast.error("Revert failed: " + String(err.message || err));
     },
   });
 
@@ -158,10 +160,10 @@ function MemoryDetailPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
       onClose();
-      alert("Memory released from quarantine!");
+      toast.success("Memory released from quarantine!");
     },
     onError: (err: any) => {
-      alert("Failed to unmask memory: " + String(err.message || err));
+      toast.error("Failed to unmask memory: " + String(err.message || err));
     },
   });
 
@@ -568,10 +570,10 @@ function MemoryTable({
       setBulkMoving(false);
       setBulkTargetWorkspace("");
       setActiveSelectedId(null);
-      alert(`Successfully moved ${res.moved} memories.`);
+      toast.success(`Successfully moved ${res.moved} memories.`);
     },
     onError: (err: Error) => {
-      alert("Failed to move memories: " + err.message);
+      toast.error("Failed to move memories: " + err.message);
     },
   });
 
@@ -821,6 +823,7 @@ function MemoryTable({
 // ── MAIN DASHBOARD ──────────────────────────────────────────────────────────
 function Dashboard() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [projectKey, setProjectKey] = useState("personal");
   const [showNewMemoryModal, setShowNewMemoryModal] = useState(false);
   const [showAgentConfigBuilder, setShowAgentConfigBuilder] = useState(false);
@@ -897,7 +900,7 @@ function Dashboard() {
     try {
       const res = await fetch("/api/export", { method: "POST" });
       if (!res.ok) {
-        alert("Export failed: " + res.statusText);
+        toast.error("Export failed: " + res.statusText);
         return;
       }
       const blob = await res.blob();
@@ -910,7 +913,7 @@ function Dashboard() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      alert("Error triggering export: " + String(err));
+      toast.error("Error triggering export: " + String(err));
     }
   }
 

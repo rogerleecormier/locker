@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useToast } from "~/components/ui/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { batchImportMemories, parseMemoriesWithAI, compareImportedMemories, executeImportActions } from "~/server/memoryFunctions";
@@ -268,6 +269,7 @@ function PromptPanel() {
 function IngestPanel() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const toast = useToast();
   const [inputMode, setInputMode] = useState<"paste" | "file" | "templates">("paste");
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [templateSelection, setTemplateSelection] = useState<Array<{ fact: string; category?: string; tags?: string }> | null>(null);
@@ -412,7 +414,7 @@ function IngestPanel() {
       });
 
     if (itemsToExecute.length === 0) {
-      alert("No items selected for import");
+      toast.warning("No items selected for import");
       return;
     }
 
