@@ -2,8 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AdminGuard } from "./-admin-page";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
-import { sql, eq, and, or, like } from "drizzle-orm";
-import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, systemSettings, auditLogs, tokenUsages, webhookEvents } from "~/db/schema";
+import { sql, eq, and, or, like, desc } from "drizzle-orm";
+import { z } from "zod";
+import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, systemSettings, auditLogs, apiTokens, memoryVersions, tokenUsages, webhookEvents } from "~/db/schema";
 import { requireAdmin } from "~/server/session";
 import { updateSubscriptionSeats } from "~/server/billing";
 import { seedNewUserMemory } from "~/server/auth";
@@ -1049,6 +1050,146 @@ export const getSystemMetrics = createServerFn({ method: "GET" }).handler(
     };
   }
 );
+
+export type AuditLogEntry = {
+  id: string;
+  userId: string;
+  userEmail: string | null;
+  userName: string | null;
+  tokenId: string | null;
+  tokenName: string | null;
+  action: string;
+  memoryId: string | null;
+  memorySnippet: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  toolName: string | null;
+  timestamp: number;
+  metadata: string | null;
+  orgId: string | null;
+  orgName: string | null;
+};
+
+const AdminAuditLogSchema = z.object({
+  limit: z.number().int().min(1).max(500).default(100),
+  offset: z.number().int().min(0).default(0),
+  userId: z.string().max(128).optional(),
+  action: z.string().max(64).optional(),
+  startDate: z.string().optional(), // YYYY-MM-DD
+  endDate: z.string().optional(),   // YYYY-MM-DD
+});
+
+export const getAdminAuditLogs = createServerFn({ method: "POST" })
+  .inputValidator((data) => AdminAuditLogSchema.parse(data))
+  .handler(async ({ data, context }): Promise<{ logs: AuditLogEntry[]; total: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = drizzle(env.DB);
+
+    const limit = Math.min(data.limit ?? 100, 500);
+    const offset = data.offset ?? 0;
+
+    const conditions: any[] = [];
+    if (data.action) conditions.push(eq(auditLogs.action, data.action));
+    if (data.userId) conditions.push(eq(auditLogs.userId, data.userId));
+    if (data.startDate) {
+      const ts = new Date(data.startDate + "T00:00:00Z").getTime();
+      conditions.push(sql`${auditLogs.timestamp} >= ${ts}`);
+    }
+    if (data.endDate) {
+      const ts = new Date(data.endDate + "T23:59:59Z").getTime();
+      conditions.push(sql`${auditLogs.timestamp} <= ${ts}`);
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [rawLogs, countResult] = await Promise.all([
+      db.select().from(auditLogs).where(where).orderBy(desc(auditLogs.timestamp)).limit(limit).offset(offset).all(),
+      db.select({ count: sql<number>`count(*)` }).from(auditLogs).where(where).all(),
+    ]);
+
+    // Batch-fetch users, tokens, orgs, memory snippets
+    const userIds = [...new Set(rawLogs.map((l) => l.userId).filter(Boolean))] as string[];
+    const tokenIds = [...new Set(rawLogs.map((l) => l.tokenId).filter((t): t is string => !!t && t !== "session"))];
+    const memoryIds = [...new Set(rawLogs.map((l) => l.memoryId).filter((m): m is string => !!m))];
+    const orgIds = [...new Set(rawLogs.map((l) => l.orgId).filter((o): o is string => !!o))];
+
+    const [userRows, tokenRows, versionRows, orgRows] = await Promise.all([
+      userIds.length > 0
+        ? db.select({ id: users.id, name: users.name, email: users.email }).from(users)
+            .where(sql`${users.id} IN (${sql.join(userIds.map((id) => sql`${id}`), sql`, `)})`)
+            .all()
+        : Promise.resolve([] as { id: string; name: string; email: string }[]),
+      tokenIds.length > 0
+        ? db.select({ id: apiTokens.id, name: apiTokens.name }).from(apiTokens)
+            .where(sql`${apiTokens.id} IN (${sql.join(tokenIds.map((id) => sql`${id}`), sql`, `)})`)
+            .all()
+        : Promise.resolve([] as { id: string; name: string }[]),
+      memoryIds.length > 0
+        ? db.select({ memoryId: memoryVersions.memoryId, fact: memoryVersions.fact })
+            .from(memoryVersions)
+            .where(sql`${memoryVersions.memoryId} IN (${sql.join(memoryIds.map((id) => sql`${id}`), sql`, `)})`)
+            .orderBy(desc(memoryVersions.timestamp))
+            .all()
+        : Promise.resolve([] as { memoryId: string; fact: string }[]),
+      orgIds.length > 0
+        ? db.select({ id: organizations.id, name: organizations.name }).from(organizations)
+            .where(sql`${organizations.id} IN (${sql.join(orgIds.map((id) => sql`${id}`), sql`, `)})`)
+            .all()
+        : Promise.resolve([] as { id: string; name: string }[]),
+    ]);
+
+    const userMap = new Map(userRows.map((u) => [u.id, u]));
+    const tokenMap = new Map(tokenRows.map((t) => [t.id, t.name]));
+    const orgNameMap = new Map(orgRows.map((o) => [o.id, o.name]));
+    const snippetMap = new Map<string, string>();
+    for (const v of versionRows) {
+      if (!snippetMap.has(v.memoryId)) {
+        snippetMap.set(v.memoryId, v.fact.slice(0, 120) + (v.fact.length > 120 ? "…" : ""));
+      }
+    }
+
+    const logs: AuditLogEntry[] = rawLogs.map((log) => {
+      const userInfo = userMap.get(log.userId);
+      const tokenName = log.tokenId && log.tokenId !== "session"
+        ? (tokenMap.get(log.tokenId) ?? log.tokenId.slice(0, 8) + "…")
+        : (log.tokenId === "session" ? "Session" : null);
+      const ua = log.userAgent ?? "";
+      let toolName: string | null = null;
+      if (ua) {
+        const ual = ua.toLowerCase();
+        if (ual.includes("cursor")) toolName = "Cursor";
+        else if (ual.includes("claude-desktop") || ual.includes("claude desktop")) toolName = "Claude Desktop";
+        else if (ual.includes("claude-code") || ual.includes("claude code")) toolName = "Claude Code";
+        else if (ual.includes("windsurf")) toolName = "Windsurf";
+        else if (ual.includes("cline")) toolName = "Cline";
+        else if (ual.includes("copilot")) toolName = "GitHub Copilot";
+        else if (ual.includes("continue")) toolName = "Continue";
+        else if (ual.includes("zed")) toolName = "Zed";
+        else toolName = ua.split("/")[0] || null;
+      }
+      return {
+        id: log.id,
+        userId: log.userId,
+        userEmail: userInfo?.email ?? null,
+        userName: userInfo?.name ?? null,
+        tokenId: log.tokenId ?? null,
+        tokenName,
+        action: log.action,
+        memoryId: log.memoryId ?? null,
+        memorySnippet: log.memoryId ? (snippetMap.get(log.memoryId) ?? null) : null,
+        ipAddress: log.ipAddress ?? null,
+        userAgent: log.userAgent ?? null,
+        toolName,
+        timestamp: log.timestamp,
+        metadata: log.metadata ?? null,
+        orgId: log.orgId ?? null,
+        orgName: log.orgId ? (orgNameMap.get(log.orgId) ?? null) : null,
+      };
+    });
+
+    return { logs, total: countResult[0]?.count ?? 0 };
+  });
 
 export const Route = createFileRoute("/admin")({
   component: AdminGuard,

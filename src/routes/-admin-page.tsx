@@ -6,6 +6,7 @@ import { AdminLayout, type AdminSection } from "~/components/AdminLayout";
 import { SiteAdminSection, OrgAdminSection, StatBox, AdminCard } from "~/components/AdminSections";
 import { SystemOverviewSection } from "~/components/AdminSystemOverview";
 import { UserManagementSection } from "~/components/AdminUserManagement";
+import { AdminAuditLog } from "~/components/AdminAuditLog";
 import {
   getAdminStatus,
   getDbStats,
@@ -1748,7 +1749,7 @@ function AdminPage() {
       )}
 
       {/* ── SITE AUDIT LOGS (site admin only) ──────────────────────────────── */}
-      {activeSection === "site-audit-logs" && <SiteAuditLogsSection />}
+      {activeSection === "site-audit-logs" && <AdminAuditLog />}
 
     </AdminLayout>
   );
