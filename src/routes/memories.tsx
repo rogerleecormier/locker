@@ -680,55 +680,73 @@ function MemoryDetailPanel({
         <hr className="border-border/60 my-2" />
 
         {/* Destructive Actions */}
-        <div className="flex flex-col gap-2 bg-error/5 border border-error/20 rounded-xl p-3 mt-2">
-          <span className="text-[10px] font-bold text-error uppercase tracking-wider block">
-            Danger Zone
-          </span>
-          <p className="text-[10px] text-text-muted leading-relaxed">
-            Archive this rule to suspend it from active MCP requests, or permanently purge it from the database.
-          </p>
+        <div className="flex flex-col gap-3 bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 mt-2">
+          <div className="flex flex-col gap-2">
+            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block">
+              Memory Management
+            </span>
 
-          <div className="flex gap-2 mt-2">
-            <Button
-              onClick={() => archiveMutation.mutate()}
-              disabled={archiveMutation.isPending}
-              variant="outline"
-              size="sm"
-              className="flex-1 text-xs border-error/25 text-error hover:bg-error/5 hover:border-error/40"
-            >
-              Archive Memory
-            </Button>
+            {/* Archive */}
+            <div className="flex flex-col gap-1.5 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-amber-600">Archive</span>
+                <span className="text-[9px] text-amber-600/70 font-mono">recoverable</span>
+              </div>
+              <p className="text-[10px] text-text-muted leading-relaxed">
+                Suspend from active use. Can be restored anytime from archived memories.
+              </p>
+              <Button
+                onClick={() => archiveMutation.mutate()}
+                disabled={archiveMutation.isPending}
+                variant="outline"
+                size="sm"
+                className="w-full text-xs border-amber-500/30 text-amber-600 hover:bg-amber-500/10 hover:border-amber-500/40 font-semibold mt-1"
+              >
+                {archiveMutation.isPending ? "Archiving..." : "📦 Archive Memory"}
+              </Button>
+            </div>
 
-            {confirmDelete ? (
-              <div className="flex gap-1.5 items-center flex-1 bg-surface border border-error/30 rounded-md p-1 shadow-xs">
+            {/* Delete */}
+            <div className="flex flex-col gap-1.5 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-red-600">Delete</span>
+                <span className="text-[9px] text-red-600/70 font-mono">permanent</span>
+              </div>
+              <p className="text-[10px] text-text-muted leading-relaxed">
+                Permanently remove from database. This cannot be undone.
+              </p>
+              {confirmDelete ? (
+                <div className="flex gap-1.5 items-center bg-surface border border-red-500/30 rounded-md p-1.5 mt-1">
+                  <span className="text-[10px] text-red-600 font-semibold flex-1">Confirm?</span>
+                  <Button
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteMutation.isPending}
+                    variant="destructive"
+                    size="sm"
+                    className="h-6 text-[10px] px-2.5 font-bold"
+                  >
+                    Yes, Delete
+                  </Button>
+                  <Button
+                    onClick={() => setConfirmDelete(false)}
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-[10px] px-2 border-red-500/20"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
                 <Button
-                  onClick={() => deleteMutation.mutate()}
-                  disabled={deleteMutation.isPending}
+                  onClick={() => setConfirmDelete(true)}
                   variant="destructive"
                   size="sm"
-                  className="h-7 text-[10px] flex-1 font-bold"
+                  className="w-full text-xs font-semibold mt-1"
                 >
-                  Purge
+                  🗑️ Permanently Delete
                 </Button>
-                <Button
-                  onClick={() => setConfirmDelete(false)}
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-[10px] px-2"
-                >
-                  No
-                </Button>
-              </div>
-            ) : (
-              <Button
-                onClick={() => setConfirmDelete(true)}
-                variant="destructive"
-                size="sm"
-                className="flex-1 text-xs"
-              >
-                Delete Rule
-              </Button>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>

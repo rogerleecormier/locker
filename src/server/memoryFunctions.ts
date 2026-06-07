@@ -812,9 +812,9 @@ export const getMemories = createServerFn({ method: "GET" })
 
       let whereClause;
       if (scopeType === "personal") {
-        whereClause = and(eq(memories.userId, user.id), eq(memories.scopeType, "personal"));
+        whereClause = and(eq(memories.userId, user.id), eq(memories.scopeType, "personal"), eq(memories.isActive, true));
       } else {
-        whereClause = and(eq(memories.scopeType, scopeType), eq(memories.scopeId, scopeId!));
+        whereClause = and(eq(memories.scopeType, scopeType), eq(memories.scopeId, scopeId!), eq(memories.isActive, true));
       }
 
       const rows = await db

@@ -253,14 +253,11 @@ export function MemoryCard({
                     </svg>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[120px]">
+                <DropdownMenuContent align="end" className="w-[140px]">
                   <DropdownMenuItem onClick={onSelect}>Manage</DropdownMenuItem>
                   {workspaces.filter((w) => w.key !== currentProjectKey).length > 0 && (
                     <DropdownMenuItem onClick={() => setMoving(true)}>Move</DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={() => archiveMutation.mutate()}>
-                    Archive
-                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => onExport(memory)}
                     disabled={memory.category !== "stack"}
@@ -269,11 +266,15 @@ export function MemoryCard({
                     Export
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => archiveMutation.mutate()} className="text-amber-600">
+                    📦 Archive (recoverable)
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => setConfirmingDelete(true)}
                     variant="destructive"
+                    className="text-red-600"
                   >
-                    Delete
+                    🗑️ Delete (permanent)
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
