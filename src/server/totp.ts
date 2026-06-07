@@ -12,11 +12,9 @@ type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 // Generate a random secret for TOTP
 function generateSecret(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  let secret = "";
-  for (let i = 0; i < 32; i++) {
-    secret += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return secret;
+  const buf = new Uint8Array(32);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (b) => chars[b % chars.length]).join("");
 }
 
 // Verify a TOTP code
@@ -117,9 +115,12 @@ export const setupTOTP = createServerFn({ method: "POST" }).handler(
     const user = await requireSession(env);
 
     const secret = generateSecret();
-    const backupCodes = Array.from({ length: 10 }, () =>
-      Math.random().toString(36).substring(2, 10).toUpperCase()
-    );
+    const backupCodes = Array.from({ length: 10 }, () => {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      const buf = new Uint8Array(8);
+      crypto.getRandomValues(buf);
+      return Array.from(buf, (b) => chars[b % chars.length]).join("");
+    });
 
     // Generate TOTP URI for QR code
     const encodedSecret = encodeURIComponent(secret);
