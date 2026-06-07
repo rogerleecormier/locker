@@ -2593,12 +2593,19 @@ export async function handleMcpRequest(
         .filter((item) => !item.row.isQuarantined)
         .map((item) => {
           const raw = item.ephemeralFact.get();
-          // Strip the leading [config:name] tag if present, then normalize and return clean markdown.
+          // Strip the leading [config:name] tag if present, then normalize.
           const withoutTag = raw.replace(/^\[config:[^\]]*\]\n?/, "").trim();
           const normalized = normalizeFactMarkdown(withoutTag);
+          // Always strip the ## System Prompt section — the boilerplate header already covers it.
+          const deduped = normalized.replace(
+            /^## System Prompt\n[\s\S]*?(?=\n## |\n---|\s*$)/,
+            ""
+          ).trim();
           const name = item.row.name ?? item.row.id;
-          return `## ${name}\n\n${normalized}`;
-        });
+          return `## ${name}\n\n${deduped}`;
+        })
+        // Drop any block that ended up empty after deduplication.
+        .filter((block) => block.replace(/^## [^\n]+\n\n$/, "").trim().length > 0);
 
       const configSection = configBlocks.length > 0 ? configBlocks.join("\n\n---\n\n") + "\n\n" : "";
 
