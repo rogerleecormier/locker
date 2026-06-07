@@ -109,7 +109,7 @@ export function MemoryCard({
       <div>
         {/* Header */}
         <div
-          className="flex justify-between items-center mb-3"
+          className="flex justify-between items-start mb-3"
           onClick={(e) => e.stopPropagation()}
         >
           <input
@@ -120,20 +120,47 @@ export function MemoryCard({
               onToggleSelect(memory.id);
             }}
             onClick={(e) => e.stopPropagation()}
-            className="cursor-pointer h-4 w-4 rounded-sm border-border text-accent focus:ring-accent accent-accent"
+            className="cursor-pointer h-4 w-4 rounded-sm border-border text-accent focus:ring-accent accent-accent mt-0.5"
           />
-          <div className="flex gap-2 items-center">
-            <Badge variant={memory.category as any}>{memory.category}</Badge>
-            {memory.isQuarantined && (
-              <Badge variant="secondary" className="border-red-500/35 bg-red-500/10 text-red-500 font-semibold normal-case flex items-center gap-1">
-                <span>⚠️</span> Quarantined
-              </Badge>
-            )}
-            {isStale && (
-              <Badge variant="secondary" className="border-amber-500/35 bg-amber-500/10 text-amber-500 font-semibold normal-case">
-                Stale
-              </Badge>
-            )}
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex gap-2 items-center flex-wrap justify-end">
+              <Badge variant={memory.category as any}>{memory.category}</Badge>
+              {memory.isQuarantined && (
+                <Badge variant="secondary" className="border-red-500/35 bg-red-500/10 text-red-500 font-semibold normal-case flex items-center gap-1">
+                  <span>⚠️</span> Quarantined
+                </Badge>
+              )}
+              {isStale && (
+                <Badge variant="secondary" className="border-amber-500/35 bg-amber-500/10 text-amber-500 font-semibold normal-case">
+                  Stale
+                </Badge>
+              )}
+            </div>
+            <div className="flex gap-1.5 items-center flex-wrap justify-end">
+              {memory.authorityType === "authoritative" && (
+                <span
+                  title="Authoritative memory — takes precedence in AI context ranking"
+                  className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-500 text-[9px] font-bold px-1.5 py-0.5 rounded-sm uppercase select-none"
+                >
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                  Authoritative
+                </span>
+              )}
+              {memory.isLocked && (
+                <span
+                  title="This memory is locked and can only be edited by org admins."
+                  className="inline-flex items-center gap-1 text-text-muted text-[10px] select-none"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  Locked
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

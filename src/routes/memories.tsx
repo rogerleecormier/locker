@@ -259,6 +259,53 @@ function MemoryDetailPanel({
           </div>
         )}
 
+        {/* Authority / Lock info */}
+        <div className="flex flex-col gap-2 p-3 bg-surface2 border border-border rounded-lg">
+          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Memory Authority</span>
+          {memory.authorityType === "authoritative" && memory.isLocked ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/25">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="text-amber-500 shrink-0">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              <span className="text-[11px] font-bold text-amber-500">Authoritative · Locked</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 shrink-0 ml-0.5">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-text-muted">Authority:</span>
+                {memory.authorityType === "authoritative" ? (
+                  <span className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-500 text-[9px] font-bold px-1.5 py-0.5 rounded-sm uppercase">
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                    </svg>
+                    Authoritative
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-text-muted font-medium">Contributed</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-text-muted">Locked:</span>
+                {memory.isLocked ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-text-muted">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    Yes
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-text-muted font-medium">No</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Change Actions */}
         {hasChanges && (
           <div className="flex gap-2 py-2 mt-1">
