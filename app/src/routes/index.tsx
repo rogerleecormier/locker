@@ -31,7 +31,7 @@ function LandingPage() {
       {/* ── HERO ── */}
       <div className="relative text-center overflow-hidden px-6 pt-12 pb-16 md:pt-[100px] md:pb-20">
         {/* radial glow */}
-        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-60%)", width: 700, height: 700, borderRadius: "50%", background: "radial-gradient(circle, rgba(168,85,247,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] w-[320px] h-[320px] md:w-[700px] md:h-[700px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(168,85,247,0.12) 0%, transparent 70%)" }} />
 
         <div style={{ position: "relative", maxWidth: 720, margin: "0 auto" }}>
           {/* lock icon animated */}
@@ -79,10 +79,7 @@ function LandingPage() {
           ].map(({ value, suffix, label }, i) => (
             <div
               key={label}
-              className="text-center px-6 py-4"
-              style={{
-                borderBottom: i < 2 ? "1px solid var(--border)" : undefined,
-              }}
+              className={`text-center px-6 py-4 border-[var(--border)] ${i < 2 ? "border-b md:border-b-0 md:border-r" : ""}`}
             >
               <div style={{ fontSize: 32, fontWeight: 800, color: "var(--accent)", letterSpacing: "-0.03em", lineHeight: 1 }}>
                 <Counter to={value} suffix={suffix} />
@@ -174,9 +171,9 @@ function LandingPage() {
               <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
                 Every memory is encrypted with AES-256-GCM under a unique per-vault Data Encryption Key (DEK). The DEK itself is wrapped by a server-side Key Encryption Key stored in environment variables — the database alone is never sufficient to decrypt anything.
               </p>
-              <div style={{ display: "flex", gap: 16 }}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[["Envelope Encryption", "DEK per vault"], ["AES-256-GCM", "Industry standard"], ["Edge-only unwrap", "DEK never at rest"]].map(([title, sub]) => (
-                  <div key={title} style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div key={title} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", marginBottom: 4 }}>{title}</div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{sub}</div>
                   </div>

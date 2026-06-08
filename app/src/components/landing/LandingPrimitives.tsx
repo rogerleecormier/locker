@@ -4,7 +4,7 @@ import { FadeIn } from "./LandingAnimations";
 export function Section({ children, style, className }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) {
   return (
     <section
-      className={`px-6 py-12 md:py-20 mx-auto w-full${className ? ` ${className}` : ""}`}
+      className={`px-6 py-12 md:py-[100px] mx-auto w-full${className ? ` ${className}` : ""}`}
       style={{ maxWidth: "1040px", ...style }}
     >
       {children}
