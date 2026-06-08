@@ -1332,14 +1332,22 @@ function WebhookSecretRow({
   );
 }
 
-export function WebhookSecretsSection() {
+export function WebhookSecretsSection({ scopeType }: { scopeType?: "personal" | "org" } = {}) {
   const { data: workspaces = [] } = useQuery({
     queryKey: ["workspaces"],
     queryFn: () => getUserWorkspaces(),
   });
 
-  // Only show scopes that are relevant: personal + orgs (teams inherit from org).
-  const displayScopes = workspaces.filter((w) => w.type === "personal" || w.type === "org");
+  // Filter scopes based on context:
+  // - If scopeType is "org", show only org webhooks
+  // - If scopeType is "personal", show only personal webhooks
+  // - If no scopeType, show both personal + orgs (default behavior)
+  let displayScopes = workspaces.filter((w) => w.type === "personal" || w.type === "org");
+  if (scopeType === "org") {
+    displayScopes = displayScopes.filter((w) => w.type === "org");
+  } else if (scopeType === "personal") {
+    displayScopes = displayScopes.filter((w) => w.type === "personal");
+  }
 
   return (
     <div className="flex flex-col gap-6 py-2">

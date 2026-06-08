@@ -87,8 +87,8 @@ export const getUserWorkspaces = createServerFn({ method: "GET" }).handler(
       { key: "personal", label: "Personal Locker", type: "personal" }
     ];
 
-    if (!canAccessSharedWorkspaces) return workspaces;
-
+    // Always fetch orgs the user is a member of. Free plan users can still configure
+    // webhooks for orgs they admin, even if they can't access other org features.
     const orgRows = await db
       .select({
         id: organizations.id,
@@ -109,24 +109,27 @@ export const getUserWorkspaces = createServerFn({ method: "GET" }).handler(
       });
     }
 
-    const teamRows = await db
-      .select({
-        id: teams.id,
-        name: teams.name,
-        role: teamMembers.role,
-      })
-      .from(teamMembers)
-      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-      .where(eq(teamMembers.userId, user.id))
-      .all();
+    // Teams are only available on paid plans
+    if (canAccessSharedWorkspaces) {
+      const teamRows = await db
+        .select({
+          id: teams.id,
+          name: teams.name,
+          role: teamMembers.role,
+        })
+        .from(teamMembers)
+        .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+        .where(eq(teamMembers.userId, user.id))
+        .all();
 
-    for (const team of teamRows) {
-      workspaces.push({
-        key: `team:${team.id}`,
-        label: `${team.name} (Team)`,
-        type: "team",
-        role: team.role,
-      });
+      for (const team of teamRows) {
+        workspaces.push({
+          key: `team:${team.id}`,
+          label: `${team.name} (Team)`,
+          type: "team",
+          role: team.role,
+        });
+      }
     }
 
     return workspaces;

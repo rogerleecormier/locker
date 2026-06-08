@@ -1334,7 +1334,7 @@ function AdminPage() {
 
       {activeSection === "personal-activity" && <UnifiedActivitySection scope="personal" />}
 
-      {activeSection === "personal-webhooks" && <WebhookSecretsSection />}
+      {activeSection === "personal-webhooks" && <WebhookSecretsSection scopeType="personal" />}
 
       {/* ── SYSTEM OVERVIEW ─────────────────────────────────────────────── */}
       {activeSection === "system" && (
@@ -1719,7 +1719,7 @@ function AdminPage() {
       {/* ── ORG WEBHOOKS ──────────────────────────────────────────────────────── */}
       {activeSection === "org-webhooks" && (
         <OrgAdminSection title="Org Webhooks" description="Configure webhooks for your organization" icon="🔗">
-          <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>Org webhook configuration coming soon.</p>
+          <WebhookSecretsSection scopeType="org" />
         </OrgAdminSection>
       )}
 
