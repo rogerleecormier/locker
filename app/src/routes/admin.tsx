@@ -362,7 +362,7 @@ export const createUserAdmin = createServerFn({ method: "POST" })
       throw new Error("A user with this email address already exists.");
     }
 
-    const userId = crypto.randomUUID().replace(/-/g, "");
+    const userId = crypto.randomUUID();
 
     // Insert user
     await db.insert(users).values({
@@ -387,7 +387,7 @@ export const createUserAdmin = createServerFn({ method: "POST" })
       const { hashPassword } = await import("better-auth/crypto");
       const hashedPassword = await hashPassword(data.password);
       await db.insert(accounts).values({
-        id: crypto.randomUUID().replace(/-/g, ""),
+        id: crypto.randomUUID(),
         accountId: data.email,
         providerId: "credential",
         userId,
@@ -508,7 +508,7 @@ export const updateUserPlanAdmin = createServerFn({ method: "POST" })
 
     // Log event
     await db.insert(planEvents).values({
-      id: crypto.randomUUID().replace(/-/g, ""),
+      id: crypto.randomUUID(),
       userId: data.userId,
       fromPlan: oldPlan,
       toPlan: data.plan,
@@ -553,7 +553,7 @@ export const setUserPasswordAdmin = createServerFn({ method: "POST" })
         .where(eq(accounts.id, credentialAccounts[0].id));
     } else {
       await db.insert(accounts).values({
-        id: crypto.randomUUID().replace(/-/g, ""),
+        id: crypto.randomUUID(),
         accountId: userEmail,
         providerId: "credential",
         userId: data.userId,
@@ -609,7 +609,7 @@ export const resetUserPasswordAdmin = createServerFn({ method: "POST" })
         .where(eq(accounts.id, credentialAccounts[0].id));
     } else {
       await db.insert(accounts).values({
-        id: crypto.randomUUID().replace(/-/g, ""),
+        id: crypto.randomUUID(),
         accountId: userEmail,
         providerId: "credential",
         userId: data.userId,

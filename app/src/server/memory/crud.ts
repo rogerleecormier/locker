@@ -1127,14 +1127,22 @@ export const getProfile = createServerFn({ method: "GET" }).handler(
 
     let name = "";
     if (nameRow) {
-      const fact = await decryptFact(nameRow.fact, profileVaultKey);
-      name = fact.replace(/^Name is\s+/i, "").trim();
+      try {
+        const fact = await decryptFact(nameRow.fact, profileVaultKey);
+        name = fact.replace(/^Name is\s+/i, "").trim();
+      } catch {
+        name = "";
+      }
     }
 
     let location = "";
     if (locRow) {
-      const fact = await decryptFact(locRow.fact, profileVaultKey);
-      location = fact.replace(/^Location is\s+/i, "").trim();
+      try {
+        const fact = await decryptFact(locRow.fact, profileVaultKey);
+        location = fact.replace(/^Location is\s+/i, "").trim();
+      } catch {
+        location = "";
+      }
     }
 
     return { name, location };
