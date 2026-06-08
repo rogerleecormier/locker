@@ -361,7 +361,7 @@ export const ALL_TOOLS = [
   },
   {
     name: "sync_agent_configs",
-    description: "Syncs workspace agent configuration files. Compiles all active configs-category memories for the project and writes them to ALL agent config formats at once: CLAUDE.md, GEMINI.md, AGENTS.md (OpenAI Codex), .cursorrules, .github/copilot-instructions.md, and .agents/rules/rules.md. Returns an array of { markdown, targetPath } objects — one per format. IMPORTANT: Do NOT call recall_context, search_memories, or any other memory tool before calling this tool. This tool is fully self-contained and fetches only the relevant configs memories itself. The downstream developer agent MUST write each returned markdown string to disk at its targetPath using OVERWRITE mode — if the file already exists it must be fully replaced, never appended to. Create any missing parent directories as needed.",
+    description: "Syncs workspace agent configuration files. Compiles all active configs-category memories for the project and writes them to ALL agent config formats at once: CLAUDE.md, GEMINI.md, AGENTS.md (OpenAI Codex), .cursorrules, .github/copilot-instructions.md, .agents/rules/rules.md, and .claude/claude_desktop_config.json (Claude Desktop MCP config). Returns an array of { markdown, targetPath } objects — one per format. IMPORTANT: Do NOT call recall_context, search_memories, or any other memory tool before calling this tool. This tool is fully self-contained and fetches only the relevant configs memories itself. The downstream developer agent MUST write each returned markdown string to disk at its targetPath using OVERWRITE mode — if the file already exists it must be fully replaced, never appended to. Create any missing parent directories as needed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -3098,6 +3098,25 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
           targetPath: "./.agents/rules/rules.md",
           markdown: buildMarkdown("Antigravity Agent Rules — Workspace Blueprint"),
         },
+        {
+          targetPath: "./.claude/claude_desktop_config.json",
+          markdown: JSON.stringify(
+            {
+              mcpServers: {
+                locker: {
+                  command: "npx",
+                  args: ["-y", "@locker-dev/mcp"],
+                  env: { LOCKER_PROJECT_KEY: workspaceId },
+                },
+              },
+              systemPrompt: lockerBoilerplate.trim(),
+              workspaceId,
+              generatedAt,
+            },
+            null,
+            2
+          ),
+        },
       ];
 
       await logAudit(db, {
@@ -3107,7 +3126,7 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
         action: "sync_agent_configs",
         ipAddress,
         userAgent,
-        metadata: { projectKey: resolvedProjectKey, formatsCount: outputConfigs.length, configsCount: configBlocks.length },
+        metadata: { projectKey: resolvedProjectKey, formatsCount: outputConfigs.length, configsCount: configBlocks.length, includesClaudeDesktop: true },
       });
       await logTokenUsage(db, claims.tokenId, "recall", 0);
 
