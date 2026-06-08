@@ -493,6 +493,142 @@ function MemoryDetailPanel({
   );
 }
 
+// ── SKELETON LOADERS ───────────────────────────────────────────────────────
+function SkeletonCard() {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4 flex flex-col gap-3 animate-pulse">
+      <div className="flex items-center justify-between gap-2">
+        <div className="h-3 w-16 rounded-full bg-surface2" />
+        <div className="h-3 w-8 rounded-full bg-surface2" />
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="h-2.5 w-full rounded-full bg-surface2" />
+        <div className="h-2.5 w-4/5 rounded-full bg-surface2" />
+        <div className="h-2.5 w-2/3 rounded-full bg-surface2" />
+      </div>
+      <div className="flex items-center gap-1.5 mt-1">
+        <div className="h-4 w-10 rounded-sm bg-surface2" />
+        <div className="h-4 w-14 rounded-sm bg-surface2" />
+      </div>
+    </div>
+  );
+}
+
+function SkeletonListRow({ idx }: { idx: number }) {
+  const widths = ["w-2/3", "w-3/4", "w-1/2", "w-4/5", "w-3/5"];
+  return (
+    <div className={`flex items-center gap-3 px-3 h-11 animate-pulse ${idx > 0 ? "border-t border-border" : ""}`}>
+      <div className="h-3.5 w-3.5 shrink-0 rounded-sm bg-surface2" />
+      <div className="w-2 h-2 rounded-full shrink-0 bg-surface2" />
+      <div className={`flex-1 h-2.5 rounded-full bg-surface2 ${widths[idx % widths.length]}`} />
+      <div className="hidden sm:flex items-center gap-1 shrink-0">
+        <div className="h-4 w-10 rounded-sm bg-surface2" />
+        <div className="h-4 w-12 rounded-sm bg-surface2" />
+      </div>
+      <div className="h-2.5 w-20 rounded-full bg-surface2 hidden md:block" />
+    </div>
+  );
+}
+
+function SkeletonTableRow({ idx }: { idx: number }) {
+  const widths = ["w-3/4", "w-1/2", "w-2/3", "w-4/5", "w-3/5"];
+  return (
+    <tr className={`animate-pulse ${idx > 0 ? "border-t border-border" : ""}`}>
+      <td className="px-3 py-2.5"><div className="h-3.5 w-3.5 rounded-sm bg-surface2" /></td>
+      <td className="px-3 py-2.5"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-surface2" /><div className="h-2.5 w-16 rounded-full bg-surface2" /></div></td>
+      <td className="px-3 py-2.5"><div className={`h-2.5 rounded-full bg-surface2 ${widths[idx % widths.length]}`} /></td>
+      <td className="px-3 py-2.5 hidden sm:table-cell"><div className="flex gap-1"><div className="h-4 w-10 rounded-sm bg-surface2" /><div className="h-4 w-14 rounded-sm bg-surface2" /></div></td>
+      <td className="px-3 py-2.5 hidden md:table-cell"><div className="h-2.5 w-20 rounded-full bg-surface2" /></td>
+      <td className="px-3 py-2.5"><div className="h-6 w-6 rounded-md bg-surface2" /></td>
+    </tr>
+  );
+}
+
+function MemorySkeletonLoader({ viewMode }: { viewMode: ViewMode }) {
+  const count = 8;
+  if (viewMode === "grid") {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        {Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)}
+      </div>
+    );
+  }
+  if (viewMode === "list") {
+    return (
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        {Array.from({ length: count }).map((_, i) => <SkeletonListRow key={i} idx={i} />)}
+      </div>
+    );
+  }
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-surface2 border-b border-border animate-pulse">
+              <th className="w-8 px-3 py-2"><div className="h-3.5 w-3.5 rounded-sm bg-surface2" /></th>
+              {["Category", "Fact", "Tags", "Created"].map((h) => (
+                <th key={h} className="px-3 py-2 text-left"><div className="h-2.5 w-16 rounded-full bg-border" /></th>
+              ))}
+              <th className="w-8 px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: count }).map((_, i) => <SkeletonTableRow key={i} idx={i} />)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── CATEGORY FILTER BAR ────────────────────────────────────────────────────
+const FILTER_BAR_CATEGORIES = [
+  { label: "All", value: "", dot: "" },
+  { label: "Rules", value: "rules", dot: "bg-indigo-400" },
+  { label: "Projects", value: "projects", dot: "bg-emerald-400" },
+  { label: "References", value: "references", dot: "bg-amber-400" },
+  { label: "Configs", value: "configs", dot: "bg-purple-400" },
+];
+
+function CategoryFilterBar({
+  value,
+  onChange,
+  counts,
+}: {
+  value: string;
+  onChange: (cat: string) => void;
+  counts: Record<string, number>;
+}) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap select-none" role="group" aria-label="Filter by category">
+      {FILTER_BAR_CATEGORIES.map((cat) => {
+        const isActive = value === cat.value;
+        const count = cat.value === "" ? Object.values(counts).reduce((s, n) => s + n, 0) : (counts[cat.value] ?? 0);
+        return (
+          <button
+            key={cat.value}
+            type="button"
+            onClick={() => onChange(isActive && cat.value !== "" ? "" : cat.value)}
+            aria-pressed={isActive}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-150 ${
+              isActive
+                ? "bg-accent text-white border-accent shadow-sm"
+                : "bg-surface border-border text-text-muted hover:border-accent/40 hover:text-text"
+            }`}
+          >
+            {cat.dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cat.dot}`} />}
+            {cat.label}
+            <span className={`text-[10px] font-bold tabular-nums ${isActive ? "text-white/80" : "text-text-muted"}`}>
+              {count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── MEMORIES TABLE ─────────────────────────────────────────────────────────
 type ViewMode = "grid" | "list" | "table";
 
@@ -536,6 +672,7 @@ function MemoryTable({
   memories,
   filter,
   categoryFilter,
+  onCategoryChange,
   sortBy,
   dateStart,
   dateEnd,
@@ -550,6 +687,7 @@ function MemoryTable({
   memories: Memory[];
   filter: string;
   categoryFilter: string;
+  onCategoryChange?: (cat: string) => void;
   sortBy: 'newest' | 'oldest' | 'alphabetical' | 'stale';
   dateStart: string;
   dateEnd: string;
@@ -571,6 +709,8 @@ function MemoryTable({
   const [showExportModal, setShowExportModal] = useState(false);
   const [tableSortCol, setTableSortCol] = useState<"category" | "fact" | "created">("created");
   const [tableSortDir, setTableSortDir] = useState<"asc" | "desc">("desc");
+  const [keyboardDeleteConfirm, setKeyboardDeleteConfirm] = useState(false);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   const [activeSelectedId, setActiveSelectedId] = useState<string | null>(null);
 
@@ -635,6 +775,85 @@ function MemoryTable({
   const activeMemory = useMemo(() => {
     return filtered.find((m) => m.id === activeSelectedId) || null;
   }, [filtered, activeSelectedId]);
+
+  const keyboardDeleteMutation = useMutation({
+    mutationFn: (id: string) => deleteMemory({ data: { id } }),
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData<Memory[]>(["memories"], (old) =>
+        old ? old.filter((m) => m.id !== id) : []
+      );
+      setFocusedId(null);
+      setKeyboardDeleteConfirm(false);
+      toast.success("Memory deleted.");
+    },
+    onError: (err: any) => {
+      toast.error("Failed to delete: " + String(err.message || err));
+      setKeyboardDeleteConfirm(false);
+    },
+  });
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      // Drawer open: Escape closes it, everything else is suppressed so the
+      // user can interact with drawer fields without unintended navigation.
+      if (activeSelectedId) {
+        if (e.key === "Escape") {
+          setActiveSelectedId(null);
+          setFocusedId(null);
+          setKeyboardDeleteConfirm(false);
+        }
+        return;
+      }
+
+      // No drawer — navigate the list with arrow keys
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const currentIdx = focusedId ? filtered.findIndex((m) => m.id === focusedId) : -1;
+        let nextIdx: number;
+        if (e.key === "ArrowDown") {
+          nextIdx = currentIdx < filtered.length - 1 ? currentIdx + 1 : 0;
+        } else {
+          nextIdx = currentIdx > 0 ? currentIdx - 1 : filtered.length - 1;
+        }
+        const next = filtered[nextIdx];
+        if (next) {
+          setFocusedId(next.id);
+          setKeyboardDeleteConfirm(false);
+          if (nextIdx >= visibleCount - 1) setVisibleCount((v) => Math.min(v + PAGE_SIZE, filtered.length));
+        }
+        return;
+      }
+
+      // Enter opens the drawer for the focused row
+      if (e.key === "Enter" && focusedId) {
+        e.preventDefault();
+        setActiveSelectedId(focusedId);
+        setKeyboardDeleteConfirm(false);
+        return;
+      }
+
+      // Delete: first press arms confirmation, second press fires
+      if (e.key === "Delete" && focusedId) {
+        e.preventDefault();
+        if (keyboardDeleteConfirm) {
+          keyboardDeleteMutation.mutate(focusedId);
+        } else {
+          setKeyboardDeleteConfirm(true);
+        }
+        return;
+      }
+
+      if (e.key === "Escape" && keyboardDeleteConfirm) {
+        setKeyboardDeleteConfirm(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [filtered, activeSelectedId, focusedId, visibleCount, keyboardDeleteConfirm, keyboardDeleteMutation]);
 
   const hasMore = visibleCount < filtered.length;
 
@@ -889,6 +1108,50 @@ function MemoryTable({
         </div>
       </div>
 
+      {/* Keyboard delete confirmation prompt */}
+      {keyboardDeleteConfirm && focusedId && (() => {
+        const focusedMemory = filtered.find((m) => m.id === focusedId);
+        return focusedMemory ? (
+          <div className="flex items-center gap-3 px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs animate-in fade-in duration-150">
+            <span className="text-red-500 font-semibold flex-1 min-w-0 truncate">
+              Press <kbd className="font-mono bg-red-500/15 border border-red-500/25 px-1.5 py-0.5 rounded text-[10px]">Delete</kbd> again to permanently delete, or{" "}
+              <kbd className="font-mono bg-surface border border-border px-1.5 py-0.5 rounded text-[10px]">Esc</kbd> to cancel.
+            </span>
+            <Button
+              onClick={() => keyboardDeleteMutation.mutate(focusedMemory.id)}
+              disabled={keyboardDeleteMutation.isPending}
+              variant="destructive"
+              size="sm"
+              className="h-7 text-xs font-bold shrink-0"
+            >
+              {keyboardDeleteMutation.isPending ? "Deleting..." : "Confirm Delete"}
+            </Button>
+            <Button
+              onClick={() => setKeyboardDeleteConfirm(false)}
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs shrink-0"
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : null;
+      })()}
+
+      {/* Category filter bar */}
+      {!isSemanticResults && onCategoryChange && (
+        <CategoryFilterBar
+          value={categoryFilter}
+          onChange={onCategoryChange}
+          counts={{
+            rules: memories.filter((m) => m.category === "rules").length,
+            projects: memories.filter((m) => m.category === "projects").length,
+            references: memories.filter((m) => m.category === "references").length,
+            configs: memories.filter((m) => m.category === "configs").length,
+          }}
+        />
+      )}
+
       {/* ── GRID VIEW ── */}
       {viewMode === "grid" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
@@ -902,7 +1165,8 @@ function MemoryTable({
               workspaces={workspaces}
               currentProjectKey={currentProjectKey}
               isSelected={activeSelectedId === m.id}
-              onSelect={() => setActiveSelectedId(m.id)}
+              isFocused={focusedId === m.id && activeSelectedId !== m.id}
+              onSelect={() => { setFocusedId(m.id); setActiveSelectedId(m.id); }}
             />
           ))}
         </div>
@@ -914,13 +1178,14 @@ function MemoryTable({
           {visibleMemories.map((m, idx) => {
             const tags = m.tags ? m.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
             const isActive = activeSelectedId === m.id;
+            const isFocusedRow = focusedId === m.id && !isActive;
             return (
               <div
                 key={m.id}
-                onClick={() => setActiveSelectedId(m.id)}
+                onClick={() => { setFocusedId(m.id); setActiveSelectedId(m.id); }}
                 className={`flex items-center gap-3 px-3 h-11 cursor-pointer select-none transition-colors ${
                   idx < visibleMemories.length - 1 ? "border-b border-border" : ""
-                } ${isActive ? "bg-accent/8 border-l-2 border-l-accent" : "hover:bg-surface2"}`}
+                } ${isActive ? "bg-accent/8 border-l-2 border-l-accent" : isFocusedRow ? "bg-accent/4 border-l-2 border-l-accent/40" : "hover:bg-surface2"}`}
               >
                 <input
                   type="checkbox"
@@ -955,7 +1220,7 @@ function MemoryTable({
                 <button
                   type="button"
                   title="Open details"
-                  onClick={(e) => { e.stopPropagation(); setActiveSelectedId(m.id); }}
+                  onClick={(e) => { e.stopPropagation(); setFocusedId(m.id); setActiveSelectedId(m.id); }}
                   className="shrink-0 h-6 w-6 flex items-center justify-center text-text-muted hover:text-text rounded-md hover:bg-surface transition-colors"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1043,12 +1308,13 @@ function MemoryTable({
                   {sorted.map((m, idx) => {
                     const tags = m.tags ? m.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
                     const isActive = activeSelectedId === m.id;
+                    const isFocusedRow = focusedId === m.id && !isActive;
                     return (
                       <tr
                         key={m.id}
-                        onClick={() => setActiveSelectedId(m.id)}
+                        onClick={() => { setFocusedId(m.id); setActiveSelectedId(m.id); }}
                         className={`cursor-pointer transition-colors ${idx < sorted.length - 1 ? "border-b border-border" : ""} ${
-                          isActive ? "bg-accent/8" : "hover:bg-surface2"
+                          isActive ? "bg-accent/8" : isFocusedRow ? "bg-accent/4" : "hover:bg-surface2"
                         }`}
                       >
                         <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
@@ -1085,7 +1351,7 @@ function MemoryTable({
                           <button
                             type="button"
                             title="Open details"
-                            onClick={() => setActiveSelectedId(m.id)}
+                            onClick={() => { setFocusedId(m.id); setActiveSelectedId(m.id); }}
                             className="h-6 w-6 flex items-center justify-center text-text-muted hover:text-text rounded-md hover:bg-surface transition-colors"
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1761,20 +2027,14 @@ function Dashboard() {
 
         {/* Memories Content Table */}
         {isLoading ? (
-          <div className="text-center py-20">
-            <span className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin inline-block mb-3" />
-            <p className="text-text-muted text-xs font-semibold">Decrypting memories...</p>
-          </div>
+          <MemorySkeletonLoader viewMode={viewMode} />
         ) : isError ? (
           <div className="text-center py-16 px-4 text-error bg-error/5 border border-error/20 rounded-xl select-none">
             Error loading memories. Check your server status.
           </div>
         ) : semanticMode && debouncedSemanticQuery ? (
           isSemanticFetching ? (
-            <div className="text-center py-20">
-              <span className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin inline-block mb-3" />
-              <p className="text-text-muted text-xs font-semibold">Running semantic search...</p>
-            </div>
+            <MemorySkeletonLoader viewMode={viewMode} />
           ) : semanticResults && semanticResults.length > 0 ? (
             <MemoryTable
               memories={semanticResults}
@@ -1790,6 +2050,7 @@ function Dashboard() {
               isSemanticResults
               viewMode={viewMode}
               onViewModeChange={handleViewModeChange}
+              onCategoryChange={setCategoryFilter}
             />
           ) : (
             <div className="text-center py-16 px-4 text-text-muted bg-surface border border-border rounded-xl select-none">
@@ -1801,6 +2062,7 @@ function Dashboard() {
             memories={memories}
             filter={searchQuery}
             categoryFilter={categoryFilter}
+            onCategoryChange={setCategoryFilter}
             sortBy={sortBy}
             dateStart={dateStart}
             dateEnd={dateEnd}

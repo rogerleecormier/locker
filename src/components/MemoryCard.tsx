@@ -22,6 +22,7 @@ interface MemoryCardProps {
   workspaces?: any[];
   currentProjectKey?: string;
   isSelected?: boolean;
+  isFocused?: boolean;
   onSelect?: () => void;
 }
 
@@ -33,6 +34,7 @@ export function MemoryCard({
   workspaces = [],
   currentProjectKey = "personal",
   isSelected = false,
+  isFocused = false,
   onSelect,
 }: MemoryCardProps) {
   const queryClient = useQueryClient();
@@ -102,7 +104,9 @@ export function MemoryCard({
           ? "border-red-500/40 hover:border-red-500/60 bg-red-500/3 hover:bg-red-500/5"
           : isSelected
             ? "border-accent ring-2 ring-accent/20 bg-accent/3"
-            : "border-border hover:border-accent/35"
+            : isFocused
+              ? "border-accent/50 ring-1 ring-accent/15"
+              : "border-border hover:border-accent/35"
       }`}
     >
       <div>
