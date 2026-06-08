@@ -29,7 +29,7 @@ function LandingPage() {
       `}</style>
 
       {/* ── HERO ── */}
-      <div style={{ position: "relative", padding: "100px 24px 80px", textAlign: "center", overflow: "hidden" }}>
+      <div className="relative text-center overflow-hidden px-6 pt-12 pb-16 md:pt-[100px] md:pb-20">
         {/* radial glow */}
         <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-60%)", width: 700, height: 700, borderRadius: "50%", background: "radial-gradient(circle, rgba(168,85,247,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
 
@@ -71,13 +71,19 @@ function LandingPage() {
 
       {/* ── STATS ── */}
       <div style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
-        <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0 }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 mx-auto w-full px-6 py-8" style={{ maxWidth: "860px" }}>
           {[
             { value: 20, suffix: "+", label: "Compatible AI Clients" },
             { value: 256, suffix: "-bit", label: "AES-GCM Encryption" },
             { value: 100, suffix: "%", label: "Edge-Native Architecture" },
           ].map(({ value, suffix, label }, i) => (
-            <div key={label} style={{ textAlign: "center", padding: "16px 24px", borderRight: i < 2 ? "1px solid var(--border)" : "none" }}>
+            <div
+              key={label}
+              className="text-center px-6 py-4"
+              style={{
+                borderBottom: i < 2 ? "1px solid var(--border)" : undefined,
+              }}
+            >
               <div style={{ fontSize: 32, fontWeight: 800, color: "var(--accent)", letterSpacing: "-0.03em", lineHeight: 1 }}>
                 <Counter to={value} suffix={suffix} />
               </div>
@@ -94,8 +100,8 @@ function LandingPage() {
 
       {/* ── STACK WIZARD SECTION ── */}
       <Section>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 items-center">
+          <div className="min-w-0">
             <FadeIn>
               <SectionLabel>Stack Creator</SectionLabel>
               <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
@@ -114,22 +120,26 @@ function LandingPage() {
               </ul>
             </FadeIn>
           </div>
-          <FadeIn delay={150}>
-            <div style={{ animation: "float 6s ease-in-out infinite" }}>
-              <HeroStackCreatorMockup />
-            </div>
-          </FadeIn>
+          <div className="min-w-0 overflow-hidden">
+            <FadeIn delay={150}>
+              <div style={{ animation: "float 6s ease-in-out infinite" }}>
+                <HeroStackCreatorMockup />
+              </div>
+            </FadeIn>
+          </div>
         </div>
       </Section>
 
       {/* ── MCP ENDPOINT ── */}
       <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
         <Section>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
-            <FadeIn delay={150}>
-              <McpCallMockup />
-            </FadeIn>
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 items-center">
+            <div className="min-w-0 overflow-hidden">
+              <FadeIn delay={150}>
+                <McpCallMockup />
+              </FadeIn>
+            </div>
+            <div className="min-w-0">
               <FadeIn>
                 <SectionLabel>MCP Protocol</SectionLabel>
                 <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
@@ -154,8 +164,8 @@ function LandingPage() {
 
       {/* ── ENCRYPTION ── */}
       <Section>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 items-center">
+          <div className="min-w-0">
             <FadeIn>
               <SectionLabel>Zero-Plaintext Storage</SectionLabel>
               <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
@@ -174,16 +184,18 @@ function LandingPage() {
               </div>
             </FadeIn>
           </div>
-          <FadeIn delay={150}>
-            <EncryptionMockup />
-          </FadeIn>
+          <div className="min-w-0 overflow-hidden">
+            <FadeIn delay={150}>
+              <EncryptionMockup />
+            </FadeIn>
+          </div>
         </div>
       </Section>
 
       {/* ── MEMORY TEMPLATES SECTION ── */}
       <Section>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 items-center">
+          <div className="min-w-0">
             <FadeIn>
               <SectionLabel>Memory Templates</SectionLabel>
               <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
@@ -202,22 +214,26 @@ function LandingPage() {
               </ul>
             </FadeIn>
           </div>
-          <FadeIn delay={150}>
-            <div style={{ animation: "float 6s ease-in-out infinite" }}>
-              <MemoryTemplatesMockup />
-            </div>
-          </FadeIn>
+          <div className="min-w-0 overflow-hidden">
+            <FadeIn delay={150}>
+              <div style={{ animation: "float 6s ease-in-out infinite" }}>
+                <MemoryTemplatesMockup />
+              </div>
+            </FadeIn>
+          </div>
         </div>
       </Section>
 
       {/* ── GOVERNANCE & REVIEWS SECTION ── */}
       <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
         <Section>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
-            <FadeIn delay={150}>
-              <ReviewQueueMockup />
-            </FadeIn>
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 items-center">
+            <div className="min-w-0 overflow-hidden">
+              <FadeIn delay={150}>
+                <ReviewQueueMockup />
+              </FadeIn>
+            </div>
+            <div className="min-w-0">
               <FadeIn>
                 <SectionLabel>Governance & Reviews</SectionLabel>
                 <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
@@ -242,8 +258,8 @@ function LandingPage() {
 
       {/* ── API TOKENS ── */}
       <Section>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 56, alignItems: "center" }}>
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 items-center">
+          <div className="min-w-0">
             <FadeIn>
               <SectionLabel>API Security</SectionLabel>
               <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
@@ -270,9 +286,11 @@ function LandingPage() {
               </ul>
             </FadeIn>
           </div>
-          <FadeIn delay={150}>
-            <TokenMockup />
-          </FadeIn>
+          <div className="min-w-0 overflow-hidden">
+            <FadeIn delay={150}>
+              <TokenMockup />
+            </FadeIn>
+          </div>
         </div>
       </Section>
 
@@ -286,7 +304,7 @@ function LandingPage() {
             </h2>
           </FadeIn>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
           <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
             <Step num="1" title="Build or Import Context" desc="Run the Tech Stack Wizard to output target constraints, or ingest pre-built memory templates and chatbot exports. Alternatively, register GitHub or Linear webhooks to auto-commit on PR merge or ticket completion." delay={0} />
             <Step num="2" title="Extract, Tag & Graph-Enrich" desc="DLP scans and encrypts facts under a per-vault DEK. Workers AI simultaneously extracts entity nodes and edges, building a GraphRAG knowledge graph. Webhook events are AI-summarised and encrypted before any D1 write." delay={100} />
@@ -309,7 +327,7 @@ function LandingPage() {
               </h2>
             </FadeIn>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
               { icon: <LockerPadlock size={20} />, title: "Envelope encryption", desc: "AES-256-GCM with per-vault DEKs wrapped by a KEK. Database + env var must both be compromised to decrypt anything.", delay: 0 },
               { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, title: "GraphRAG hybrid retrieval", desc: "Semantic (bge-m3), keyword, and recency ranks fused via RRF with GraphRAG entity expansion. Includes Llama-3.3-70B cross-encoder reranking and optional system-prompt synthesis.", delay: 60 },
@@ -364,7 +382,7 @@ function LandingPage() {
               </h2>
             </FadeIn>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20 }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {[
               {
                 title: "Software Engineers",
@@ -410,7 +428,7 @@ function LandingPage() {
             Start free with personal context. Upgrade for shared vaults, recommendation queue reviews, and custom templates.
           </p>
         </FadeIn>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 40, textAlign: "left" }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10 text-left">
           {SELF_SERVE_PLAN_ORDER.map((planId) => (
             <FadeIn key={planId}>
               <PlanCard
@@ -434,7 +452,7 @@ function LandingPage() {
 
       {/* ── CTA ── */}
       <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)" }}>
-        <div style={{ maxWidth: 600, margin: "0 auto", padding: "80px 24px", textAlign: "center" }}>
+        <div className="mx-auto w-full px-6 py-12 md:py-20 text-center" style={{ maxWidth: "600px" }}>
           <FadeIn>
             <div style={{ width: 56, height: 56, borderRadius: 16, background: "var(--accent-dim)", border: "1px solid rgba(168,85,247,0.35)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
               <LockerPadlock size={24} />

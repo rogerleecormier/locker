@@ -161,7 +161,7 @@ function AuthGate({ children }: { children: ReactNode }) {
     return (
       <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
         <LandingNav />
-        <main style={{ flex: 1 }}>{children}</main>
+        <main style={{ flex: 1, minWidth: 0, overflowX: "hidden" }}>{children}</main>
       </div>
     );
   }

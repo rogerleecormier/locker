@@ -22,6 +22,7 @@ export function FadeIn({ children, delay = 0, style }: { children: React.ReactNo
     <div
       ref={ref}
       style={{
+        minWidth: 0,
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(20px)",
         transition: `opacity 0.6s ease ${delay}ms, transform 0.6s ease ${delay}ms`,

@@ -69,7 +69,7 @@ export function PlaygroundCard() {
   const exhausted = ops >= MAX_DEMO_OPS;
 
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto", padding: "60px 24px" }}>
+    <div className="mx-auto w-full px-6 py-12 md:py-[60px]" style={{ maxWidth: "860px" }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.25)", borderRadius: 20, fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: "0.08em", marginBottom: 16 }}>
           ⚡ LIVE PLAYGROUND
@@ -82,8 +82,8 @@ export function PlaygroundCard() {
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0">
+        <div className="min-w-0" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
           <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
             <LockerPadlock size={14} />
             <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Vault</span>
@@ -103,7 +103,7 @@ export function PlaygroundCard() {
           </div>
         </div>
 
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div className="min-w-0" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
             <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>MCP Console</span>

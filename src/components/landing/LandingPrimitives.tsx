@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { FadeIn } from "./LandingAnimations";
 
-export function Section({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+export function Section({ children, style, className }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) {
   return (
-    <section style={{ padding: "80px 24px", maxWidth: 1040, margin: "0 auto", ...style }}>
+    <section
+      className={`px-6 py-12 md:py-20 mx-auto w-full${className ? ` ${className}` : ""}`}
+      style={{ maxWidth: "1040px", ...style }}
+    >
       {children}
     </section>
   );

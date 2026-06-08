@@ -126,16 +126,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           );
         })}
       </div>
-      <style>{`
-        @keyframes toastIn {
-          from { opacity: 0; transform: translateX(24px); }
-          to   { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes toastOut {
-          from { opacity: 1; transform: translateX(0); }
-          to   { opacity: 0; transform: translateX(24px); }
-        }
-      `}</style>
     </ToastContext.Provider>
   );
 }
