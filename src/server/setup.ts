@@ -14,6 +14,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
+import { persistChunkedVectors } from "~/server/memory/_shared";
 
 type SchemaDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -136,9 +137,6 @@ export async function ensureDemoUser(
 
   for (const text of defaultMemories) {
     const memId = crypto.randomUUID();
-    const result = await env.AI.run("@cf/baai/bge-m3", { text: [text] });
-    const r = result as { data?: number[][] };
-    const embedding = r.data?.[0] ?? [];
     const encryptedFact = await encrypt(text, vaultKey);
 
     await db.insert(schema.memories).values({
@@ -156,18 +154,14 @@ export async function ensureDemoUser(
       isQuarantined: false,
     });
 
-    await env.VECTOR_INDEX.insert([
-      {
-        id: memId,
-        values: embedding,
-        metadata: {
-          userId,
-          category: "references",
-          tags: "demo-default",
-          projectKey: "demo:default",
-        } as any,
-      },
-    ]);
+    await persistChunkedVectors(
+      env.AI,
+      env.DB,
+      env.VECTOR_INDEX,
+      memId,
+      text,
+      { userId, category: "references", tags: "demo-default", projectKey: "demo:default", entityIds: "" } as any,
+    );
   }
 
   console.log("[setup] Seeded default sandbox memories in Vectorize.");

@@ -14,6 +14,7 @@ import {
   orgQuotas,
   users,
 } from "~/db/schema";
+import { persistChunkedVectors, deleteChunkVectors } from "~/server/memory/_shared";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { encrypt, decrypt, isEncrypted, getOrCreateVaultKey, deriveUserKey } from "~/server/crypto";
 import { requireSession, requireAdmin } from "~/server/session";
@@ -110,7 +111,6 @@ export const revertMemoryVersion = createServerFn({ method: "POST" })
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const decryptedFact = await decryptFact(ver.fact, vaultKey);
 
-    const embedding = await generateEmbedding(env.AI, decryptedFact);
     const tokensConsumed = estimateEmbeddingTokens(decryptedFact);
 
     await db.update(memories)
@@ -128,11 +128,15 @@ export const revertMemoryVersion = createServerFn({ method: "POST" })
       timestamp: Date.now(),
     });
 
-    await env.VECTOR_INDEX.upsert([{
-      id: mem.id,
-      values: embedding,
-      metadata: { userId: user.id, category: ver.category, tags: ver.tags, projectKey: mem.projectKey ?? "" } as Record<string, VectorizeVectorMetadata>,
-    }]);
+    await deleteChunkVectors(env.DB, env.VECTOR_INDEX, mem.id);
+    await persistChunkedVectors(
+      env.AI,
+      env.DB,
+      env.VECTOR_INDEX,
+      mem.id,
+      decryptedFact,
+      { userId: user.id, category: ver.category, tags: ver.tags, projectKey: mem.projectKey ?? "", entityIds: "" } as Record<string, VectorizeVectorMetadata>,
+    );
 
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "revert_version", memoryId: mem.id, metadata: { versionId: data.versionId } });
     await logTokenUsage(db, "session", "commit", tokensConsumed);
@@ -300,18 +304,21 @@ export const rebuildVectorizeIndex = createServerFn({ method: "POST" }).handler(
           })
         );
 
-        const embeddings = await Promise.all(decryptedFacts.map(async (fact) => generateEmbedding(env.AI, fact)));
-
-        const vectors: VectorizeVector[] = chunk.map((row, idx) => {
+        // Re-chunk and upsert each memory sequentially to avoid rate-limit bursts.
+        for (let j = 0; j < chunk.length; j++) {
+          const row = chunk[j];
+          const fact = decryptedFacts[j];
           if (!row.userId) throw new Error(`Memory row ${row.id} does not have a userId`);
-          return {
-            id: row.id,
-            values: embeddings[idx],
-            metadata: { userId: row.userId, category: row.category, tags: row.tags ?? "", projectKey: row.projectKey ?? "" } as Record<string, VectorizeVectorMetadata>,
-          };
-        });
-
-        await env.VECTOR_INDEX.upsert(vectors);
+          await deleteChunkVectors(env.DB, env.VECTOR_INDEX, row.id);
+          await persistChunkedVectors(
+            env.AI,
+            env.DB,
+            env.VECTOR_INDEX,
+            row.id,
+            fact,
+            { userId: row.userId, category: row.category, tags: row.tags ?? "", projectKey: row.projectKey ?? "", entityIds: "" } as Record<string, VectorizeVectorMetadata>,
+          );
+        }
         processed += chunk.length;
       } catch (err) {
         console.error(`[rebuildVectorizeIndex] failed chunk starting at index ${i}:`, err);

@@ -21,6 +21,7 @@ import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddi
 import { checkMemoryLimit } from "~/server/planGate";
 import { sanitizeMemory } from "~/server/sanitization";
 import { containsSensitiveData } from "~/server/dlp";
+import { persistChunkedVectors, deleteChunkVectors } from "~/server/memory/_shared";
 import type { ImportComparisonItem, ComparisonStatus } from "~/types/importTypes";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -524,8 +525,8 @@ export const executeImportActions = createServerFn({ method: "POST" })
                   const newTags = tagsList.join(", ");
                   await db.update(memories).set({ tags: newTags, timestamp: Date.now() }).where(eq(memories.id, matchedMemoryId));
                   try {
-                    const newVec = await generateEmbedding(env.AI, fact);
-                    await env.VECTOR_INDEX.upsert([{ id: matchedMemoryId, values: newVec, metadata: { userId: user.id, category: existing.category, tags: newTags, projectKey: existing.projectKey ?? "" } as Record<string, VectorizeVectorMetadata> }]);
+                    await deleteChunkVectors(env.DB, env.VECTOR_INDEX, matchedMemoryId);
+                    await persistChunkedVectors(env.AI, env.DB, env.VECTOR_INDEX, matchedMemoryId, fact, { userId: user.id, category: existing.category, tags: newTags, projectKey: existing.projectKey ?? "", entityIds: "" } as Record<string, VectorizeVectorMetadata>);
                   } catch (err) {
                     console.error("[executeImportActions] Vectorize update tags failed:", err);
                   }
@@ -574,9 +575,9 @@ export const executeImportActions = createServerFn({ method: "POST" })
                 db.insert(memoryVersions).values({ id: crypto.randomUUID(), memoryId: matchedMemoryId, fact: encryptedFact, category, tags: finalTags, changedBy: user.id, changeReason: "updated", timestamp: updateTimestamp }),
               ]);
 
-              const embedding = await generateEmbedding(env.AI, sanitizedFact);
               const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
-              await env.VECTOR_INDEX.upsert([{ id: matchedMemoryId, values: embedding, metadata: { userId: user.id, category, tags: finalTags, projectKey: existing.projectKey ?? "" } as Record<string, VectorizeVectorMetadata> }]);
+              await deleteChunkVectors(env.DB, env.VECTOR_INDEX, matchedMemoryId);
+              await persistChunkedVectors(env.AI, env.DB, env.VECTOR_INDEX, matchedMemoryId, sanitizedFact, { userId: user.id, category, tags: finalTags, projectKey: existing.projectKey ?? "", entityIds: "" } as Record<string, VectorizeVectorMetadata>);
               await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: matchedMemoryId, metadata: { category, quarantined: isQuarantined } });
               await logTokenUsage(db, "session", "commit", tokensConsumed);
               updated++;
@@ -600,10 +601,7 @@ export const executeImportActions = createServerFn({ method: "POST" })
             const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
             const encryptedFact = await encryptFact(sanitizedFact, vaultKey);
 
-            const [embedding, graphExtraction] = await Promise.all([
-              generateEmbedding(env.AI, sanitizedFact),
-              extractGraphEntities(env.AI, sanitizedFact),
-            ]);
+            const graphExtraction = await extractGraphEntities(env.AI, sanitizedFact);
             const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
             const tagsList = (tags ?? "").split(",").map(t => t.trim()).filter(Boolean);
@@ -625,7 +623,7 @@ export const executeImportActions = createServerFn({ method: "POST" })
             try { entityIds = await persistGraphData(env.DB, id, user.id, itemPk, graphExtraction); } catch (err) { console.error("[executeImportActions] graph persist failed:", err); }
 
             try {
-              await env.VECTOR_INDEX.insert([{ id, values: embedding, metadata: { userId: user.id, category, tags: finalTags, projectKey: itemPk ?? "", entityIds: entityIds.join(" ") } as Record<string, VectorizeVectorMetadata> }]);
+              await persistChunkedVectors(env.AI, env.DB, env.VECTOR_INDEX, id, sanitizedFact, { userId: user.id, category, tags: finalTags, projectKey: itemPk ?? "", entityIds: entityIds.join(" ") } as Record<string, VectorizeVectorMetadata>);
             } catch (err) { console.error(`[executeImportActions] vector insert failed:`, err); }
 
             await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "commit_memory", memoryId: id, metadata: { category, projectKey: itemPk, quarantined: isQuarantined } });
@@ -842,7 +840,8 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
             const newTags = tagsList.join(", ");
             await db.update(memories).set({ tags: newTags, timestamp: Date.now() }).where(eq(memories.id, matchedDbId));
             try {
-              await env.VECTOR_INDEX.upsert([{ id: matchedDbId, values: embeddings[i], metadata: { userId: user.id, category: existing.category, tags: newTags, projectKey: existing.projectKey ?? "" } as Record<string, VectorizeVectorMetadata> }]);
+              await deleteChunkVectors(env.DB, env.VECTOR_INDEX, matchedDbId);
+              await persistChunkedVectors(env.AI, env.DB, env.VECTOR_INDEX, matchedDbId, valid[i].fact, { userId: user.id, category: existing.category, tags: newTags, projectKey: existing.projectKey ?? "", entityIds: "" } as Record<string, VectorizeVectorMetadata>);
             } catch (err) { console.error(`[batchImportMemories] Vectorize upsert failed:`, err); }
           }
         }
@@ -883,14 +882,18 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
     }
     await (db as any).batch(batchQueries);
 
-    const vectorBatch: VectorizeVector[] = newRows.map((row) => ({
-      id: row.id, values: row.embedding,
-      metadata: { userId: user.id, category: row.category, tags: row.tags ?? "", projectKey: row.projectKey ?? "" } as Record<string, VectorizeVectorMetadata>,
-    }));
-
-    const VECTOR_CHUNK = 100;
-    for (let i = 0; i < vectorBatch.length; i += VECTOR_CHUNK) {
-      try { await env.VECTOR_INDEX.insert(vectorBatch.slice(i, i + VECTOR_CHUNK)); } catch (err) { console.error(`[batchImportMemories] vector insert failed:`, err); }
+    // Chunk-aware vector insertion: each fact is split and embedded independently.
+    for (const row of newRows) {
+      try {
+        await persistChunkedVectors(
+          env.AI,
+          env.DB,
+          env.VECTOR_INDEX,
+          row.id,
+          row.plaintextFact,
+          { userId: user.id, category: row.category, tags: row.tags ?? "", projectKey: row.projectKey ?? "", entityIds: "" } as Record<string, VectorizeVectorMetadata>,
+        );
+      } catch (err) { console.error(`[batchImportMemories] vector insert failed for ${row.id}:`, err); }
     }
 
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "import_memories", metadata: { count: newRows.length } });

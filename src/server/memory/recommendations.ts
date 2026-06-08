@@ -21,6 +21,7 @@ import { requireSession } from "~/server/session";
 import { verifyVaultAccess, parseScope } from "~/server/enterprise";
 import { sanitizeMemory } from "~/server/sanitization";
 import { containsSensitiveData } from "~/server/dlp";
+import { persistChunkedVectors, deleteChunkVectors } from "~/server/memory/_shared";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
@@ -370,9 +371,9 @@ export const reviewMemoryRecommendation = createServerFn({ method: "POST" })
         await db.update(memories).set({ fact: encryptedFact, category: proposedCategory, tags: proposedTags, timestamp, isQuarantined }).where(eq(memories.id, rec.targetMemoryId));
         await db.insert(memoryVersions).values({ id: crypto.randomUUID(), memoryId: rec.targetMemoryId, fact: encryptedFact, category: proposedCategory, tags: proposedTags, changedBy: user.id, changeReason: "agent_update_approved", timestamp });
 
-        const embedding = await generateEmbedding(env.AI, rec.proposedFact);
         try {
-          await env.VECTOR_INDEX.upsert([{ id: rec.targetMemoryId, values: embedding, metadata: { userId: targetMem.userId, category: proposedCategory, tags: proposedTags, projectKey: targetMem.projectKey ?? "" } as Record<string, VectorizeVectorMetadata> }]);
+          await deleteChunkVectors(env.DB, env.VECTOR_INDEX, rec.targetMemoryId);
+          await persistChunkedVectors(env.AI, env.DB, env.VECTOR_INDEX, rec.targetMemoryId, rec.proposedFact, { userId: targetMem.userId, category: proposedCategory, tags: proposedTags, projectKey: targetMem.projectKey ?? "", entityIds: "" } as Record<string, VectorizeVectorMetadata>);
         } catch (e) { console.error("[reviewMemoryRecommendation] vector upsert failed:", e); }
 
         await db.update(memoryRecommendations).set({ status: "approved", reviewedBy: user.id, reviewedAt: timestamp, reviewNotes: data.reviewNotes }).where(eq(memoryRecommendations.id, data.id));
@@ -408,8 +409,7 @@ export const reviewMemoryRecommendation = createServerFn({ method: "POST" })
         });
         await db.insert(memoryVersions).values({ id: crypto.randomUUID(), memoryId: memId, fact: encryptedFact, category: rec.category, tags: rec.tags, changedBy: user.id, changeReason: "approved_recommendation", timestamp });
 
-        const embedding = await generateEmbedding(env.AI, rec.fact);
-        await env.VECTOR_INDEX.insert([{ id: memId, values: embedding, metadata: { userId: rec.userId, category: rec.category, tags: rec.tags, projectKey: projectKey === "personal" ? "" : projectKey } as Record<string, VectorizeVectorMetadata> }]);
+        await persistChunkedVectors(env.AI, env.DB, env.VECTOR_INDEX, memId, rec.fact, { userId: rec.userId, category: rec.category, tags: rec.tags, projectKey: projectKey === "personal" ? "" : projectKey, entityIds: "" } as Record<string, VectorizeVectorMetadata>);
 
         await db.update(memoryRecommendations).set({ status: "approved", reviewedBy: user.id, reviewedAt: timestamp, reviewNotes: data.reviewNotes }).where(eq(memoryRecommendations.id, data.id));
         await db.insert(notifications).values({ id: crypto.randomUUID(), userId: rec.userId, title: "Recommendation Approved!", message: `Your memory recommendation has been approved and added to the vault.`, type: "recommendation_actioned", status: "unread", createdAt: timestamp });

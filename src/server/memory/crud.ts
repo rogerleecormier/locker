@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { desc, eq, sql, and, isNull } from "drizzle-orm";
 import {
   memories,
+  memoryChunks,
   apiTokens,
   memoryVersions,
   organizations,
@@ -19,6 +20,7 @@ import {
   type Memory,
   type NewMemory,
 } from "~/db/schema";
+import { persistChunkedVectors, deleteChunkVectors } from "~/server/memory/_shared";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { encrypt, isEncrypted, hashToken, extractTokenPrefix, getOrCreateVaultKey } from "~/server/crypto";
 import { extractGraphEntities, persistGraphData } from "~/server/graphRag";
@@ -32,7 +34,7 @@ import { WEBHOOK_SECRET_GITHUB, WEBHOOK_SECRET_LINEAR, SLACK_JIT_WEBHOOK } from 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
 function getDb(env: CloudflareEnv) {
-  return drizzle(env.DB, { schema: { memories, apiTokens, userPlans, organizationMembers, users } });
+  return drizzle(env.DB, { schema: { memories, memoryChunks, apiTokens, userPlans, organizationMembers, users } });
 }
 
 async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
@@ -40,6 +42,7 @@ async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
   const r = result as { data?: number[][]; shape?: number[] };
   return r.data?.[0] ?? [];
 }
+
 
 async function encryptFact(fact: string, encKey: string | CryptoKey): Promise<string> {
   return encrypt(fact, encKey);
@@ -226,12 +229,9 @@ export const addMemory = createServerFn({ method: "POST" })
     const encryptedFact = await encryptFact(sanitizedFact, vaultKey);
     console.log("[addMemory] Fact encrypted");
 
-    console.log("[addMemory] Starting embedding and graph extraction...");
-    const [embedding, graphExtraction] = await Promise.all([
-      generateEmbedding(env.AI, sanitizedFact),
-      extractGraphEntities(env.AI, sanitizedFact),
-    ]);
-    console.log("[addMemory] Embedding and graph extraction complete");
+    console.log("[addMemory] Starting graph extraction...");
+    const graphExtraction = await extractGraphEntities(env.AI, sanitizedFact);
+    console.log("[addMemory] Graph extraction complete");
     const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
     const tagsList = data.tags.split(",").map(t => t.trim()).filter(Boolean);
@@ -240,16 +240,8 @@ export const addMemory = createServerFn({ method: "POST" })
     }
     const finalTags = tagsList.join(", ");
 
-    try {
-      await env.ARCHIVE_QUEUE.send({
-        userId: user.id,
-        newFact: sanitizedFact,
-        embedding,
-        projectKey: data.projectKey || null,
-      });
-    } catch (err) {
-      console.error("[addMemory] Failed to enqueue contradiction check:", err);
-    }
+    // embedding is resolved after chunked vector insertion below;
+    // the contradiction queue send is deferred until we have the first chunk embedding.
 
     let isLocked = false;
     let authorityType: "authoritative" | "contributed" = "contributed";
@@ -322,22 +314,36 @@ export const addMemory = createServerFn({ method: "POST" })
       console.error("[addMemory] graph persist failed:", err);
     }
 
+    let firstChunkEmbedding: number[] = [];
     try {
-      await env.VECTOR_INDEX.insert([
-        {
-          id,
-          values: embedding,
-          metadata: {
-            userId: user.id,
-            category: data.category,
-            tags: finalTags,
-            projectKey: data.projectKey ?? "",
-            entityIds: entityIds.join(" "),
-          } as Record<string, VectorizeVectorMetadata>,
-        },
-      ]);
+      const sharedMeta = {
+        userId: user.id,
+        category: data.category,
+        tags: finalTags,
+        projectKey: data.projectKey ?? "",
+        entityIds: entityIds.join(" "),
+      };
+      firstChunkEmbedding = await persistChunkedVectors(
+        env.AI,
+        env.DB,
+        env.VECTOR_INDEX,
+        id,
+        sanitizedFact,
+        sharedMeta,
+      );
     } catch (err) {
       console.error(`[addMemory] vector insert failed:`, err);
+    }
+
+    try {
+      await env.ARCHIVE_QUEUE.send({
+        userId: user.id,
+        newFact: sanitizedFact,
+        embedding: firstChunkEmbedding,
+        projectKey: data.projectKey || null,
+      });
+    } catch (err) {
+      console.error("[addMemory] Failed to enqueue contradiction check:", err);
     }
 
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "commit_memory", memoryId: id, metadata: { category: data.category, projectKey: data.projectKey, quarantined: isQuarantined } });
@@ -444,13 +450,26 @@ export const updateMemory = createServerFn({ method: "POST" })
       timestamp: Date.now(),
     });
 
-    const embedding = await generateEmbedding(env.AI, sanitizedFact);
     const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
-    await env.VECTOR_INDEX.upsert([{
-      id: data.id,
-      values: embedding,
-      metadata: { userId: user.id, category: data.category, tags: data.tags, projectKey: existing.projectKey ?? "" } as Record<string, VectorizeVectorMetadata>,
-    }]);
+
+    // Purge stale child chunks before re-chunking the updated fact.
+    await deleteChunkVectors(env.DB, env.VECTOR_INDEX, data.id);
+
+    const sharedMeta = {
+      userId: user.id,
+      category: data.category,
+      tags: data.tags,
+      projectKey: existing.projectKey ?? "",
+      entityIds: "",
+    };
+    await persistChunkedVectors(
+      env.AI,
+      env.DB,
+      env.VECTOR_INDEX,
+      data.id,
+      sanitizedFact,
+      sharedMeta,
+    );
 
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: data.id, metadata: { category: data.category, quarantined: isQuarantined } });
     await logTokenUsage(db, "session", "commit", tokensConsumed);
@@ -656,12 +675,15 @@ export const restoreMemory = createServerFn({ method: "POST" })
     const vaultId = (memory.projectKey && (memory.projectKey.startsWith("team:") || memory.projectKey.startsWith("org:"))) ? memory.projectKey : user.id;
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const decryptedFact = await decryptFact(memory.fact, vaultKey);
-    const embedding = await generateEmbedding(env.AI, decryptedFact);
-    await env.VECTOR_INDEX.upsert([{
-      id: memory.id,
-      values: embedding,
-      metadata: { userId: memory.userId, projectKey: memory.projectKey || "" }
-    }]);
+    await deleteChunkVectors(env.DB, env.VECTOR_INDEX, memory.id);
+    await persistChunkedVectors(
+      env.AI,
+      env.DB,
+      env.VECTOR_INDEX,
+      memory.id,
+      decryptedFact,
+      { userId: memory.userId, projectKey: memory.projectKey || "", category: memory.category, tags: memory.tags, entityIds: "" },
+    );
 
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: data.id, metadata: { restored: true } });
 
@@ -753,8 +775,6 @@ export const moveMemories = createServerFn({ method: "POST" })
       const targetVaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, targetVaultId);
       const encryptedFact = await encryptFact(plaintextFact, targetVaultKey);
 
-      const embedding = await generateEmbedding(env.AI, plaintextFact);
-
       let scopeType: "personal" | "organization" | "team" = "personal";
       let scopeId: string | null = null;
       if (data.targetProjectKey) {
@@ -788,16 +808,22 @@ export const moveMemories = createServerFn({ method: "POST" })
         timestamp: Date.now(),
       });
 
-      await env.VECTOR_INDEX.upsert([{
-        id: mem.id,
-        values: embedding,
-        metadata: {
+      const targetProjectKey = data.targetProjectKey === "personal" ? "" : data.targetProjectKey;
+      await deleteChunkVectors(env.DB, env.VECTOR_INDEX, mem.id);
+      await persistChunkedVectors(
+        env.AI,
+        env.DB,
+        env.VECTOR_INDEX,
+        mem.id,
+        plaintextFact,
+        {
           userId: user.id,
           category: mem.category,
           tags: mem.tags,
-          projectKey: data.targetProjectKey === "personal" ? "" : data.targetProjectKey,
+          projectKey: targetProjectKey,
+          entityIds: "",
         } as Record<string, VectorizeVectorMetadata>,
-      }]);
+      );
 
       await logAudit(db, {
         orgId: targetOrgId,
@@ -1136,21 +1162,19 @@ export const saveProfile = createServerFn({ method: "POST" })
     if (data.name) {
       const fact = `Name is ${data.name}`;
       const encFact = await encryptFact(fact, saveProfileVaultKey);
-      const embedding = await generateEmbedding(env.AI, fact);
       const tokensConsumed = estimateEmbeddingTokens(fact);
+      const profileNameMeta = { userId: user.id, category: "references", tags: "profile-name", projectKey: "", entityIds: "" } as Record<string, VectorizeVectorMetadata>;
       if (nameRow) {
         await db.update(memories).set({ fact: encFact }).where(eq(memories.id, nameRow.id));
-        await env.VECTOR_INDEX.upsert([{
-          id: nameRow.id,
-          values: embedding,
-          metadata: { userId: user.id, category: "references", tags: "profile-name", projectKey: "" } as Record<string, VectorizeVectorMetadata>,
-        }]);
+        await deleteChunkVectors(env.DB, env.VECTOR_INDEX, nameRow.id);
+        await persistChunkedVectors(env.AI, env.DB, env.VECTOR_INDEX, nameRow.id, fact, profileNameMeta);
       } else {
         const id = crypto.randomUUID();
         await db.insert(memories).values({ id, userId: user.id, fact: encFact, category: "references", tags: "profile-name", timestamp: Date.now(), isActive: true, projectKey: null });
-        await env.VECTOR_INDEX.insert([{ id, values: embedding, metadata: { userId: user.id, category: "references", tags: "profile-name", projectKey: "" } as Record<string, VectorizeVectorMetadata> }]);
+        await persistChunkedVectors(env.AI, env.DB, env.VECTOR_INDEX, id, fact, profileNameMeta);
       }
     } else if (nameRow) {
+      await deleteChunkVectors(env.DB, env.VECTOR_INDEX, nameRow.id);
       await db.delete(memories).where(eq(memories.id, nameRow.id));
       await env.VECTOR_INDEX.deleteByIds([nameRow.id]);
     }
@@ -1158,20 +1182,18 @@ export const saveProfile = createServerFn({ method: "POST" })
     if (data.location) {
       const fact = `Location is ${data.location}`;
       const encFact = await encryptFact(fact, saveProfileVaultKey);
-      const embedding = await generateEmbedding(env.AI, fact);
+      const profileLocMeta = { userId: user.id, category: "references", tags: "profile-location", projectKey: "", entityIds: "" } as Record<string, VectorizeVectorMetadata>;
       if (locRow) {
         await db.update(memories).set({ fact: encFact }).where(eq(memories.id, locRow.id));
-        await env.VECTOR_INDEX.upsert([{
-          id: locRow.id,
-          values: embedding,
-          metadata: { userId: user.id, category: "references", tags: "profile-location", projectKey: "" } as Record<string, VectorizeVectorMetadata>,
-        }]);
+        await deleteChunkVectors(env.DB, env.VECTOR_INDEX, locRow.id);
+        await persistChunkedVectors(env.AI, env.DB, env.VECTOR_INDEX, locRow.id, fact, profileLocMeta);
       } else {
         const id = crypto.randomUUID();
         await db.insert(memories).values({ id, userId: user.id, fact: encFact, category: "references", tags: "profile-location", timestamp: Date.now(), isActive: true, projectKey: null });
-        await env.VECTOR_INDEX.insert([{ id, values: embedding, metadata: { userId: user.id, category: "references", tags: "profile-location", projectKey: "" } as Record<string, VectorizeVectorMetadata> }]);
+        await persistChunkedVectors(env.AI, env.DB, env.VECTOR_INDEX, id, fact, profileLocMeta);
       }
     } else if (locRow) {
+      await deleteChunkVectors(env.DB, env.VECTOR_INDEX, locRow.id);
       await db.delete(memories).where(eq(memories.id, locRow.id));
       await env.VECTOR_INDEX.deleteByIds([locRow.id]);
     }

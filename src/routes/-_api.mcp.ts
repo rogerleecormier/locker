@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, memoryTemplates, users, totpSecrets, credentials, notifications, ABAC_DEFAULT_ALLOW, JIT_PROTECTED_TAG, jitAccessRequests, memoryRecommendations } from "~/db/schema";
+import { memories, memoryChunks, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, memoryTemplates, users, totpSecrets, credentials, notifications, ABAC_DEFAULT_ALLOW, JIT_PROTECTED_TAG, jitAccessRequests, memoryRecommendations } from "~/db/schema";
 import type { AgentPolicy, MemoryCategory } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import { z } from "zod";
@@ -14,6 +14,7 @@ import { sanitizeMemory } from "~/server/sanitization";
 import { maskSensitiveData, containsSensitiveData } from "~/server/dlp";
 import { extractGraphEntities, persistGraphData, expandByEntityIds } from "~/server/graphRag";
 import { readWebhookSecret, SLACK_JIT_WEBHOOK } from "~/server/webhooks";
+import { persistChunkedVectors, deleteChunkVectors } from "~/server/memory/_shared";
 
 // ─── Shared field validators ───────────────────────────────────────────────────
 const zFact = z.string().min(1).max(10000).transform((s) => s.trim());
@@ -1658,10 +1659,41 @@ export async function handleMcpRequest(
     // Execute database and vector search queries in parallel
     const [vectorMatches, dbRows] = await Promise.all([vectorizePromise, d1Promise]);
 
+    // Resolve chunk vector IDs to parent memory IDs (chunk hits carry parentId in metadata).
+    const chunkIdToParent = new Map<string, string>();
+    const rawChunkLookups: string[] = [];
+    for (const m of vectorMatches as any[]) {
+      const meta = m.metadata as Record<string, unknown> | undefined;
+      if (meta?.isChunk === "1") {
+        if (typeof meta.parentId === "string") {
+          chunkIdToParent.set(m.id, meta.parentId);
+        } else {
+          rawChunkLookups.push(m.id);
+        }
+      }
+    }
+    if (rawChunkLookups.length > 0) {
+      const rows = await db
+        .select({ id: memoryChunks.id, parentId: memoryChunks.parentId })
+        .from(memoryChunks)
+        .where(sql`${memoryChunks.id} IN (${sql.join(rawChunkLookups.map((cid) => sql`${cid}`), sql`, `)})`)
+        .all();
+      for (const row of rows) chunkIdToParent.set(row.id, row.parentId);
+    }
+
+    // Build a deduplicated list of parent memory IDs for D1 and GraphRAG lookups.
+    const parentIdSet = new Set<string>();
+    const matchParentIds: string[] = [];  // parallel to vectorMatches, for rank preservation
+    for (const m of vectorMatches as any[]) {
+      const resolved = chunkIdToParent.get(m.id) ?? (m.id as string);
+      matchParentIds.push(resolved);
+      parentIdSet.add(resolved);
+    }
+    const vectorIds = [...parentIdSet];
+
     // GraphRAG expansion: collect entity IDs stored in Vectorize metadata and use a
     // lightning-fast IN (...) lookup on memory_graph_edges to pull adjacent memories.
-    const vectorIds = vectorMatches.map((m: any) => m.id as string);
-    const entityIds = vectorMatches.flatMap((m: any) => {
+    const entityIds = (vectorMatches as any[]).flatMap((m: any) => {
       const raw = (m.metadata as Record<string, unknown> | undefined)?.entityIds;
       if (typeof raw !== "string" || !raw) return [];
       return raw.split(" ").filter(Boolean);
@@ -1703,11 +1735,13 @@ export async function handleMcpRequest(
       });
 
       // 1. Semantic Search (Vectorize) Ranked List
-      // Map vector matches back to decrypted memories (preserving semantic ordering)
+      // Map vector matches back to decrypted memories using resolved parent IDs.
       const decryptedMap = new Map(filteredDecrypted.map((m) => [m.row.id, m]));
-      const vectorRanked = vectorMatches
-        .map((vm: any) => decryptedMap.get(vm.id))
-        .filter((m): m is NonNullable<typeof m> => !!m);
+      const vectorRanked = matchParentIds
+        .map((pid) => decryptedMap.get(pid))
+        .filter((m): m is NonNullable<typeof m> => !!m)
+        // Deduplicate: multiple chunks of the same memory can appear in matchParentIds.
+        .filter((m, i, arr) => arr.findIndex((x) => x.row.id === m.row.id) === i);
 
       // 1b. Graph-expanded results: memories adjacent via shared entity nodes.
       // These get a fixed low RRF score so they appear after semantic/FTS results but
@@ -2170,10 +2204,7 @@ export async function handleMcpRequest(
 
     const memId = crypto.randomUUID();
     const timestamp = Date.now();
-    const [embedding, graphExtraction] = await Promise.all([
-      generateEmbedding(env.AI, sanitizedFact),
-      extractGraphEntities(env.AI, sanitizedFact),
-    ]);
+    const graphExtraction = await extractGraphEntities(env.AI, sanitizedFact);
     const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
     // Fetch envelope DEK for this vault
@@ -2183,18 +2214,6 @@ export async function handleMcpRequest(
       computeBlindIndex(vaultId, finalTags),
     ]);
     const encryptedFact = await encrypt(sanitizedFact, vaultKey);
-
-    // Archive contradicted memories asynchronously via Queue
-    try {
-      await env.ARCHIVE_QUEUE.send({
-        userId: claims.userId,
-        newFact: sanitizedFact,
-        embedding,
-        projectKey: projectKey || null,
-      });
-    } catch (err) {
-      console.error("[mcp] Failed to enqueue contradiction check:", err);
-    }
 
     let scopeType: "personal" | "organization" | "team" = "personal";
     let scopeId: string | null = null;
@@ -2243,20 +2262,38 @@ export async function handleMcpRequest(
       console.error("[mcp commit_memory] graph persist failed:", err);
     }
 
-    await env.VECTOR_INDEX.insert([
-      {
-        id: memId,
-        values: embedding,
-        metadata: {
+    // Chunk and embed the fact; the first chunk embedding is returned for the queue.
+    let firstChunkEmbedding: number[] = [];
+    try {
+      firstChunkEmbedding = await persistChunkedVectors(
+        env.AI,
+        env.DB,
+        env.VECTOR_INDEX,
+        memId,
+        sanitizedFact,
+        {
           userId: claims.userId,
           category,
           tags: finalTags,
           projectKey: projectKey ?? "",
-          // Space-separated entity node IDs enable O(1) IN() graph expansion at recall time.
           entityIds: entityIds.join(" "),
         },
-      },
-    ]);
+      );
+    } catch (err) {
+      console.error("[mcp commit_memory] vector insert failed:", err);
+    }
+
+    // Archive contradicted memories asynchronously via Queue.
+    try {
+      await env.ARCHIVE_QUEUE.send({
+        userId: claims.userId,
+        newFact: sanitizedFact,
+        embedding: firstChunkEmbedding,
+        projectKey: projectKey || null,
+      });
+    } catch (err) {
+      console.error("[mcp] Failed to enqueue contradiction check:", err);
+    }
 
     // Audit log & token usage
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "commit_memory", memoryId: memId, ipAddress, userAgent, metadata: { category, projectKey, quarantined: isQuarantined } });
@@ -2527,7 +2564,6 @@ export async function handleMcpRequest(
     // DLP Quarantine Check: flag if sensitive data is detected, but keep raw fact.
     const isQuarantined = containsSensitiveData(sanitizedFact);
 
-    const embedding = await generateEmbedding(env.AI, sanitizedFact);
     const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
     // Fetch envelope DEK for this vault
@@ -2561,18 +2597,21 @@ export async function handleMcpRequest(
       timestamp: Date.now(),
     });
 
-    await env.VECTOR_INDEX.upsert([
+    await deleteChunkVectors(env.DB, env.VECTOR_INDEX, memId);
+    await persistChunkedVectors(
+      env.AI,
+      env.DB,
+      env.VECTOR_INDEX,
+      memId,
+      sanitizedFact,
       {
-        id: memId,
-        values: embedding,
-        metadata: {
-          userId: claims.userId,
-          category,
-          tags: rawTags,
-          projectKey: existing.projectKey ?? "",
-        },
+        userId: claims.userId,
+        category,
+        tags: rawTags,
+        projectKey: existing.projectKey ?? "",
+        entityIds: "",
       },
-    ]);
+    );
 
     // Audit log & token usage
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_memory", memoryId: memId, ipAddress, userAgent, metadata: { category, quarantined: isQuarantined } });
@@ -3353,10 +3392,9 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
     const timestamp = Date.now();
 
     const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
-    const [vaultKey, configBlindIndexHash, embedding] = await Promise.all([
+    const [vaultKey, configBlindIndexHash] = await Promise.all([
       getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId),
       computeBlindIndex(vaultId, finalTags),
-      generateEmbedding(env.AI, sanitized),
     ]);
     const encryptedContent = await encrypt(sanitized, vaultKey);
 
@@ -3397,16 +3435,20 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       timestamp,
     });
 
-    await env.VECTOR_INDEX.insert([{
-      id: memId,
-      values: embedding,
-      metadata: {
+    await persistChunkedVectors(
+      env.AI,
+      env.DB,
+      env.VECTOR_INDEX,
+      memId,
+      factContent,
+      {
         userId: claims.userId,
         category: "configs",
         tags: finalTags,
         projectKey: projectKey ?? "",
+        entityIds: "",
       },
-    }]);
+    );
 
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "store_config", memoryId: memId, ipAddress, userAgent, metadata: { name, projectKey, quarantined: isQuarantined, sourceType: "mcp" } });
     await logTokenUsage(db, claims.tokenId, "commit", estimateEmbeddingTokens(sanitized));
@@ -3530,7 +3572,6 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
     const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : claims.userId;
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const encryptedFact = await encrypt(sanitized, vaultKey);
-    const embedding = await generateEmbedding(env.AI, sanitized);
 
     await db.update(memories).set({ fact: encryptedFact, timestamp: Date.now(), isQuarantined }).where(eq(memories.id, memId));
 
@@ -3545,11 +3586,15 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       timestamp: Date.now(),
     });
 
-    await env.VECTOR_INDEX.upsert([{
-      id: memId,
-      values: embedding,
-      metadata: { userId: claims.userId, category: "configs", tags: existing.tags, projectKey: existing.projectKey ?? "" },
-    }]);
+    await deleteChunkVectors(env.DB, env.VECTOR_INDEX, memId);
+    await persistChunkedVectors(
+      env.AI,
+      env.DB,
+      env.VECTOR_INDEX,
+      memId,
+      sanitized,
+      { userId: claims.userId, category: "configs", tags: existing.tags, projectKey: existing.projectKey ?? "", entityIds: "" },
+    );
 
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_config", memoryId: memId, ipAddress, userAgent, metadata: { quarantined: isQuarantined } });
     await logTokenUsage(db, claims.tokenId, "commit", estimateEmbeddingTokens(sanitized));

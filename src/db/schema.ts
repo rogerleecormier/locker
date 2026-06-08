@@ -524,6 +524,24 @@ export type NewCredential = typeof credentials.$inferInsert;
 // Entities are extracted ephemerally by Workers AI on each addMemory/commit_memory.
 // entity_ids are stored as a space-separated list in Vectorize metadata so a single
 // IN (...) lookup against this table can hydrate adjacent nodes without SQL joins.
+// ── Memory Chunks — child vector segments for large facts ────────────────────
+// When a memory fact exceeds BGE-M3's token limit (~1500 chars) it is split
+// into overlapping segments. Each segment gets its own Vectorize vector whose
+// id is stored here. The parentId FK links back to memories.id so that a
+// vector hit on any chunk can be resolved to its parent record in one query.
+export const memoryChunks = sqliteTable("memory_chunks", {
+  id: text("id").primaryKey(),                              // UUID — also the Vectorize vector id
+  parentId: text("parentId").notNull().references(() => memories.id, { onDelete: "cascade" }),
+  chunkIndex: integer("chunkIndex").notNull(),              // 0-based position within the parent
+  startOffset: integer("startOffset").notNull(),            // char offset in the original fact
+  createdAt: integer("createdAt").notNull(),
+}, (t) => [
+  index("idx_memory_chunks_parent").on(t.parentId),
+]);
+
+export type MemoryChunk = typeof memoryChunks.$inferSelect;
+export type NewMemoryChunk = typeof memoryChunks.$inferInsert;
+
 export const memoryGraphNodes = sqliteTable("memory_graph_nodes", {
   id: text("id").primaryKey(),                          // stable UUID for this entity
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),

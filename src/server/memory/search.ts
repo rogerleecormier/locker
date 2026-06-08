@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { desc, eq, sql, and, gte, lte, like, or } from "drizzle-orm";
 import {
   memories,
+  memoryChunks,
   apiTokens,
   memoryVersions,
   auditLogs,
@@ -23,7 +24,46 @@ import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddi
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
 function getDb(env: CloudflareEnv) {
-  return drizzle(env.DB, { schema: { memories, apiTokens, userPlans, organizationMembers, orgQuotas, users } });
+  return drizzle(env.DB, { schema: { memories, memoryChunks, apiTokens, userPlans, organizationMembers, orgQuotas, users } });
+}
+
+/**
+ * Given the raw Vectorize match list, returns a deduplicated set of parent
+ * memory IDs. Chunk vectors carry `isChunk: "1"` and `parentId` in metadata;
+ * all others are parent vectors whose id is already the memory id.
+ */
+async function resolveParentIds(
+  db: ReturnType<typeof getDb>,
+  matches: VectorizeMatch[],
+): Promise<string[]> {
+  const parentIds = new Set<string>();
+  const chunkIds: string[] = [];
+
+  for (const m of matches) {
+    const meta = m.metadata as Record<string, unknown> | undefined;
+    if (meta?.isChunk === "1") {
+      // Fast path: parentId is encoded in metadata to avoid a D1 round-trip.
+      if (typeof meta.parentId === "string") {
+        parentIds.add(meta.parentId);
+      } else {
+        chunkIds.push(m.id);
+      }
+    } else {
+      parentIds.add(m.id);
+    }
+  }
+
+  // Slow path: look up any chunk ids that lack a parentId in metadata (old data).
+  if (chunkIds.length > 0) {
+    const rows = await db
+      .select({ id: memoryChunks.id, parentId: memoryChunks.parentId })
+      .from(memoryChunks)
+      .where(sql`${memoryChunks.id} IN (${sql.join(chunkIds.map((id) => sql`${id}`), sql`, `)})`)
+      .all();
+    for (const row of rows) parentIds.add(row.parentId);
+  }
+
+  return [...parentIds];
 }
 
 async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
@@ -166,8 +206,10 @@ export const recallContext = createServerFn({ method: "POST" })
       return [];
     }
 
-    const vectorRankMap = new Map<string, number>(vectorResults.matches.map((m: VectorizeMatch, i: number) => [m.id, i]));
-    const vectorIds = vectorResults.matches.map((m: VectorizeMatch) => m.id);
+    const resolvedIds = await resolveParentIds(db, vectorResults.matches);
+    // Rank by original match position (first occurrence wins for deduped chunk hits).
+    const vectorRankMap = new Map<string, number>(resolvedIds.map((id, i) => [id, i]));
+    const vectorIds = resolvedIds;
 
     const entityIds = vectorResults.matches.flatMap((m: VectorizeMatch) => {
       const raw = (m.metadata as Record<string, unknown> | undefined)?.entityIds;
@@ -323,18 +365,19 @@ export const semanticSearchMemories = createServerFn({ method: "POST" })
     const filter = getVectorFilter(user.id, data.projectKey);
     if (data.category) filter.category = data.category;
 
-    const vectorResult = await env.VECTOR_INDEX.query(embedding, { topK: data.topK, filter, returnMetadata: "none" });
+    const vectorResult = await env.VECTOR_INDEX.query(embedding, { topK: data.topK, filter, returnMetadata: "indexed" });
 
     const matches = vectorResult.matches ?? [];
     if (matches.length === 0) return [];
 
-    const matchIds = matches.map((m) => m.id);
+    // Resolve chunk vector ids to parent memory ids before querying D1.
+    const parentIds = await resolveParentIds(db, matches);
     const scoreMap = new Map(matches.map((m) => [m.id, m.score]));
 
     const DB_CHUNK = 50;
     const rows: Memory[] = [];
-    for (let i = 0; i < matchIds.length; i += DB_CHUNK) {
-      const chunk = matchIds.slice(i, i + DB_CHUNK);
+    for (let i = 0; i < parentIds.length; i += DB_CHUNK) {
+      const chunk = parentIds.slice(i, i + DB_CHUNK);
       const chunkRows = await db
         .select()
         .from(memories)
@@ -344,6 +387,7 @@ export const semanticSearchMemories = createServerFn({ method: "POST" })
     }
 
     const decrypted = await decryptMemories(rows, env.DB, env.ENCRYPTION_KEY);
+    // Score by best chunk match for each parent.
     decrypted.sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0));
     return decrypted;
   });

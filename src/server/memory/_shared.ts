@@ -2,18 +2,21 @@
 // Nothing in this file calls createServerFn — it's pure helpers + types.
 
 import { drizzle } from "drizzle-orm/d1";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   memories,
+  memoryChunks,
   apiTokens,
   userPlans,
   organizationMembers,
   orgQuotas,
   users,
   type Memory,
+  type NewMemoryChunk,
 } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { decrypt, isEncrypted, getOrCreateVaultKey, decryptEphemeral, type EphemeralPlaintext } from "~/server/crypto";
+import { splitTextIntoChunks, type TextChunk } from "~/server/textChunker";
 
 export type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
@@ -47,6 +50,121 @@ export async function generateEmbedding(ai: Ai, text: string): Promise<number[]>
   const result = await ai.run("@cf/baai/bge-m3", { text: [text] });
   const r = result as { data?: number[][]; shape?: number[] };
   return r.data?.[0] ?? [];
+}
+
+export type ChunkedEmbedding = {
+  chunk: TextChunk;
+  embedding: number[];
+};
+
+/**
+ * Splits `text` into overlapping chunks and embeds each one against BGE-M3.
+ * Returns a single-element array when the text fits within one chunk, keeping
+ * the happy path allocation-free.
+ *
+ * Chunks are embedded sequentially to stay within Workers AI rate limits —
+ * the underlying model endpoint accepts only one text array per request.
+ */
+export async function generateChunkedEmbeddings(
+  ai: Ai,
+  text: string,
+): Promise<ChunkedEmbedding[]> {
+  const chunks = splitTextIntoChunks(text);
+  const results: ChunkedEmbedding[] = [];
+
+  for (const chunk of chunks) {
+    const result = await ai.run("@cf/baai/bge-m3", { text: [chunk.text] });
+    const r = result as { data?: number[][]; shape?: number[] };
+    results.push({ chunk, embedding: r.data?.[0] ?? [] });
+  }
+
+  return results;
+}
+
+/**
+ * Embeds `fact` in overlapping chunks, upserts all chunk vectors into Vectorize,
+ * and records child rows in D1 `memory_chunks` with a parentId FK.
+ *
+ * The parent vector (chunk index 0) reuses `memoryId` as its Vectorize id so
+ * existing queries that know the memory id still resolve correctly.
+ *
+ * Returns the embedding for the first chunk so callers can pass it to any
+ * downstream system (e.g. the contradiction-detection queue) without re-embedding.
+ */
+export async function persistChunkedVectors(
+  ai: Ai,
+  d1: D1Database,
+  vectorIndex: VectorizeIndex,
+  memoryId: string,
+  fact: string,
+  sharedMeta: Record<string, VectorizeVectorMetadata>,
+): Promise<number[]> {
+  const chunked = await generateChunkedEmbeddings(ai, fact);
+  const db = drizzle(d1, { schema: { memoryChunks } });
+
+  const chunkRows: NewMemoryChunk[] = [];
+  const vectorsToUpsert: VectorizeVector[] = [];
+  const now = Date.now();
+
+  for (const { chunk, embedding } of chunked) {
+    if (chunk.index === 0) {
+      vectorsToUpsert.push({
+        id: memoryId,
+        values: embedding,
+        metadata: { ...sharedMeta, isChunk: "0" } as Record<string, VectorizeVectorMetadata>,
+      });
+    } else {
+      const chunkId = crypto.randomUUID();
+      chunkRows.push({
+        id: chunkId,
+        parentId: memoryId,
+        chunkIndex: chunk.index,
+        startOffset: chunk.startOffset,
+        createdAt: now,
+      });
+      vectorsToUpsert.push({
+        id: chunkId,
+        values: embedding,
+        metadata: {
+          ...sharedMeta,
+          isChunk: "1",
+          parentId: memoryId,
+          chunkIndex: String(chunk.index),
+        } as Record<string, VectorizeVectorMetadata>,
+      });
+    }
+  }
+
+  await vectorIndex.upsert(vectorsToUpsert);
+
+  if (chunkRows.length > 0) {
+    await db.insert(memoryChunks).values(chunkRows);
+  }
+
+  return chunked[0].embedding;
+}
+
+/**
+ * Deletes all child chunk vectors and D1 rows for a given parent memory id.
+ * Call before re-chunking on update or as part of hard-delete cleanup.
+ */
+export async function deleteChunkVectors(
+  d1: D1Database,
+  vectorIndex: VectorizeIndex,
+  memoryId: string,
+): Promise<void> {
+  const db = drizzle(d1, { schema: { memoryChunks } });
+  const existing = await db
+    .select({ id: memoryChunks.id })
+    .from(memoryChunks)
+    .where(eq(memoryChunks.parentId, memoryId))
+    .all();
+
+  if (existing.length === 0) return;
+
+  const ids = existing.map((r) => r.id);
+  await vectorIndex.deleteByIds(ids);
+  await db.delete(memoryChunks).where(eq(memoryChunks.parentId, memoryId));
 }
 
 export async function encryptFact(fact: string, encKey: string | CryptoKey): Promise<string> {

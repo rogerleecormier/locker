@@ -6,6 +6,7 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import { jwt } from "better-auth/plugins";
 import * as schema from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
+import { persistChunkedVectors } from "~/server/memory/_shared";
 
 // ── Module-level cache ────────────────────────────────────────────────────────
 // betterAuth instance is cached for the isolate lifetime. No D1 bootstrap
@@ -59,9 +60,6 @@ export async function seedNewUserMemory(
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, userId);
 
     const memId = crypto.randomUUID();
-    const result = await env.AI.run("@cf/baai/bge-m3", { text: [DEFAULT_RULE_MEMORY] });
-    const r = result as { data?: number[][] };
-    const embedding = r.data?.[0] ?? [];
     const encryptedFact = await encrypt(DEFAULT_RULE_MEMORY, vaultKey);
 
     await db.insert(schema.memories).values({
@@ -79,17 +77,14 @@ export async function seedNewUserMemory(
       isQuarantined: false,
     });
 
-    await env.VECTOR_INDEX.insert([
-      {
-        id: memId,
-        values: embedding,
-        metadata: {
-          userId,
-          category: "rules",
-          tags: "locker,memory-vault,integration,protocol,onboarding,mcp",
-        } as any,
-      },
-    ]);
+    await persistChunkedVectors(
+      env.AI,
+      env.DB,
+      env.VECTOR_INDEX,
+      memId,
+      DEFAULT_RULE_MEMORY,
+      { userId, category: "rules", tags: "locker,memory-vault,integration,protocol,onboarding,mcp", projectKey: "", entityIds: "" } as any,
+    );
 
     console.log(`[auth] Seeded default rule memory for user ${userId}.`);
   } catch (err) {
