@@ -6,6 +6,9 @@
     "app",
     "cli"
   ],
+  "overrides": {
+    "kysely": "0.28.x"
+  },
   "scripts": {
     "dev": "npm run dev -w app",
     "build": "npm run build -w app",

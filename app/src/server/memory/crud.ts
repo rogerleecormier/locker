@@ -452,6 +452,15 @@ export const updateMemory = createServerFn({ method: "POST" })
 
     const tokensConsumed = estimateEmbeddingTokens(sanitizedFact);
 
+    // Re-extract graph entities for the updated fact so knowledge-graph edges stay current.
+    const graphExtraction = await extractGraphEntities(env.AI, sanitizedFact);
+    let entityIds: string[] = [];
+    try {
+      entityIds = await persistGraphData(env.DB, data.id, user.id, existing.projectKey ?? null, graphExtraction);
+    } catch (err) {
+      console.error("[updateMemory] graph persist failed:", err);
+    }
+
     // Purge stale child chunks before re-chunking the updated fact.
     await deleteChunkVectors(env.DB, env.VECTOR_INDEX, data.id);
 
@@ -460,7 +469,7 @@ export const updateMemory = createServerFn({ method: "POST" })
       category: data.category,
       tags: data.tags,
       projectKey: existing.projectKey ?? "",
-      entityIds: "",
+      entityIds: entityIds.join(" "),
     };
     await persistChunkedVectors(
       env.AI,
@@ -675,6 +684,15 @@ export const restoreMemory = createServerFn({ method: "POST" })
     const vaultId = (memory.projectKey && (memory.projectKey.startsWith("team:") || memory.projectKey.startsWith("org:"))) ? memory.projectKey : user.id;
     const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const decryptedFact = await decryptFact(memory.fact, vaultKey);
+
+    const restoreGraphExtraction = await extractGraphEntities(env.AI, decryptedFact);
+    let restoreEntityIds: string[] = [];
+    try {
+      restoreEntityIds = await persistGraphData(env.DB, memory.id, memory.userId, memory.projectKey ?? null, restoreGraphExtraction);
+    } catch (err) {
+      console.error("[restoreMemory] graph persist failed:", err);
+    }
+
     await deleteChunkVectors(env.DB, env.VECTOR_INDEX, memory.id);
     await persistChunkedVectors(
       env.AI,
@@ -682,7 +700,7 @@ export const restoreMemory = createServerFn({ method: "POST" })
       env.VECTOR_INDEX,
       memory.id,
       decryptedFact,
-      { userId: memory.userId, projectKey: memory.projectKey || "", category: memory.category, tags: memory.tags, entityIds: "" },
+      { userId: memory.userId, projectKey: memory.projectKey || "", category: memory.category, tags: memory.tags, entityIds: restoreEntityIds.join(" ") },
     );
 
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: data.id, metadata: { restored: true } });
@@ -809,6 +827,16 @@ export const moveMemories = createServerFn({ method: "POST" })
       });
 
       const targetProjectKey = data.targetProjectKey === "personal" ? "" : data.targetProjectKey;
+      const targetProjectKeyNull = data.targetProjectKey === "personal" ? null : data.targetProjectKey;
+
+      const moveGraphExtraction = await extractGraphEntities(env.AI, plaintextFact);
+      let moveEntityIds: string[] = [];
+      try {
+        moveEntityIds = await persistGraphData(env.DB, mem.id, user.id, targetProjectKeyNull, moveGraphExtraction);
+      } catch (err) {
+        console.error("[moveMemories] graph persist failed:", err);
+      }
+
       await deleteChunkVectors(env.DB, env.VECTOR_INDEX, mem.id);
       await persistChunkedVectors(
         env.AI,
@@ -821,7 +849,7 @@ export const moveMemories = createServerFn({ method: "POST" })
           category: mem.category,
           tags: mem.tags,
           projectKey: targetProjectKey,
-          entityIds: "",
+          entityIds: moveEntityIds.join(" "),
         } as Record<string, VectorizeVectorMetadata>,
       );
 

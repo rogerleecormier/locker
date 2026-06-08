@@ -2597,6 +2597,14 @@ export async function handleMcpRequest(
       timestamp: Date.now(),
     });
 
+    const mcpUpdateGraphExtraction = await extractGraphEntities(env.AI, sanitizedFact);
+    let mcpUpdateEntityIds: string[] = [];
+    try {
+      mcpUpdateEntityIds = await persistGraphData(env.DB, memId, claims.userId, existing.projectKey ?? null, mcpUpdateGraphExtraction);
+    } catch (err) {
+      console.error("[update_memory] graph persist failed:", err);
+    }
+
     await deleteChunkVectors(env.DB, env.VECTOR_INDEX, memId);
     await persistChunkedVectors(
       env.AI,
@@ -2609,7 +2617,7 @@ export async function handleMcpRequest(
         category,
         tags: rawTags,
         projectKey: existing.projectKey ?? "",
-        entityIds: "",
+        entityIds: mcpUpdateEntityIds.join(" "),
       },
     );
 
@@ -3435,6 +3443,14 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       timestamp,
     });
 
+    const storeConfigGraphExtraction = await extractGraphEntities(env.AI, factContent);
+    let storeConfigEntityIds: string[] = [];
+    try {
+      storeConfigEntityIds = await persistGraphData(env.DB, memId, claims.userId, projectKey ?? null, storeConfigGraphExtraction);
+    } catch (err) {
+      console.error("[store_config] graph persist failed:", err);
+    }
+
     await persistChunkedVectors(
       env.AI,
       env.DB,
@@ -3446,7 +3462,7 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
         category: "configs",
         tags: finalTags,
         projectKey: projectKey ?? "",
-        entityIds: "",
+        entityIds: storeConfigEntityIds.join(" "),
       },
     );
 
@@ -3586,6 +3602,14 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       timestamp: Date.now(),
     });
 
+    const updateConfigGraphExtraction = await extractGraphEntities(env.AI, sanitized);
+    let updateConfigEntityIds: string[] = [];
+    try {
+      updateConfigEntityIds = await persistGraphData(env.DB, memId, claims.userId, existing.projectKey ?? null, updateConfigGraphExtraction);
+    } catch (err) {
+      console.error("[update_config] graph persist failed:", err);
+    }
+
     await deleteChunkVectors(env.DB, env.VECTOR_INDEX, memId);
     await persistChunkedVectors(
       env.AI,
@@ -3593,7 +3617,7 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       env.VECTOR_INDEX,
       memId,
       sanitized,
-      { userId: claims.userId, category: "configs", tags: existing.tags, projectKey: existing.projectKey ?? "", entityIds: "" },
+      { userId: claims.userId, category: "configs", tags: existing.tags, projectKey: existing.projectKey ?? "", entityIds: updateConfigEntityIds.join(" ") },
     );
 
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_config", memoryId: memId, ipAddress, userAgent, metadata: { quarantined: isQuarantined } });
