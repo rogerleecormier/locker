@@ -6,3 +6,4 @@ export * from "~/server/memory/import";
 export * from "~/server/memory/search";
 export * from "~/server/memory/recommendations";
 export * from "~/server/memory/versions";
+export * from "~/server/memory/graph";

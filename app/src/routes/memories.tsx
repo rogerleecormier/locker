@@ -1,5 +1,7 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { CloudflareEnv } from "~/types/cloudflare";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { InfoTooltip } from "~/components/InfoTooltip";
 import { getMemoryStaleness } from "~/lib/utils";
@@ -38,10 +40,24 @@ import { downloadFile, exportToJson, exportToMarkdown } from "~/lib/memoryExport
 import { useToast } from "~/components/ui/toast";
 import { QuarantineDashboard } from "~/components/QuarantineDashboard";
 import { PaywallGate } from "~/components/PaywallGate";
+import { KnowledgeGraph } from "~/components/KnowledgeGraph";
+import type { PlanId } from "~/lib/plans";
 
 export const Route = createFileRoute("/memories")({
   component: Dashboard,
 });
+
+type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
+
+export const getMemoryGraphFn = createServerFn({ method: "POST" })
+  .inputValidator((raw: unknown) => raw as { projectKey?: string })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const { requireSession } = await import("~/server/session");
+    const user = await requireSession(env);
+    const { getMemoryGraph } = await import("~/server/memory/graph");
+    return getMemoryGraph(env.DB, user.id, data.projectKey);
+  });
 
 // Memories older than this threshold are considered stale
 const STALE_MEMORY_DAYS = 90;
@@ -1489,6 +1505,8 @@ function MemoryTable({
 }
 
 // ── MAIN DASHBOARD ──────────────────────────────────────────────────────────
+type DashboardTab = "memories" | "knowledge-graph";
+
 function Dashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -1497,6 +1515,8 @@ function Dashboard() {
   const [showNewMemoryModal, setShowNewMemoryModal] = useState(false);
   const [showAgentConfigBuilder, setShowAgentConfigBuilder] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<DashboardTab>("memories");
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== "undefined") {
@@ -1602,15 +1622,24 @@ function Dashboard() {
   });
   const workspaces = Array.isArray(workspacesList) ? workspacesList : [];
 
-  const { data: userPlan = "free" } = useQuery({
+  const { data: planData } = useQuery({
     queryKey: ["user-plan"],
     queryFn: () => getUserPlan(),
   });
+  const userPlan = (planData?.planId ?? "free") as PlanId;
 
   const { data: usageStats } = useQuery({
     queryKey: ["usage-stats"],
     queryFn: () => getMemoryUsageStats(),
     enabled: projectKey === "personal",
+  });
+
+  const { data: memoryGraph = null, isLoading: isGraphLoading } = useQuery({
+    queryKey: ["memory-graph", projectKey],
+    queryFn: () =>
+      getMemoryGraphFn({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
+    enabled: activeTab === "knowledge-graph",
+    staleTime: 60_000,
   });
 
   const { data: personalRecommendations = [], refetch: refetchRecs } = useQuery({
@@ -1763,6 +1792,45 @@ function Dashboard() {
       </PageHeader>
 
       <PageContainer>
+        {/* Tab navigation */}
+        <div className="flex items-center border-b border-border mb-6 -mt-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab("memories")}
+            className={`px-4 py-3 text-sm font-semibold transition-colors relative select-none ${
+              activeTab === "memories" ? "text-accent" : "text-text-muted hover:text-text"
+            }`}
+          >
+            Memories
+            {activeTab === "memories" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full" />
+            )}
+          </button>
+          <PaywallGate feature="knowledgeGraph" currentPlan={userPlan} requiredPlan="business" compact>
+            <button
+              type="button"
+              onClick={() => setActiveTab("knowledge-graph")}
+              className={`px-4 py-3 text-sm font-semibold transition-colors relative select-none ${
+                activeTab === "knowledge-graph" ? "text-accent" : "text-text-muted hover:text-text"
+              }`}
+            >
+              Knowledge Graph
+              {activeTab === "knowledge-graph" && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full" />
+              )}
+            </button>
+          </PaywallGate>
+        </div>
+
+        {activeTab === "knowledge-graph" ? (
+          <KnowledgeGraph
+            graph={memoryGraph}
+            isLoading={isGraphLoading}
+            onNodeClick={setSelectedGraphNodeId}
+            selectedNodeId={selectedGraphNodeId}
+          />
+        ) : (
+        <>
         {/* Pending Agent Action + Conflict Review Banner */}
         {projectKey === "personal" && personalRecommendations.length > 0 && (
           <div className="mb-6 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-2xl p-5 md:p-6 shadow-sm flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 duration-200">
@@ -2223,6 +2291,8 @@ function Dashboard() {
             viewMode={viewMode}
             onViewModeChange={handleViewModeChange}
           />
+        )}
+        </>
         )}
       </PageContainer>
 

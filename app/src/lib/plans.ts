@@ -21,6 +21,7 @@ export type PlanFeatures = {
   priorityAI: boolean;
   customProjectKeys: boolean;
   crossWorkspaceSearch: boolean;
+  knowledgeGraph: boolean;
 };
 
 export type Plan = {
@@ -61,6 +62,7 @@ export const PLANS: Record<PlanId, Plan> = {
       priorityAI: false,
       customProjectKeys: false,
       crossWorkspaceSearch: false,
+      knowledgeGraph: false,
     },
   },
   business: {
@@ -89,6 +91,7 @@ export const PLANS: Record<PlanId, Plan> = {
       priorityAI: false,
       customProjectKeys: true,
       crossWorkspaceSearch: true,
+      knowledgeGraph: true,
     },
   },
   business_comp: {
@@ -117,6 +120,7 @@ export const PLANS: Record<PlanId, Plan> = {
       priorityAI: false,
       customProjectKeys: true,
       crossWorkspaceSearch: true,
+      knowledgeGraph: true,
     },
   },
   enterprise: {
@@ -145,6 +149,7 @@ export const PLANS: Record<PlanId, Plan> = {
       priorityAI: true,
       customProjectKeys: true,
       crossWorkspaceSearch: true,
+      knowledgeGraph: true,
     },
   },
 };
@@ -217,5 +222,9 @@ export const FEATURE_DESCRIPTIONS: Record<keyof PlanFeatures, { label: string; d
   crossWorkspaceSearch: {
     label: "Cross-Workspace Search",
     description: "Search memories across all your workspaces simultaneously",
+  },
+  knowledgeGraph: {
+    label: "Knowledge Graph",
+    description: "Interactive visualization of memory entity relationships",
   },
 };
