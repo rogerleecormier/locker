@@ -17,6 +17,7 @@ import {
   reviewMemoryRecommendation,
   unmaskMemory,
   semanticSearchMemories,
+  getQuarantinedMemories,
 } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 import { PageContainer } from "~/components/PageContainer";
@@ -32,6 +33,7 @@ import { ExportMemoryModal } from "~/components/ExportMemoryModal";
 import { HistoryModal } from "~/components/HistoryModal";
 import { downloadFile, exportToJson, exportToMarkdown } from "~/lib/memoryExport";
 import { useToast } from "~/components/ui/toast";
+import { QuarantineDashboard } from "~/components/QuarantineDashboard";
 
 export const Route = createFileRoute("/memories")({
   component: Dashboard,
@@ -1238,6 +1240,14 @@ function Dashboard() {
     queryFn: () => getMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
   });
 
+  const [showQuarantinePanel, setShowQuarantinePanel] = useState(false);
+  const { data: quarantinedMemories = [] } = useQuery({
+    queryKey: ["quarantined-memories", projectKey],
+    queryFn: () => getQuarantinedMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
+    staleTime: 30_000,
+  });
+  const quarantineCount = quarantinedMemories.length;
+
   const { data: workspacesList = [] } = useQuery({
     queryKey: ["workspaces"],
     queryFn: () => getUserWorkspaces(),
@@ -1505,6 +1515,45 @@ function Dashboard() {
             </div>
           </div>
         )}
+        {/* DLP Quarantine Queue */}
+        {quarantineCount > 0 && (
+          <div className="mb-6 bg-gradient-to-br from-red-500/10 via-red-500/5 to-transparent border border-red-500/20 rounded-2xl shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-4 duration-200">
+            <button
+              onClick={() => setShowQuarantinePanel((v) => !v)}
+              className="w-full flex items-center justify-between gap-4 p-5 text-left hover:bg-red-500/5 transition-colors"
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-red-500/10 text-red-500 text-lg select-none">
+                  🔒
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-text">
+                    DLP Quarantine Queue
+                    <span className="ml-2 text-[10px] font-semibold bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded-full">
+                      {quarantineCount}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {quarantineCount} {quarantineCount === 1 ? "memory" : "memories"} flagged by the DLP engine — AI agents see{" "}
+                    <code className="font-mono bg-surface-muted px-1 rounded text-[10px]">[REDACTED]</code> until you review them.
+                  </p>
+                </div>
+              </div>
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                className={`shrink-0 text-text-muted transition-transform duration-200 ${showQuarantinePanel ? "rotate-180" : ""}`}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {showQuarantinePanel && (
+              <div className="px-5 pb-5">
+                <QuarantineDashboard projectKey={projectKey === "personal" ? undefined : projectKey} />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Onboarding block */}
         {memories.length === 0 && showOnboarding && (
           <div className="bg-gradient-to-br from-accent/8 to-accent/4 border border-accent/25 rounded-2xl p-5 md:p-6 relative flex items-start justify-between gap-4 animate-in fade-in zoom-in duration-200">

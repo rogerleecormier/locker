@@ -1941,6 +1941,60 @@ export const unmaskMemory = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+const GetQuarantinedSchema = z.object({
+  projectKey: z.string().optional(),
+});
+
+export const getQuarantinedMemories = createServerFn({ method: "POST" })
+  .inputValidator((data) => GetQuarantinedSchema.parse(data))
+  .handler(async ({ data, context }): Promise<Memory[]> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    const { allowed: vaultAllowed } = await verifyVaultAccess(db, user.id, data.projectKey);
+    if (!vaultAllowed) {
+      throw new Error(`Forbidden: no access to vault scope '${data.projectKey ?? "personal"}'`);
+    }
+
+    const vaultId = data.projectKey && (data.projectKey.startsWith("team:") || data.projectKey.startsWith("org:"))
+      ? data.projectKey
+      : user.id;
+
+    const rows = await db
+      .select()
+      .from(memories)
+      .where(
+        and(
+          eq(memories.userId, user.id),
+          eq(memories.isQuarantined, true),
+          eq(memories.isActive, true),
+          data.projectKey
+            ? eq(memories.projectKey, data.projectKey)
+            : isNull(memories.projectKey),
+        )
+      )
+      .orderBy(desc(memories.timestamp))
+      .limit(200)
+      .all();
+
+    const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const { decrypt: decryptFn, isEncrypted: isEnc } = await import("./crypto");
+
+    const decrypted = await Promise.all(
+      rows.map(async (row) => {
+        try {
+          const fact = isEnc(row.fact) ? await decryptFn(row.fact, vaultKey) : row.fact;
+          return { ...row, fact };
+        } catch {
+          return { ...row, fact: "[DECRYPTION ERROR]" };
+        }
+      })
+    );
+
+    return decrypted;
+  });
+
 export const archiveMemory = createServerFn({ method: "POST" })
   .inputValidator((data) => IdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ archived: boolean }> => {
@@ -2560,6 +2614,9 @@ Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
       }
 
       // Build the final result set.
+      const redactQuarantined = (r: Memory): Memory =>
+        r.isQuarantined ? { ...r, fact: "[REDACTED - Pending Human Review]" } : r;
+
       let result: Memory[];
       if (finalOrder && finalOrder.length > 0) {
         const poolMap = new Map(decryptedPool.map((c) => [c.row.id, c]));
@@ -2571,7 +2628,7 @@ Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
         const contributed = ceOrdered.filter((c) => c.row.authorityType !== "authoritative");
         result = [...authoritative, ...contributed]
           .slice(0, finalTopK)
-          .map((c) => ({ ...c.row, fact: c.fact }));
+          .map((c) => redactQuarantined({ ...c.row, fact: c.fact }));
       } else {
         // Fallback: use RRF order with decrypted facts.
         const poolMap = new Map(decryptedPool.map((c) => [c.row.id, c]));
@@ -2579,7 +2636,7 @@ Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
           .slice(0, finalTopK)
           .map(({ row }) => {
             const c = poolMap.get(row.id);
-            return c ? { ...row, fact: c.fact } : null;
+            return c ? redactQuarantined({ ...row, fact: c.fact }) : null;
           })
           .filter((r): r is Memory => r !== null);
       }
