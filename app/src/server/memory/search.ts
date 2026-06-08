@@ -713,17 +713,19 @@ async function enrichAuditLogs(
 
 // ── Org Audit Logs ─────────────────────────────────────────────────────────────
 
+const zDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD").optional();
+
 const AuditLogFilterSchema = z.object({
-  limit: z.number().int().min(1).max(200).optional(),
-  offset: z.number().int().min(0).optional(),
+  limit:    z.number().int().min(1).max(200).optional(),
+  offset:   z.number().int().min(0).optional(),
   memoryId: z.string().uuid().optional(),
-  action: z.string().max(64).optional(),
-  userId: z.string().uuid().optional(),
+  action:   z.string().max(64).regex(/^[a-z_]+$/, "action must be lowercase snake_case").optional(),
+  userId:   z.string().uuid().optional(),
   dateFrom: z.number().int().min(0).optional(),
-  dateTo: z.number().int().min(0).optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
-  search: z.string().max(512).optional(),
+  dateTo:   z.number().int().min(0).optional(),
+  startDate: zDateString,
+  endDate:   zDateString,
+  search:   z.string().max(512).optional(),
 }).strict();
 
 export const getOrgAuditLogs = createServerFn({ method: "POST" })
@@ -800,16 +802,16 @@ export const exportAuditLogsCsv = createServerFn({ method: "POST" })
 // ── Site-Level Audit Logs ─────────────────────────────────────────────────────
 
 const SiteAuditLogFilterSchema = z.object({
-  limit: z.number().int().min(1).max(200).optional(),
-  offset: z.number().int().min(0).optional(),
-  action: z.string().max(64).optional(),
-  userId: z.string().uuid().optional(),
-  orgId: z.string().uuid().optional(),
+  limit:    z.number().int().min(1).max(200).optional(),
+  offset:   z.number().int().min(0).optional(),
+  action:   z.string().max(64).regex(/^[a-z_]+$/, "action must be lowercase snake_case").optional(),
+  userId:   z.string().uuid().optional(),
+  orgId:    z.string().uuid().optional(),
   dateFrom: z.number().int().min(0).optional(),
-  dateTo: z.number().int().min(0).optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
-  search: z.string().max(512).optional(),
+  dateTo:   z.number().int().min(0).optional(),
+  startDate: zDateString,
+  endDate:   zDateString,
+  search:   z.string().max(512).optional(),
 }).strict();
 
 export const getSiteAuditLogs = createServerFn({ method: "POST" })

@@ -12,6 +12,65 @@ import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
+// ── Shared admin Zod validators ────────────────────────────────────────────────
+const zAdminUserId = z.string().uuid("userId must be a valid UUID");
+const zAdminOrgId  = z.string().uuid("orgId must be a valid UUID");
+
+const UpdateOrgQuotaSchema = z.object({
+  orgId:            zAdminOrgId,
+  monthlyMemories:  z.number().int().min(0).max(10_000_000),
+  monthlyRecalls:   z.number().int().min(0).max(10_000_000),
+  monthlyCommits:   z.number().int().min(0).max(10_000_000),
+}).strict();
+
+const DeleteOrgSchema = z.object({
+  id: zAdminOrgId,
+}).strict();
+
+const CreateUserAdminSchema = z.object({
+  name:     z.string().min(1).max(256).transform((s) => s.trim()),
+  email:    z.string().email().max(320).transform((s) => s.trim().toLowerCase()),
+  password: z.string().min(8).max(1024).optional(),
+  plan:     z.enum(["free", "business", "business_comp", "enterprise"]).default("free"),
+}).strict();
+
+const UpdateUserAdminSchema = z.object({
+  userId:        zAdminUserId,
+  name:          z.string().min(1).max(256).transform((s) => s.trim()),
+  email:         z.string().email().max(320).transform((s) => s.trim().toLowerCase()),
+  emailVerified: z.boolean(),
+}).strict();
+
+const UserIdSchema = z.object({
+  userId: zAdminUserId,
+}).strict();
+
+const UpdateUserPlanAdminSchema = z.object({
+  userId: zAdminUserId,
+  plan:   z.enum(["free", "business", "business_comp", "enterprise"]),
+}).strict();
+
+const SetUserPasswordAdminSchema = z.object({
+  userId:   zAdminUserId,
+  password: z.string().min(8).max(1024),
+}).strict();
+
+const AssignUserToOrgAdminSchema = z.object({
+  userId: zAdminUserId,
+  orgId:  zAdminOrgId,
+  role:   z.enum(["owner", "admin", "member"]),
+}).strict();
+
+const RemoveUserFromOrgAdminSchema = z.object({
+  userId: zAdminUserId,
+  orgId:  zAdminOrgId,
+}).strict();
+
+const UpdateSystemSettingSchema = z.object({
+  key:   z.enum(["enable_signups", "enable_business_plans", "enable_enterprise_plans"]),
+  value: z.enum(["true", "false"]),
+}).strict();
+
 // Server functions for admin operations
 export const getDbStats = createServerFn({ method: "GET" }).handler(
   async ({ context }): Promise<{ memoryCount: number; vectorCount: number }> => {
@@ -185,15 +244,7 @@ export const listAllOrgsAndQuotas = createServerFn({ method: "GET" }).handler(
 
 
 export const updateOrgQuota = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { orgId: string; monthlyMemories: number; monthlyRecalls: number; monthlyCommits: number } => {
-    const d = data as { orgId: string; monthlyMemories: number; monthlyRecalls: number; monthlyCommits: number };
-    return {
-      orgId: d.orgId,
-      monthlyMemories: Number(d.monthlyMemories),
-      monthlyRecalls: Number(d.monthlyRecalls),
-      monthlyCommits: Number(d.monthlyCommits),
-    };
-  })
+  .inputValidator((data) => UpdateOrgQuotaSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -220,10 +271,7 @@ export const updateOrgQuota = createServerFn({ method: "POST" })
   });
 
 export const deleteOrganization = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { id: string } => {
-    const d = data as { id: string };
-    return { id: d.id };
-  })
+  .inputValidator((data) => DeleteOrgSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -302,17 +350,7 @@ export const listAllUsersAndDetails = createServerFn({ method: "GET" }).handler(
 );
 
 export const createUserAdmin = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { name: string; email: string; password?: string; plan?: string } => {
-    const d = data as { name: string; email: string; password?: string; plan?: string };
-    if (!d.name || typeof d.name !== "string") throw new Error("Name is required");
-    if (!d.email || typeof d.email !== "string") throw new Error("Email is required");
-    return {
-      name: d.name.trim(),
-      email: d.email.trim().toLowerCase(),
-      password: d.password ? d.password : undefined,
-      plan: d.plan ? d.plan.trim() : "free",
-    };
-  })
+  .inputValidator((data) => CreateUserAdminSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean; userId: string }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -365,15 +403,7 @@ export const createUserAdmin = createServerFn({ method: "POST" })
   });
 
 export const updateUserAdmin = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { userId: string; name: string; email: string; emailVerified: boolean } => {
-    const d = data as { userId: string; name: string; email: string; emailVerified: boolean };
-    return {
-      userId: d.userId,
-      name: d.name.trim(),
-      email: d.email.trim().toLowerCase(),
-      emailVerified: !!d.emailVerified,
-    };
-  })
+  .inputValidator((data) => UpdateUserAdminSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -410,10 +440,7 @@ export const updateUserAdmin = createServerFn({ method: "POST" })
   });
 
 export const deleteUserAdmin = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { userId: string } => {
-    const d = data as { userId: string };
-    return { userId: d.userId };
-  })
+  .inputValidator((data) => UserIdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -449,10 +476,7 @@ export const deleteUserAdmin = createServerFn({ method: "POST" })
   });
 
 export const updateUserPlanAdmin = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { userId: string; plan: string } => {
-    const d = data as { userId: string; plan: string };
-    return { userId: d.userId, plan: d.plan.trim() };
-  })
+  .inputValidator((data) => UpdateUserPlanAdminSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -496,11 +520,7 @@ export const updateUserPlanAdmin = createServerFn({ method: "POST" })
   });
 
 export const setUserPasswordAdmin = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { userId: string; password: string } => {
-    const d = data as { userId: string; password: string };
-    if (!d.password || d.password.length < 8) throw new Error("Password must be at least 8 characters long.");
-    return { userId: d.userId, password: d.password };
-  })
+  .inputValidator((data) => SetUserPasswordAdminSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -547,10 +567,7 @@ export const setUserPasswordAdmin = createServerFn({ method: "POST" })
   });
 
 export const resetUserPasswordAdmin = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { userId: string } => {
-    const d = data as { userId: string };
-    return { userId: d.userId };
-  })
+  .inputValidator((data) => UserIdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean; password?: string }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -606,10 +623,7 @@ export const resetUserPasswordAdmin = createServerFn({ method: "POST" })
   });
 
 export const assignUserToOrgAdmin = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { userId: string; orgId: string; role: "owner" | "admin" | "member" } => {
-    const d = data as { userId: string; orgId: string; role: "owner" | "admin" | "member" };
-    return { userId: d.userId, orgId: d.orgId, role: d.role };
-  })
+  .inputValidator((data) => AssignUserToOrgAdminSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -645,10 +659,7 @@ export const assignUserToOrgAdmin = createServerFn({ method: "POST" })
   });
 
 export const removeUserFromOrgAdmin = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { userId: string; orgId: string } => {
-    const d = data as { userId: string; orgId: string };
-    return { userId: d.userId, orgId: d.orgId };
-  })
+  .inputValidator((data) => RemoveUserFromOrgAdminSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -686,10 +697,7 @@ export const removeUserFromOrgAdmin = createServerFn({ method: "POST" })
   });
 
 export const promoteToSiteAdminAdmin = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { userId: string } => {
-    const d = data as { userId: string };
-    return { userId: d.userId };
-  })
+  .inputValidator((data) => UserIdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean; message: string }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -756,10 +764,7 @@ export const promoteToSiteAdminAdmin = createServerFn({ method: "POST" })
   });
 
 export const removeAdminStatusAdmin = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { userId: string } => {
-    const d = data as { userId: string };
-    return { userId: d.userId };
-  })
+  .inputValidator((data) => UserIdSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean; message: string }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireAdmin(env);
@@ -832,12 +837,7 @@ export const getSystemSettings = createServerFn({ method: "GET" }).handler(
 );
 
 export const updateSystemSetting = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): { key: string; value: string } => {
-    const d = data as { key: string; value: string };
-    const allowedKeys = ["enable_signups", "enable_business_plans", "enable_enterprise_plans"];
-    if (!allowedKeys.includes(d.key)) throw new Error(`Unknown setting key: ${d.key}`);
-    return { key: d.key, value: d.value };
-  })
+  .inputValidator((data) => UpdateSystemSettingSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
@@ -1072,13 +1072,13 @@ export type AuditLogEntry = {
 };
 
 const AdminAuditLogSchema = z.object({
-  limit: z.number().int().min(1).max(500).default(100),
-  offset: z.number().int().min(0).default(0),
-  userId: z.string().max(128).optional(),
-  action: z.string().max(64).optional(),
-  startDate: z.string().optional(), // YYYY-MM-DD
-  endDate: z.string().optional(),   // YYYY-MM-DD
-});
+  limit:     z.number().int().min(1).max(500).default(100),
+  offset:    z.number().int().min(0).default(0),
+  userId:    z.string().uuid().optional(),
+  action:    z.string().max(64).regex(/^[a-z_]+$/, "action must be lowercase snake_case").optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startDate must be YYYY-MM-DD").optional(),
+  endDate:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "endDate must be YYYY-MM-DD").optional(),
+}).strict();
 
 export const getAdminAuditLogs = createServerFn({ method: "POST" })
   .inputValidator((data) => AdminAuditLogSchema.parse(data))

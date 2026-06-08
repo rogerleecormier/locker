@@ -904,7 +904,10 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
 
 // ── Scan Database Duplicates ──────────────────────────────────────────────────
 
+const ScanDatabaseDuplicatesSchema = z.object({}).strict();
+
 export const scanDatabaseDuplicates = createServerFn({ method: "POST" })
+  .inputValidator((data) => ScanDatabaseDuplicatesSchema.parse(data))
   .handler(async ({ context }): Promise<{ groups: DuplicateGroup[] }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
