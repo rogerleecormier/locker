@@ -118,3 +118,92 @@ export function sanitizeMemory(fact: string): string {
 
   return cleanSentences.join(" ").trim();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Secondary AI classifier — async defence layer
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AI_CLASSIFIER_MODEL = "@cf/huggingface/distilbert-sst-2-int8" as const;
+const AI_UNSAFE_CONFIDENCE_THRESHOLD = 0.85;
+const AI_CLASSIFIER_MIN_LENGTH = 50;
+
+/**
+ * Runs the Workers AI text-classification pipeline on a single sentence.
+ * Returns true when the model labels the text as NEGATIVE with confidence
+ * exceeding AI_UNSAFE_CONFIDENCE_THRESHOLD, indicating likely adversarial content.
+ * Errors are caught and treated as safe (non-blocking) to avoid availability issues.
+ */
+async function isUnsafeByClassifier(ai: Ai, text: string): Promise<boolean> {
+  try {
+    const results = await ai.run(AI_CLASSIFIER_MODEL, { text });
+    // The model returns [{label, score}] sorted by score descending.
+    const topLabel = Array.isArray(results) ? results[0] : null;
+    return (
+      topLabel !== null &&
+      topLabel !== undefined &&
+      topLabel.label === "NEGATIVE" &&
+      typeof topLabel.score === "number" &&
+      topLabel.score > AI_UNSAFE_CONFIDENCE_THRESHOLD
+    );
+  } catch (err) {
+    console.warn(`[sanitization] AI classifier error (treating as safe): ${err}`);
+    return false;
+  }
+}
+
+/**
+ * Async variant of sanitizeMemory that adds a secondary Workers AI classification
+ * layer on top of the primary regex pass.
+ *
+ * Pipeline:
+ *   1. Primary regex pass (same as sanitizeMemory) — strips known adversarial patterns.
+ *   2. For each sentence that survived the regex pass AND exceeds AI_CLASSIFIER_MIN_LENGTH
+ *      characters, the distilbert-sst-2-int8 text classifier is run asynchronously.
+ *      If the model returns NEGATIVE with confidence > AI_UNSAFE_CONFIDENCE_THRESHOLD,
+ *      the sentence is emptied from the output.
+ *
+ * Call sites that have access to the Cloudflare AI binding should prefer this function.
+ * Existing call sites using the synchronous sanitizeMemory are unaffected.
+ */
+export async function sanitizeMemoryAsync(fact: string, ai: Ai): Promise<string> {
+  if (!fact) return "";
+
+  const sentences = splitIntoSentences(fact);
+  const regexClean: string[] = [];
+
+  // Stage 1: primary regex pass
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+
+    const normalised = normalizeForPatternMatch(trimmed);
+    let isAdversarial = false;
+    for (const pattern of ADVERSARIAL_PATTERNS) {
+      if (pattern.test(normalised)) {
+        isAdversarial = true;
+        break;
+      }
+    }
+
+    if (!isAdversarial) {
+      regexClean.push(trimmed);
+    } else {
+      console.warn(`[sanitization] Stripped adversarial sentence (regex): "${trimmed}"`);
+    }
+  }
+
+  // Stage 2: AI classifier pass — only for sentences that are long enough to be suspicious
+  const classifierChecks = regexClean.map(async (sentence) => {
+    if (sentence.length <= AI_CLASSIFIER_MIN_LENGTH) return sentence;
+
+    const unsafe = await isUnsafeByClassifier(ai, sentence);
+    if (unsafe) {
+      console.warn(`[sanitization] Stripped adversarial sentence (AI classifier): "${sentence}"`);
+      return null;
+    }
+    return sentence;
+  });
+
+  const results = await Promise.all(classifierChecks);
+  return results.filter((s): s is string => s !== null).join(" ").trim();
+}
