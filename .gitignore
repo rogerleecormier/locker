@@ -22,6 +22,7 @@ cli/node_modules/
 
 # Agents Files
 .agents/
+.github/
 
 # OS
 .DS_Store
