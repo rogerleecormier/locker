@@ -409,37 +409,77 @@ type ResolvedToken = {
   projectKey: string | null;
 };
 
+// Columns needed from api_tokens for webhook token resolution — avoids fetching
+// agentPolicy, scopes, tokenType, name, and other heavy fields on every request.
+const TOKEN_RESOLVE_COLS = {
+  userId: apiTokens.userId,
+  tokenHash: apiTokens.tokenHash,
+  expiresAt: apiTokens.expiresAt,
+  permissions: apiTokens.permissions,
+  scopeType: apiTokens.scopeType,
+  scopeId: apiTokens.scopeId,
+} as const;
+
+// Maximum number of legacy (NULL-prefix) tokens considered per request.
+// Bounds the fallback scan during the migration window while tokens are rotated.
+// Once all tokens carry a prefix this branch produces zero rows and the cap is moot.
+const LEGACY_TOKEN_SCAN_LIMIT = 200;
+
 async function resolveToken(request: Request, env: CloudflareEnv): Promise<ResolvedToken | null> {
   const authHeader = request.headers.get("Authorization") ?? "";
   if (!authHeader.startsWith("Bearer lkr_")) return null;
 
   const raw = authHeader.slice("Bearer ".length).trim();
   const prefix = extractTokenPrefix(raw);
+
+  // Reject malformed tokens immediately — no prefix means the string cannot be a
+  // valid lkr_... token, so there is nothing to look up.
+  if (!prefix) return null;
+
   const db = drizzle(env.DB);
 
-  // Two-pass lookup:
-  //   Pass 1 — indexed prefix hit:  O(1) rows for tokens minted after migration.
-  //   Pass 2 — legacy NULL-prefix:  O(legacy) rows only; shrinks to zero once all
-  //            tokens are rotated. Skip pass 2 entirely if prefix extraction failed.
-  const prefixRows = prefix
-    ? await db.select().from(apiTokens).where(eq(apiTokens.tokenPrefix, prefix)).all()
-    : [];
+  // Pass 1 — O(1): indexed WHERE token_prefix = ? narrows to at most a handful of rows.
+  const prefixRows = await db
+    .select(TOKEN_RESOLVE_COLS)
+    .from(apiTokens)
+    .where(eq(apiTokens.tokenPrefix, prefix))
+    .all();
 
-  const legacyRows = prefix
-    ? await db.select().from(apiTokens).where(isNull(apiTokens.tokenPrefix)).all()
-    : await db.select().from(apiTokens).all(); // no prefix = malformed token; scan all as last resort
-
-  for (const row of [...prefixRows, ...legacyRows]) {
+  for (const row of prefixRows) {
     if (!(await verifyToken(raw, row.tokenHash))) continue;
     if (row.expiresAt && row.expiresAt < Date.now()) continue;
     if (!(row.permissions & MCP_PERM_COMMIT)) continue;
 
     const scopeType = row.scopeType as "personal" | "organization" | "team";
     const scopeId = row.scopeId ?? null;
+    const projectKey = scopeType === "organization" && scopeId ? `org:${scopeId}`
+      : scopeType === "team" && scopeId ? `team:${scopeId}`
+      : null;
 
-    let projectKey: string | null = null;
-    if (scopeType === "organization" && scopeId) projectKey = `org:${scopeId}`;
-    else if (scopeType === "team" && scopeId) projectKey = `team:${scopeId}`;
+    return { userId: row.userId, scopeType, scopeId, projectKey };
+  }
+
+  // Pass 2 — legacy fallback: tokens minted before the prefix migration have
+  // token_prefix = NULL.  A hard LIMIT caps the scan; this path empties naturally
+  // as tokens are rotated and the opportunistic upgrade in validateBearerToken
+  // back-fills token_prefix on first use.
+  const legacyRows = await db
+    .select(TOKEN_RESOLVE_COLS)
+    .from(apiTokens)
+    .where(isNull(apiTokens.tokenPrefix))
+    .limit(LEGACY_TOKEN_SCAN_LIMIT)
+    .all();
+
+  for (const row of legacyRows) {
+    if (!(await verifyToken(raw, row.tokenHash))) continue;
+    if (row.expiresAt && row.expiresAt < Date.now()) continue;
+    if (!(row.permissions & MCP_PERM_COMMIT)) continue;
+
+    const scopeType = row.scopeType as "personal" | "organization" | "team";
+    const scopeId = row.scopeId ?? null;
+    const projectKey = scopeType === "organization" && scopeId ? `org:${scopeId}`
+      : scopeType === "team" && scopeId ? `team:${scopeId}`
+      : null;
 
     return { userId: row.userId, scopeType, scopeId, projectKey };
   }
