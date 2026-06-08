@@ -126,73 +126,99 @@ describe("parseScope", () => {
 
 describe("verifyVaultAccess", () => {
   it("personal scope is always allowed, orgId resolved from membership", async () => {
-    // getUserOrg inner call: orgRows
+    // Fetch user plan (first), then getUserOrg
     const db = makeSequentialDb([
-      [{ orgId: "org-1", plan: "business" }],
+      [{ plan: "business" }],                     // userPlans
+      [{ orgId: "org-1", plan: "business" }],     // organizationMembers + orgQuotas join
     ]);
     const result = await verifyVaultAccess(db, "user-1", "personal", null);
     expect(result.allowed).toBe(true);
     expect(result.orgId).toBe("org-1");
+    expect(result.userPlan).toBe("business");
   });
 
   it("personal scope with no org membership returns allowed=true, orgId=null", async () => {
-    const db = makeSequentialDb([[]]);
+    const db = makeSequentialDb([
+      [{ plan: "free" }],                         // userPlans
+      [],                                         // organizationMembers (no results)
+    ]);
     const result = await verifyVaultAccess(db, "user-1", "personal", null);
     expect(result.allowed).toBe(true);
     expect(result.orgId).toBeNull();
+    expect(result.userPlan).toBe("free");
   });
 
   it("organization scope returns allowed=true when user is a member", async () => {
     const db = makeSequentialDb([
-      [{ userId: "user-1", orgId: "org-1", role: "member" }],
+      [{ plan: "business" }],                     // userPlans
+      [{ userId: "user-1", orgId: "org-1", role: "member" }], // organizationMembers
     ]);
     const result = await verifyVaultAccess(db, "user-1", "organization", "org-1");
     expect(result.allowed).toBe(true);
     expect(result.orgId).toBe("org-1");
+    expect(result.userPlan).toBe("business");
   });
 
   it("organization scope returns allowed=false when user is not a member", async () => {
-    const db = makeSequentialDb([[]]);
+    const db = makeSequentialDb([
+      [{ plan: "free" }],                         // userPlans
+      [],                                         // organizationMembers (no results)
+    ]);
     const result = await verifyVaultAccess(db, "user-1", "organization", "org-1");
     expect(result.allowed).toBe(false);
     expect(result.orgId).toBeNull();
+    expect(result.userPlan).toBe("free");
   });
 
   it("organization scope with null scopeId returns allowed=false", async () => {
-    const db = makeSequentialDb([]);
+    const db = makeSequentialDb([
+      [{ plan: "free" }],                         // userPlans
+    ]);
     const result = await verifyVaultAccess(db, "user-1", "organization", null);
     expect(result.allowed).toBe(false);
+    expect(result.userPlan).toBe("free");
   });
 
   it("team scope returns allowed=true when user is a team member", async () => {
     const db = makeSequentialDb([
+      [{ plan: "enterprise" }],                   // userPlans
       [{ teamId: "team-1", userId: "user-1" }],  // teamMembers
-      [{ orgId: "org-1" }],                        // teams
+      [{ orgId: "org-1" }],                       // teams
     ]);
     const result = await verifyVaultAccess(db, "user-1", "team", "team-1");
     expect(result.allowed).toBe(true);
     expect(result.orgId).toBe("org-1");
+    expect(result.userPlan).toBe("enterprise");
   });
 
   it("team scope returns allowed=false when user is not a team member", async () => {
-    const db = makeSequentialDb([[]]);
+    const db = makeSequentialDb([
+      [{ plan: "free" }],                         // userPlans
+      [],                                         // teamMembers (no results)
+    ]);
     const result = await verifyVaultAccess(db, "user-1", "team", "team-1");
     expect(result.allowed).toBe(false);
+    expect(result.userPlan).toBe("free");
   });
 
   it("team scope with null scopeId returns allowed=false", async () => {
-    const db = makeSequentialDb([]);
+    const db = makeSequentialDb([
+      [{ plan: "free" }],                         // userPlans
+    ]);
     const result = await verifyVaultAccess(db, "user-1", "team", null);
     expect(result.allowed).toBe(false);
+    expect(result.userPlan).toBe("free");
   });
 
   it("accepts a projectKey string and parses it internally", async () => {
     const db = makeSequentialDb([
-      [{ userId: "user-1", orgId: "org-99", role: "member" }],
+      [{ plan: "business" }],                     // userPlans
+      [{ userId: "user-1", orgId: "org-99", role: "member" }], // organizationMembers
     ]);
     const result = await verifyVaultAccess(db, "user-1", "org:org-99");
     expect(result.allowed).toBe(true);
     expect(result.orgId).toBe("org-99");
+    expect(result.userPlan).toBe("business");
   });
 });
 

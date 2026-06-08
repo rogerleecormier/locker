@@ -348,6 +348,7 @@ const SemanticSearchSchema = z.object({
   projectKey: zProjectKeyFn,
   category: z.enum(["rules", "projects", "references", "configs"]).optional(),
   topK: z.number().int().min(1).max(50).default(20),
+  allWorkspaces: z.boolean().default(false),
 }).strict();
 
 export const semanticSearchMemories = createServerFn({ method: "POST" })
@@ -357,12 +358,30 @@ export const semanticSearchMemories = createServerFn({ method: "POST" })
     const user = await requireSession(env);
     const db = getDb(env);
 
-    const { scopeType, scopeId } = parseScope(data.projectKey);
-    const { allowed: vaultAllowed } = await verifyVaultAccess(db, user.id, scopeType, scopeId);
+    const { allowed: vaultAllowed, userPlan, orgId } = await verifyVaultAccess(db, user.id, data.projectKey);
     if (!vaultAllowed) throw new Error(`Forbidden: no access to vault scope '${data.projectKey ?? "personal"}'`);
 
+    // Cross-workspace search (org/team level) requires business tier or above
+    if (data.allWorkspaces && !["business", "business_comp", "enterprise"].includes(userPlan)) {
+      throw new Error(`Cross-workspace search requires Business tier or above. Current plan: ${userPlan}`);
+    }
+
     const embedding = await generateEmbedding(env.AI, data.query);
-    const filter = getVectorFilter(user.id, data.projectKey);
+
+    // Determine vector filter based on scope and allWorkspaces flag
+    let filter: Record<string, any>;
+
+    if (data.allWorkspaces && orgId) {
+      // Search across all org/team workspaces (allWorkspaces requires org membership + business tier)
+      filter = { orgId };
+    } else if (data.allWorkspaces && !orgId) {
+      // Personal user with allWorkspaces enabled: still scoped to personal memories
+      filter = { userId: user.id };
+    } else {
+      // Single workspace search (default behavior)
+      filter = getVectorFilter(user.id, data.projectKey);
+    }
+
     if (data.category) filter.category = data.category;
 
     const vectorResult = await env.VECTOR_INDEX.query(embedding, { topK: data.topK, filter, returnMetadata: "indexed" });
@@ -378,10 +397,26 @@ export const semanticSearchMemories = createServerFn({ method: "POST" })
     const rows: Memory[] = [];
     for (let i = 0; i < parentIds.length; i += DB_CHUNK) {
       const chunk = parentIds.slice(i, i + DB_CHUNK);
+      const conditions: any[] = [
+        sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`,
+        eq(memories.isActive, true)
+      ];
+
+      // When allWorkspaces is true and user is in org, filter by orgId for all workspaces in that org
+      if (data.allWorkspaces && orgId) {
+        // Include org/team workspaces where user has access
+        conditions.push(sql`(
+          ${memories.projectKey} IS NULL OR
+          ${memories.projectKey} = '' OR
+          ${memories.projectKey} LIKE ${"org:" + orgId + "%"} OR
+          ${memories.projectKey} LIKE ${"team:%"}
+        )`);
+      }
+
       const chunkRows = await db
         .select()
         .from(memories)
-        .where(and(sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`, eq(memories.isActive, true)))
+        .where(and(...conditions))
         .all();
       rows.push(...chunkRows);
     }

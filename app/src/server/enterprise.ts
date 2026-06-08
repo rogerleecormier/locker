@@ -9,7 +9,8 @@ import {
   tokenUsages,
   orgQuotas,
   memories,
-  apiTokens
+  apiTokens,
+  userPlans
 } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { PLAN_ORDER, resolvePlan, planAtLeast } from "~/lib/plans";
@@ -69,13 +70,13 @@ export function parseScope(projectKey: string | undefined | null): {
   throw new Error(`Invalid workspace scope key: ${projectKey}`);
 }
 
-// Verify vault scoping access and return the organization ID
+// Verify vault scoping access and return the organization ID and user's plan
 export async function verifyVaultAccess(
   db: any,
   userId: string,
   scopeTypeOrProjectKey: "personal" | "organization" | "team" | string | null | undefined,
   scopeId?: string | null
-): Promise<{ allowed: boolean; orgId: string | null }> {
+): Promise<{ allowed: boolean; orgId: string | null; userPlan: string }> {
   let scopeType: "personal" | "organization" | "team";
   let finalScopeId: string | null = null;
 
@@ -88,21 +89,30 @@ export async function verifyVaultAccess(
     finalScopeId = parsed.scopeId;
   }
 
+  // Fetch user's plan
+  const userPlanRows = await db
+    .select({ plan: userPlans.plan })
+    .from(userPlans)
+    .where(eq(userPlans.userId, userId))
+    .limit(1)
+    .all();
+  const userPlan = resolvePlan(userPlanRows[0]?.plan);
+
   if (scopeType === "personal") {
     const orgId = await getUserOrg(db, userId);
-    return { allowed: true, orgId };
+    return { allowed: true, orgId, userPlan };
   }
 
   if (scopeType === "team") {
-    if (!finalScopeId) return { allowed: false, orgId: null };
+    if (!finalScopeId) return { allowed: false, orgId: null, userPlan };
     const rows = await db
       .select()
       .from(teamMembers)
       .where(and(eq(teamMembers.teamId, finalScopeId), eq(teamMembers.userId, userId)))
       .limit(1)
       .all();
-    
-    if (rows.length === 0) return { allowed: false, orgId: null };
+
+    if (rows.length === 0) return { allowed: false, orgId: null, userPlan };
 
     const teamRows = await db
       .select({ orgId: teams.orgId })
@@ -110,21 +120,21 @@ export async function verifyVaultAccess(
       .where(eq(teams.id, finalScopeId))
       .limit(1)
       .all();
-    return { allowed: true, orgId: teamRows[0]?.orgId ?? null };
+    return { allowed: true, orgId: teamRows[0]?.orgId ?? null, userPlan };
   }
 
   if (scopeType === "organization") {
-    if (!finalScopeId) return { allowed: false, orgId: null };
+    if (!finalScopeId) return { allowed: false, orgId: null, userPlan };
     const rows = await db
       .select()
       .from(organizationMembers)
       .where(and(eq(organizationMembers.orgId, finalScopeId), eq(organizationMembers.userId, userId)))
       .limit(1)
       .all();
-    return { allowed: rows.length > 0, orgId: rows.length > 0 ? finalScopeId : null };
+    return { allowed: rows.length > 0, orgId: rows.length > 0 ? finalScopeId : null, userPlan };
   }
 
-  return { allowed: false, orgId: null };
+  return { allowed: false, orgId: null, userPlan };
 }
 
 // Quota verification

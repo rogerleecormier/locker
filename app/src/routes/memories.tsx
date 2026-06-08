@@ -20,6 +20,7 @@ import {
   getQuarantinedMemories,
   getMemoryTimeline,
   revertMemoryVersion,
+  getUserPlan,
 } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 import { PageContainer } from "~/components/PageContainer";
@@ -36,6 +37,7 @@ import { HistoryModal } from "~/components/HistoryModal";
 import { downloadFile, exportToJson, exportToMarkdown } from "~/lib/memoryExport";
 import { useToast } from "~/components/ui/toast";
 import { QuarantineDashboard } from "~/components/QuarantineDashboard";
+import { PaywallGate } from "~/components/PaywallGate";
 
 export const Route = createFileRoute("/memories")({
   component: Dashboard,
@@ -1521,6 +1523,7 @@ function Dashboard() {
 
   // Semantic search state
   const [semanticMode, setSemanticMode] = useState(false);
+  const [allWorkspacesSearch, setAllWorkspacesSearch] = useState(false);
   const [debouncedSemanticQuery, setDebouncedSemanticQuery] = useState("");
   const semanticDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1542,13 +1545,14 @@ function Dashboard() {
     data: semanticResults,
     isFetching: isSemanticFetching,
   } = useQuery({
-    queryKey: ["semantic-search", debouncedSemanticQuery, projectKey],
+    queryKey: ["semantic-search", debouncedSemanticQuery, projectKey, allWorkspacesSearch],
     queryFn: () =>
       semanticSearchMemories({
         data: {
           query: debouncedSemanticQuery,
           projectKey: projectKey === "personal" ? undefined : projectKey,
           topK: 20,
+          allWorkspaces: allWorkspacesSearch,
         },
       }),
     enabled: semanticMode && debouncedSemanticQuery.length > 0,
@@ -1597,6 +1601,11 @@ function Dashboard() {
     queryFn: () => getUserWorkspaces(),
   });
   const workspaces = Array.isArray(workspacesList) ? workspacesList : [];
+
+  const { data: userPlan = "free" } = useQuery({
+    queryKey: ["user-plan"],
+    queryFn: () => getUserPlan(),
+  });
 
   const { data: usageStats } = useQuery({
     queryKey: ["usage-stats"],
@@ -2044,6 +2053,33 @@ function Dashboard() {
               </svg>
               Semantic
             </button>
+
+            {/* Search All Org/Team Workspaces toggle (Business tier+) */}
+            <PaywallGate
+              feature="crossWorkspaceSearch"
+              currentPlan={userPlan}
+              requiredPlan="business"
+              compact
+            >
+              <button
+                type="button"
+                onClick={() => setAllWorkspacesSearch((prev) => !prev)}
+                disabled={!semanticMode}
+                title={semanticMode ? "Search across all organization workspaces" : "Enable semantic search first"}
+                className={`h-9.5 px-3 flex items-center gap-1.5 font-bold text-xs rounded-lg border transition-all select-none whitespace-nowrap ${
+                  allWorkspacesSearch && semanticMode
+                    ? "border-accent bg-accent/10 text-accent hover:bg-accent/15"
+                    : semanticMode
+                    ? "border-border bg-surface2 text-text-muted hover:border-accent/40 hover:text-text"
+                    : "border-border bg-surface2 text-text-muted opacity-50 cursor-not-allowed"
+                }`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+                  <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+                </svg>
+                All Org Workspaces
+              </button>
+            </PaywallGate>
 
             <Button
               variant="outline"
