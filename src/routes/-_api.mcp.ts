@@ -2233,7 +2233,7 @@ export async function handleMcpRequest(
           message: `Agent "${agentLabel}" wants to update a memory. Review and approve in your Locker vault.`,
           type: "warning",
           status: "unread",
-          linkUrl: "/memories",
+          linkUrl: "/conflicts",
           createdAt: Date.now(),
         });
       } catch (e) {
@@ -2527,7 +2527,7 @@ export async function handleMcpRequest(
           message: `Agent "${agentLabel}" wants to delete a memory. Review and approve in your Locker vault.`,
           type: "warning",
           status: "unread",
-          linkUrl: "/memories",
+          linkUrl: "/conflicts",
           createdAt: Date.now(),
         });
       } catch (e) {

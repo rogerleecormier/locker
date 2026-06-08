@@ -5118,6 +5118,27 @@ export const listPersonalMemoryRecommendations = createServerFn({ method: "GET" 
       .all();
   });
 
+// ── Memory Conflict Resolution ────────────────────────────────────────────────
+// Returns pending agent-requested update/delete recommendations for the current user.
+// These are the items surfaced in the /conflicts Memory Conflict Resolution Hub.
+export const getConflicts = createServerFn({ method: "GET" })
+  .handler(async ({ context }): Promise<any[]> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+
+    return db
+      .select()
+      .from(memoryRecommendations)
+      .where(and(
+        eq(memoryRecommendations.userId, user.id),
+        eq(memoryRecommendations.status, "pending"),
+        sql`${memoryRecommendations.recommendationType} IN ('update', 'delete')`
+      ))
+      .orderBy(desc(memoryRecommendations.createdAt))
+      .all();
+  });
+
 // ── Agent Activity Dashboard ──────────────────────────────────────────────────
 
 export type AgentActivityEntry = {
