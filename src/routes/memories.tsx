@@ -18,6 +18,8 @@ import {
   unmaskMemory,
   semanticSearchMemories,
   getQuarantinedMemories,
+  getMemoryTimeline,
+  revertMemoryVersion,
 } from "~/server/memoryFunctions";
 import type { Memory } from "~/db/schema";
 import { PageContainer } from "~/components/PageContainer";
@@ -560,6 +562,7 @@ function MemoryTable({
   onViewModeChange: (mode: ViewMode) => void;
 }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkConfirming, setBulkConfirming] = useState(false);
   const [bulkMoving, setBulkMoving] = useState(false);
@@ -1606,9 +1609,8 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Stats selector cards — hidden in semantic mode */}
-        {!semanticMode && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {/* Stats selector cards */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
               { label: "Total", value: memories.length, color: "text", category: "" },
               { label: "Configs", value: totalByCategory.configs, color: "purple-400", category: "configs" },
@@ -1637,7 +1639,6 @@ function Dashboard() {
               );
             })}
           </div>
-        )}
 
         {/* Search bar & filter controls */}
         <div className="flex flex-col gap-4 bg-surface border border-border p-4 rounded-xl shadow-xs">

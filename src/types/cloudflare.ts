@@ -26,6 +26,7 @@ export type CloudflareEnv = {
   LINEAR_WEBHOOK_SECRET?: string;
   DEMO_EMAIL?: string;
   DEMO_PASSWORD?: string;
+  OWNER_EMAIL?: string;
   RATE_LIMITER?: {
     limit: (options: { key: string }) => Promise<{ success: boolean }>;
   };

@@ -4,7 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { sql, eq, and, or, like, desc } from "drizzle-orm";
 import { z } from "zod";
-import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, systemSettings, auditLogs, apiTokens, memoryVersions, tokenUsages, webhookEvents } from "~/db/schema";
+import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, systemSettings, auditLogs, apiTokens, memoryVersions, tokenUsages, webhookEvents, featureOverrides } from "~/db/schema";
 import { requireAdmin } from "~/server/session";
 import { updateSubscriptionSeats } from "~/server/billing";
 import { seedNewUserMemory } from "~/server/auth";
@@ -339,7 +339,7 @@ export const createUserAdmin = createServerFn({ method: "POST" })
     // Insert plan
     await db.insert(userPlans).values({
       userId,
-      plan: data.plan || "free",
+      plan: (data.plan || "free") as "free" | "business" | "business_comp" | "enterprise",
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -462,19 +462,20 @@ export const updateUserPlanAdmin = createServerFn({ method: "POST" })
     const existing = await db.select().from(userPlans).where(eq(userPlans.userId, data.userId)).all();
     const oldPlan = existing[0]?.plan || "free";
 
+    const planValue = data.plan as "free" | "business" | "business_comp" | "enterprise";
     if (existing.length > 0) {
       await db
         .update(userPlans)
         .set({
-          plan: data.plan,
-          billingSubscriptionId: null, // Clear Stripe subscription ref on manual override
+          plan: planValue,
+          billingSubscriptionId: null,
           updatedAt: new Date(),
         })
         .where(eq(userPlans.userId, data.userId));
     } else {
       await db.insert(userPlans).values({
         userId: data.userId,
-        plan: data.plan,
+        plan: planValue,
         billingSubscriptionId: null,
         createdAt: new Date(),
         updatedAt: new Date(),
