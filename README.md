@@ -300,4 +300,8 @@ Make sure production secrets are set in your Cloudflare dashboard under **Worker
 
 ## License
 
-Private repository. All rights reserved.
+Locker is licensed under the **Functional Source License 1.1 (FSL-1.1)**. 
+
+- **For Developers:** You are free to view, fork, audit, and self-host Locker for personal or internal development use.
+- **For Businesses:** You cannot use this code to host a competing commercial context-locking or AI memory service. 
+- **Future Open Source:** This version automatically becomes fully open-source (Apache 2.0) on June 8, 2028.
