@@ -212,41 +212,66 @@ type PackableMemory = {
   authorityType?: string;
 };
 
-async function packPrompt(ai: Ai, query: string, items: PackableMemory[]): Promise<string> {
+const CONSOLIDATE_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8" as const;
+
+const CONSOLIDATE_SYSTEM_PROMPT =
+  "You are a context-compression middleware. Synthesize the memory fragments below into a single dense system-prompt string for an AI coding agent.\n" +
+  "Rules (apply strictly):\n" +
+  "1. DEDUPLICATE: if two or more fragments state the same fact, emit it once — keep the most specific or [authoritative] version and discard the rest.\n" +
+  "2. MERGE: group closely related facts into one concise statement; do not repeat shared context.\n" +
+  "3. PRESERVE: retain every concrete detail — file paths, URLs, identifiers, version numbers, enum values, deadlines, decisions, constraints.\n" +
+  "4. AUTHORITY: when an [authoritative] fragment conflicts with a contributed one, keep the authoritative fact only.\n" +
+  "5. STRUCTURE: emit a compact bulleted list, one bullet per distinct fact, grouped under category headers (## rules / ## projects / ## references / ## configs). Omit a header if that category has no bullets.\n" +
+  "6. OUTPUT: no preamble, no commentary, no markdown fences — only the bulleted list.\n" +
+  "7. LENGTH: stay under 800 tokens.";
+
+// consolidateContext is the always-on prompt-consolidation middleware invoked
+// at the tail of recall_context to deduplicate and merge matched memory
+// fragments into a single high-density context string before it is emitted
+// via MCP. Falls back to a plain numbered list if the AI call fails so the
+// caller always receives usable output.
+export async function consolidateContext(ai: Ai, query: string, items: PackableMemory[]): Promise<string> {
   if (items.length === 0) return "";
-  const chunks = items.map((m, i) => {
+
+  // Single item: skip the model call — nothing to merge.
+  if (items.length === 1) {
+    const m = items[0];
+    const tagStr = m.tags ? ` [tags: ${m.tags}]` : "";
+    const auth = m.authorityType === "authoritative" ? " [authoritative]" : "";
+    return `## ${m.category}\n- [${m.category}${auth}${tagStr}] ${m.fact}`;
+  }
+
+  const fragments = items.map((m, i) => {
     const tagStr = m.tags ? ` [tags: ${m.tags}]` : "";
     const auth = m.authorityType === "authoritative" ? " [authoritative]" : "";
     return `${i + 1}. [${m.category}${auth}${tagStr}] ${m.fact}`;
   }).join("\n");
 
-  const systemPrompt =
-    "You are a context-compression assistant. Your job is to synthesize a list of memory fragments into a single, highly dense system prompt for an AI coding agent. " +
-    "Rules:\n" +
-    "- Deduplicate overlapping facts (keep the most specific or authoritative version).\n" +
-    "- Merge related facts into concise statements.\n" +
-    "- Preserve all concrete details: file paths, URLs, identifiers, version numbers, decisions, constraints.\n" +
-    "- Prioritise [authoritative] items over contributed ones when they conflict.\n" +
-    "- Format the result as a compact bulleted list grouped by category (rules, projects, references, configs).\n" +
-    "- Do NOT add commentary, preamble, or explanation — output only the compressed prompt.\n" +
-    "- Keep the output under 800 tokens.";
-
   const userMessage =
-    `User query: "${query}"\n\nMemory fragments to compress:\n${chunks}\n\nOutput the optimised system prompt now.`;
+    `Query: "${query}"\n\nFragments:\n${fragments}\n\nOutput the consolidated context now.`;
+
   try {
-    const result = await ai.run("@cf/meta/llama-3.1-8b-instruct-fp8", {
+    const result = await ai.run(CONSOLIDATE_MODEL, {
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: CONSOLIDATE_SYSTEM_PROMPT },
         { role: "user", content: userMessage },
       ],
       max_tokens: 1024,
     });
-
-    return extractText(result).trim();
+    const text = extractText(result).trim();
+    if (text.length > 0) return text;
+    // Empty model output — fall through to plain-list fallback.
   } catch (err) {
-    console.error("[packPrompt] compression failed:", err);
-    return items.map((m, i) => `${i + 1}. [${m.category}] ${m.fact}`).join("\n");
+    console.error("[consolidateContext] Workers AI call failed, using plain fallback:", err);
   }
+
+  return items.map((m, i) => `${i + 1}. [${m.category}] ${m.fact}`).join("\n");
+}
+
+// packPrompt is kept as a thin alias so any future callers of the old name
+// continue to compile without changes.
+async function packPrompt(ai: Ai, query: string, items: PackableMemory[]): Promise<string> {
+  return consolidateContext(ai, query, items);
 }
 
 const MCP_MANIFEST = {
@@ -1994,20 +2019,32 @@ Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
         await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "jit_access_requested", ipAddress, userAgent, metadata: { jitId, blockedCount: jitBlockedIds.length, toolName: "recall_context" } });
       }
 
-      if (optimize && payloadResults.length > 0) {
-        // Only pack facts that are visible (skip redacted/pending entries).
-        const packable = payloadResults.filter(
-          (r) => r.fact !== "[REDACTED]" && r.fact !== "[APPROVAL PENDING]"
-        );
-        const optimizedPrompt = await packPrompt(env.AI, query, packable);
+      // Consolidation middleware: always synthesise visible facts into a single
+      // dense context string before emitting. Redacted/pending entries are
+      // excluded from synthesis but still present in the raw results array.
+      const visibleResults = payloadResults.filter(
+        (r) => r.fact !== "[REDACTED]" && r.fact !== "[APPROVAL PENDING]"
+      );
+      const consolidatedContext = await consolidateContext(env.AI, query, visibleResults);
+
+      if (optimize) {
+        // Legacy optimized path: return only the synthesised string.
         const responseText = JSON.stringify({
-          optimized_prompt: optimizedPrompt,
+          optimized_prompt: consolidatedContext,
           ...(jitMeta ? { jit: jitMeta } : {}),
         });
         return mcpResult(id, { content: [{ type: "text", text: responseText }] });
       }
 
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ results: payloadResults, ...(jitMeta ? { jit: jitMeta } : {}) }) }] });
+      // Default path: return the synthesised context string as the primary
+      // payload alongside the raw results so callers can use whichever suits
+      // their needs. The `context` field is the high-density deduped output.
+      const responseText = JSON.stringify({
+        context: consolidatedContext,
+        results: payloadResults,
+        ...(jitMeta ? { jit: jitMeta } : {}),
+      });
+      return mcpResult(id, { content: [{ type: "text", text: responseText }] });
     } finally {
       // Clean up all ephemeral plaintext
       for (const m of decrypted) {
