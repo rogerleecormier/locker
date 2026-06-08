@@ -251,7 +251,7 @@ describe("persistGraphData — single new entity", () => {
 
     // Verify an INSERT was issued to D1
     const prepareCalls = (d1.prepare as ReturnType<typeof vi.fn>).mock.calls;
-    const insertCalls = prepareCalls.filter(([sql]: [string]) =>
+    const insertCalls = prepareCalls.filter(([sql]: unknown[]) =>
       typeof sql === "string" && sql.toUpperCase().includes("INSERT"),
     );
     expect(insertCalls.length).toBeGreaterThanOrEqual(1);
@@ -271,7 +271,7 @@ describe("persistGraphData — single new entity", () => {
     expect(result).toContain(NODE_ID_EXISTING);
 
     const prepareCalls = (d1.prepare as ReturnType<typeof vi.fn>).mock.calls;
-    const insertNodeCalls = prepareCalls.filter(([sql]: [string]) =>
+    const insertNodeCalls = prepareCalls.filter(([sql]: unknown[]) =>
       typeof sql === "string" &&
       sql.toUpperCase().includes("INSERT") &&
       sql.toLowerCase().includes("memory_graph_nodes"),
@@ -322,7 +322,7 @@ describe("persistGraphData — edges", () => {
     );
 
     const prepareCalls = (d1.prepare as ReturnType<typeof vi.fn>).mock.calls;
-    const edgeInsertCalls = prepareCalls.filter(([sql]: [string]) =>
+    const edgeInsertCalls = prepareCalls.filter(([sql]: unknown[]) =>
       typeof sql === "string" &&
       sql.toUpperCase().includes("INSERT") &&
       sql.toLowerCase().includes("memory_graph_edges"),
@@ -359,7 +359,7 @@ describe("persistGraphData — edges", () => {
     );
 
     const prepareCalls = (d1.prepare as ReturnType<typeof vi.fn>).mock.calls;
-    const edgeInserts = prepareCalls.filter(([sql]: [string]) =>
+    const edgeInserts = prepareCalls.filter(([sql]: unknown[]) =>
       typeof sql === "string" &&
       sql.toUpperCase().includes("INSERT") &&
       sql.toLowerCase().includes("memory_graph_edges"),
@@ -381,7 +381,7 @@ describe("persistGraphData — edges", () => {
     );
 
     const prepareCalls = (d1.prepare as ReturnType<typeof vi.fn>).mock.calls;
-    const edgeInserts = prepareCalls.filter(([sql]: [string]) =>
+    const edgeInserts = prepareCalls.filter(([sql]: unknown[]) =>
       typeof sql === "string" &&
       sql.toUpperCase().includes("INSERT") &&
       sql.toLowerCase().includes("memory_graph_edges"),

@@ -232,7 +232,7 @@ function makeFakeDb(
         memoriesStore.delete(rec.targetMemoryId);
         deletedMemories.push(rec.targetMemoryId);
       }
-      const patch = { status: "approved" as const, reviewedBy: userId, reviewedAt: Date.now(), reviewNotes };
+      const patch = { status: "approved" as const, reviewedBy: userId, reviewedAt: Date.now(), reviewNotes: reviewNotes ?? null };
       recsStore.set(recId, { ...rec, ...patch });
       updatedRecs.push({ id: recId, patch });
     },
@@ -248,7 +248,7 @@ function makeFakeDb(
       const patch: Partial<MemoryRow> = { fact: proposedFact, category: proposedCategory, tags: proposedTags, isQuarantined };
       memoriesStore.set(rec.targetMemoryId, { ...target, ...patch });
       updatedMemories.push({ id: rec.targetMemoryId, patch });
-      const recPatch = { status: "approved" as const, reviewedBy: userId, reviewedAt: Date.now(), reviewNotes };
+      const recPatch = { status: "approved" as const, reviewedBy: userId, reviewedAt: Date.now(), reviewNotes: reviewNotes ?? null };
       recsStore.set(recId, { ...rec, ...recPatch });
       updatedRecs.push({ id: recId, patch: recPatch });
     },
@@ -256,7 +256,7 @@ function makeFakeDb(
     reject(recId, userId, reviewNotes) {
       const rec = recsStore.get(recId);
       if (!rec) throw new Error("Recommendation not found");
-      const patch = { status: "rejected" as const, reviewedBy: userId, reviewedAt: Date.now(), reviewNotes };
+      const patch = { status: "rejected" as const, reviewedBy: userId, reviewedAt: Date.now(), reviewNotes: reviewNotes ?? null };
       recsStore.set(recId, { ...rec, ...patch });
       updatedRecs.push({ id: recId, patch });
     },

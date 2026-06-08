@@ -1867,7 +1867,73 @@ export async function handleMcpRequest(
         })
         .map((x) => x.item);
 
-      const finalResults = ranked.slice(0, topK);
+      // Cross-Encoder reranking: take top candidates and re-score via Cloudflare Workers AI
+      const CROSS_ENCODER_TOP = 20;
+      const CROSS_ENCODER_OUTPUT = 10;
+      const crossEncoderPool = ranked.slice(0, CROSS_ENCODER_TOP);
+      const ceEphemerals: Array<{ id: string; ephemeralFact: EphemeralPlaintext }> = [];
+      let ceDecryptedPool: Array<{ row: typeof ranked[0]["row"]; fact: string }> = [];
+      let finalResults: typeof ranked;
+
+      try {
+        try {
+          ceDecryptedPool = await Promise.all(
+            crossEncoderPool.map(async ({ row }) => {
+              if (isEncrypted(row.fact)) {
+                const eph = await decryptEphemeral(row.fact, await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, (row.projectKey && (row.projectKey.startsWith("team:") || row.projectKey.startsWith("org:"))) ? row.projectKey : claims.userId));
+                ceEphemerals.push({ id: row.id, ephemeralFact: eph });
+                return { row, fact: eph.get() };
+              }
+              return { row, fact: row.fact };
+            })
+          );
+        } catch (decryptErr) {
+          console.error("[recallContext] cross-encoder decrypt failed, falling back to RRF order:", decryptErr);
+        }
+
+        // Determine final order via cross-encoder or fallback to RRF order
+        if (ceDecryptedPool.length > 1) {
+          const candidateLines = ceDecryptedPool.map((c, i) => `[${i}] ${c.fact.slice(0, 300)}`).join("\n");
+          const cePrompt = `You are a precision memory retrieval ranker. Given the user's query and a numbered list of candidate memory facts, output ONLY a JSON array of the candidate indices (integers), ordered from most relevant to least relevant. Include only indices whose facts are genuinely useful for answering the query. Omit irrelevant facts entirely. No explanation, no markdown.
+
+Query: "${query}"
+
+Candidates:
+${candidateLines}
+
+Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
+
+          try {
+            const ceResult = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { prompt: cePrompt, max_tokens: Math.max(64, ceDecryptedPool.length * 6) });
+            const ceText = extractText(ceResult).trim();
+            const match = ceText.match(/\[[\s\S]*?\]/);
+            if (match) {
+              const parsed: unknown[] = JSON.parse(match[0]);
+              const indices = parsed
+                .filter((v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < ceDecryptedPool.length)
+                .slice(0, CROSS_ENCODER_OUTPUT);
+              if (indices.length > 0) {
+                const ceOrdered = indices.map((i) => crossEncoderPool.find((p) => p.row.id === ceDecryptedPool[i].row.id) ?? null).filter((c): c is typeof ranked[0] => c !== null && c !== undefined);
+                const remaining = crossEncoderPool.filter((c) => !indices.some((i) => ceDecryptedPool[i].row.id === c.row.id));
+                finalResults = [...ceOrdered, ...remaining].slice(0, topK);
+              } else {
+                finalResults = ranked.slice(0, topK);
+              }
+            } else {
+              finalResults = ranked.slice(0, topK);
+            }
+          } catch (ceErr) {
+            console.error("[recallContext] cross-encoder failed, falling back to RRF order:", ceErr);
+            finalResults = ranked.slice(0, topK);
+          }
+        } else {
+          finalResults = ranked.slice(0, topK);
+        }
+      } finally {
+        for (const { ephemeralFact } of ceEphemerals) {
+          ephemeralFact.drop();
+        }
+      }
 
       // Audit log & token usage
       await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "recall_context", ipAddress, userAgent, metadata: { query, projectKey, matchCount: finalResults.length } });

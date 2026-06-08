@@ -74,7 +74,7 @@ export async function auditAdminPlans(db: any): Promise<{
     .where(inArray(organizationMembers.role, ["owner", "admin"]))
     .all();
 
-  const adminUserIds = [...new Set(adminMembers.map((m: { userId: string }) => m.userId))];
+  const adminUserIds: string[] = [...new Set<string>(adminMembers.map((m: { userId: string }) => m.userId))];
   const totalAdmins = adminUserIds.length;
 
   if (totalAdmins === 0) {

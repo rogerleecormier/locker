@@ -224,7 +224,7 @@ describe("persistChunkedVectors — single-chunk (short fact)", () => {
     // called for the SELECT in deleteChunkVectors (not called here) or not at all.
     // We verify no INSERT was issued by checking prepare was not called with INSERT.
     const prepareCalls = (d1.prepare as ReturnType<typeof vi.fn>).mock.calls;
-    const insertCalls = prepareCalls.filter(([sql]: [string]) =>
+    const insertCalls = prepareCalls.filter(([sql]: unknown[]) =>
       typeof sql === "string" && sql.toUpperCase().startsWith("INSERT")
     );
     expect(insertCalls).toHaveLength(0);
@@ -315,7 +315,7 @@ describe("persistChunkedVectors — multi-chunk (long fact)", () => {
   it("inserts D1 rows for child chunks (prepare called with INSERT)", async () => {
     await persistChunkedVectors(ai, d1, vectorIndex, PARENT_ID, longText, BASE_META);
     const prepareCalls = (d1.prepare as ReturnType<typeof vi.fn>).mock.calls;
-    const insertCalls = prepareCalls.filter(([sql]: [string]) =>
+    const insertCalls = prepareCalls.filter(([sql]: unknown[]) =>
       typeof sql === "string" && sql.toUpperCase().includes("INSERT")
     );
     expect(insertCalls.length).toBeGreaterThanOrEqual(1);
@@ -359,7 +359,7 @@ describe("deleteChunkVectors — no existing chunks", () => {
     const vectorIndex = makeVectorIndex();
     await deleteChunkVectors(d1, vectorIndex, PARENT_ID);
     const prepareCalls = (d1.prepare as ReturnType<typeof vi.fn>).mock.calls;
-    const deleteCalls = prepareCalls.filter(([sql]: [string]) =>
+    const deleteCalls = prepareCalls.filter(([sql]: unknown[]) =>
       typeof sql === "string" && sql.toUpperCase().startsWith("DELETE")
     );
     expect(deleteCalls).toHaveLength(0);
@@ -385,7 +385,7 @@ describe("deleteChunkVectors — existing chunks", () => {
     const vectorIndex = makeVectorIndex();
     await deleteChunkVectors(d1, vectorIndex, PARENT_ID);
     const prepareCalls = (d1.prepare as ReturnType<typeof vi.fn>).mock.calls;
-    const deleteCalls = prepareCalls.filter(([sql]: [string]) =>
+    const deleteCalls = prepareCalls.filter(([sql]: unknown[]) =>
       typeof sql === "string" && sql.toUpperCase().startsWith("DELETE")
     );
     expect(deleteCalls.length).toBeGreaterThanOrEqual(1);
