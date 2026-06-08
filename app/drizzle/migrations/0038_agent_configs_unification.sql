@@ -35,4 +35,4 @@ ALTER TABLE memories
 
 -- 4. Composite index to speed up sync_agent_configs + ConfigBuilder list queries.
 CREATE INDEX IF NOT EXISTS idx_memories_config_sync
-  ON memories (category, source_type, is_active);
+  ON memories (category, source_type, isActive);

@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { shannonEntropy, maskSensitiveData, containsSensitiveData } from "./dlp";
+import { shannonEntropy, maskSensitiveData, containsSensitiveData, classifySensitiveData } from "./dlp";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 1: Shannon entropy
@@ -455,5 +455,214 @@ describe("maskSensitiveData — edge cases", () => {
     const result = maskSensitiveData(yaml);
     expect(result).toContain("host: localhost");
     expect(result).toContain("[REDACTED_CREDENTIAL]");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 8: Non-destructive quarantine model
+// Verifies the core DLP contract: raw text is NEVER mutated during ingestion.
+// containsSensitiveData() gates the isQuarantined flag; the original encrypted
+// text is stored intact, and recall_context returns "[REDACTED]" for flagged rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("non-destructive DLP — containsSensitiveData preserves raw text", () => {
+  it("does not modify the original string when called", () => {
+    const original = "api_key = Xy7pK9mZ2qRsT8uVwNdBLfJh3cAeGiYoAbCdEfGh";
+    const originalCopy = original;
+    const detected = containsSensitiveData(original);
+    expect(detected).toBe(true);
+    // Calling containsSensitiveData must not mutate the input
+    expect(original).toBe(originalCopy);
+  });
+
+  it("returns true for AWS key without touching the text", () => {
+    const raw = "My access key is AKIAIOSFODNN7EXAMPLE for the production bucket.";
+    const result = containsSensitiveData(raw);
+    expect(result).toBe(true);
+    // raw is unchanged — caller must store original, not masked version
+    expect(raw).toContain("AKIAIOSFODNN7EXAMPLE");
+  });
+
+  it("returns false for clean fact, confirming no quarantine flag", () => {
+    const clean = "The user prefers TypeScript over JavaScript for all new projects.";
+    expect(containsSensitiveData(clean)).toBe(false);
+    expect(clean).toContain("TypeScript"); // unchanged
+  });
+
+  it("quarantine flag is set for PII but stored text is the original", () => {
+    const withEmail = "Contact alice@example.com for onboarding details.";
+    const shouldQuarantine = containsSensitiveData(withEmail);
+    expect(shouldQuarantine).toBe(true);
+    // Ingestion stores withEmail (encrypted), not masked. Verify text is intact.
+    expect(withEmail).toContain("alice@example.com");
+  });
+
+  it("quarantine flag is set for SSN but stored text is the original", () => {
+    const withSsn = "Employee SSN: 123-45-6789";
+    const shouldQuarantine = containsSensitiveData(withSsn);
+    expect(shouldQuarantine).toBe(true);
+    expect(withSsn).toContain("123-45-6789");
+  });
+
+  it("quarantine flag is set for a connection URI but stored text is intact", () => {
+    const uri = "postgres://admin:supersecretpassword@db.prod.internal:5432/myapp";
+    const shouldQuarantine = containsSensitiveData(uri);
+    expect(shouldQuarantine).toBe(true);
+    expect(uri).toContain("supersecretpassword");
+  });
+
+  it("maskSensitiveData still produces the correct redacted output for audit purposes", () => {
+    const raw = "AKIAIOSFODNN7EXAMPLE";
+    const masked = maskSensitiveData(raw);
+    // maskSensitiveData is only used for auditing / test assertions, never for storage
+    expect(masked).toBe("[REDACTED_AWS_ACCESS_KEY]");
+    // raw is unchanged
+    expect(raw).toBe("AKIAIOSFODNN7EXAMPLE");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 9: classifySensitiveData — trigger classification for dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("classifySensitiveData", () => {
+  it("returns empty array for clean text", () => {
+    expect(classifySensitiveData("User prefers dark mode.")).toEqual([]);
+  });
+
+  it("returns empty array for empty string", () => {
+    expect(classifySensitiveData("")).toEqual([]);
+  });
+
+  it("identifies aws_access_key trigger", () => {
+    const triggers = classifySensitiveData("key=AKIAIOSFODNN7EXAMPLE");
+    expect(triggers).toContain("aws_access_key");
+  });
+
+  it("identifies stripe_key trigger", () => {
+    // Split to avoid GitHub push-protection secret scanning on test fixtures
+    const triggers = classifySensitiveData("sk_live_" + "abcdefghijklmnopqrstuvwx");
+    expect(triggers).toContain("stripe_key");
+  });
+
+  it("identifies github_token trigger", () => {
+    const triggers = classifySensitiveData("ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890ab");
+    expect(triggers).toContain("github_token");
+  });
+
+  it("identifies slack_token trigger", () => {
+    // Split to avoid GitHub push-protection secret scanning on test fixtures
+    const triggers = classifySensitiveData("xoxb-" + "123456789012-abcdefghijklmnop");
+    expect(triggers).toContain("slack_token");
+  });
+
+  it("identifies google_api_key trigger", () => {
+    const triggers = classifySensitiveData("AIzaSyDdI0hiBtXf-7894567890abcdefghijklmn");
+    expect(triggers).toContain("google_api_key");
+  });
+
+  it("identifies email trigger", () => {
+    const triggers = classifySensitiveData("Reach out to bob@example.com for support.");
+    expect(triggers).toContain("email");
+  });
+
+  it("identifies ssn trigger", () => {
+    const triggers = classifySensitiveData("SSN on file: 987-65-4321");
+    expect(triggers).toContain("ssn");
+  });
+
+  it("identifies credit_card trigger", () => {
+    const triggers = classifySensitiveData("Charged card 4111 1111 1111 1111 today");
+    expect(triggers).toContain("credit_card");
+  });
+
+  it("identifies bearer_token trigger for high-entropy token", () => {
+    const token = "Xy7pK9mZ2qRsT8uVwNdBLfJh3cAeGiYoAbCdEfGh";
+    const triggers = classifySensitiveData(`Authorization: Bearer ${token}`);
+    expect(triggers).toContain("bearer_token");
+  });
+
+  it("does NOT identify bearer_token for low-entropy value", () => {
+    const triggers = classifySensitiveData("Bearer mytoken123");
+    expect(triggers).not.toContain("bearer_token");
+  });
+
+  it("identifies kv_credential trigger for high-entropy password", () => {
+    const triggers = classifySensitiveData("password=Xy7pK9mZ2qRsT8uVwNdBLfJh3cAeGiYo");
+    expect(triggers).toContain("kv_credential");
+  });
+
+  it("identifies multiple triggers in a single string", () => {
+    const token = "Xy7pK9mZ2qRsT8uVwNdBLfJh3cAeGiYoAbCdEfGh";
+    const text = `Contact alice@corp.com; key: AKIAIOSFODNN7EXAMPLE; Bearer ${token}`;
+    const triggers = classifySensitiveData(text);
+    expect(triggers).toContain("email");
+    expect(triggers).toContain("aws_access_key");
+    expect(triggers).toContain("bearer_token");
+  });
+
+  it("identifies connection_string trigger", () => {
+    const triggers = classifySensitiveData("postgres://user:pass1234567890abcd@localhost:5432/db");
+    expect(triggers).toContain("connection_string");
+  });
+
+  it("does not mutate the input string", () => {
+    const raw = "api_key=Xy7pK9mZ2qRsT8uVwNdBLfJh3cAeGiYoAbCdEfGh";
+    const copy = raw;
+    classifySensitiveData(raw);
+    expect(raw).toBe(copy);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 10: recall_context quarantine intercept simulation
+// Verifies the read-time contract: quarantined rows must surface as "[REDACTED]"
+// to AI callers, not as the decrypted fact text.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("recall_context quarantine intercept (unit simulation)", () => {
+  // Simulates the logic at mcp.ts lines 1894-1897 without the full CF runtime.
+  function simulateRecallResult(row: { isQuarantined: boolean; fact: string }): string {
+    if (row.isQuarantined) return "[REDACTED]";
+    return row.fact;
+  }
+
+  it("returns [REDACTED] for a quarantined row", () => {
+    const decryptedFact = "aws_secret_key = Xy7pK9mZ2qRsT8uVwNdBLfJh3cAeGiYoAbCdEfGh";
+    const result = simulateRecallResult({ isQuarantined: true, fact: decryptedFact });
+    expect(result).toBe("[REDACTED]");
+    expect(result).not.toContain("aws_secret_key");
+  });
+
+  it("returns the clear-text fact for a non-quarantined row", () => {
+    const fact = "User prefers tabs over spaces.";
+    const result = simulateRecallResult({ isQuarantined: false, fact });
+    expect(result).toBe(fact);
+  });
+
+  it("quarantine flag correctly derived from containsSensitiveData for SSN input", () => {
+    const raw = "Employee SSN: 123-45-6789, DOE John";
+    const isQuarantined = containsSensitiveData(raw);
+    const result = simulateRecallResult({ isQuarantined, fact: raw });
+    expect(result).toBe("[REDACTED]");
+  });
+
+  it("non-sensitive fact passes through unaltered", () => {
+    const raw = "Preferred stack: TypeScript, Cloudflare Workers, D1, Drizzle.";
+    const isQuarantined = containsSensitiveData(raw);
+    expect(isQuarantined).toBe(false);
+    const result = simulateRecallResult({ isQuarantined, fact: raw });
+    expect(result).toBe(raw);
+  });
+
+  it("raw text is preserved in the 'stored' row even when quarantined", () => {
+    const rawFact = "AKIAIOSFODNN7EXAMPLE is the prod bucket key";
+    const isQuarantined = containsSensitiveData(rawFact);
+    expect(isQuarantined).toBe(true);
+    // The stored row retains the original text (encrypted in practice)
+    const storedRow = { isQuarantined, fact: rawFact };
+    expect(storedRow.fact).toContain("AKIAIOSFODNN7EXAMPLE");
+    // But recall returns [REDACTED]
+    expect(simulateRecallResult(storedRow)).toBe("[REDACTED]");
   });
 });

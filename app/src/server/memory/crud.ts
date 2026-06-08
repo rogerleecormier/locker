@@ -28,7 +28,7 @@ import { requireSession, requireAdmin } from "~/server/session";
 import { verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "~/server/enterprise";
 import { checkMemoryLimit, checkApiTokenLimit, getUserEffectivePlan } from "~/server/planGate";
 import { sanitizeMemory } from "~/server/sanitization";
-import { maskSensitiveData, containsSensitiveData } from "~/server/dlp";
+import { containsSensitiveData } from "~/server/dlp";
 import { WEBHOOK_SECRET_GITHUB, WEBHOOK_SECRET_LINEAR, SLACK_JIT_WEBHOOK } from "~/server/webhooks";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };

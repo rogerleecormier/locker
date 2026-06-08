@@ -1,16 +1,23 @@
-// DLP Active Masking Utility — Entropy-Based Secret Detection + PII Regex
+// DLP — Non-Destructive Quarantine Layer — Entropy-Based Secret Detection + PII Regex
 //
-// Strategy:
-//   1. PII (emails, SSNs, phone numbers, credit cards) — regex only, always redact.
-//   2. Known high-confidence secret patterns (private keys, connection URIs, vendor tokens)
-//      — regex only, always redact. These have such distinctive structure that entropy
-//      gating would only add noise.
-//   3. Generic key-value / assignment patterns — combined: must match a secret-looking
-//      context AND have high Shannon entropy (>= ENTROPY_THRESHOLD bits/char).
-//      This eliminates false positives on short IDs, slugs, and prose words.
+// Strategy (non-destructive):
+//   When sensitive data is detected at WRITE time the raw fact is encrypted and stored
+//   unchanged, but the row is flagged isQuarantined=true in the database.  At READ time
+//   (recall_context) quarantined rows return "[REDACTED]" to AI callers.  A human
+//   verification dashboard lets users review the clear text and unmask the record.
 //
-// DLP should run at WRITE time (commit_memory / update_memory / batch import), not at
-// read time, so stored memories are permanently clean and code-gen recall is not broken.
+// Detection rules:
+//   1. PII (emails, SSNs, phone numbers, credit cards) — regex only, always quarantine.
+//   2. Known high-confidence structural secret patterns (private keys, connection URIs,
+//      vendor tokens) — regex only, always quarantine.
+//   3. Generic key-value / assignment patterns — both pattern match AND high Shannon
+//      entropy (>= ENTROPY_THRESHOLD bits/char) are required to quarantine.  This
+//      eliminates false positives on short IDs, slugs, and prose words.
+//
+// maskSensitiveData() is kept for testing/auditing purposes and returns the redacted
+// string without side effects.  It is NOT called during the ingestion path; the
+// ingestion path uses containsSensitiveData() to set the quarantine flag and then
+// stores the original (encrypted) text unchanged.
 
 // ---------------------------------------------------------------------------
 // Shannon entropy helpers
@@ -204,8 +211,74 @@ export function maskSensitiveData(text: string): string {
 
 /**
  * Returns true if the text contains any detectable secret or PII.
- * Useful for logging/alerting without mutating the string.
+ * Does not mutate the input. Use this at WRITE time to set isQuarantined.
  */
 export function containsSensitiveData(text: string): boolean {
   return maskSensitiveData(text) !== text;
+}
+
+export type DlpTrigger =
+  | "aws_access_key"
+  | "stripe_key"
+  | "github_token"
+  | "slack_token"
+  | "google_api_key"
+  | "private_key"
+  | "connection_string"
+  | "email"
+  | "phone"
+  | "credit_card"
+  | "ssn"
+  | "bearer_token"
+  | "kv_credential"
+  | "json_credential"
+  | "http_header_credential";
+
+/**
+ * Classifies which DLP rules fired on the given text without mutating it.
+ * Returns an empty array if no sensitive data is detected.
+ * Useful for dashboard display so users know *why* a memory was quarantined.
+ */
+export function classifySensitiveData(text: string): DlpTrigger[] {
+  if (!text) return [];
+  const triggers: DlpTrigger[] = [];
+
+  function testAndReset(regex: RegExp, trigger: DlpTrigger) {
+    regex.lastIndex = 0;
+    if (regex.test(text)) triggers.push(trigger);
+    regex.lastIndex = 0;
+  }
+
+  testAndReset(AWS_ACCESS_KEY_REGEX, "aws_access_key");
+  testAndReset(STRIPE_KEY_REGEX, "stripe_key");
+  testAndReset(GITHUB_TOKEN_REGEX, "github_token");
+  testAndReset(SLACK_TOKEN_REGEX, "slack_token");
+  testAndReset(GOOGLE_API_KEY_REGEX, "google_api_key");
+  testAndReset(PRIVATE_KEY_REGEX, "private_key");
+  testAndReset(CONNECTION_URI_REGEX, "connection_string");
+  testAndReset(EMAIL_REGEX, "email");
+  testAndReset(PHONE_REGEX, "phone");
+  testAndReset(CREDIT_CARD_REGEX, "credit_card");
+  testAndReset(SSN_REGEX, "ssn");
+
+  // Entropy-gated patterns
+  function testEntropyGated(regex: RegExp, trigger: DlpTrigger) {
+    regex.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(text)) !== null) {
+      const val = m[2] ?? "";
+      if (val.length >= MIN_SECRET_LENGTH && shannonEntropy(val) >= ENTROPY_THRESHOLD) {
+        triggers.push(trigger);
+        break;
+      }
+    }
+    regex.lastIndex = 0;
+  }
+
+  testEntropyGated(AUTH_BEARER_CAPTURE, "bearer_token");
+  testEntropyGated(KV_ASSIGNMENT_CAPTURE, "kv_credential");
+  testEntropyGated(JSON_KV_CAPTURE, "json_credential");
+  testEntropyGated(HTTP_HEADER_CAPTURE, "http_header_credential");
+
+  return triggers;
 }
