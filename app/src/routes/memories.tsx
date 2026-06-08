@@ -41,6 +41,7 @@ import { useToast } from "~/components/ui/toast";
 import { QuarantineDashboard } from "~/components/QuarantineDashboard";
 import { PaywallGate } from "~/components/PaywallGate";
 import { KnowledgeGraph } from "~/components/KnowledgeGraph";
+import { ContributionsChart } from "~/components/ContributionsChart";
 import type { PlanId } from "~/lib/plans";
 
 export const Route = createFileRoute("/memories")({
@@ -1515,7 +1516,7 @@ function MemoryTable({
 }
 
 // ── MAIN DASHBOARD ──────────────────────────────────────────────────────────
-type DashboardTab = "memories" | "knowledge-graph";
+type DashboardTab = "memories" | "knowledge-graph" | "contributions";
 
 function Dashboard() {
   const router = useRouter();
@@ -1527,6 +1528,7 @@ function Dashboard() {
   const [showHistoryModal, setShowHistoryModal] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DashboardTab>("memories");
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
+  const [selectedContributionDate, setSelectedContributionDate] = useState<Date | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== "undefined") {
@@ -1684,6 +1686,25 @@ function Dashboard() {
     [memories]
   );
 
+  const contributionData = useMemo(() => {
+    const dateMap = new Map<string, number>();
+    for (const m of memories) {
+      const date = new Date(m.timestamp);
+      const dateStr = date.toDateString();
+      dateMap.set(dateStr, (dateMap.get(dateStr) ?? 0) + 1);
+    }
+    return Array.from(dateMap.entries()).map(([dateStr, count]) => ({
+      date: new Date(dateStr),
+      count,
+    })).sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [memories]);
+
+  const selectedDayMemories = useMemo(() => {
+    if (!selectedContributionDate) return [];
+    const dateStr = selectedContributionDate.toDateString();
+    return memories.filter((m) => new Date(m.timestamp).toDateString() === dateStr);
+  }, [memories, selectedContributionDate]);
+
   const [staleFilterActive, setStaleFilterActive] = useState(false);
   const { visible: staleBannerVisible, dismiss: dismissStaleBanner } = useStaleMemoryBanner(staleCount);
 
@@ -1816,6 +1837,18 @@ function Dashboard() {
               <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full" />
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("contributions")}
+            className={`px-4 py-3 text-sm font-semibold transition-colors relative select-none ${
+              activeTab === "contributions" ? "text-accent" : "text-text-muted hover:text-text"
+            }`}
+          >
+            Contributions
+            {activeTab === "contributions" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full" />
+            )}
+          </button>
           <PaywallGate feature="knowledgeGraph" currentPlan={userPlan} requiredPlan="business" compact>
             <button
               type="button"
@@ -1840,6 +1873,64 @@ function Dashboard() {
             selectedNodeId={selectedGraphNodeId}
             fetchMemoriesByIds={(ids) => getGraphMemoriesByIdsFn({ data: { memoryIds: ids } })}
           />
+        ) : activeTab === "contributions" ? (
+          <div className="flex flex-col gap-6">
+            <div className="bg-surface border border-border rounded-xl p-6">
+              <div className="mb-6">
+                <h3 className="text-lg font-bold text-text mb-1">Activity</h3>
+                <p className="text-xs text-text-muted">View your memory creation activity over time</p>
+              </div>
+              {contributionData.length > 0 ? (
+                <ContributionsChart
+                  data={contributionData}
+                  squareSize={14}
+                  gap={2}
+                  onDateClick={setSelectedContributionDate}
+                  selectedDate={selectedContributionDate}
+                />
+              ) : (
+                <div className="text-center py-12 text-text-muted">
+                  <p className="text-sm">No memories created yet</p>
+                </div>
+              )}
+            </div>
+
+            {selectedContributionDate && selectedDayMemories.length > 0 && (
+              <div className="bg-surface border border-border rounded-xl p-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-text mb-1">
+                      Memories from {selectedContributionDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                    </h3>
+                    <p className="text-xs text-text-muted">{selectedDayMemories.length} {selectedDayMemories.length === 1 ? "memory" : "memories"}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedContributionDate(null)}
+                    className="text-text-muted hover:text-text text-lg font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {selectedDayMemories.map((m) => (
+                    <MemoryCard
+                      key={m.id}
+                      memory={m}
+                      selected={false}
+                      onToggleSelect={() => {}}
+                      onExport={() => {}}
+                      workspaces={workspaces}
+                      currentProjectKey={projectKey}
+                      isSelected={false}
+                      isFocused={false}
+                      onSelect={() => {}}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
         <>
         {/* Pending Agent Action + Conflict Review Banner */}
