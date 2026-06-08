@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
-import { PLANS, PLAN_ORDER, SELF_SERVE_PLAN_ORDER, resolvePlan, type PlanId } from "~/lib/plans";
+import { PLANS, PLAN_ORDER, SELF_SERVE_PLAN_ORDER, resolvePlan, isBusinessOrAbove, type PlanId } from "~/lib/plans";
 import { PlanCard, PlanBadge } from "~/components/PaywallGate";
 import { getUserEffectivePlan, getUserUsageStats } from "~/server/planGate";
 import { requireSession } from "~/server/session";
@@ -447,7 +447,7 @@ export function MyBillingSection() {
               </div>
             )}
 
-            {personalPlan === "business" && (
+            {(personalPlan === "business" || personalPlan === "business_comp") && (
               <div className="flex gap-2.5 flex-wrap items-center mt-1">
                 <div className="relative group">
                   <a
@@ -492,7 +492,7 @@ export function MyBillingSection() {
                 <PlanCard
                   key={planId}
                   plan={PLANS[planId]}
-                  isCurrentPlan={planId === personalPlan}
+                  isCurrentPlan={planId === personalPlan || (planId === "business" && personalPlan === "business_comp")}
                   onSelect={planId === "business" && personalPlan === "free" ? handleUpgrade : undefined}
                   upgradesEnabled={planId === "enterprise" ? !!billing?.enableEnterprisePlans : !!billing?.enableBusinessPlans}
                 />
@@ -657,7 +657,7 @@ export function OrgBillingSection() {
                           )}
                         </>
                       )}
-                      {orgPlan === "business" && (
+                      {(orgPlan === "business" || orgPlan === "business_comp") && (
                         <>
                           <div className="relative group">
                             <a
