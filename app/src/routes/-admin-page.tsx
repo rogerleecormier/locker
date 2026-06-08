@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "~/components/ui/toast";
+import { planHasFeature, type PlanId } from "~/lib/plans";
 import { AdminLayout, type AdminSection } from "~/components/AdminLayout";
 import { SiteAdminSection, OrgAdminSection, StatBox, AdminCard } from "~/components/AdminSections";
 import { SystemOverviewSection } from "~/components/AdminSystemOverview";
@@ -1122,7 +1123,12 @@ function AdminPage() {
   // Billing data used for role gating (isOrgAdmin) — loaded eagerly since it
   // determines which sidebar sections are visible.
   const { data: billingData } = useBillingData();
-  const isOrgAdmin = (billingData?.managedOrgs?.length ?? 0) > 0;
+  // User can see org/team sections if they either:
+  // 1. Have managed organizations, OR
+  // 2. Are on a plan that supports organizations (business or above)
+  const userPlan = (billingData?.personalPlanId ?? "free") as PlanId;
+  const canAccessOrgs = (billingData?.managedOrgs?.length ?? 0) > 0 || planHasFeature(userPlan, "organizations");
+  const isOrgAdmin = canAccessOrgs;
   const isSiteAdmin = adminStatus?.isAdmin ?? false;
 
   // ── mutations ──────────────────────────────────────────────────────────────
@@ -1710,6 +1716,13 @@ function AdminPage() {
         </OrgAdminSection>
       )}
 
+      {/* ── ORG WEBHOOKS ──────────────────────────────────────────────────────── */}
+      {activeSection === "org-webhooks" && (
+        <OrgAdminSection title="Org Webhooks" description="Configure webhooks for your organization" icon="🔗">
+          <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>Org webhook configuration coming soon.</p>
+        </OrgAdminSection>
+      )}
+
       {/* ── USERS ───────────────────────────────────────────────────────────── */}
       {activeSection === "users" && (
         <OrgAdminSection title="Users Directory" description="Manage all users and their plans" icon="👥">
@@ -1927,6 +1940,7 @@ function AdminPage() {
                 <select value={createPlan} onChange={(e) => setCreatePlan(e.target.value)} style={{ width: "100%", padding: "8px 12px" }}>
                   <option value="free">Free (Personal)</option>
                   <option value="business">Business</option>
+                  <option value="business_comp">Business (Comp)</option>
                   <option value="enterprise">Enterprise</option>
                 </select>
               </div>
@@ -1983,6 +1997,7 @@ function AdminPage() {
               <select value={selectedPlan} onChange={(e) => setSelectedPlan(e.target.value)} style={{ width: "100%", padding: "8px 12px" }}>
                 <option value="free">Free (Personal)</option>
                 <option value="business">Business</option>
+                <option value="business_comp">Business (Comp)</option>
                 <option value="enterprise">Enterprise</option>
               </select>
             </div>

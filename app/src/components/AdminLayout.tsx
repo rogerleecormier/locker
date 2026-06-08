@@ -16,6 +16,7 @@ export type AdminSection =
   | "orgs"
   | "org-billing"
   | "org-audit-logs"
+  | "org-webhooks"
   | "users"
   | "teams"
   // Site
@@ -47,6 +48,7 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "orgs", label: "Organizations", icon: "🏢", category: "org" },
   { id: "org-billing", label: "Org Billing", icon: "💰", category: "org" },
   { id: "org-audit-logs", label: "Org Activity", icon: "📋", category: "org" },
+  { id: "org-webhooks", label: "Org Webhooks", icon: "🔗", category: "org" },
   { id: "users", label: "Users", icon: "👥", category: "org" },
   { id: "teams", label: "Teams", icon: "👤", category: "org" },
   // Site
