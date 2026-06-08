@@ -65,6 +65,14 @@ export async function ensureClaudeOAuthClient(
     return { status: "created" };
   }
 
+  // Only write if something material has changed — avoids a D1 write on every cron tick.
+  const redirectMatch = existing.redirectUris === claudeClientValues.redirectUris;
+  const scopesMatch = existing.scopes === claudeClientValues.scopes;
+  const secretMatch = existing.clientSecret === claudeClientValues.clientSecret;
+  if (redirectMatch && scopesMatch && secretMatch) {
+    return { status: "skipped" };
+  }
+
   await db
     .update(schema.oauthClients)
     .set(claudeClientValues)
