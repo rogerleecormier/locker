@@ -1,54 +1,150 @@
-import { useState, useCallback, lazy, Suspense } from 'react';
-import type { MemoryGraph } from '~/server/memory/graph';
+import { useState, useCallback, lazy, Suspense, useEffect, useRef } from 'react';
+import type { MemoryGraph, GraphMemorySnippet } from '~/server/memory/graph';
 
-// Lazy-load the canvas component so react-force-graph-2d (which bundles its own
-// React copy) is never imported during SSR — that would create a duplicate React
-// instance and crash useContext / useRouter.
 const KnowledgeGraphCanvas = lazy(() =>
   import('~/components/KnowledgeGraphCanvas').then((m) => ({ default: m.KnowledgeGraphCanvas }))
 );
 
-type SelectedNode = { id: string; label: string; type: string; memoryCount: number };
+export const NODE_TYPE_COLORS: Record<string, string> = {
+  service: '#3b82f6',
+  file: '#22c55e',
+  concept: '#a855f7',
+  library: '#f59e0b',
+  person: '#ec4899',
+  api: '#06b6d4',
+  database: '#6366f1',
+  config: '#f97316',
+  other: '#64748b',
+};
 
 const NODE_TYPE_LABELS: Record<string, string> = {
-  service: 'Service', file: 'File', concept: 'Concept', library: 'Library',
-  person: 'Person', api: 'API', database: 'Database', config: 'Config', other: 'Other',
+  service: 'Service',
+  file: 'File',
+  concept: 'Concept',
+  library: 'Library',
+  person: 'Person',
+  api: 'API',
+  database: 'Database',
+  config: 'Config',
+  other: 'Other',
 };
 
-const NODE_TYPE_COLORS: Record<string, string> = {
-  service: '#3b82f6', file: '#22c55e', concept: '#a855f7', library: '#f59e0b',
-  person: '#ec4899', api: '#06b6d4', database: '#6366f1', config: '#f97316', other: '#64748b',
+const CATEGORY_COLORS: Record<string, string> = {
+  rules: '#f59e0b',
+  projects: '#3b82f6',
+  references: '#a855f7',
+  configs: '#22c55e',
 };
+
+type SelectedNode = {
+  id: string;
+  label: string;
+  type: string;
+  memoryCount: number;
+};
+
+function formatRelativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
 export function KnowledgeGraph({
   graph,
   isLoading,
   onNodeClick,
   selectedNodeId,
+  fetchMemoriesByIds,
 }: {
   graph: MemoryGraph | null;
   isLoading: boolean;
   onNodeClick: (nodeId: string) => void;
   selectedNodeId: string | null;
+  fetchMemoriesByIds: (ids: string[]) => Promise<GraphMemorySnippet[]>;
 }) {
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMemories, setDrawerMemories] = useState<GraphMemorySnippet[]>([]);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [activeTypeFilters, setActiveTypeFilters] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [jumpTarget, setJumpTarget] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Compute top-5 most connected nodes
+  const topNodes = graph
+    ? [...graph.nodes]
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5)
+    : [];
 
   const handleNodeClick = useCallback(
-    (id: string, label: string, type: string, _value: number) => {
-      setSelectedNode({
-        id,
-        label,
-        type,
-        memoryCount: graph?.nodeMemories[id]?.length ?? 0,
-      });
+    async (id: string, label: string, type: string, _value: number) => {
+      const memCount = graph?.nodeMemories[id]?.length ?? 0;
+      setSelectedNode({ id, label, type, memoryCount: memCount });
+      setDrawerOpen(true);
+      setDrawerMemories([]);
       onNodeClick(id);
+
+      const memIds = graph?.nodeMemories[id] ?? [];
+      if (memIds.length > 0) {
+        setDrawerLoading(true);
+        try {
+          const snippets = await fetchMemoriesByIds(memIds);
+          setDrawerMemories(snippets);
+        } finally {
+          setDrawerLoading(false);
+        }
+      }
     },
-    [graph, onNodeClick]
+    [graph, onNodeClick, fetchMemoriesByIds]
   );
+
+  const toggleTypeFilter = useCallback((type: string) => {
+    setActiveTypeFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }, []);
+
+  // Search: find matching node and signal canvas to jump to it
+  const handleSearch = useCallback(() => {
+    if (!graph || !searchQuery.trim()) return;
+    const q = searchQuery.toLowerCase();
+    const match = graph.nodes.find((n) => n.label.toLowerCase().includes(q));
+    if (match) setJumpTarget(match.id);
+  }, [graph, searchQuery]);
+
+  // Reset jump target after canvas has consumed it
+  const handleJumpConsumed = useCallback(() => setJumpTarget(null), []);
+
+  // Filter graph data by active type filters
+  const filteredGraph = graph
+    ? {
+        nodes: activeTypeFilters.size === 0
+          ? graph.nodes
+          : graph.nodes.filter((n) => !activeTypeFilters.has(n.type)),
+        links: (activeTypeFilters.size === 0
+          ? graph.edges
+          : graph.edges.filter((e) => {
+              const srcNode = graph.nodes.find((n) => n.id === e.source);
+              const tgtNode = graph.nodes.find((n) => n.id === e.target);
+              return srcNode && !activeTypeFilters.has(srcNode.type) &&
+                     tgtNode && !activeTypeFilters.has(tgtNode.type);
+            })
+        ).map((e) => ({ source: e.source, target: e.target, relation: e.relation })),
+      }
+    : { nodes: [], links: [] };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-[600px] bg-surface border border-border rounded-xl">
+      <div className="flex items-center justify-center h-[680px] bg-surface border border-border rounded-xl">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin" />
           <span className="text-sm text-text-muted font-medium">Loading knowledge graph…</span>
@@ -59,7 +155,7 @@ export function KnowledgeGraph({
 
   if (!graph || graph.nodes.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[600px] bg-surface border border-border rounded-xl">
+      <div className="flex items-center justify-center h-[680px] bg-surface border border-border rounded-xl">
         <div className="text-center">
           <p className="text-text-muted text-sm font-medium">No knowledge graph data yet</p>
           <p className="text-[10px] text-text-muted/70 mt-1">
@@ -70,75 +166,225 @@ export function KnowledgeGraph({
     );
   }
 
-  const graphData = {
-    nodes: graph.nodes,
-    links: graph.edges.map((e) => ({ source: e.source, target: e.target, relation: e.relation })),
-  };
+  const edgeCount = graph.edges.length;
+  const nodeCount = graph.nodes.length;
 
   return (
-    <div className="flex h-[600px] bg-surface border border-border rounded-xl overflow-hidden">
-      {/* Canvas — lazy loaded, client only */}
-      <div className="flex-1 relative bg-surface2">
-        <Suspense
-          fallback={
-            <div className="flex items-center justify-center h-full">
-              <div className="w-6 h-6 border-4 border-accent border-t-transparent rounded-full animate-spin" />
+    <div className="flex flex-col gap-3">
+      {/* Stats header */}
+      <div className="flex items-center justify-between gap-4 px-1">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-bold text-text tabular-nums">{nodeCount}</span>
+            <span className="text-[10px] text-text-muted uppercase tracking-wider">entities</span>
+          </div>
+          <div className="w-px h-3 bg-border" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-bold text-text tabular-nums">{edgeCount}</span>
+            <span className="text-[10px] text-text-muted uppercase tracking-wider">relations</span>
+          </div>
+          <div className="w-px h-3 bg-border" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-text-muted">Updated</span>
+            <span className="text-[10px] font-medium text-text">{formatRelativeTime(graph.fetchedAt)}</span>
+          </div>
+        </div>
+
+        {/* Top connected nodes */}
+        {topNodes.length > 0 && (
+          <div className="flex items-center gap-2 overflow-hidden">
+            <span className="text-[10px] text-text-muted uppercase tracking-wider shrink-0">Top</span>
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              {topNodes.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery(n.label);
+                    setJumpTarget(n.id);
+                    handleNodeClick(n.id, n.label, n.type, n.value);
+                  }}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface border border-border hover:border-accent/40 transition-colors shrink-0"
+                >
+                  <div
+                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: NODE_TYPE_COLORS[n.type] ?? '#64748b' }}
+                  />
+                  <span className="text-[10px] text-text truncate max-w-[80px]">{n.label}</span>
+                  <span className="text-[9px] text-text-muted tabular-nums">{n.value - 1}</span>
+                </button>
+              ))}
             </div>
-          }
-        >
-          <KnowledgeGraphCanvas
-            graphData={graphData}
-            selectedNodeId={selectedNodeId}
-            onNodeClick={handleNodeClick}
-          />
-        </Suspense>
+          </div>
+        )}
       </div>
 
-      {/* Sidebar */}
-      <div className="w-60 flex flex-col border-l border-border bg-surface shrink-0 overflow-hidden">
-        <div className="flex-1 overflow-y-auto no-scrollbar p-4 flex flex-col gap-4">
-          {selectedNode ? (
-            <>
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full shrink-0"
-                    style={{ backgroundColor: NODE_TYPE_COLORS[selectedNode.type] ?? '#64748b' }}
-                  />
-                  <span className="text-[10px] font-bold uppercase text-text-muted tracking-wider">
+      {/* Controls row: search + type filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Search */}
+        <div className="flex items-center gap-1.5 bg-surface border border-border rounded-lg px-2.5 py-1.5 flex-1 min-w-[160px] max-w-xs">
+          <svg className="w-3 h-3 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+          </svg>
+          <input
+            ref={searchRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            placeholder="Find entity…"
+            className="bg-transparent text-xs text-text placeholder:text-text-muted/60 outline-none w-full"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => { setSearchQuery(''); setJumpTarget(null); }}
+              className="text-text-muted hover:text-text transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* Node type filter chips */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {Object.entries(NODE_TYPE_LABELS).map(([type, label]) => {
+            const hidden = activeTypeFilters.has(type);
+            return (
+              <button
+                key={type}
+                type="button"
+                onClick={() => toggleTypeFilter(type)}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium transition-all ${
+                  hidden
+                    ? 'border-border bg-transparent text-text-muted/50 line-through'
+                    : 'border-border bg-surface text-text hover:border-accent/40'
+                }`}
+              >
+                <div
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ backgroundColor: hidden ? '#64748b' : NODE_TYPE_COLORS[type] }}
+                />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Graph canvas + drawer */}
+      <div className="relative flex rounded-xl overflow-hidden border border-border bg-surface2" style={{ height: 560 }}>
+        {/* Full-width canvas */}
+        <div className={`flex-1 relative transition-all duration-300 ${drawerOpen ? 'mr-[320px]' : ''}`}>
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center h-full">
+                <div className="w-6 h-6 border-4 border-accent border-t-transparent rounded-full animate-spin" />
+              </div>
+            }
+          >
+            <KnowledgeGraphCanvas
+              graphData={filteredGraph}
+              selectedNodeId={selectedNodeId}
+              onNodeClick={handleNodeClick}
+              jumpToNodeId={jumpTarget}
+              onJumpConsumed={handleJumpConsumed}
+            />
+          </Suspense>
+        </div>
+
+        {/* Slide-out drawer */}
+        <div
+          className={`absolute top-0 right-0 h-full w-[320px] bg-surface border-l border-border flex flex-col transition-transform duration-300 ${
+            drawerOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
+          {/* Drawer header */}
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border shrink-0">
+            {selectedNode ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <div
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: NODE_TYPE_COLORS[selectedNode.type] ?? '#64748b' }}
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-text truncate">{selectedNode.label}</p>
+                  <p className="text-[10px] text-text-muted uppercase tracking-wider">
                     {NODE_TYPE_LABELS[selectedNode.type] ?? selectedNode.type}
-                  </span>
-                </div>
-                <h3 className="text-sm font-bold text-text break-words">{selectedNode.label}</h3>
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-accent/10 border border-accent/20 rounded-lg">
-                  <span className="text-xs font-bold text-accent">
+                    {' · '}
                     {selectedNode.memoryCount} {selectedNode.memoryCount === 1 ? 'memory' : 'memories'}
-                  </span>
+                  </p>
                 </div>
               </div>
-              <hr className="border-border/40" />
-              {selectedNode.memoryCount > 0 && (
-                <div className="flex flex-col gap-2">
-                  <span className="text-[10px] font-bold uppercase text-text-muted">Referenced Memories</span>
-                  <div className="flex flex-col gap-1 max-h-96 overflow-y-auto no-scrollbar">
-                    {graph.nodeMemories[selectedNode.id]?.map((memId) => (
-                      <div
-                        key={memId}
-                        className="text-[10px] text-text-muted bg-surface2 border border-border rounded px-2 py-1.5 font-mono truncate hover:border-accent/30 transition-colors"
-                        title={memId}
+            ) : (
+              <span className="text-sm text-text-muted">Node details</span>
+            )}
+            <button
+              type="button"
+              onClick={() => { setDrawerOpen(false); setSelectedNode(null); onNodeClick(''); }}
+              className="text-text-muted hover:text-text transition-colors shrink-0 p-1 rounded hover:bg-surface2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Drawer body */}
+          <div className="flex-1 overflow-y-auto no-scrollbar">
+            {drawerLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <div className="w-5 h-5 border-4 border-accent border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : drawerMemories.length === 0 && !drawerLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <p className="text-xs text-text-muted text-center px-4">
+                  {selectedNode?.memoryCount === 0
+                    ? 'No memories reference this entity'
+                    : 'Could not load memory content'}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col divide-y divide-border">
+                {drawerMemories.map((mem) => (
+                  <div key={mem.id} className="px-4 py-3 hover:bg-surface2/60 transition-colors">
+                    {/* Category + timestamp */}
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <span
+                        className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                        style={{
+                          backgroundColor: `${CATEGORY_COLORS[mem.category] ?? '#64748b'}20`,
+                          color: CATEGORY_COLORS[mem.category] ?? '#64748b',
+                        }}
                       >
-                        {memId.slice(0, 12)}…
+                        {mem.category}
+                      </span>
+                      <span className="text-[9px] text-text-muted tabular-nums shrink-0">
+                        {formatRelativeTime(mem.timestamp)}
+                      </span>
+                    </div>
+                    {/* Memory text */}
+                    <p className="text-xs text-text leading-relaxed line-clamp-4">{mem.fact}</p>
+                    {/* Tags */}
+                    {mem.tags && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {mem.tags.split(',').filter(Boolean).map((tag) => (
+                          <span
+                            key={tag}
+                            className="text-[9px] text-text-muted bg-surface border border-border rounded px-1.5 py-0.5"
+                          >
+                            {tag.trim()}
+                          </span>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-xs text-text-muted text-center py-4">
-              Click a node to see its referenced memories
-            </p>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

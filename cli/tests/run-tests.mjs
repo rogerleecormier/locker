@@ -28,6 +28,7 @@ const c = {
 const TEST_FILES = [
   resolve(__dirname, 'auth.test.mjs'),
   resolve(__dirname, 'sync.test.mjs'),
+  resolve(__dirname, 'status.test.mjs'),
 ];
 
 console.log(`\n${c.bold}${c.cyan}╔══════════════════════════════════════════╗${c.reset}`);

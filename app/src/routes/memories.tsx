@@ -59,6 +59,16 @@ export const getMemoryGraphFn = createServerFn({ method: "POST" })
     return getMemoryGraph(env.DB, user.id, data.projectKey);
   });
 
+export const getGraphMemoriesByIdsFn = createServerFn({ method: "POST" })
+  .inputValidator((raw: unknown) => raw as { memoryIds: string[] })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const { requireSession } = await import("~/server/session");
+    const user = await requireSession(env);
+    const { getMemoriesByIds } = await import("~/server/memory/graph");
+    return getMemoriesByIds(env.DB, user.id, data.memoryIds, env.ENCRYPTION_KEY);
+  });
+
 // Memories older than this threshold are considered stale
 const STALE_MEMORY_DAYS = 90;
 const STALE_MEMORY_MS = STALE_MEMORY_DAYS * 24 * 60 * 60 * 1000;
@@ -1828,6 +1838,7 @@ function Dashboard() {
             isLoading={isGraphLoading}
             onNodeClick={setSelectedGraphNodeId}
             selectedNodeId={selectedGraphNodeId}
+            fetchMemoriesByIds={(ids) => getGraphMemoriesByIdsFn({ data: { memoryIds: ids } })}
           />
         ) : (
         <>
