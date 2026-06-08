@@ -20,5 +20,8 @@ cli/node_modules/
 # TanStack tmp (root-level artifacts from old location)
 .tanstack/
 
+# Agents Files
+.agents/
+
 # OS
 .DS_Store

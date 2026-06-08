@@ -363,6 +363,34 @@ function DocsPage() {
                   </button>
                 </div>
               </div>
+
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>⏰</span> Stale Memory Review
+                </h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.6 }}>
+                  Memories that have not been accessed for an extended period surface a staleness indicator and are surfaced in a dedicated banner on the Memories dashboard. Use the <strong>Stale</strong> sort filter to review, refresh, or archive aging context before it misleads your agents.
+                </p>
+                <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
+                  <button onClick={() => setActiveSection("managing-memories")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
+                    Managing Memories Guide →
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>⚡</span> Memory Conflict Resolution
+                </h4>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px 0", lineHeight: 1.6 }}>
+                  When agents detect contradicting facts (e.g. "Use Node 18" vs. "Use Node 20"), a navigation badge alerts you to the Conflicts Hub where you can review side-by-side diffs, choose the authoritative version, and close the recommendation with a single click.
+                </p>
+                <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
+                  <button onClick={() => setActiveSection("conflicts")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 }}>
+                    Conflict Resolution Hub →
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginTop: 16 }}>
@@ -375,6 +403,7 @@ function DocsPage() {
                     <li style={{ marginBottom: 6 }}><strong>Envelope Cryptography:</strong> Data encrypted via AES-256-GCM with wrapped per-vault DEKs. Plaintext never reaches storage.</li>
                     <li style={{ marginBottom: 6 }}><strong>GraphRAG Privacy:</strong> Entity extraction runs ephemerally before encryption; D1 stores only ciphertext and graph structure.</li>
                     <li style={{ marginBottom: 6 }}><strong>DLP Quarantine:</strong> High-entropy secrets and credential formats are flagged at write time, returning <code>[REDACTED]</code> to agents.</li>
+                    <li style={{ marginBottom: 6 }}><strong>AI Sanitization:</strong> Every write passes through <code>sanitizeMemoryAsync</code> (Workers AI) to detect and neutralize adversarial prompt-injection content before storage.</li>
                     <li style={{ marginBottom: 6 }}><strong>Least-Privilege ABAC:</strong> Agent policies restrict operations by category (rules, projects, references, stack) and tag filters.</li>
                     <li style={{ marginBottom: 6 }}><strong>JIT Approvals:</strong> Memories tagged <code>#confidential</code> trigger an approval gate, releasing temporary access only on human sign-off.</li>
                     <li><strong>Token Hardening:</strong> API and JIT tokens are hashed with PBKDF2-HMAC-SHA256 at 100,000 iterations.</li>
@@ -387,10 +416,11 @@ function DocsPage() {
                 </h3>
                 <div style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
                   <ul style={{ margin: 0, paddingLeft: 16 }}>
-                    <li style={{ marginBottom: 6 }}><strong>Semantic Vectors:</strong> Vectorizes facts via <code>@cf/baai/bge-m3</code> embeddings to power similarity-based context queries.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Semantic Vectors:</strong> Vectorizes facts via <code>@cf/baai/bge-m3</code> embeddings to power similarity-based context queries with vector persistence.</li>
                     <li style={{ marginBottom: 6 }}><strong>GraphRAG Extraction:</strong> Runs Workers AI ephemerally on write to extract entity nodes and semantic relationship edges.</li>
                     <li style={{ marginBottom: 6 }}><strong>Llama Reranking:</strong> Reranks top candidates via a Llama-3.3-70B cross-encoder in the browser session path.</li>
                     <li style={{ marginBottom: 6 }}><strong>Prompt Synthesis:</strong> Compresses facts into a single dense prompt via Llama-3-8B when <code>optimize: true</code> is passed.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Text Chunking:</strong> Long facts are automatically split into overlapping semantic chunks before vectorization, enabling sub-fact retrieval precision.</li>
                     <li><strong>AI Import Ingestion:</strong> Automatically tags, deduplicates, and structures external chatbot console imports via LLM.</li>
                   </ul>
                 </div>
@@ -651,15 +681,48 @@ function DocsPage() {
                   <li><strong>Shannon Entropy Gating:</strong> Candidate values in key-value assignments, JSON fields, and Authorization headers are scored for entropy. Only high-entropy strings (≥ 4.0 bits/char) in secret-looking contexts are flagged, eliminating false positives on legitimate code IDs and slugs.</li>
                   <li><strong>Structural Pattern Detection:</strong> Unmistakable credential formats — AWS access keys, Stripe keys, GitHub PATs, Slack tokens, PEM private keys, and database URIs — are caught unconditionally regardless of entropy score.</li>
                   <li><strong>PII Scanning:</strong> Email addresses, phone numbers, credit card numbers, and SSNs are detected via dedicated regex patterns and flagged for quarantine.</li>
-                  <li><strong>Quarantine & Review Lifecycle:</strong> DLP runs during <code>commit_memory</code> and <code>update_memory</code>. If sensitive data is found, the memory is quarantined. AI agents and MCP requests receive a secure <code>[REDACTED]</code> placeholder in transit. Owners and admins can explicitly review, verify, and unmask/release the memory from quarantine in the Memories Dashboard.</li>
+                  <li><strong>Quarantine & Review Lifecycle:</strong> DLP runs during <code>commit_memory</code> and <code>update_memory</code>. If sensitive data is found, the memory is quarantined. AI agents and MCP requests receive a secure <code>[REDACTED]</code> placeholder in transit. Owners and admins can explicitly review, verify, and unmask/release the memory from the <strong>DLP Quarantine Dashboard</strong> (Admin → Quarantine).</li>
                 </ul>
               </div>
 
-              {/* Card 8: Auth & Session Hardening */}
+              {/* Card 8: AI Sanitization */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>🤖</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>AI Adversarial Content Sanitization</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  A secondary AI-powered defense layer that runs alongside DLP to neutralize prompt-injection and adversarial payloads before they reach the vault:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>Workers AI Screening:</strong> <code>sanitizeMemoryAsync</code> calls a Workers AI classification model on every <code>commit_memory</code> and <code>update_memory</code> request to score the content for adversarial patterns, jailbreak attempts, and instruction overrides.</li>
+                  <li><strong>Pre-Encryption Interception:</strong> Screening runs on plaintext before encryption, ensuring no adversarial payload ever reaches ciphertext storage or graph extraction.</li>
+                  <li><strong>Graceful Fallback:</strong> If the AI screening service is unavailable, writes succeed with a warning flag rather than blocking — preventing availability issues from halting legitimate memory operations.</li>
+                  <li><strong>Layered with DLP:</strong> AI sanitization runs in addition to (not instead of) entropy-based DLP checks, providing independent defense-in-depth coverage.</li>
+                </ul>
+              </div>
+
+              {/* Card 9: Blind Index & FTS5 */}
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ fontSize: 20 }}>⚡</span>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Auth Hardening & Request Isolation</h3>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Blind Index Hashes & FTS5 Database Filtering</h3>
+                </div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  Locker's retrieval pipeline is optimized to minimize the number of encrypted records that must be decrypted per query, improving performance without sacrificing confidentiality:
+                </p>
+                <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li><strong>Blind Index Hashes:</strong> Tag and category values are stored as HMAC hashes alongside ciphertext, enabling D1 to filter candidate records by tag/category at the database level — without decrypting — before the result set is returned to the worker.</li>
+                  <li><strong>FTS5 Full-Text Keyword Pre-filter:</strong> SQLite FTS5 virtual tables provide fast keyword matching on encrypted token hashes, narrowing the candidate pool from thousands of records to a small shortlist before vector scoring and decryption.</li>
+                  <li><strong>Combined Pipeline:</strong> FTS5 keyword pre-filter → blind index tag filter → Vectorize semantic ranking → decryption of top-N candidates → Llama reranking. Only the final top candidates are ever decrypted, dramatically reducing DEK unwrap overhead.</li>
+                </ul>
+              </div>
+
+              {/* Card 10: Auth & Session Hardening */}
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>🔑</span>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Auth Hardening, Request Isolation & Token Prefix Lookups</h3>
                 </div>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
                   The authentication layer is designed to eliminate race conditions and minimize database exposure under load:
@@ -667,11 +730,13 @@ function DocsPage() {
                 <ul style={{ paddingLeft: 18, color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                   <li><strong>One-Time OAuth Bootstrap:</strong> OAuth client provisioning runs at most once per worker isolate lifetime rather than on every request, eliminating D1 write storms and race conditions under concurrent load.</li>
                   <li><strong>Isolate-Scoped Auth Cache:</strong> Authenticated session configurations are cached at the worker isolate level with a 5-minute TTL, reducing redundant D1 reads without holding stale credentials beyond the cache window.</li>
+                  <li><strong>Indexed Token Prefix Lookups:</strong> API tokens are stored with an indexed prefix shard. Authentication performs a fast index scan on the prefix column rather than a full-table HMAC comparison, keeping auth latency sub-millisecond even at scale.</li>
                   <li><strong>Read-Only Request Path:</strong> The per-request authentication path performs no writes to the database, ensuring that high-traffic periods cannot cause connection exhaustion or lock contention on auth tables.</li>
+                  <li><strong>TOTP Entropy Hardening:</strong> TOTP secrets and backup codes are generated using <code>crypto.getRandomValues</code> (CSPRNG) rather than <code>Math.random()</code>, ensuring full cryptographic entropy for all 2FA seed material.</li>
                 </ul>
               </div>
 
-              {/* Card 9: Zod Server-Function Validation */}
+              {/* Card 11: Zod Server-Function Validation */}
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ fontSize: 20 }}>🧩</span>
@@ -1008,11 +1073,13 @@ function DocsPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
               {[
                 { step: "1", title: "Create a Memory", text: "Click New Memory at the top right. Select a Category (Rules, Projects, or References), enter your fact, add custom tags (e.g., #authentication, #database, #frontend), optionally set a project workspace scope, and click Save" },
-                { step: "2", title: "View & Search", text: "Browse all memories in the main vault view. Use the search bar to find by keyword, or filter by category, tags, or scope. The search uses hybrid GraphRAG, combining keyword matching, semantic similarity, and graph relationships" },
-                { step: "3", title: "Edit a Memory", text: "Click the pencil (edit) icon on any memory card. Modify the fact text, tags, scope, or category. Locker automatically updates the database and recalculates semantic embeddings on Vectorize" },
-                { step: "4", title: "Delete a Memory", text: "Click the trash icon on a memory card. For user tokens, you may need to provide a passcode or 2FA code. For agent tokens, the deletion is queued for your approval" },
-                { step: "5", title: "Archive Old Memories", text: "Use the archive feature to hide old but still-relevant memories from active searches while retaining them for reference. Archived memories exclude from recall_context by default" },
-                { step: "6", title: "View Metadata & History", text: "Click on a memory to view its full metadata: creation date, last modified, encryption status, graph relationships, and semantic vector score" }
+                { step: "2", title: "View & Search", text: "Browse all memories in the main vault view. Use the search bar to find by keyword, or filter by category, tags, or scope. The search uses hybrid GraphRAG, combining keyword matching, semantic similarity (bge-m3), FTS5 keyword pre-filtering, and graph relationships" },
+                { step: "3", title: "Switch View Modes", text: "Use the view-mode toggle (top right of the Memories page) to switch between Grid, List, and Table views. Grid is ideal for at-a-glance browsing; List shows more metadata per row; Table enables sorting by any column" },
+                { step: "4", title: "Edit a Memory", text: "Click the pencil (edit) icon on any memory card. Modify the fact text, tags, scope, or category. Locker automatically updates the database, recalculates semantic embeddings on Vectorize, and re-runs graph extraction" },
+                { step: "5", title: "Delete a Memory", text: "Click the trash icon on a memory card. For user tokens, you may need to provide a passcode or 2FA code. For agent tokens, the deletion is queued for your approval" },
+                { step: "6", title: "Archive Old Memories", text: "Use the archive feature to hide old but still-relevant memories from active searches while retaining them for reference. Archived memories are excluded from recall_context by default" },
+                { step: "7", title: "Review Stale Memories", text: "The Stale filter (Sort menu) surfaces memories that haven't been accessed recently. A banner also appears at the top of the Memories page when stale entries exceed a threshold — click Review to batch-audit and refresh or archive them" },
+                { step: "8", title: "View Metadata & History", text: "Click on a memory to view its full metadata: creation date, last modified, last accessed, staleness score, encryption status, graph relationships, and semantic vector score" }
               ].map((s) => (
                 <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
                   <div style={{
@@ -1028,7 +1095,7 @@ function DocsPage() {
               ))}
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Memory Categories & Tagging</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Memory Categories &amp; Tagging</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 28 }}>
               <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
                 <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
@@ -1052,6 +1119,45 @@ function DocsPage() {
                 </h4>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 10px 0", lineHeight: 1.6 }}>
                   External documentation links, API references, and tool guides. Examples: "Drizzle ORM docs: https://orm.drizzle.team", "Our internal wiki: https://wiki.company.com", "Design system Figma link".
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  📂 Configs
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 10px 0", lineHeight: 1.6 }}>
+                  Agent configuration payloads and template content. Used by the sync tools and ConfigBuilder to generate agent-specific rule files (CLAUDE.md, .cursorrules, AGENTS.md, etc.).
+                </p>
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Stale Memory Management</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              Memories that haven't been read by any agent for an extended period are automatically marked as stale. Reviewing and refreshing stale context prevents agents from operating on outdated facts:
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 28 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  ⏰ Staleness Banner
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  When stale memories exceed a threshold, a banner appears at the top of the Memories dashboard. Click <strong>Review Stale Memories</strong> to jump directly to the filtered view.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔄 Stale Sort Filter
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  The Sort dropdown includes a <strong>Stale</strong> option that re-orders memories by last-access time (oldest first), surfacing the most likely candidates for review or archiving.
+                </p>
+              </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  ✔️ Staleness Indicator
+                </h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                  Each memory card shows a staleness badge when the last-accessed timestamp is beyond the configured threshold. Update the fact or archive it to clear the indicator.
                 </p>
               </div>
             </div>
@@ -2646,6 +2752,128 @@ npx locker-sync sync --format claude --dry-run`}</pre>
             </div>
           </div>
         );
+      case "conflicts":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Conflict Resolution Hub</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              When AI agents propose updates that contradict existing memories — or when the same fact exists with different values across scopes — Locker surfaces these conflicts in the dedicated <strong>Conflicts Hub</strong>. Resolve disagreements with a single click before they cause agents to operate on inconsistent context.
+            </p>
+
+            <div style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 12, padding: 20, marginBottom: 28 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: "0 0 12px 0", display: "flex", alignItems: "center", gap: 8 }}>
+                <span>⚡</span> Why Conflicts Happen
+              </h3>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+                Conflicts arise when an agent calls <code>commit_memory</code> with a fact that is semantically similar but factually different from an existing memory (e.g., both refer to a Node.js version but disagree on the value), or when <code>update_memory</code> proposes a change that Locker's contradiction detector scores above the conflict threshold. Rather than silently overwriting, Locker queues the conflict as an <strong>amber recommendation card</strong> and increments a navigation badge to alert you.
+              </p>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Resolving a Conflict</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Open the Conflicts Hub", desc: "Navigate to Memories → Conflicts (or click the badge on the sidebar when conflicts are pending)." },
+                { step: "2", title: "Review the Side-by-Side Diff", desc: "Each conflict card displays the current fact on the left and the proposed replacement on the right, color-coded for additions and removals." },
+                { step: "3", title: "Choose the Authoritative Version", desc: "Click Keep Current to dismiss the agent's proposal and leave the memory unchanged, or click Accept Proposal to apply the agent's update and archive the old version." },
+                { step: "4", title: "Edit Before Accepting (Optional)", desc: "Click the Edit icon to open the memory editor inline and manually merge the two versions before saving." },
+                { step: "5", title: "Conflict Closed", desc: "The recommendation is marked resolved, the badge clears, and the vault is updated. The activity log records your decision with timestamp and actor." },
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div>
+                    <strong style={{ display: "block", color: "var(--text)", fontSize: 13, marginBottom: 3 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.4 }}>{s.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Conflict Card Types</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 28 }}>
+              <div style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "#f59e0b", marginBottom: 8 }}>🟡 Amber — Contradiction</h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>A new fact semantically contradicts an existing memory. The agent's proposed version is queued; the vault is unchanged until you decide.</p>
+              </div>
+              <div style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "#3b82f6", marginBottom: 8 }}>🔵 Blue — Update Proposal</h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>An agent wants to refine an existing memory without a contradiction. Both facts are shown side-by-side so you can compare before approving.</p>
+              </div>
+              <div style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 12, padding: 18 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: "#ef4444", marginBottom: 8 }}>🔴 Red — Delete Request</h4>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>An agent is requesting deletion of a memory it believes is outdated. Approve to remove permanently or deny to keep it.</p>
+              </div>
+            </div>
+
+            <div style={{ background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 12, padding: 16 }}>
+              <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                <span>💡</span> Security Note
+              </h4>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+                Agent tokens can never bypass the conflict queue by passing <code>confirm: true</code>. All destructive or contradicting proposals from agent tokens are queued regardless. Only human-token calls with valid passcode/TOTP can apply mutations directly.
+              </p>
+            </div>
+          </div>
+        );
+      case "dlp-quarantine":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>DLP Quarantine Dashboard</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              The DLP Quarantine Dashboard (Admin &rarr; Quarantine) shows every memory flagged by the entropy-based Data Loss Prevention engine. Quarantined memories are stored encrypted but excluded from agent recall — they return <code>[REDACTED]</code> until an admin reviews and either releases or permanently deletes them.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Why Memories Get Quarantined</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 28 }}>
+              {[
+                { icon: "🔑", title: "High-Entropy Secrets", desc: "Values scoring ≥ 4.0 bits/char in secret-looking key-value contexts: API keys, tokens, passwords, and base64-encoded blobs." },
+                { icon: "🏦", title: "Structural Credential Patterns", desc: "Unmistakable formats detected unconditionally regardless of entropy: AWS keys (AKIA…), GitHub PATs (ghp_…), Stripe keys (sk_live_…), PEM blocks, and database URIs." },
+                { icon: "👤", title: "PII Detection", desc: "Email addresses, phone numbers, credit card numbers (Luhn-validated), and Social Security Numbers detected by dedicated regex scanners." },
+                { icon: "🤖", title: "AI Adversarial Content", desc: "Content flagged by sanitizeMemoryAsync as containing prompt-injection instructions, jailbreak attempts, or instruction-override payloads." },
+              ].map(({ icon, title, desc }) => (
+                <div key={title} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
+                  <div style={{ fontSize: 18, marginBottom: 8 }}>{icon}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>{title}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>{desc}</div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Quarantine Review Workflow</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Open Quarantine Dashboard", desc: "Navigate to Admin → Quarantine. All quarantined memories are listed with the flagged reason, detection type (entropy/structural/PII/AI), and timestamp." },
+                { step: "2", title: "Inspect the Flagged Content", desc: "Click Unmask to decrypt and view the raw fact content (admin-only). This does not release the memory — it only reveals it for review purposes." },
+                { step: "3", title: "Release or Delete", desc: "If the memory is safe (false positive), click Release to un-quarantine and make it available to agents again. If it's a genuine secret, click Permanently Delete." },
+                { step: "4", title: "Audit Trail", desc: "Every quarantine decision (release, delete, view) is logged with admin identity, timestamp, and the original flagged reason." },
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
+                    border: "1px solid rgba(168,85,247,0.2)"
+                  }}>{s.step}</div>
+                  <div>
+                    <strong style={{ display: "block", color: "var(--text)", fontSize: 13, marginBottom: 3 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.4 }}>{s.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: 16 }}>
+              <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                <span>⚠️</span> Agent Behavior During Quarantine
+              </h4>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+                While a memory is quarantined, any <code>recall_context</code> or <code>search_memories</code> call returns a <code>[REDACTED — pending DLP review]</code> placeholder with the memory ID. The agent is aware a fact exists but cannot read it, allowing workflows to continue without exposing sensitive data. The memory's vector embeddings are temporarily excluded from Vectorize queries.
+              </p>
+            </div>
+          </div>
+        );
       default:
         return null;
     }
@@ -2800,12 +3028,13 @@ npx locker-sync sync --format claude --dry-run`}</pre>
           </optgroup>
           <optgroup label="Features">
             <option value="managing-memories">Managing Memories</option>
-            <option value="import-memories">Importing & Migrating</option>
+            <option value="import-memories">Importing &amp; Migrating</option>
             <option value="team-collaboration">Team Collaboration</option>
             <option value="stack-creator">Tech Stack Creator</option>
             <option value="templates">Blueprint Templates</option>
             <option value="export-rules">Exporting Agent Rules</option>
             <option value="agent-activity">Agent Activity</option>
+            <option value="conflicts">Conflict Resolution</option>
           </optgroup>
           <optgroup label="Webhook Integrations">
             <option value="webhooks">Webhook Overview</option>
@@ -2827,6 +3056,7 @@ npx locker-sync sync --format claude --dry-run`}</pre>
           </optgroup>
           <optgroup label="Diagnostics">
             <option value="tester">Connection Tester</option>
+            <option value="dlp-quarantine">DLP Quarantine Dashboard</option>
           </optgroup>
         </select>
       </div>
@@ -2870,6 +3100,9 @@ npx locker-sync sync --format claude --dry-run`}</pre>
               </button>
               <button onClick={() => setActiveSection("agent-activity")} className={`sidebar-button ${activeSection === "agent-activity" ? "active" : ""}`}>
                 <span>◎</span> Agent Activity
+              </button>
+              <button onClick={() => setActiveSection("conflicts")} className={`sidebar-button ${activeSection === "conflicts" ? "active" : ""}`}>
+                <span>⚡</span> Conflict Resolution
               </button>
             </div>
 
@@ -2925,6 +3158,9 @@ npx locker-sync sync --format claude --dry-run`}</pre>
               <div className="sidebar-section-title">Diagnostics</div>
               <button onClick={() => setActiveSection("tester")} className={`sidebar-button ${activeSection === "tester" ? "active" : ""}`}>
                 <span>🔌</span> Connection Tester
+              </button>
+              <button onClick={() => setActiveSection("dlp-quarantine")} className={`sidebar-button ${activeSection === "dlp-quarantine" ? "active" : ""}`}>
+                <span>🔍</span> DLP Quarantine
               </button>
             </div>
           </div>
