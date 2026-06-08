@@ -1,6 +1,6 @@
 node_modules/
 
-# App (locker/)
+# App (app/)
 app/node_modules/
 app/dist/
 app/.wrangler/
@@ -13,6 +13,12 @@ app/.tanstack/
 
 # CLI (cli/)
 cli/node_modules/
+
+# Wrangler / Cloudflare (root-level artifacts)
+.wrangler/
+
+# TanStack tmp (root-level artifacts from old location)
+.tanstack/
 
 # OS
 .DS_Store
