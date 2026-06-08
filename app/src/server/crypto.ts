@@ -284,6 +284,60 @@ export async function computeBlindIndex(vaultId: string, tags: string): Promise<
   return bytesToHex(new Uint8Array(hashBuffer));
 }
 
+// Maximum number of keyword tokens stored in the blind index per memory.
+// Bounds the JSON column size to ~12 KB (200 × 64-char hex hash + delimiters).
+const MAX_KEYWORD_TOKENS = 200;
+
+// Minimum token length to exclude single-char noise and common two-letter stop words.
+const MIN_TOKEN_LEN = 3;
+
+/**
+ * Tokenise a plaintext fact into keyword tokens suitable for blind indexing.
+ * Lowercases, splits on non-word characters, deduplicates, and drops tokens
+ * shorter than MIN_TOKEN_LEN to reduce stop-word noise.
+ */
+export function extractKeywordTokens(fact: string): string[] {
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const raw of fact.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (raw.length >= MIN_TOKEN_LEN && !seen.has(raw)) {
+      seen.add(raw);
+      tokens.push(raw);
+      if (tokens.length >= MAX_KEYWORD_TOKENS) break;
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Compute a single SHA-256 hash for one keyword token (salted with vaultId).
+ * Used both at write time (per token in the index) and at query time (to look up
+ * whether the keyword hash appears in keyword_blind_index via json_each).
+ *
+ * @param vaultId  userId for personal vaults, "org:xxx" / "team:xxx" for shared.
+ * @param token    A single lowercased keyword token (no spaces).
+ */
+export async function computeKeywordTokenHash(vaultId: string, token: string): Promise<string> {
+  const input = `kw:${vaultId}:${token.toLowerCase().trim()}`;
+  const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return bytesToHex(new Uint8Array(hashBuffer));
+}
+
+/**
+ * Build the JSON string stored in memories.keyword_blind_index for a given fact.
+ * Returns a JSON array of per-token SHA-256 hashes (salted with vaultId), or null
+ * when the fact produces no indexable tokens.
+ *
+ * @param vaultId  userId for personal vaults, "org:xxx" / "team:xxx" for shared.
+ * @param fact     The plaintext fact string (before encryption).
+ */
+export async function buildKeywordBlindIndex(vaultId: string, fact: string): Promise<string | null> {
+  const tokens = extractKeywordTokens(fact);
+  if (tokens.length === 0) return null;
+  const hashes = await Promise.all(tokens.map((t) => computeKeywordTokenHash(vaultId, t)));
+  return JSON.stringify(hashes);
+}
+
 // PBKDF2 iterations — 100,000 (Cloudflare Workers Web Crypto max for PBKDF2).
 const PBKDF2_ITERATIONS = 100_000;
 

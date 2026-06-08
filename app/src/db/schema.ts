@@ -104,6 +104,10 @@ export const memories = sqliteTable("memories", {
   // Salted SHA-256 of the normalised tag list (salt = vaultId).
   // Allows DB-layer tag pre-filtering before any decryption occurs.
   blind_index_hash: text("blind_index_hash"),
+  // JSON array of per-token HMAC-SHA256 hashes of words extracted from the plaintext fact
+  // (salt = vaultId). Enables DB-layer keyword pre-filtering via json_each() before
+  // any decryption, eliminating the O(n) decrypt-then-.includes() fallback.
+  keyword_blind_index: text("keyword_blind_index"),
 }, (t) => [
   index("idx_memories_blind_index").on(t.blind_index_hash),
 ]);

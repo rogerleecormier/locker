@@ -30,6 +30,9 @@ import {
   sha256Hex,
   getOrCreateVaultKey,
   deriveUserKey,
+  extractKeywordTokens,
+  computeKeywordTokenHash,
+  buildKeywordBlindIndex,
 } from "./crypto";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -550,5 +553,222 @@ describe("deriveUserKey", () => {
     const derivedHex = await deriveUserKey(TEST_KEK, "legacy-user-1");
     const ct = await encrypt("legacy plaintext", derivedHex);
     expect(await decrypt(ct, derivedHex)).toBe("legacy plaintext");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 11: extractKeywordTokens
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("extractKeywordTokens", () => {
+  it("splits on non-word characters and lowercases", () => {
+    expect(extractKeywordTokens("Hello, World! foo")).toEqual(
+      expect.arrayContaining(["hello", "world", "foo"])
+    );
+  });
+
+  it("deduplicates repeated tokens", () => {
+    const tokens = extractKeywordTokens("cat cat cat dog dog");
+    expect(tokens.filter((t) => t === "cat")).toHaveLength(1);
+    expect(tokens.filter((t) => t === "dog")).toHaveLength(1);
+  });
+
+  it("drops tokens strictly shorter than 3 characters (MIN_TOKEN_LEN = 3)", () => {
+    // "a" (1 char) and "is" / "an" (2 chars) are dropped; "the" (3 chars) is kept.
+    const tokens = extractKeywordTokens("a is an the hello");
+    expect(tokens).not.toContain("a");
+    expect(tokens).not.toContain("is");
+    expect(tokens).not.toContain("an");
+    expect(tokens).toContain("the");
+    expect(tokens).toContain("hello");
+  });
+
+  it("returns an empty array for a fact with no qualifying tokens", () => {
+    expect(extractKeywordTokens("a b c")).toEqual([]);
+    expect(extractKeywordTokens("")).toEqual([]);
+    expect(extractKeywordTokens("  ")).toEqual([]);
+  });
+
+  it("preserves alphanumeric tokens like identifiers and numbers", () => {
+    const tokens = extractKeywordTokens("user123 config abc456");
+    expect(tokens).toContain("user123");
+    expect(tokens).toContain("config");
+    expect(tokens).toContain("abc456");
+  });
+
+  it("caps output at 200 tokens", () => {
+    // Build a fact with 300 unique 5-char words
+    const words = Array.from({ length: 300 }, (_, i) => `word${String(i).padStart(3, "0")}`);
+    const tokens = extractKeywordTokens(words.join(" "));
+    expect(tokens.length).toBeLessThanOrEqual(200);
+  });
+
+  it("handles punctuation-separated words correctly", () => {
+    const tokens = extractKeywordTokens("key=value&other-thing/path");
+    expect(tokens).toContain("key");
+    expect(tokens).toContain("value");
+    expect(tokens).toContain("other");
+    expect(tokens).toContain("thing");
+    expect(tokens).toContain("path");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 12: computeKeywordTokenHash
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("computeKeywordTokenHash", () => {
+  it("returns a 64-char lowercase hex string", async () => {
+    const h = await computeKeywordTokenHash("user-vault", "token");
+    expect(h).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("is deterministic for the same vaultId and token", async () => {
+    const [a, b] = await Promise.all([
+      computeKeywordTokenHash("vault1", "keyword"),
+      computeKeywordTokenHash("vault1", "keyword"),
+    ]);
+    expect(a).toBe(b);
+  });
+
+  it("different vaultIds produce different hashes for the same token (domain separation)", async () => {
+    const [a, b] = await Promise.all([
+      computeKeywordTokenHash("vaultA", "keyword"),
+      computeKeywordTokenHash("vaultB", "keyword"),
+    ]);
+    expect(a).not.toBe(b);
+  });
+
+  it("different tokens produce different hashes for the same vaultId", async () => {
+    const [a, b] = await Promise.all([
+      computeKeywordTokenHash("vault1", "alpha"),
+      computeKeywordTokenHash("vault1", "beta"),
+    ]);
+    expect(a).not.toBe(b);
+  });
+
+  it("is case-insensitive — uppercased token matches its lowercased form", async () => {
+    const [lower, upper] = await Promise.all([
+      computeKeywordTokenHash("vault1", "hello"),
+      computeKeywordTokenHash("vault1", "HELLO"),
+    ]);
+    expect(lower).toBe(upper);
+  });
+
+  it("trims whitespace from the token before hashing", async () => {
+    const [trimmed, padded] = await Promise.all([
+      computeKeywordTokenHash("vault1", "hello"),
+      computeKeywordTokenHash("vault1", "  hello  "),
+    ]);
+    expect(trimmed).toBe(padded);
+  });
+
+  it("is distinct from computeBlindIndex output for the same input (different namespace prefix)", async () => {
+    // computeKeywordTokenHash uses 'kw:<vaultId>:<token>' while computeBlindIndex uses '<vaultId>:<normalised>'
+    const kwHash = await computeKeywordTokenHash("vault1", "hello");
+    const tagHash = await computeBlindIndex("vault1", "hello");
+    expect(kwHash).not.toBe(tagHash);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 13: buildKeywordBlindIndex
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("buildKeywordBlindIndex", () => {
+  it("returns a valid JSON array string for a normal fact", async () => {
+    const result = await buildKeywordBlindIndex("vault1", "The user prefers dark mode settings");
+    expect(result).not.toBeNull();
+    const parsed = JSON.parse(result!);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed.length).toBeGreaterThan(0);
+  });
+
+  it("every element in the returned array is a 64-char hex hash", async () => {
+    const result = await buildKeywordBlindIndex("vault1", "Cloudflare Workers AI deployment config");
+    const parsed: string[] = JSON.parse(result!);
+    for (const h of parsed) {
+      expect(h).toMatch(/^[0-9a-f]{64}$/);
+    }
+  });
+
+  it("returns null for a fact that produces no qualifying tokens", async () => {
+    expect(await buildKeywordBlindIndex("vault1", "a b c")).toBeNull();
+    expect(await buildKeywordBlindIndex("vault1", "")).toBeNull();
+  });
+
+  it("is deterministic — same vaultId and fact always produce the same JSON", async () => {
+    const fact = "TypeScript React TanStack Cloudflare D1 Drizzle";
+    const [a, b] = await Promise.all([
+      buildKeywordBlindIndex("vault1", fact),
+      buildKeywordBlindIndex("vault1", fact),
+    ]);
+    expect(a).toBe(b);
+  });
+
+  it("different vaultIds produce different JSON arrays for the same fact (domain separation)", async () => {
+    const fact = "shared memory fact content here";
+    const [a, b] = await Promise.all([
+      buildKeywordBlindIndex("vaultA", fact),
+      buildKeywordBlindIndex("vaultB", fact),
+    ]);
+    expect(a).not.toBe(b);
+  });
+
+  it("the hash of any extracted token appears in the resulting array", async () => {
+    const vaultId = "vault-lookup-test";
+    const fact = "authentication token refresh flow";
+    const result = await buildKeywordBlindIndex(vaultId, fact);
+    const parsed: string[] = JSON.parse(result!);
+
+    // "authentication", "token", "refresh", "flow" are all ≥3 chars
+    const tokenHash = await computeKeywordTokenHash(vaultId, "authentication");
+    expect(parsed).toContain(tokenHash);
+
+    const tokenHash2 = await computeKeywordTokenHash(vaultId, "refresh");
+    expect(parsed).toContain(tokenHash2);
+  });
+
+  it("tokens shorter than 3 characters are not included in the index", async () => {
+    const vaultId = "vault-stop-words";
+    // "is" (2) and "an" (2) are < MIN_TOKEN_LEN and must be excluded.
+    // "the" (3) and "authentication" (14) meet the threshold and must appear.
+    const fact = "is an the authentication";
+    const result = await buildKeywordBlindIndex(vaultId, fact);
+    const parsed: string[] = JSON.parse(result!);
+
+    const tooShortHashes = await Promise.all([
+      computeKeywordTokenHash(vaultId, "is"),
+      computeKeywordTokenHash(vaultId, "an"),
+    ]);
+    for (const h of tooShortHashes) {
+      expect(parsed).not.toContain(h);
+    }
+
+    const theHash = await computeKeywordTokenHash(vaultId, "the");
+    expect(parsed).toContain(theHash);
+  });
+
+  it("a hash produced at query time matches the stored hash for the same token", async () => {
+    // Simulates the recall_context lookup: hash the query keyword and check json_each()
+    const vaultId = "vault-query-sim";
+    const fact = "user configured dark mode preferences and notification settings";
+    const storedIndex = await buildKeywordBlindIndex(vaultId, fact);
+    const stored: string[] = JSON.parse(storedIndex!);
+
+    const queryHash = await computeKeywordTokenHash(vaultId, "preferences");
+    expect(stored).toContain(queryHash);
+
+    // A token not in the fact must not appear
+    const missingHash = await computeKeywordTokenHash(vaultId, "cloudflare");
+    expect(stored).not.toContain(missingHash);
+  });
+
+  it("different facts produce different arrays for the same vaultId", async () => {
+    const [a, b] = await Promise.all([
+      buildKeywordBlindIndex("vault1", "drizzle orm database schema migration"),
+      buildKeywordBlindIndex("vault1", "react tanstack router frontend component"),
+    ]);
+    expect(a).not.toBe(b);
   });
 });

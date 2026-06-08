@@ -5,7 +5,7 @@ import type { AgentPolicy, MemoryCategory } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import { z } from "zod";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { verifyToken, hashToken, extractTokenPrefix, getOrCreateVaultKey, decrypt, encrypt, isEncrypted, decryptEphemeral, EphemeralPlaintext, computeBlindIndex } from "~/server/crypto";
+import { verifyToken, hashToken, extractTokenPrefix, getOrCreateVaultKey, decrypt, encrypt, isEncrypted, decryptEphemeral, EphemeralPlaintext, computeBlindIndex, computeKeywordTokenHash, buildKeywordBlindIndex } from "~/server/crypto";
 import { getUserOrg, verifyVaultAccess, checkQuota, logTokenUsage, logAudit, estimateEmbeddingTokens, parseScope } from "~/server/enterprise";
 import { verifyTOTP } from "~/server/totp";
 import { PLANS } from "~/lib/plans";
@@ -1588,25 +1588,64 @@ export async function handleMcpRequest(
       scopeConditions.push(eq(memories.blind_index_hash, tagBlindHash));
     }
 
-    // keyword against plaintext metadata (category + tags) — offload to FTS5 virtual table.
-    // For keywords that might match the encrypted fact body only, the application falls back
-    // to decrypting the surviving set and re-checking; this is still much cheaper than
-    // decrypting the entire vault.
-    let ftsMatchIds: Set<string> | null = null;
+    // keyword pre-filtering — three-layer strategy, all inside the DB:
+    //
+    // Layer 1: FTS5 over plaintext columns (category + tags).  Fast and covers the
+    //          common case where the keyword appears in visible metadata.
+    //
+    // Layer 2: keyword_blind_index — JSON array of per-token HMAC-SHA256 hashes stored
+    //          at write time from the plaintext fact.  json_each() lets SQLite filter
+    //          rows whose encrypted body contains the token without any decryption.
+    //          Only populated for memories written/updated after this migration.
+    //
+    // Layer 3: post-decrypt .includes() fallback, restricted to rows that have a NULL
+    //          keyword_blind_index (legacy rows) AND passed scope/category/tag filters.
+    //          These are a shrinking set as memories are re-written over time.
+    //
+    // Together the three layers eliminate O(all user memories) decryption; the decrypt
+    // pass touches only the pre-filtered candidate set.
+    let keywordTokenHash: string | null = null;
+    let legacyKeywordFallback = false;  // true only when Layer 2 must defer to Layer 3
     if (keyword) {
+      const kwToken = keyword.toLowerCase().trim();
+
+      // Layer 1: FTS5 over plaintext columns (category + tags)
       const kwSafe = keyword.replace(/["]/g, '""');
-      const ftsRows = await db.all<{ id: string }>(
-        sql`SELECT m.id FROM memories m
-            INNER JOIN memories_fts ON memories_fts.rowid = m.rowid
-            WHERE memories_fts MATCH ${kwSafe}`
-      );
-      ftsMatchIds = new Set(ftsRows.map((r) => r.id));
+      const [ftsRows, kwHash] = await Promise.all([
+        db.all<{ id: string }>(
+          sql`SELECT m.id FROM memories m
+              INNER JOIN memories_fts ON memories_fts.rowid = m.rowid
+              WHERE memories_fts MATCH ${kwSafe}`
+        ),
+        computeKeywordTokenHash(
+          crossWorkspaceSearch ? claims.userId : (
+            (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId
+          ),
+          kwToken,
+        ),
+      ]);
+      keywordTokenHash = kwHash;
+
+      const ftsMatchIds = new Set(ftsRows.map((r) => r.id));
       if (ftsMatchIds.size > 0) {
+        // Layer 1 hit: restrict candidate set to FTS matches
         scopeConditions.push(sql`${memories.id} IN (${sql.join(Array.from(ftsMatchIds).map((mid) => sql`${mid}`), sql`, `)})`);
       } else {
-        // FTS matched nothing in plaintext columns — the keyword may still exist in the
-        // encrypted fact body.  Proceed without restricting IDs so the decrypt pass can check.
-        ftsMatchIds = null;
+        // Layer 2: keyword_blind_index covers rows written after migration 0037.
+        // Layer 3: for legacy rows (keyword_blind_index IS NULL) we must still decrypt
+        //          and run .includes() — but only within the already-scoped candidate set.
+        //
+        // Combine with OR: row is included if it matches the blind index OR has no index yet.
+        scopeConditions.push(
+          sql`(
+            EXISTS (
+              SELECT 1 FROM json_each(${memories.keyword_blind_index})
+              WHERE json_each.value = ${keywordTokenHash}
+            )
+            OR ${memories.keyword_blind_index} IS NULL
+          )`
+        );
+        legacyKeywordFallback = true;
       }
     }
 
@@ -1723,11 +1762,13 @@ export async function handleMcpRequest(
         decrypted.push({ row: r, ephemeralFact: eph });
       }
 
-      // category and tag are now pre-filtered at the DB layer (blind index + SQL).
-      // keyword against the encrypted fact body still needs a decrypt-time check,
-      // but only for the already-narrowed candidate set.
+      // keyword: rows that have a keyword_blind_index were pre-filtered at the DB layer
+      // (Layer 2).  Legacy rows (keyword_blind_index IS NULL) were included by the
+      // OR condition in the scope filter and require a decrypt-time .includes() check
+      // (Layer 3).  Rows that hit FTS5 (Layer 1) or have a non-null blind index are
+      // trusted to match and skip the decrypt-time check.
       const filteredDecrypted = decrypted.filter(({ row, ephemeralFact }) => {
-        if (keyword) {
+        if (keyword && legacyKeywordFallback && row.keyword_blind_index === null) {
           const lowerKw = keyword.toLowerCase().trim();
           if (!ephemeralFact.get().toLowerCase().includes(lowerKw)) return false;
         }
@@ -2209,9 +2250,10 @@ export async function handleMcpRequest(
 
     // Fetch envelope DEK for this vault
     const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
-    const [vaultKey, blindIndexHash] = await Promise.all([
+    const [vaultKey, blindIndexHash, keywordBlindIndex] = await Promise.all([
       getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId),
       computeBlindIndex(vaultId, finalTags),
+      buildKeywordBlindIndex(vaultId, sanitizedFact),
     ]);
     const encryptedFact = await encrypt(sanitizedFact, vaultKey);
 
@@ -2240,6 +2282,7 @@ export async function handleMcpRequest(
       scopeId,
       isQuarantined,
       blind_index_hash: blindIndexHash,
+      keyword_blind_index: keywordBlindIndex,
     });
 
     // Record Memory Version
@@ -2568,9 +2611,10 @@ export async function handleMcpRequest(
 
     // Fetch envelope DEK for this vault
     const vaultId = (existing.projectKey && (existing.projectKey.startsWith("team:") || existing.projectKey.startsWith("org:"))) ? existing.projectKey : claims.userId;
-    const [vaultKey, updatedBlindIndexHash] = await Promise.all([
+    const [vaultKey, updatedBlindIndexHash, updatedKeywordBlindIndex] = await Promise.all([
       getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId),
       computeBlindIndex(vaultId, rawTags),
+      buildKeywordBlindIndex(vaultId, sanitizedFact),
     ]);
     const encryptedFact = await encrypt(sanitizedFact, vaultKey);
 
@@ -2582,6 +2626,7 @@ export async function handleMcpRequest(
         timestamp: Date.now(),
         isQuarantined,
         blind_index_hash: updatedBlindIndexHash,
+        keyword_blind_index: updatedKeywordBlindIndex,
       })
       .where(eq(memories.id, memId));
 
@@ -3400,9 +3445,11 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
     const timestamp = Date.now();
 
     const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
-    const [vaultKey, configBlindIndexHash] = await Promise.all([
+    const factContent = `[config:${name}]\n${sanitized}`;
+    const [vaultKey, configBlindIndexHash, configKeywordBlindIndex] = await Promise.all([
       getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId),
       computeBlindIndex(vaultId, finalTags),
+      buildKeywordBlindIndex(vaultId, factContent),
     ]);
     const encryptedContent = await encrypt(sanitized, vaultKey);
 
@@ -3413,7 +3460,6 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       else if (projectKey.startsWith("team:")) { scopeType = "team"; scopeId = projectKey.slice(5); }
     }
 
-    const factContent = `[config:${name}]\n${sanitized}`;
     const encryptedFact = await encrypt(factContent, vaultKey);
 
     await db.insert(memories).values({
@@ -3429,6 +3475,7 @@ You have access to Locker (MCP memory vault) for user profile, projects, rules, 
       scopeId,
       isQuarantined,
       blind_index_hash: configBlindIndexHash,
+      keyword_blind_index: configKeywordBlindIndex,
       sourceType: "mcp",
     });
 

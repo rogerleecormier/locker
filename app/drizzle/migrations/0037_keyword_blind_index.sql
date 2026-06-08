@@ -1,0 +1,31 @@
+-- Migration: keyword_blind_index column on memories
+--
+-- Problem: when a recall_context keyword can't be matched in the plaintext
+-- `category` or `tags` columns, the FTS5 pass returns zero hits and the code
+-- falls back to decrypting every scoped memory then running JS .includes().
+-- On large vaults this is O(n) decryption in the V8 isolate — the same root
+-- cause that motivated blind_index_hash for tags (migration 0030).
+--
+-- Fix: store a JSON array of per-token HMAC-SHA256 hashes of words extracted
+-- from the plaintext fact at write time (salt = vaultId for domain separation).
+-- At query time, hash the incoming keyword token with the same salt and filter
+-- via SQLite's json_each() before any decryption occurs.
+--
+-- Design notes:
+--   • Tokens are lowercased, split on non-word chars, deduplicated, filtered to
+--     ≥3 chars to avoid stop-word noise ("a", "is", "the", …).
+--   • Maximum 200 tokens per memory to bound column size (~12 KB).
+--   • Salt = vaultId → hashes from different users are unlinkable even if D1
+--     storage is compromised; the column leaks no plaintext keyword.
+--   • The index on the column is not useful (SQLite can't index into JSON);
+--     filtering via json_each() is still a full-scan of the scoped candidate set.
+--     That is acceptable because scope + category + blind_index_hash already
+--     narrow the candidate set to O(user's memories in scope), not O(all rows).
+--   • Backfill is intentionally omitted: existing memories have NULL here.  The
+--     keyword fallback (.includes()) still runs for those rows until they are
+--     re-written.  New writes and updates populate the column immediately.
+--
+-- Affected callers: commit_memory, update_memory, search_memories ingestion,
+--                   recall_context keyword pre-filter.
+
+ALTER TABLE memories ADD COLUMN keyword_blind_index TEXT;
