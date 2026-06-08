@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.wrangler/
+.env
+.env.local
+*.local
+src/routeTree.gen.ts
+.dev.vars
+.tanstack/

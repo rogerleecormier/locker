@@ -1,0 +1,39 @@
+{
+  "name": "locker-sync",
+  "version": "0.1.0",
+  "description": "CLI tool to pull authoritative stack rules and agent config files from your Locker vault to your local workspace.",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "locker": "./bin/locker.mjs"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node tests/run-tests.mjs"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "keywords": [
+    "locker",
+    "mcp",
+    "cursorrules",
+    "claude",
+    "copilot",
+    "sync",
+    "ai",
+    "developer-tools"
+  ],
+  "author": "",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rogerleecormier/locker.git"
+  }
+}

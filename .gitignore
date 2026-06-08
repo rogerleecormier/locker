@@ -1,9 +1,18 @@
 node_modules/
-dist/
-.wrangler/
-.env
-.env.local
-*.local
-src/routeTree.gen.ts
-.dev.vars
-.tanstack/
+
+# App (locker/)
+app/node_modules/
+app/dist/
+app/.wrangler/
+app/.env
+app/.env.local
+app/*.local
+app/src/routeTree.gen.ts
+app/.dev.vars
+app/.tanstack/
+
+# CLI (cli/)
+cli/node_modules/
+
+# OS
+.DS_Store
