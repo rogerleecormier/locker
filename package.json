@@ -12,7 +12,18 @@
   "scripts": {
     "dev": "npm run dev -w app",
     "build": "npm run build -w app",
+    "start": "npm run start -w app",
+    "deploy": "npm run deploy -w app",
     "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck -w app",
+    "db:generate": "npm run db:generate -w app",
+    "db:migrate:local": "npm run db:migrate:local -w app",
+    "db:migrate:remote": "npm run db:migrate:remote -w app",
+    "db:studio": "npm run db:studio -w app",
+    "cf:d1:create": "npm run cf:d1:create -w app",
+    "cf:vectorize:create": "npm run cf:vectorize:create -w app",
+    "format": "npm run format -w app",
+    "format:check": "npm run format:check -w app",
     "cli": "node cli/bin/locker.mjs"
   }
 }
