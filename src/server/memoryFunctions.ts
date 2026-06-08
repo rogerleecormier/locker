@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/d1";
-import { desc, eq, sql, and, isNull } from "drizzle-orm";
+import { desc, eq, sql, and, isNull, gte, lte, like, or } from "drizzle-orm";
 import {
   memories,
   apiTokens,
@@ -680,11 +680,11 @@ export const executeImportActions = createServerFn({ method: "POST" })
               const finalTags = tagsList.join(", ");
 
               const updateTimestamp = Date.now();
-              await db.transaction(async (tx) => {
-                await tx.update(memories)
+              await db.batch([
+                db.update(memories)
                   .set({ fact: encryptedFact, category, tags: finalTags, timestamp: updateTimestamp, isQuarantined })
-                  .where(eq(memories.id, matchedMemoryId));
-                await tx.insert(memoryVersions).values({
+                  .where(eq(memories.id, matchedMemoryId)),
+                db.insert(memoryVersions).values({
                   id: crypto.randomUUID(),
                   memoryId: matchedMemoryId,
                   fact: encryptedFact,
@@ -693,8 +693,8 @@ export const executeImportActions = createServerFn({ method: "POST" })
                   changedBy: user.id,
                   changeReason: "updated",
                   timestamp: updateTimestamp,
-                });
-              });
+                }),
+              ]);
 
               const [embedding] = await Promise.all([
                 generateEmbedding(env.AI, sanitizedFact),
@@ -756,9 +756,9 @@ export const executeImportActions = createServerFn({ method: "POST" })
               isQuarantined,
             };
 
-            await db.transaction(async (tx) => {
-              await tx.insert(memories).values(newRow);
-              await tx.insert(memoryVersions).values({
+            await db.batch([
+              db.insert(memories).values(newRow),
+              db.insert(memoryVersions).values({
                 id: crypto.randomUUID(),
                 memoryId: id,
                 fact: encryptedFact,
@@ -767,8 +767,8 @@ export const executeImportActions = createServerFn({ method: "POST" })
                 changedBy: user.id,
                 changeReason: "created",
                 timestamp,
-              });
-            });
+              }),
+            ]);
 
             let entityIds: string[] = [];
             try {
@@ -1234,9 +1234,9 @@ export const addMemory = createServerFn({ method: "POST" })
       isQuarantined,
     };
 
-    await db.transaction(async (tx) => {
-      await tx.insert(memories).values(newRow);
-      await tx.insert(memoryVersions).values({
+    await db.batch([
+      db.insert(memories).values(newRow),
+      db.insert(memoryVersions).values({
         id: crypto.randomUUID(),
         memoryId: id,
         fact: encryptedFact,
@@ -1245,8 +1245,8 @@ export const addMemory = createServerFn({ method: "POST" })
         changedBy: user.id,
         changeReason: "created",
         timestamp,
-      });
-    });
+      }),
+    ]);
 
     // Persist GraphRAG entity nodes and edges, then embed entity IDs into Vectorize metadata.
     // persistGraphData is best-effort: failures must not block the memory write.
@@ -1625,17 +1625,21 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
     if (newRows.length === 0) return { imported: 0, skipped: allRows.length };
 
     const CHUNK_SIZE = 10;
-    await db.transaction(async (tx) => {
-      for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
-        await tx.insert(memories).values(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const batchQueries: any[] = [];
+    for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
+      batchQueries.push(
+        db.insert(memories).values(
           newRows.slice(i, i + CHUNK_SIZE).map(({ id, userId, fact, category, tags, timestamp: ts, projectKey: pk, isQuarantined }) => ({
             id, userId, fact, category, tags, timestamp: ts, isActive: true, projectKey: pk, isQuarantined,
           }))
-        );
-      }
-      for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
-        const chunk = newRows.slice(i, i + CHUNK_SIZE);
-        await tx.insert(memoryVersions).values(
+        )
+      );
+    }
+    for (let i = 0; i < newRows.length; i += CHUNK_SIZE) {
+      const chunk = newRows.slice(i, i + CHUNK_SIZE);
+      batchQueries.push(
+        db.insert(memoryVersions).values(
           chunk.map((row) => ({
             id: crypto.randomUUID(),
             memoryId: row.id,
@@ -1646,9 +1650,10 @@ Do not include any intro, markdown formatting, or code blocks. Just the raw JSON
             changeReason: "imported",
             timestamp: row.timestamp,
           }))
-        );
-      }
-    });
+        )
+      );
+    }
+    await (db as any).batch(batchQueries);
 
     const vectorBatch: VectorizeVector[] = newRows.map((row) => ({
       id: row.id,
@@ -4297,26 +4302,57 @@ async function enrichAuditLogs(
       else toolName = ua.split("/")[0] || null;
     }
 
+    const ENRICH_ACTION_LABELS: Record<string, string> = {
+      recall_context: "Recalled Context", recall_context_abac_denied: "Recall Denied (ABAC)",
+      commit_memory: "Committed Memory", update_memory: "Updated Memory",
+      delete_memory: "Deleted Memory", search_memories: "Searched Memories",
+      get_memory_summary: "Fetched Summary", export_memories: "Exported Memories",
+      list_accessible_scopes: "Listed Scopes", jit_access_requested: "JIT Access Requested",
+      jit_access_approved: "JIT Approved", jit_access_denied: "JIT Denied",
+      store_credential: "Stored Credential", retrieve_credential: "Retrieved Credential",
+      delete_credential: "Deleted Credential", sync_agent_configs: "Synced Agent Configs",
+      create_template: "Created Template", update_template: "Updated Template",
+      delete_template: "Deleted Template", import_memories: "Imported Memories",
+      revert_version: "Reverted Version", approve_recommendation: "Approved Recommendation",
+      reject_recommendation: "Rejected Recommendation",
+    };
+    const action = log.action as string;
     return {
       ...log,
+      actionLabel: ENRICH_ACTION_LABELS[action] ?? action,
       userName: userInfo?.name ?? null,
       userEmail: userInfo?.email ?? null,
       tokenName,
       memorySnippet,
+      memoryFact: memorySnippet,
       query,
       toolName,
+      semanticScore: null,
+      rrfScore: null,
+      matchCount: null,
+      topK: null,
+      filterCategory: null,
+      filterTag: null,
+      filterProjectKey: null,
+      optimize: null,
+      isAbacDenied: action === "recall_context_abac_denied",
+      injectedFacts: [],
     };
   });
 }
 
 const AuditLogFilterSchema = z.object({
-  limit: z.number().int().min(1).max(100).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
   offset: z.number().int().min(0).optional(),
   memoryId: z.string().uuid().optional(),
   action: z.string().max(64).optional(),
   userId: z.string().uuid().optional(),
   dateFrom: z.number().int().min(0).optional(),
   dateTo: z.number().int().min(0).optional(),
+  // UI-friendly aliases accepted alongside the originals
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  search: z.string().max(512).optional(),
 }).strict();
 
 export const getOrgAuditLogs = createServerFn({ method: "POST" })
@@ -4349,16 +4385,19 @@ export const getOrgAuditLogs = createServerFn({ method: "POST" })
     // Use the first (primary) admin org for scoping
     const orgId = adminOrgIds[0];
 
-    const limit = Math.min(data.limit ?? 50, 100);
+    const limit = Math.min(data.limit ?? 50, 200);
     const offset = data.offset ?? 0;
+    const dateFrom = data.dateFrom ?? (data.startDate ? new Date(data.startDate + "T00:00:00Z").getTime() : undefined);
+    const dateTo = data.dateTo ?? (data.endDate ? new Date(data.endDate + "T23:59:59Z").getTime() : undefined);
 
     // Build conditions — scoped to this org only
     const conditions: ReturnType<typeof eq>[] = [eq(auditLogs.orgId, orgId)];
     if (data.memoryId) conditions.push(eq(auditLogs.memoryId, data.memoryId));
     if (data.action) conditions.push(eq(auditLogs.action, data.action));
     if (data.userId) conditions.push(eq(auditLogs.userId, data.userId));
-    if (data.dateFrom) conditions.push(sql`${auditLogs.timestamp} >= ${data.dateFrom}` as any);
-    if (data.dateTo) conditions.push(sql`${auditLogs.timestamp} <= ${data.dateTo}` as any);
+    if (dateFrom) conditions.push(sql`${auditLogs.timestamp} >= ${dateFrom}` as any);
+    if (dateTo) conditions.push(sql`${auditLogs.timestamp} <= ${dateTo}` as any);
+    if (data.search) conditions.push(or(like(auditLogs.action, `%${data.search}%`), like(auditLogs.metadata, `%${data.search}%`), like(auditLogs.userAgent, `%${data.search}%`)) as any);
 
     const rawLogs = await db
       .select()
@@ -4462,13 +4501,16 @@ export const exportAuditLogsCsv = createServerFn({ method: "POST" })
 
 // ── Site-Level Audit Log (site admin only) ─────────────────────────────────
 const SiteAuditLogFilterSchema = z.object({
-  limit: z.number().int().min(1).max(100).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
   offset: z.number().int().min(0).optional(),
   action: z.string().max(64).optional(),
   userId: z.string().uuid().optional(),
   orgId: z.string().uuid().optional(),
   dateFrom: z.number().int().min(0).optional(),
   dateTo: z.number().int().min(0).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  search: z.string().max(512).optional(),
 }).strict();
 
 export const getSiteAuditLogs = createServerFn({ method: "POST" })
@@ -4479,16 +4521,19 @@ export const getSiteAuditLogs = createServerFn({ method: "POST" })
     await requireAdmin(env);
 
     const db = drizzle(env.DB);
-    const limit = Math.min(data.limit ?? 50, 100);
+    const limit = Math.min(data.limit ?? 50, 200);
     const offset = data.offset ?? 0;
+    const dateFrom = data.dateFrom ?? (data.startDate ? new Date(data.startDate + "T00:00:00Z").getTime() : undefined);
+    const dateTo = data.dateTo ?? (data.endDate ? new Date(data.endDate + "T23:59:59Z").getTime() : undefined);
 
     // Build filter conditions across all orgs
     const conditions: any[] = [];
     if (data.orgId) conditions.push(eq(auditLogs.orgId, data.orgId));
     if (data.action) conditions.push(eq(auditLogs.action, data.action));
     if (data.userId) conditions.push(eq(auditLogs.userId, data.userId));
-    if (data.dateFrom) conditions.push(sql`${auditLogs.timestamp} >= ${data.dateFrom}`);
-    if (data.dateTo) conditions.push(sql`${auditLogs.timestamp} <= ${data.dateTo}`);
+    if (dateFrom) conditions.push(sql`${auditLogs.timestamp} >= ${dateFrom}`);
+    if (dateTo) conditions.push(sql`${auditLogs.timestamp} <= ${dateTo}`);
+    if (data.search) conditions.push(or(like(auditLogs.action, `%${data.search}%`), like(auditLogs.metadata, `%${data.search}%`), like(auditLogs.userAgent, `%${data.search}%`)));
 
     const rawLogs = await db
       .select()
@@ -5145,70 +5190,156 @@ export type AgentActivityEntry = {
   id: string;
   timestamp: number;
   action: string;
+  actionLabel: string;
   toolName: string | null;
   userAgent: string | null;
   ipAddress: string | null;
   memoryId: string | null;
+  memoryFact: string | null;
+  memoryCategory: string | null;
   tokenId: string | null;
+  tokenName: string | null;
   query: string | null;
+  topK: number | null;
   matchCount: number | null;
   semanticScore: number | null;
+  rrfScore: number | null;
   injectedFacts: Array<{ id: string; fact: string; category: string; tags: string; score: number | null }>;
+  filterCategory: string | null;
+  filterTag: string | null;
+  filterProjectKey: string | null;
+  optimize: boolean | null;
   projectKey: string | null;
+  isAbacDenied: boolean;
   rawMetadata: Record<string, string | number | boolean | null> | null;
 };
 
+export type AgentActivityStats = {
+  totalRecalls: number;
+  totalCommits: number;
+  totalUpdates: number;
+  totalDeletes: number;
+  abacDenials: number;
+  avgSemanticScore: number | null;
+  topTools: Array<{ tool: string; count: number }>;
+  topActions: Array<{ action: string; count: number }>;
+  topInjectedFacts: Array<{ fact: string; frequency: number }>;
+};
+
+export type AgentActivityResult = {
+  entries: AgentActivityEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+  stats: AgentActivityStats;
+};
+
+const ACTIVITY_ACTION_LABELS: Record<string, string> = {
+  recall_context: "Recalled Context",
+  recall_context_abac_denied: "Recall Denied (ABAC)",
+  commit_memory: "Committed Memory",
+  update_memory: "Updated Memory",
+  delete_memory: "Deleted Memory",
+  search_memories: "Searched Memories",
+  get_memory_summary: "Fetched Summary",
+  export_memories: "Exported Memories",
+  list_accessible_scopes: "Listed Scopes",
+  jit_access_requested: "JIT Access Requested",
+  jit_access_approved: "JIT Approved",
+  jit_access_denied: "JIT Denied",
+  update_memory_queued: "Update Queued",
+  delete_memory_queued: "Delete Queued",
+  store_credential: "Stored Credential",
+  retrieve_credential: "Retrieved Credential",
+  delete_credential: "Deleted Credential",
+  sync_agent_configs: "Synced Agent Configs",
+};
+
+function deriveToolName(userAgent: string | null): string | null {
+  if (!userAgent) return null;
+  const ua = userAgent.toLowerCase();
+  if (ua.includes("cursor")) return "Cursor";
+  if (ua.includes("claude-desktop") || ua.includes("claude desktop")) return "Claude Desktop";
+  if (ua.includes("claude_code") || ua.includes("claude-code") || ua.includes("claude code")) return "Claude Code";
+  if (ua.includes("windsurf")) return "Windsurf";
+  if (ua.includes("cline")) return "Cline";
+  if (ua.includes("copilot")) return "GitHub Copilot";
+  if (ua.includes("continue")) return "Continue";
+  if (ua.includes("zed")) return "Zed";
+  if (ua.includes("jetbrains") || ua.includes("intellij") || ua.includes("pycharm") || ua.includes("webstorm")) return "JetBrains";
+  if (ua.includes("vscode") || ua.includes("visual studio code")) return "VS Code";
+  return userAgent.split("/")[0] || null;
+}
+
 const AgentActivitySchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
+  offset: z.number().int().min(0).optional(),
+  page: z.number().int().min(1).optional(),
+  pageSize: z.number().int().min(1).max(200).optional(),
   action: z.string().max(64).optional(),
   toolName: z.string().max(128).optional(),
+  search: z.string().max(512).optional(),
+  startDate: z.number().optional(),
+  endDate: z.number().optional(),
 }).strict();
 
-export const getAgentActivityLogs = createServerFn({ method: "GET" })
+export const getAgentActivityLogs = createServerFn({ method: "POST" })
   .inputValidator((data) => AgentActivitySchema.parse(data ?? {}))
-  .handler(async ({ data, context }): Promise<AgentActivityEntry[]> => {
+  .handler(async ({ data, context }): Promise<AgentActivityResult> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
     const db = getDb(env);
 
-    const pageLimit = data.limit ?? 200;
+    const pageSize = Math.min(data.pageSize ?? data.limit ?? 50, 200);
+    const page = data.page ?? 1;
+    const offset = data.offset ?? (page - 1) * pageSize;
 
-    const conditions = [eq(auditLogs.userId, user.id)];
-    if (data.action) conditions.push(eq(auditLogs.action, data.action as any));
+    const conditions: ReturnType<typeof eq>[] = [eq(auditLogs.userId, user.id) as any];
+    if (data.action) conditions.push(eq(auditLogs.action, data.action) as any);
+    if (data.startDate) conditions.push(gte(auditLogs.timestamp, data.startDate) as any);
+    if (data.endDate) conditions.push(lte(auditLogs.timestamp, data.endDate) as any);
+    if (data.search) {
+      conditions.push(or(
+        like(auditLogs.action, `%${data.search}%`),
+        like(auditLogs.metadata, `%${data.search}%`),
+        like(auditLogs.userAgent, `%${data.search}%`),
+      ) as any);
+    }
 
-    const rows = await db
-      .select()
-      .from(auditLogs)
-      .where(and(...conditions))
-      .orderBy(desc(auditLogs.timestamp))
-      .limit(pageLimit)
-      .all();
+    const whereClause = and(...conditions);
 
-    return rows.map((row) => {
+    const [rows, countRows] = await Promise.all([
+      db.select().from(auditLogs).where(whereClause).orderBy(desc(auditLogs.timestamp)).limit(pageSize).offset(offset).all(),
+      db.select({ count: sql<number>`count(*)` }).from(auditLogs).where(whereClause).all(),
+    ]);
+
+    const total = countRows[0]?.count ?? 0;
+
+    // Batch-enrich with token names and memory facts
+    const tokenIds = [...new Set(rows.map((r) => r.tokenId).filter((t): t is string => !!t && t !== "session"))];
+    const memoryIds = [...new Set(rows.map((r) => r.memoryId).filter((m): m is string => !!m))];
+
+    const [tokenRows, memoryRows] = await Promise.all([
+      tokenIds.length > 0
+        ? db.select({ id: apiTokens.id, name: apiTokens.name }).from(apiTokens)
+            .where(sql`${apiTokens.id} IN (${sql.join(tokenIds.map((id) => sql`${id}`), sql`, `)})`)
+            .all()
+        : Promise.resolve([] as { id: string; name: string }[]),
+      memoryIds.length > 0
+        ? db.select({ id: memories.id, fact: memories.fact, category: memories.category }).from(memories)
+            .where(sql`${memories.id} IN (${sql.join(memoryIds.map((id) => sql`${id}`), sql`, `)})`)
+            .all()
+        : Promise.resolve([] as { id: string; fact: string; category: string }[]),
+    ]);
+
+    const tokenMap = new Map(tokenRows.map((t) => [t.id, t.name]));
+    const memoryMap = new Map(memoryRows.map((m) => [m.id, { fact: m.fact, category: m.category }]));
+
+    const entries: AgentActivityEntry[] = rows.map((row) => {
       let meta: Record<string, unknown> | null = null;
-      try {
-        if (row.metadata) meta = JSON.parse(row.metadata);
-      } catch {
-        // leave null
-      }
+      try { if (row.metadata) meta = JSON.parse(row.metadata); } catch { /* noop */ }
 
-      // Derive the tool name from the User-Agent header.
-      // Common patterns: "cursor/", "claude-desktop/", "claude-code/", "windsurf/"
-      let toolName: string | null = null;
-      if (row.userAgent) {
-        const ua = row.userAgent.toLowerCase();
-        if (ua.includes("cursor")) toolName = "Cursor";
-        else if (ua.includes("claude-desktop") || ua.includes("claude desktop")) toolName = "Claude Desktop";
-        else if (ua.includes("claude-code") || ua.includes("claude code")) toolName = "Claude Code";
-        else if (ua.includes("windsurf")) toolName = "Windsurf";
-        else if (ua.includes("cline")) toolName = "Cline";
-        else if (ua.includes("copilot")) toolName = "GitHub Copilot";
-        else if (ua.includes("continue")) toolName = "Continue";
-        else if (ua.includes("zed")) toolName = "Zed";
-        else if (row.userAgent.length > 0) toolName = row.userAgent.split("/")[0] ?? row.userAgent;
-      }
-
-      // Filter to a specific toolName if requested
+      const toolName = deriveToolName(row.userAgent);
       if (data.toolName && toolName !== data.toolName) return null as unknown as AgentActivityEntry;
 
       const injectedFacts: AgentActivityEntry["injectedFacts"] = [];
@@ -5223,24 +5354,110 @@ export const getAgentActivityLogs = createServerFn({ method: "GET" })
           });
         }
       }
+      // Also pick up results[] array pattern
+      if (injectedFacts.length === 0 && meta && Array.isArray((meta as any).results)) {
+        for (const r of (meta as any).results as any[]) {
+          if (r?.fact) injectedFacts.push({ id: String(r.id ?? ""), fact: String(r.fact), category: String(r.category ?? ""), tags: String(r.tags ?? ""), score: typeof r.score === "number" ? r.score : null });
+        }
+      }
+
+      const memInfo = row.memoryId ? memoryMap.get(row.memoryId) : undefined;
+      const tokenName = row.tokenId && row.tokenId !== "session"
+        ? (tokenMap.get(row.tokenId) ?? row.tokenId.slice(0, 8) + "…")
+        : (row.tokenId === "session" ? "Session" : null);
 
       return {
         id: row.id,
         timestamp: row.timestamp,
         action: row.action,
+        actionLabel: ACTIVITY_ACTION_LABELS[row.action] ?? row.action,
         toolName,
         userAgent: row.userAgent ?? null,
         ipAddress: row.ipAddress ?? null,
         memoryId: row.memoryId ?? null,
+        memoryFact: memInfo?.fact ?? null,
+        memoryCategory: memInfo?.category ?? null,
         tokenId: row.tokenId ?? null,
+        tokenName,
         query: (meta as any)?.query ?? null,
+        topK: typeof (meta as any)?.topK === "number" ? (meta as any).topK : null,
         matchCount: typeof (meta as any)?.matchCount === "number" ? (meta as any).matchCount : null,
-        semanticScore: typeof (meta as any)?.semanticScore === "number" ? (meta as any).semanticScore : null,
+        semanticScore: typeof (meta as any)?.semanticScore === "number" ? (meta as any).semanticScore : (typeof (meta as any)?.vectorScore === "number" ? (meta as any).vectorScore : (typeof (meta as any)?.score === "number" ? (meta as any).score : null)),
+        rrfScore: typeof (meta as any)?.rrfScore === "number" ? (meta as any).rrfScore : null,
         injectedFacts,
+        filterCategory: (meta as any)?.category ?? null,
+        filterTag: (meta as any)?.tag ?? null,
+        filterProjectKey: (meta as any)?.projectKey ?? null,
+        optimize: typeof (meta as any)?.optimize === "boolean" ? (meta as any).optimize : null,
         projectKey: (meta as any)?.projectKey ?? null,
+        isAbacDenied: row.action === "recall_context_abac_denied",
         rawMetadata: meta as Record<string, string | number | boolean | null> | null,
       };
     }).filter((e): e is AgentActivityEntry => e !== null);
+
+    // ── Stats over recent 5k rows (unfiltered except user) ────────────────────
+    const statsRows = await db
+      .select({ action: auditLogs.action, userAgent: auditLogs.userAgent, metadata: auditLogs.metadata })
+      .from(auditLogs)
+      .where(and(
+        eq(auditLogs.userId, user.id) as any,
+        data.startDate ? gte(auditLogs.timestamp, data.startDate) as any : undefined,
+        data.endDate ? lte(auditLogs.timestamp, data.endDate) as any : undefined,
+      ))
+      .orderBy(desc(auditLogs.timestamp))
+      .limit(5000)
+      .all();
+
+    let totalRecalls = 0, totalCommits = 0, totalUpdates = 0, totalDeletes = 0, abacDenials = 0;
+    let scoreSum = 0, scoreCount = 0;
+    const toolCounts = new Map<string, number>();
+    const actionCounts = new Map<string, number>();
+    const factFreq = new Map<string, number>();
+
+    for (const sr of statsRows) {
+      actionCounts.set(sr.action, (actionCounts.get(sr.action) ?? 0) + 1);
+      const tool = deriveToolName(sr.userAgent) ?? "Unknown";
+      toolCounts.set(tool, (toolCounts.get(tool) ?? 0) + 1);
+
+      if (sr.action === "recall_context") totalRecalls++;
+      else if (sr.action === "commit_memory") totalCommits++;
+      else if (sr.action === "update_memory") totalUpdates++;
+      else if (sr.action === "delete_memory") totalDeletes++;
+      else if (sr.action === "recall_context_abac_denied") abacDenials++;
+
+      let m: any = null;
+      try { if (sr.metadata) m = JSON.parse(sr.metadata); } catch { /* noop */ }
+      const score = m?.semanticScore ?? m?.vectorScore ?? m?.score;
+      if (typeof score === "number") { scoreSum += score; scoreCount++; }
+
+      const results = m?.injectedFacts ?? m?.results;
+      if (Array.isArray(results)) {
+        for (const r of results as any[]) {
+          if (r?.fact) {
+            const t = String(r.fact).length > 80 ? String(r.fact).slice(0, 80) + "…" : String(r.fact);
+            factFreq.set(t, (factFreq.get(t) ?? 0) + 1);
+          }
+        }
+      }
+    }
+
+    return {
+      entries,
+      total,
+      page,
+      pageSize,
+      stats: {
+        totalRecalls,
+        totalCommits,
+        totalUpdates,
+        totalDeletes,
+        abacDenials,
+        avgSemanticScore: scoreCount > 0 ? Math.round((scoreSum / scoreCount) * 1000) / 1000 : null,
+        topTools: [...toolCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([tool, count]) => ({ tool, count })),
+        topActions: [...actionCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([action, count]) => ({ action, count })),
+        topInjectedFacts: [...factFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([fact, frequency]) => ({ fact, frequency })),
+      },
+    };
   });
 
 // ── Webhook Secret Management ─────────────────────────────────────────────────
@@ -5248,13 +5465,14 @@ export const getAgentActivityLogs = createServerFn({ method: "GET" })
 // Secrets are encrypted with the vault DEK, exactly like other credentials.
 // Team scopes inherit from the parent org — teams have no separate webhook secret.
 
-import { WEBHOOK_SECRET_GITHUB, WEBHOOK_SECRET_LINEAR } from "~/server/webhooks";
+import { WEBHOOK_SECRET_GITHUB, WEBHOOK_SECRET_LINEAR, SLACK_JIT_WEBHOOK } from "~/server/webhooks";
 
-export type WebhookSource = "github" | "linear";
+export type WebhookSource = "github" | "linear" | "slack_jit";
 
 const WEBHOOK_CRED_NAMES: Record<WebhookSource, string> = {
   github: WEBHOOK_SECRET_GITHUB,
   linear: WEBHOOK_SECRET_LINEAR,
+  slack_jit: SLACK_JIT_WEBHOOK,
 };
 
 /** Return the vaultId and scopeType/scopeId for the session user's webhook secret storage. */

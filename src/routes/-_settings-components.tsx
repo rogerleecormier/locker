@@ -1175,9 +1175,25 @@ export function SessionsSection() {
 
 // ── WebhookSecretsSection ──────────────────────────────────────────────────
 
-const WEBHOOK_SOURCES: { source: WebhookSource; label: string; color: string; endpointSuffix: string }[] = [
-  { source: "github", label: "GitHub", color: "#6e40c9", endpointSuffix: "/api/webhooks/github" },
-  { source: "linear", label: "Linear", color: "#5E6AD2", endpointSuffix: "/api/webhooks/linear" },
+const WEBHOOK_SOURCES: {
+  source: WebhookSource;
+  label: string;
+  color: string;
+  // Inbound webhook sources show an endpoint URL the user copies into the third-party app.
+  // Outbound sources (slack_jit) store a URL instead of a signing secret — no endpoint shown.
+  endpointSuffix?: string;
+  kind: "inbound" | "outbound";
+  description?: string;
+}[] = [
+  { source: "github", label: "GitHub", color: "#6e40c9", endpointSuffix: "/api/webhooks/github", kind: "inbound" },
+  { source: "linear", label: "Linear", color: "#5E6AD2", endpointSuffix: "/api/webhooks/linear", kind: "inbound" },
+  {
+    source: "slack_jit",
+    label: "Slack — JIT Alerts",
+    color: "#4A154B",
+    kind: "outbound",
+    description: "Receive a Slack message with a one-click approve button whenever an agent requests access to a #confidential memory.",
+  },
 ];
 
 function WebhookSecretRow({
@@ -1185,12 +1201,16 @@ function WebhookSecretRow({
   label,
   color,
   endpointSuffix,
+  kind,
+  description,
   scopeKey,
 }: {
   source: WebhookSource;
   label: string;
   color: string;
-  endpointSuffix: string;
+  endpointSuffix?: string;
+  kind: "inbound" | "outbound";
+  description?: string;
   scopeKey: string | null;
 }) {
   const qc = useQueryClient();
@@ -1200,7 +1220,7 @@ function WebhookSecretRow({
   const [error, setError] = useState<string | null>(null);
 
   const origin = typeof window === "undefined" ? "https://locker.rcormier.dev" : window.location.origin;
-  const endpoint = `${origin}${endpointSuffix}`;
+  const endpoint = endpointSuffix ? `${origin}${endpointSuffix}` : null;
 
   const { data, isLoading } = useQuery({
     queryKey: ["webhook-secret", source, scopeKey],
@@ -1247,7 +1267,11 @@ function WebhookSecretRow({
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-text">{label}</div>
-            <div className="text-[11px] text-text-muted font-mono truncate mt-0.5">{endpoint}</div>
+            {endpoint ? (
+              <div className="text-[11px] text-text-muted font-mono truncate mt-0.5">{endpoint}</div>
+            ) : description ? (
+              <div className="text-[11px] text-text-muted truncate mt-0.5">{description}</div>
+            ) : null}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -1275,11 +1299,15 @@ function WebhookSecretRow({
 
       {editing && (
         <div className="border-t border-border px-4 py-3 flex flex-col gap-2">
-          <Label className="text-[11px] text-text-muted">Paste the signing secret you generated in {label}</Label>
+          <Label className="text-[11px] text-text-muted">
+            {kind === "outbound"
+              ? `Paste the incoming webhook URL from ${label.split("—")[0].trim()}`
+              : `Paste the signing secret you generated in ${label}`}
+          </Label>
           <div className="flex gap-2">
             <Input
               type="password"
-              placeholder={`${label} webhook signing secret`}
+              placeholder={kind === "outbound" ? "https://hooks.slack.com/services/…" : `${label} webhook signing secret`}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
@@ -1292,9 +1320,11 @@ function WebhookSecretRow({
           </div>
           {error && <p className="text-[11px] text-red-400">{error}</p>}
           <p className="text-[10px] text-text-muted leading-relaxed">
-            The secret is stored encrypted in your vault and never exposed in plain text.
-            Use this endpoint URL when registering the webhook in {label}:
-            {" "}<code className="text-accent">{endpoint}</code>
+            {kind === "outbound" ? (
+              <>The URL is stored encrypted in your vault. Create an incoming webhook in your Slack workspace under <strong>Apps → Incoming Webhooks</strong>.</>
+            ) : (
+              <>The secret is stored encrypted in your vault and never exposed in plain text. Use this endpoint URL when registering the webhook in {label}:{" "}<code className="text-accent">{endpoint}</code></>
+            )}
           </p>
         </div>
       )}
@@ -1335,6 +1365,8 @@ export function WebhookSecretsSection() {
               label={s.label}
               color={s.color}
               endpointSuffix={s.endpointSuffix}
+              kind={s.kind}
+              description={s.description}
               scopeKey={ws.key === "personal" ? null : ws.key}
             />
           ))}
@@ -1342,11 +1374,12 @@ export function WebhookSecretsSection() {
       ))}
 
       <div className="bg-surface2 border border-border rounded-xl p-4 text-[12px] text-text-muted leading-relaxed">
-        <p className="font-semibold text-text mb-2">How to register the webhook</p>
+        <p className="font-semibold text-text mb-2">How to set up each integration</p>
         <ol className="list-decimal list-inside flex flex-col gap-1">
           <li><strong>GitHub:</strong> Repo → Settings → Webhooks → Add webhook. Set Payload URL to the endpoint above, Content type to <code className="text-accent">application/json</code>, and paste your secret. Select <em>Pull requests</em> event only.</li>
           <li><strong>Linear:</strong> Settings → API → Webhooks → Create webhook. Point to the Linear endpoint, set the signing secret, and enable <em>Issues</em> events.</li>
           <li>Create a Locker API token with <code className="text-accent">commit_memory</code> permission, scoped to the vault you want memories committed to, and pass it in the webhook's <code className="text-accent">Authorization: Bearer lkr_…</code> header.</li>
+          <li><strong>Slack JIT Alerts:</strong> In your Slack workspace go to <strong>Apps → Incoming Webhooks → Add New Webhook</strong>, choose a channel, and copy the webhook URL here. Locker will post an alert with a one-click approve button whenever an agent requests access to a <code className="text-accent">#confidential</code> memory.</li>
         </ol>
       </div>
     </div>

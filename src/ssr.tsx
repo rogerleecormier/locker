@@ -2,14 +2,15 @@ import {
   createStartHandler,
   defaultStreamHandler,
 } from "@tanstack/react-start/server";
-import { handleMcpRequest } from "./routes/-_api.mcp";
+import { handleMcpRequest, verifyAdminApproveUrl } from "./routes/-_api.mcp";
 import { createAuth } from "./server/auth";
 import { runSetup } from "./server/setup";
 import { handleMemoryVersionCleanup } from "./scheduled/cleanup-versions";
 import type { CloudflareEnv, ArchiveMessage } from "./types/cloudflare";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
-import { memories, auditLogs, organizationMembers, systemSettings } from "./db/schema";
+import { memories, auditLogs, organizationMembers, systemSettings, jitAccessRequests } from "./db/schema";
+import { hashToken } from "./server/crypto";
 import { archiveContradictingMemories } from "./server/memoryFunctions";
 import { isEncrypted, decrypt, deriveUserKey, getOrCreateVaultKey, decryptEphemeral, EphemeralPlaintext } from "./server/crypto";
 import { logAudit } from "./server/enterprise";
@@ -109,6 +110,105 @@ export default {
         });
       }
     }
+
+    // ── JIT admin confirmation route ──────────────────────────────────────────
+    // GET /api/admin/jit/:requestId/approve?expires=<ms>&sig=<hex>
+    //
+    // Called when an admin clicks the "Approve" button in the Slack notification.
+    // Verifies the HMAC-signed URL, mints a 15-minute JIT token, writes it to D1,
+    // and returns a plain HTML page the admin can close.
+    const jitApproveMatch = url.pathname.match(/^\/api\/admin\/jit\/([^/]+)\/approve$/);
+    if (jitApproveMatch && request.method === "GET") {
+      const jitRequestId = jitApproveMatch[1];
+      const expires = url.searchParams.get("expires") ?? "";
+      const sig = url.searchParams.get("sig") ?? "";
+
+      const sigValid = await verifyAdminApproveUrl(jitRequestId, expires, sig, env.BETTER_AUTH_SECRET);
+      if (!sigValid) {
+        return new Response(
+          `<!doctype html><html><body><h2>Link expired or invalid.</h2><p>Request a new approval from the agent.</p></body></html>`,
+          { status: 403, headers: { "Content-Type": "text/html" } },
+        );
+      }
+
+      const db = drizzle(env.DB);
+      const jitRow = await db
+        .select()
+        .from(jitAccessRequests)
+        .where(eq(jitAccessRequests.id, jitRequestId))
+        .get();
+
+      if (!jitRow) {
+        return new Response(
+          `<!doctype html><html><body><h2>JIT request not found.</h2></body></html>`,
+          { status: 404, headers: { "Content-Type": "text/html" } },
+        );
+      }
+
+      if (jitRow.status !== "pending") {
+        const msg = jitRow.status === "approved" ? "already approved" : "denied";
+        return new Response(
+          `<!doctype html><html><body><h2>Request ${msg}.</h2><p>This request has already been reviewed.</p></body></html>`,
+          { status: 200, headers: { "Content-Type": "text/html" } },
+        );
+      }
+
+      // Mint 15-minute JIT token
+      const jitSecret = `lkr_jit_${crypto.randomUUID().replace(/-/g, "")}`;
+      const jitTokenHash = await hashToken(jitSecret);
+      const jitExpiresAt = Date.now() + 15 * 60 * 1000;
+
+      await db
+        .update(jitAccessRequests)
+        .set({
+          status: "approved",
+          jitTokenHash,
+          jitExpiresAt,
+          reviewedAt: Date.now(),
+          reviewedBy: jitRow.userId,
+          reviewNotes: "approved via Slack link",
+        })
+        .where(eq(jitAccessRequests.id, jitRequestId));
+
+      await db.insert(auditLogs).values({
+        id: crypto.randomUUID(),
+        orgId: null,
+        userId: jitRow.userId,
+        tokenId: jitRow.tokenId,
+        action: "jit_access_approved",
+        ipAddress: request.headers.get("cf-connecting-ip") ?? "",
+        userAgent: request.headers.get("user-agent") ?? "",
+        timestamp: Date.now(),
+        metadata: JSON.stringify({ jitRequestId, source: "slack_link", expiresAt: jitExpiresAt }),
+      });
+
+      const agentContext = (() => {
+        try {
+          const meta = jitRow.agentTokenMetadata ? JSON.parse(jitRow.agentTokenMetadata) : null;
+          return meta?.agentContext ?? "unknown agent";
+        } catch {
+          return "unknown agent";
+        }
+      })();
+
+      return new Response(
+        `<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>JIT Access Approved</title>
+<style>body{font-family:system-ui,sans-serif;max-width:560px;margin:60px auto;padding:0 24px}
+h2{color:#16a34a}code{background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:.9em}</style>
+</head>
+<body>
+<h2>Access approved</h2>
+<p>Agent <strong>${agentContext}</strong> has been granted a 15-minute token to access the requested <code>#confidential</code> memories.</p>
+<p>The token has been written to Locker — the agent can retry its original query now.</p>
+<p><small>Token expires in 15 minutes. You can close this tab.</small></p>
+</body>
+</html>`,
+        { status: 200, headers: { "Content-Type": "text/html" } },
+      );
+    }
+    // ── End JIT admin confirmation route ──────────────────────────────────────
 
     if (url.pathname === "/api/export" && request.method === "POST") {
       return handleExportRequest(request, env);

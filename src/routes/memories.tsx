@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { InfoTooltip } from "~/components/InfoTooltip";
@@ -1154,6 +1154,7 @@ function MemoryTable({
 
 // ── MAIN DASHBOARD ──────────────────────────────────────────────────────────
 function Dashboard() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const toast = useToast();
   const [projectKey, setProjectKey] = useState("personal");
@@ -1239,6 +1240,15 @@ function Dashboard() {
     queryKey: ["memories", projectKey],
     queryFn: () => getMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
   });
+
+  // Route guard: redirect to onboarding when vault is empty and setup not complete
+  useEffect(() => {
+    if (isLoading || projectKey !== "personal") return;
+    const onboardingDone = typeof window !== "undefined" && localStorage.getItem("locker_onboarding_complete") === "true";
+    if (!onboardingDone && memories.length === 0) {
+      router.navigate({ to: "/onboarding" });
+    }
+  }, [isLoading, memories.length, projectKey, router]);
 
   const [showQuarantinePanel, setShowQuarantinePanel] = useState(false);
   const { data: quarantinedMemories = [] } = useQuery({

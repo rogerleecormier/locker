@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -69,7 +69,7 @@ export const apiTokens = sqliteTable("api_tokens", {
   // First 8 chars of the raw token after the "lkr_" prefix (chars [4,12)).
   // Used as a cheap indexed pre-filter to avoid a full table scan before PBKDF2.
   // Not a secret — security still comes from the PBKDF2 hash.
-  tokenPrefix: text("tokenPrefix"),
+  tokenPrefix: text("token_prefix"),
   permissions: integer("permissions").notNull().default(3), // 0b11 = all tools
   scopeType: text("scopeType", { enum: ["personal", "organization", "team"] }).notNull().default("personal"),
   scopeId: text("scopeId"),
@@ -397,10 +397,12 @@ export const notifications = sqliteTable("notifications", {
 });
 
 export const rateLimitCounters = sqliteTable("rate_limit_counters", {
-  key: text("key").primaryKey(),
+  key: text("key").notNull(),
   count: integer("count").notNull().default(1),
   minuteStart: integer("minuteStart").notNull(),
-});
+}, (t) => ({
+  pk: primaryKey({ columns: [t.key, t.minuteStart] }),
+}));
 
 export const featureOverrides = sqliteTable("feature_overrides", {
   id: text("id").primaryKey(),
@@ -487,6 +489,10 @@ export const jitAccessRequests = sqliteTable("jit_access_requests", {
   // Short-lived token issued on approval; the agent presents this as its Bearer token.
   jitTokenHash: text("jitTokenHash"),       // PBKDF2 hash of the raw JIT token
   jitExpiresAt: integer("jitExpiresAt"),    // epoch ms — 15 min from approval
+  // JSON snapshot of the requesting agent token's metadata at time of request.
+  // Fields: { name, agentContext, tokenType, permissions, scopeType, scopeId }
+  // Stored so Slack notifications and admin UIs don't need a JOIN to api_tokens.
+  agentTokenMetadata: text("agentTokenMetadata"),
   createdAt: integer("createdAt").notNull(),
   reviewedAt: integer("reviewedAt"),
   reviewedBy: text("reviewedBy").references(() => users.id),

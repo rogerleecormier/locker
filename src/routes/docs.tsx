@@ -1585,145 +1585,70 @@ npx locker-sync sync --format cursor --project my-project`}</pre>
       case "webhooks":
         return (
           <div>
-            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Webhook Integrations</h2>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Locker can automatically capture knowledge from your engineering workflow. When a GitHub pull request is merged
-              or a Linear ticket is completed, Locker ephemerally reads the diff or ticket description, pipes it through Workers AI
-              to generate a concise technical summary, and commits the encrypted result directly to your vault — scoped to the
-              correct project key. No manual <code>commit_memory</code> calls required.
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Webhook Overview</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 28 }}>
+              Locker connects to your existing engineering workflow in two directions. Inbound webhooks automatically
+              capture knowledge as it happens — no manual <code>commit_memory</code> calls required. Outbound
+              notifications push approval requests to your team so sensitive context can be reviewed and released in seconds.
             </p>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Supported Events</h3>
-            <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--surface2)", marginBottom: 32 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
-                <thead>
-                  <tr style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
-                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Source</th>
-                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Event</th>
-                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Endpoint</th>
-                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Trigger Condition</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { source: "GitHub", event: "Pull Request", endpoint: "POST /api/webhooks/github", trigger: 'action = "closed" and pull_request.merged = true' },
-                    { source: "Linear", event: "Issue Update", endpoint: "POST /api/webhooks/linear", trigger: "state.name matches done / completed / finished / closed / merged" },
-                  ].map((row, i, arr) => (
-                    <tr key={row.source} style={{ borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
-                      <td style={{ padding: "12px 16px", fontWeight: 600, color: "var(--text)" }}>{row.source}</td>
-                      <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>{row.event}</td>
-                      <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--accent)" }}>{row.endpoint}</td>
-                      <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}>{row.trigger}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>GitHub Webhook Setup</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
-              {[
-                { step: "1", title: "Navigate to Repository Settings", text: "Go to your GitHub repository → Click Settings (top right) → In the left sidebar, click Webhooks" },
-                { step: "2", title: "Add a New Webhook", text: "Click Add webhook (top right) → You'll see a form to configure the webhook" },
-                { step: "3", title: "Configure Payload URL", text: "Enter your Locker endpoint: https://your-domain.com/api/webhooks/github" },
-                { step: "4", title: "Set Content Type", text: "Select application/json from the Content type dropdown" },
-                { step: "5", title: "Add Signing Secret", text: "Paste your GITHUB_WEBHOOK_SECRET (the one you stored in Cloudflare)" },
-                { step: "6", title: "Select Events", text: "Choose \"Let me select individual events\" → Check only \"Pull requests\" → Uncheck everything else" },
-                { step: "7", title: "Enable & Save", text: "Check the Active checkbox → Click Add webhook" }
-              ].map((s) => (
-                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
-                  <div style={{
-                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
-                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
-                    border: "1px solid rgba(168,85,247,0.2)"
-                  }}>{s.step}</div>
-                  <div style={{ flex: 1 }}>
-                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
-                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
-                  </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 32 }}>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 18 }}>🐙</span>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>GitHub</h3>
+                  <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(110,64,201,0.1)", color: "#6e40c9", border: "1px solid rgba(110,64,201,0.25)", fontWeight: 600 }}>Inbound</span>
                 </div>
-              ))}
-            </div>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px 0", lineHeight: 1.6 }}>
+                  When a pull request is merged, Locker reads the diff, generates a technical summary with Workers AI, and commits it to your vault as a <code>#webhook #github</code> memory.
+                </p>
+                <button onClick={() => setActiveSection("webhooks-github")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontSize: 13, fontWeight: 600 }}>
+                  GitHub Setup Guide →
+                </button>
+              </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Linear Webhook Setup</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
-              {[
-                { step: "1", title: "Navigate to Workspace Settings", text: "Go to your Linear workspace → Click Settings (bottom left) → Click API" },
-                { step: "2", title: "Access Webhooks", text: "In the left menu under API, find and click Webhooks" },
-                { step: "3", title: "Create New Webhook", text: "Click the button to Create a new webhook" },
-                { step: "4", title: "Configure Webhook URL", text: "Enter your Locker endpoint: https://your-domain.com/api/webhooks/linear" },
-                { step: "5", title: "Set Signing Secret", text: "Paste your LINEAR_WEBHOOK_SECRET (the one you stored in Cloudflare)" },
-                { step: "6", title: "Select Events", text: "Check only Issues events → Uncheck any other event types" },
-                { step: "7", title: "Save & Verify", text: "Click Create webhook → Optionally send a test webhook to verify your endpoint" }
-              ].map((s) => (
-                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
-                  <div style={{
-                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
-                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
-                    border: "1px solid rgba(168,85,247,0.2)"
-                  }}>{s.step}</div>
-                  <div style={{ flex: 1 }}>
-                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
-                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
-                  </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 18 }}>◆</span>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>Linear</h3>
+                  <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(94,106,210,0.1)", color: "#5E6AD2", border: "1px solid rgba(94,106,210,0.25)", fontWeight: 600 }}>Inbound</span>
                 </div>
-              ))}
-            </div>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px 0", lineHeight: 1.6 }}>
+                  When a ticket moves to a done state, Locker captures the ticket description, summarises it, and commits it to your vault as a <code>#webhook #linear</code> memory.
+                </p>
+                <button onClick={() => setActiveSection("webhooks-linear")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontSize: 13, fontWeight: 600 }}>
+                  Linear Setup Guide →
+                </button>
+              </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Locker API Token Configuration</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
-              {[
-                { step: "1", title: "Generate an API Token", text: "Go to Settings → API Tokens → Click Generate Token or + New Token" },
-                { step: "2", title: "Select Token Type", text: "Choose Agent Token (for autonomous webhook processing) or Human Token (if manually triggered)" },
-                { step: "3", title: "Enable Permissions", text: "Ensure commit_memory permission is enabled — this allows the token to write memories to your vault" },
-                { step: "4", title: "Set Scope (Optional)", text: "Choose Personal, Organization, or Team scope to restrict webhook memories. Leave unscoped for vault-wide access" },
-                { step: "5", title: "Copy the Token", text: "The token appears as lkr_xxxxxxxxxxxxxxxxxxxxx — Copy it immediately. It is shown only once" }
-              ].map((s) => (
-                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
-                  <div style={{
-                    width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)",
-                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0,
-                    border: "1px solid rgba(168,85,247,0.2)"
-                  }}>{s.step}</div>
-                  <div style={{ flex: 1 }}>
-                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
-                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
-                  </div>
+              <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 18 }}>💬</span>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>Slack</h3>
+                  <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(74,21,75,0.12)", color: "#b362b5", border: "1px solid rgba(74,21,75,0.25)", fontWeight: 600 }}>Outbound</span>
                 </div>
-              ))}
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 14px 0", lineHeight: 1.6 }}>
+                  When an agent requests access to a <code>#confidential</code> memory, Locker posts a Slack message with a one-click Approve button. The approval link is HMAC-signed and expires in 30 minutes.
+                </p>
+                <button onClick={() => setActiveSection("webhooks-slack-jit")} style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontSize: 13, fontWeight: 600 }}>
+                  Slack JIT Setup Guide →
+                </button>
+              </div>
             </div>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Adding the Authorization Header</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-              Both GitHub and Linear require an <strong>Authorization</strong> header containing your Locker API token. Most webhook integrations include this automatically, but if writing custom code to process webhooks, use this header format:
-            </p>
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontFamily: "monospace", fontSize: 12, color: "var(--accent)", marginBottom: 28, overflowX: "auto", whiteSpace: "nowrap" }}>
-              Authorization: Bearer lkr_your_token_here
-            </div>
-            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 28 }}>
-              Replace <code>lkr_your_token_here</code> with your actual token copied in the previous step. If webhooks are forwarded through a proxy or relay service, verify that the service passes headers through unchanged.
-            </p>
-
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Authentication</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-              Every webhook request must include a valid Locker API token in the <code>Authorization</code> header.
-              This token determines which user's vault receives the committed memory and which project key is applied.
-            </p>
-            <pre style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 14, fontFamily: "monospace", fontSize: 12, color: "var(--text)", overflowX: "auto", marginBottom: 32 }}>{`Authorization: Bearer lkr_your_token_here`}</pre>
-
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>How It Works</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>How inbound webhooks work</h3>
             <ol style={{ paddingLeft: 20, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.8, marginBottom: 32 }}>
-              <li><strong>Signature verification</strong> — HMAC-SHA256 signature validated against the configured secret before any processing begins.</li>
-              <li><strong>Event filtering</strong> — Only merged PRs and tickets in a "done" terminal state are processed; all other events return <code>{`{ok: true, skipped: true}`}</code>.</li>
+              <li><strong>Signature verification</strong> — HMAC-SHA256 signature validated against your stored secret before any processing begins.</li>
+              <li><strong>Event filtering</strong> — Only merged PRs and tickets in a terminal done state are processed; everything else returns <code>{`{ok: true, skipped: true}`}</code>.</li>
               <li><strong>Idempotency</strong> — Each event is keyed by <code>(source, external_id)</code>. Replayed webhooks return <code>{`{ok: true, duplicate: true}`}</code> without re-committing.</li>
-              <li><strong>Content fetch</strong> — The diff URL (GitHub) or ticket description (Linear) is fetched ephemerally and never written to disk in plain text.</li>
+              <li><strong>Content fetch</strong> — The diff URL or ticket description is fetched ephemerally and never written to disk in plain text.</li>
               <li><strong>AI summarisation</strong> — Workers AI (<code>llama-3.1-8b-instruct-fp8</code>) generates a 3–5 sentence technical summary focused on what changed and why.</li>
-              <li><strong>Vault encryption</strong> — The summary and full fact string are encrypted with AES-256-GCM using the vault DEK for the resolved project key before any D1 write.</li>
-              <li><strong>Memory commit</strong> — A <code>projects</code>-category memory tagged <code>#webhook #github</code> or <code>#webhook #linear</code> is inserted and becomes immediately searchable via <code>recall_context</code>.</li>
-              <li><strong>Audit trail</strong> — A row is inserted in <code>webhook_events</code> capturing the encrypted summary, raw title, and commit reference for compliance.</li>
+              <li><strong>Vault encryption</strong> — The summary is encrypted with AES-256-GCM under the vault DEK for the resolved project key before any D1 write.</li>
+              <li><strong>Memory commit</strong> — A <code>projects</code>-category memory is inserted and immediately searchable via <code>recall_context</code>.</li>
+              <li><strong>Audit trail</strong> — A row is inserted in <code>webhook_events</code> capturing the encrypted summary, raw title, and commit reference.</li>
             </ol>
 
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Response Shapes</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Response shapes (inbound webhooks)</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
               {[
                 { label: "Success", color: "#22c55e", body: `{ "ok": true, "memoryId": "uuid" }` },
@@ -1736,6 +1661,237 @@ npx locker-sync sync --format cursor --project my-project`}</pre>
                   <pre style={{ background: "var(--surface)", borderRadius: 6, padding: 8, fontFamily: "monospace", fontSize: 11, color: "var(--text)", margin: 0, overflowX: "auto" }}>{r.body}</pre>
                 </div>
               ))}
+            </div>
+          </div>
+        );
+
+      case "webhooks-github":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>GitHub Webhooks</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              When a pull request is merged, Locker ephemerally reads the diff, runs it through Workers AI to produce a
+              concise technical summary, and commits the encrypted result to your vault tagged <code>#webhook #github</code>.
+              No manual <code>commit_memory</code> calls needed.
+            </p>
+
+            <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--surface2)", marginBottom: 32 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                <thead>
+                  <tr style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Event</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Endpoint</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Trigger condition</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>Pull Request</td>
+                    <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--accent)" }}>POST /api/webhooks/github</td>
+                    <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}>action = "closed" and pull_request.merged = true</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Step 1 — Store the signing secret in Locker</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              Go to <strong>Settings → Integrations</strong>. Under the GitHub row for the scope you want (Personal or your org), click <strong>Configure</strong>, paste a random signing secret (generate one with <code>openssl rand -hex 32</code>), and click <strong>Save</strong>. The secret is stored encrypted in your vault.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Step 2 — Register the webhook in GitHub</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Navigate to Repository Settings", text: "Go to your GitHub repository → Settings (top right) → Webhooks in the left sidebar." },
+                { step: "2", title: "Add a new webhook", text: "Click Add webhook." },
+                { step: "3", title: "Set the Payload URL", text: `Enter your Locker endpoint: ${origin}/api/webhooks/github` },
+                { step: "4", title: "Set Content Type", text: "Select application/json from the Content type dropdown." },
+                { step: "5", title: "Paste the signing secret", text: "Enter the same secret you saved in Locker in the previous step." },
+                { step: "6", title: "Select events", text: 'Choose "Let me select individual events" then check only Pull requests. Uncheck everything else.' },
+                { step: "7", title: "Enable and save", text: "Check the Active checkbox and click Add webhook." },
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, border: "1px solid rgba(168,85,247,0.2)" }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Step 3 — Generate a Locker API token</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Go to Settings → API Tokens", text: "Click Generate Token." },
+                { step: "2", title: "Choose Agent Token", text: "Agent tokens are designed for autonomous webhook processing and have explicit ABAC policies." },
+                { step: "3", title: "Enable commit_memory", text: "This permission lets the token write memories to your vault." },
+                { step: "4", title: "Set scope (optional)", text: "Choose Personal, Organization, or Team to restrict which vault receives webhook memories." },
+                { step: "5", title: "Copy the token", text: "The token is shown as lkr_… — copy it immediately. It is displayed only once." },
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, border: "1px solid rgba(168,85,247,0.2)" }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Step 4 — Add the Authorization header</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+              GitHub sends this header with every webhook request. Configure it in the webhook settings under <strong>Headers</strong>:
+            </p>
+            <pre style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontFamily: "monospace", fontSize: 12, color: "var(--accent)", marginBottom: 28, overflowX: "auto" }}>{`Authorization: Bearer lkr_your_token_here`}</pre>
+
+            <div style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.15)", borderRadius: 12, padding: 16 }}>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, margin: 0 }}>
+                <strong style={{ color: "var(--text)" }}>Tip:</strong> The signing secret and the API token serve different purposes. The <strong>signing secret</strong> proves the request came from GitHub (HMAC-SHA256). The <strong>API token</strong> tells Locker which vault to write to. Both are required.
+              </p>
+            </div>
+          </div>
+        );
+
+      case "webhooks-linear":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Linear Webhooks</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+              When an issue moves to a done state, Locker reads the ticket description, generates a concise summary with
+              Workers AI, and commits the encrypted result to your vault tagged <code>#webhook #linear</code>.
+            </p>
+
+            <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--surface2)", marginBottom: 32 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                <thead>
+                  <tr style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Event</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Endpoint</th>
+                    <th style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 700 }}>Trigger condition</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>Issue Update</td>
+                    <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--accent)" }}>POST /api/webhooks/linear</td>
+                    <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}>state.name matches done / completed / finished / closed / merged</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Step 1 — Store the signing secret in Locker</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              Go to <strong>Settings → Integrations</strong>. Under the Linear row for the scope you want, click <strong>Configure</strong>, paste your signing secret, and click <strong>Save</strong>.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Step 2 — Register the webhook in Linear</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Navigate to Workspace Settings", text: "Go to your Linear workspace → Settings (bottom left) → API." },
+                { step: "2", title: "Open Webhooks", text: "In the left menu under API, click Webhooks." },
+                { step: "3", title: "Create a new webhook", text: "Click Create webhook." },
+                { step: "4", title: "Set the URL", text: `Enter: ${origin}/api/webhooks/linear` },
+                { step: "5", title: "Paste the signing secret", text: "Enter the same secret you saved in Locker." },
+                { step: "6", title: "Select events", text: "Check only Issues. Uncheck everything else." },
+                { step: "7", title: "Save and verify", text: "Click Create webhook. Optionally send a test event to confirm Locker responds correctly." },
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, border: "1px solid rgba(168,85,247,0.2)" }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Step 3 — Generate a Locker API token</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              Same as GitHub: go to <strong>Settings → API Tokens</strong>, generate an Agent Token with <code>commit_memory</code> permission, set the desired scope, and copy it.
+            </p>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Step 4 — Add the Authorization header</h3>
+            <pre style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontFamily: "monospace", fontSize: 12, color: "var(--accent)", marginBottom: 28, overflowX: "auto" }}>{`Authorization: Bearer lkr_your_token_here`}</pre>
+
+            <div style={{ background: "rgba(94,106,210,0.04)", border: "1px solid rgba(94,106,210,0.2)", borderRadius: 12, padding: 16 }}>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, margin: 0 }}>
+                <strong style={{ color: "var(--text)" }}>Note:</strong> Linear sends both the signing secret (in the <code>linear-signature</code> header) and the Authorization token. Both must be correct for Locker to process the event.
+              </p>
+            </div>
+          </div>
+        );
+
+      case "webhooks-slack-jit":
+        return (
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.02em" }}>Slack</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 8 }}>
+              When an automated agent requests access to a <code>#confidential</code> memory, Locker intercepts the
+              query and posts a Slack message to your configured channel. The message includes an <strong>Approve (15 min)</strong> button — clicking it mints a short-lived JIT token without ever opening the Locker dashboard.
+            </p>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>
+              This is an <strong>outbound</strong> integration — Locker posts to Slack, not the other way around. There is no inbound endpoint to register. The webhook URL is stored encrypted per-user or per-org in your credential vault.
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 32 }}>
+              {[
+                { icon: "🔒", label: "Intercept", text: "Agent queries a #confidential memory — Locker blocks it and creates a JIT request record." },
+                { icon: "📨", label: "Notify", text: "Locker posts a Block Kit message to your Slack channel with agent name, tool, and blocked memory count." },
+                { icon: "✅", label: "Approve", text: "You click Approve. Locker mints a 15-minute lkr_jit_ token and records it against the request." },
+                { icon: "🔓", label: "Unlock", text: "The agent retries its original query using the JIT token as its Bearer credential and receives the unredacted memory." },
+              ].map((c) => (
+                <div key={c.label} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
+                  <div style={{ fontSize: 20, marginBottom: 8 }}>{c.icon}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>{c.label}</div>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>{c.text}</p>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>Setup</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+              {[
+                { step: "1", title: "Create an Incoming Webhook in Slack", text: 'In your Slack workspace go to Apps, search "Incoming Webhooks", and click Add to Slack. Choose the channel for JIT alerts (e.g. #locker-alerts) and click Allow.' },
+                { step: "2", title: "Copy the webhook URL", text: "Slack shows a URL beginning with https://hooks.slack.com/services/…. Copy it." },
+                { step: "3", title: "Save it in Locker", text: "Go to Settings → Integrations. Find the Slack — JIT Alerts row, choose the scope (Personal or your org), click Configure, paste the URL, and click Save. The URL is encrypted in your vault immediately." },
+                { step: "4", title: "Test it", text: "Have an agent token call recall_context or search_memories against a memory tagged #confidential. Locker intercepts the query and posts to your Slack channel within seconds." },
+                { step: "5", title: "Approve from Slack", text: 'Click "Approve (15 min)" in the Slack message. The agent can then retry its original query with the returned JIT token to receive the unredacted memory. The token expires automatically after 15 minutes.' },
+              ].map((s) => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-dim)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, border: "1px solid rgba(168,85,247,0.2)" }}>{s.step}</div>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ color: "var(--text)", display: "block", marginBottom: 4 }}>{s.title}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Security properties</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
+              {[
+                { label: "HMAC-signed approve URL", text: "The Approve button URL is signed with HMAC-SHA256 using your BETTER_AUTH_SECRET. Altering the request ID or expiry breaks the signature." },
+                { label: "30-minute link expiry", text: "The approval link is valid for 30 minutes. After that it returns 403 and the agent must re-trigger the query to generate a new request." },
+                { label: "15-minute JIT token", text: "Approval mints a lkr_jit_ token valid for exactly 15 minutes and scoped to only the specific blocked memory IDs in that request." },
+                { label: "Audit trail", text: "Every approval via the Slack link is recorded in audit_logs with source: slack_link, the request ID, and timestamp." },
+                { label: "Per-scope URL", text: "Personal and org scopes store their own webhook URL independently. An org-level URL is used when the JIT request originates from an org-scoped agent token." },
+              ].map((item) => (
+                <div key={item.label} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14, display: "flex", gap: 12 }}>
+                  <span style={{ color: "#22c55e", fontSize: 16, flexShrink: 0, marginTop: 1 }}>✓</span>
+                  <div>
+                    <strong style={{ color: "var(--text)", fontSize: 13 }}>{item.label}</strong>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "2px 0 0 0", lineHeight: 1.5 }}>{item.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: "rgba(74,21,75,0.06)", border: "1px solid rgba(74,21,75,0.2)", borderRadius: 12, padding: 16 }}>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, margin: 0 }}>
+                <strong style={{ color: "var(--text)" }}>No Slack app required.</strong> Locker uses a simple Incoming Webhook — not a full Slack app installation. You only need to create the webhook under Apps in your workspace. No OAuth flow, bot user, or admin approval needed.
+              </p>
             </div>
           </div>
         );
@@ -2642,14 +2798,20 @@ npx locker-sync sync --format claude --dry-run`}</pre>
             <option value="connection-auth">Connection & Auth</option>
             <option value="security-privacy">Security & Privacy</option>
           </optgroup>
-          <optgroup label="Features & Workflows">
+          <optgroup label="Features">
             <option value="managing-memories">Managing Memories</option>
             <option value="import-memories">Importing & Migrating</option>
             <option value="team-collaboration">Team Collaboration</option>
             <option value="stack-creator">Tech Stack Creator</option>
             <option value="templates">Blueprint Templates</option>
             <option value="export-rules">Exporting Agent Rules</option>
-            <option value="agent-activity">Agent Activity Dashboard</option>
+            <option value="agent-activity">Agent Activity</option>
+          </optgroup>
+          <optgroup label="Webhook Integrations">
+            <option value="webhooks">Webhook Overview</option>
+            <option value="webhooks-github">GitHub</option>
+            <option value="webhooks-linear">Linear</option>
+            <option value="webhooks-slack-jit">Slack</option>
           </optgroup>
           <optgroup label="MCP Reference">
             <option value="mcp-about">About MCP</option>
@@ -2659,7 +2821,7 @@ npx locker-sync sync --format claude --dry-run`}</pre>
             <option value="mcp-tools-credentials">Credential Vault</option>
             <option value="mcp-errors-security">Errors & Security</option>
           </optgroup>
-          <optgroup label="Client Integrations">
+          <optgroup label="Connecting Clients">
             <option value="connect-oauth">OAuth / Account-Based</option>
             <option value="connect-manual">Manual / Token-Based</option>
           </optgroup>
@@ -2687,7 +2849,7 @@ npx locker-sync sync --format claude --dry-run`}</pre>
             </div>
 
             <div>
-              <div className="sidebar-section-title">Features & Workflows</div>
+              <div className="sidebar-section-title">Features</div>
               <button onClick={() => setActiveSection("managing-memories")} className={`sidebar-button ${activeSection === "managing-memories" ? "active" : ""}`}>
                 <span>🧠</span> Managing Memories
               </button>
@@ -2706,11 +2868,24 @@ npx locker-sync sync --format claude --dry-run`}</pre>
               <button onClick={() => setActiveSection("export-rules")} className={`sidebar-button ${activeSection === "export-rules" ? "active" : ""}`}>
                 <span>💾</span> Exporting Agent Rules
               </button>
-              <button onClick={() => setActiveSection("webhooks")} className={`sidebar-button ${activeSection === "webhooks" ? "active" : ""}`}>
-                <span>🔗</span> Webhook Integrations
-              </button>
               <button onClick={() => setActiveSection("agent-activity")} className={`sidebar-button ${activeSection === "agent-activity" ? "active" : ""}`}>
-                <span>◎</span> Agent Activity Dashboard
+                <span>◎</span> Agent Activity
+              </button>
+            </div>
+
+            <div>
+              <div className="sidebar-section-title">Webhook Integrations</div>
+              <button onClick={() => setActiveSection("webhooks")} className={`sidebar-button ${activeSection === "webhooks" ? "active" : ""}`}>
+                <span>🔗</span> Webhook Overview
+              </button>
+              <button onClick={() => setActiveSection("webhooks-github")} className={`sidebar-button ${activeSection === "webhooks-github" ? "active" : ""}`}>
+                <span>🐙</span> GitHub
+              </button>
+              <button onClick={() => setActiveSection("webhooks-linear")} className={`sidebar-button ${activeSection === "webhooks-linear" ? "active" : ""}`}>
+                <span>◆</span> Linear
+              </button>
+              <button onClick={() => setActiveSection("webhooks-slack-jit")} className={`sidebar-button ${activeSection === "webhooks-slack-jit" ? "active" : ""}`}>
+                <span>💬</span> Slack
               </button>
             </div>
 
@@ -2737,7 +2912,7 @@ npx locker-sync sync --format claude --dry-run`}</pre>
             </div>
 
             <div>
-              <div className="sidebar-section-title">Client Integrations</div>
+              <div className="sidebar-section-title">Connecting Clients</div>
               <button onClick={() => setActiveSection("connect-oauth")} className={`sidebar-button ${activeSection === "connect-oauth" ? "active" : ""}`}>
                 <span>🔐</span> OAuth / Account-Based
               </button>

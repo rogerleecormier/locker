@@ -48,6 +48,9 @@ const AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8" as const;
 // Well-known credential names for webhook secrets (uppercase per convention).
 export const WEBHOOK_SECRET_GITHUB = "__WEBHOOK_GITHUB__";
 export const WEBHOOK_SECRET_LINEAR = "__WEBHOOK_LINEAR__";
+// Slack incoming webhook URL for JIT access notifications.
+// Stored per-user in their personal credential vault via store_credential.
+export const SLACK_JIT_WEBHOOK = "__SLACK_JIT_WEBHOOK__";
 
 const SUMMARY_SYSTEM_PROMPT = `You are a senior software engineer writing concise technical changelog entries.
 Given a code diff or ticket description, produce a single-paragraph technical summary (3-5 sentences, ≤ 150 words).
@@ -229,7 +232,7 @@ async function resolveSecretVaultId(
  * Read a webhook secret credential from the given vault.
  * Returns null if not found or on decryption error.
  */
-async function readWebhookSecret(
+export async function readWebhookSecret(
   env: CloudflareEnv,
   vaultId: string,
   credName: string,

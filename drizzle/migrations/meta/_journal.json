@@ -127,6 +127,20 @@
       "when": 1749340800000,
       "tag": "0032_unified_agent_configs",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1749427200000,
+      "tag": "0033_jit_agent_token_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1780886520000,
+      "tag": "0034_fix_rate_limit_counters_pk",
+      "breakpoints": true
     }
   ]
 }

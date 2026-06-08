@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
-import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, rateLimitCounters, memoryTemplates, users, totpSecrets, credentials, notifications, ABAC_DEFAULT_ALLOW, JIT_PROTECTED_TAG, jitAccessRequests, memoryRecommendations } from "~/db/schema";
+import { memories, apiTokens, oauthAccessTokensV2, MCP_PERM_RECALL, MCP_PERM_COMMIT, MCP_PERM_UPDATE, MCP_PERM_DELETE, auditLogs, tokenUsages, orgQuotas, memoryVersions, organizations, organizationMembers, teamMembers, teams, jwks, memoryTemplates, users, totpSecrets, credentials, notifications, ABAC_DEFAULT_ALLOW, JIT_PROTECTED_TAG, jitAccessRequests, memoryRecommendations } from "~/db/schema";
 import type { AgentPolicy, MemoryCategory } from "~/db/schema";
 import { importJWK, jwtVerify } from "jose";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import { getUserEffectivePlan } from "~/server/planGate";
 import { sanitizeMemory } from "~/server/sanitization";
 import { maskSensitiveData, containsSensitiveData } from "~/server/dlp";
 import { extractGraphEntities, persistGraphData, expandByEntityIds } from "~/server/graphRag";
+import { readWebhookSecret, SLACK_JIT_WEBHOOK } from "~/server/webhooks";
 
 // ─── Shared field validators ───────────────────────────────────────────────────
 const zFact = z.string().min(1).max(10000).transform((s) => s.trim());
@@ -579,10 +580,13 @@ function checkTagAccess(rawTags: string, policy: AgentPolicy | null): TagAccessR
   return { access: "allow" };
 }
 
-// Create a JIT access request row and notify the developer via in-app notification.
+// Create a JIT access request row, notify the developer via in-app notification,
+// and fire an outbound Slack webhook if SLACK_JIT_WEBHOOK_URL is configured.
 // Returns the newly-created JIT request id.
 async function createJitRequest(
   db: ReturnType<typeof drizzle>,
+  env: CloudflareEnv,
+  baseUrl: string,
   params: {
     tokenId: string;
     userId: string;
@@ -592,7 +596,42 @@ async function createJitRequest(
     agentContext: string;
   },
 ): Promise<string> {
+  // Snapshot agent token metadata so Slack / admin UI don't need a JOIN.
+  let agentTokenMetadata: string | null = null;
+  try {
+    const tokenRow = await db
+      .select({
+        name: apiTokens.name,
+        tokenType: apiTokens.tokenType,
+        permissions: apiTokens.permissions,
+        scopeType: apiTokens.scopeType,
+        scopeId: apiTokens.scopeId,
+        agentPolicy: apiTokens.agentPolicy,
+      })
+      .from(apiTokens)
+      .where(eq(apiTokens.id, params.tokenId))
+      .get();
+    if (tokenRow) {
+      const policy = tokenRow.agentPolicy ? JSON.parse(tokenRow.agentPolicy) : null;
+      agentTokenMetadata = JSON.stringify({
+        name: tokenRow.name,
+        agentContext: policy?.agentContext ?? params.agentContext,
+        tokenType: tokenRow.tokenType,
+        permissions: tokenRow.permissions,
+        scopeType: tokenRow.scopeType,
+        scopeId: tokenRow.scopeId ?? null,
+      });
+    }
+  } catch (e) {
+    console.error("[JIT] Failed to fetch token metadata snapshot:", e);
+  }
+
   const jitId = crypto.randomUUID();
+
+  // Build HMAC-signed approve URL valid for 30 minutes (link in Slack message).
+  // The admin confirmation route re-verifies this signature before minting the JIT token.
+  const approveUrl = await buildAdminApproveUrl(baseUrl, jitId, env.BETTER_AUTH_SECRET);
+
   await db.insert(jitAccessRequests).values({
     id: jitId,
     tokenId: params.tokenId,
@@ -601,8 +640,11 @@ async function createJitRequest(
     mcpArgs: JSON.stringify(params.args),
     blockedMemoryIds: params.blockedMemoryIds.join(","),
     status: "pending",
+    agentTokenMetadata,
     createdAt: Date.now(),
   });
+
+  // In-app notification (best-effort)
   try {
     await db.insert(notifications).values({
       id: crypto.randomUUID(),
@@ -616,9 +658,106 @@ async function createJitRequest(
   } catch (e) {
     console.error("[JIT] Failed to write notification:", e);
   }
+
+  // Slack webhook notification (best-effort, fire-and-forget).
+  // URL is stored per-user in their personal credential vault as __SLACK_JIT_WEBHOOK__.
+  const slackWebhookUrl = await readWebhookSecret(env, params.userId, SLACK_JIT_WEBHOOK, params.userId).catch(() => null);
+  if (slackWebhookUrl) {
+    const blockedCount = params.blockedMemoryIds.length;
+    const slackPayload = {
+      text: `:lock: *JIT Access Request — Approval Required*`,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `:lock: *JIT Access Request — Approval Required*\n\nAn automated agent is requesting access to \`#confidential\` memories.`,
+          },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Agent:*\n${params.agentContext}` },
+            { type: "mrkdwn", text: `*Tool:*\n\`${params.toolName}\`` },
+            { type: "mrkdwn", text: `*Blocked memories:*\n${blockedCount}` },
+            { type: "mrkdwn", text: `*Request ID:*\n\`${jitId}\`` },
+          ],
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Approve (15 min)" },
+              style: "primary",
+              url: approveUrl,
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Review in Locker" },
+              url: `${baseUrl}/settings/agent-tokens?jit=${jitId}`,
+            },
+          ],
+        },
+      ],
+    };
+    try {
+      await fetch(slackWebhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(slackPayload),
+      });
+    } catch (e) {
+      console.error("[JIT] Slack webhook delivery failed:", e);
+    }
+  }
+
   console.warn(`[JIT] Request created id=${jitId} agent="${params.agentContext}" tool=${params.toolName} blocked=${params.blockedMemoryIds.join(",")}`);
   return jitId;
 }
+
+// Build an HMAC-SHA-256-signed admin approval URL.
+// Signature covers jitRequestId + expiry so it cannot be reused for other IDs.
+// The link is valid for 30 minutes — long enough for the developer to act,
+// short enough that a leaked URL has limited blast radius.
+async function buildAdminApproveUrl(baseUrl: string, jitRequestId: string, signingSecret: string): Promise<string> {
+  const expiresAt = Date.now() + 30 * 60 * 1000;
+  const message = `${jitRequestId}:${expiresAt}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(signingSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sigBytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  const sig = Array.from(new Uint8Array(sigBytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${baseUrl}/api/admin/jit/${jitRequestId}/approve?expires=${expiresAt}&sig=${sig}`;
+}
+
+// Verify an HMAC-signed admin approval URL.
+async function verifyAdminApproveUrl(
+  jitRequestId: string,
+  expires: string,
+  sig: string,
+  signingSecret: string,
+): Promise<boolean> {
+  const expiresAt = parseInt(expires, 10);
+  if (isNaN(expiresAt) || Date.now() > expiresAt) return false;
+  const message = `${jitRequestId}:${expiresAt}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(signingSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const expectedBytes = new Uint8Array(sig.match(/.{2}/g)!.map((b) => parseInt(b, 16)));
+  return crypto.subtle.verify("HMAC", key, expectedBytes, new TextEncoder().encode(message));
+}
+
+// Export for use in ssr.tsx admin confirmation route.
+export { verifyAdminApproveUrl };
 
 function mcpResult(id: unknown, result: unknown): Response {
   return Response.json({ jsonrpc: "2.0", id, result });
@@ -1101,35 +1240,21 @@ async function validateBearerToken(
 
 const MCP_RATE_LIMIT_PER_MINUTE = 60;
 
-async function checkFallbackRateLimit(db: any, key: string): Promise<boolean> {
-  const now = Date.now();
-  const minuteStart = Math.floor(now / 60000) * 60000;
+async function checkFallbackRateLimit(db: D1Database, key: string): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+  const window = now - (now % 60);
 
-  const existing = await db
-    .select()
-    .from(rateLimitCounters)
-    .where(eq(rateLimitCounters.key, key))
-    .get();
+  const result = await db
+    .prepare(
+      `INSERT INTO rate_limit_counters (key, minuteStart, count)
+       VALUES (?1, ?2, 1)
+       ON CONFLICT (key, minuteStart) DO UPDATE SET count = count + 1
+       RETURNING count`,
+    )
+    .bind(key, window)
+    .first<{ count: number }>();
 
-  if (existing && existing.minuteStart === minuteStart) {
-    const updated = await db
-      .update(rateLimitCounters)
-      .set({ count: sql`${rateLimitCounters.count} + 1` })
-      .where(eq(rateLimitCounters.key, key))
-      .returning({ count: rateLimitCounters.count })
-      .get();
-    return updated && updated.count <= MCP_RATE_LIMIT_PER_MINUTE;
-  }
-
-  await db
-    .insert(rateLimitCounters)
-    .values({ key, count: 1, minuteStart })
-    .onConflictDoUpdate({
-      target: rateLimitCounters.key,
-      set: { count: 1, minuteStart },
-    });
-
-  return true;
+  return (result?.count ?? 1) <= MCP_RATE_LIMIT_PER_MINUTE;
 }
 
 export async function handleMcpRequest(
@@ -1198,7 +1323,7 @@ export async function handleMcpRequest(
       console.error("[rate-limit] Limiter error:", err);
     }
   } else {
-    rateLimitSuccess = await checkFallbackRateLimit(drizzle(env.DB), limitKey);
+    rateLimitSuccess = await checkFallbackRateLimit(env.DB, limitKey);
   }
 
   if (!rateLimitSuccess) {
@@ -1256,6 +1381,7 @@ export async function handleMcpRequest(
   const { id, method, params } = body;
   console.log("[mcp] rpc method:", method, "id:", id);
   const db = drizzle(env.DB);
+  const baseUrl = new URL(request.url).origin;
 
   if (method === "initialize") {
     const sessionId = crypto.randomUUID();
@@ -1712,7 +1838,7 @@ export async function handleMcpRequest(
       // If any memories needed JIT approval, create a pending request and include it in the response.
       let jitMeta: { jitRequestId: string; message: string } | undefined;
       if (jitBlockedIds.length > 0 && claims.isAgent) {
-        const jitId = await createJitRequest(db, {
+        const jitId = await createJitRequest(db, env, baseUrl, {
           tokenId: claims.tokenId,
           userId: claims.userId,
           toolName: "recall_context",
@@ -1892,7 +2018,7 @@ export async function handleMcpRequest(
 
       let searchJitMeta: { jitRequestId: string; message: string } | undefined;
       if (searchJitBlockedIds.length > 0 && claims.isAgent) {
-        const jitId = await createJitRequest(db, {
+        const jitId = await createJitRequest(db, env, baseUrl, {
           tokenId: claims.tokenId,
           userId: claims.userId,
           toolName: "search_memories",

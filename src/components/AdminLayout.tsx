@@ -41,12 +41,12 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "personal-mcp",      label: "MCP Endpoint",     icon: "🔌", category: "personal" },
   { id: "personal-usage",    label: "My Usage",         icon: "📈", category: "personal" },
   { id: "personal-billing",  label: "My Billing",       icon: "💳", category: "personal" },
-  { id: "personal-activity", label: "Agent Activity",   icon: "◎",  category: "personal" },
+  { id: "personal-activity", label: "My Activity",      icon: "◎",  category: "personal" },
   { id: "personal-webhooks", label: "Webhooks",          icon: "🔗", category: "personal" },
   // Org
   { id: "orgs", label: "Organizations", icon: "🏢", category: "org" },
   { id: "org-billing", label: "Org Billing", icon: "💰", category: "org" },
-  { id: "org-audit-logs", label: "Audit Logs", icon: "📋", category: "org" },
+  { id: "org-audit-logs", label: "Org Activity", icon: "📋", category: "org" },
   { id: "users", label: "Users", icon: "👥", category: "org" },
   { id: "teams", label: "Teams", icon: "👤", category: "org" },
   // Site
@@ -54,7 +54,7 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "user-management", label: "User Management",   icon: "🧑‍💼", category: "site" },
   { id: "site-config",     label: "Configuration",     icon: "🔧", category: "site" },
   { id: "billing-manage",  label: "Billing Management",icon: "📊", category: "site" },
-  { id: "site-audit-logs", label: "All Org Logs",      icon: "🔒", category: "site" },
+  { id: "site-audit-logs", label: "Site Activity",      icon: "🔒", category: "site" },
 ];
 
 const SECTIONS = [
