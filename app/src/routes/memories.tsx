@@ -41,6 +41,71 @@ export const Route = createFileRoute("/memories")({
   component: Dashboard,
 });
 
+// Memories older than this threshold are considered stale
+const STALE_MEMORY_DAYS = 90;
+const STALE_MEMORY_MS = STALE_MEMORY_DAYS * 24 * 60 * 60 * 1000;
+
+// localStorage key and TTL for banner dismissal
+const STALE_BANNER_DISMISS_KEY = "locker-stale-banner-dismissed-at";
+const STALE_BANNER_DISMISS_TTL_DAYS = 7;
+const STALE_BANNER_DISMISS_TTL_MS = STALE_BANNER_DISMISS_TTL_DAYS * 24 * 60 * 60 * 1000;
+
+function useStaleMemoryBanner(staleCount: number) {
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const ts = localStorage.getItem(STALE_BANNER_DISMISS_KEY);
+    if (!ts) return false;
+    return Date.now() - Number(ts) < STALE_BANNER_DISMISS_TTL_MS;
+  });
+
+  function dismiss() {
+    setDismissed(true);
+    localStorage.setItem(STALE_BANNER_DISMISS_KEY, String(Date.now()));
+  }
+
+  const visible = !dismissed && staleCount > 0;
+  return { visible, dismiss };
+}
+
+function StaleMemoryBanner({
+  staleCount,
+  onFilter,
+  onDismiss,
+}: {
+  staleCount: number;
+  onFilter: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200 select-none">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 shrink-0">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+      <button
+        type="button"
+        onClick={onFilter}
+        className="flex-1 text-left text-xs font-semibold text-amber-600 hover:text-amber-500 transition-colors"
+      >
+        You have{" "}
+        <span className="font-bold underline underline-offset-2 decoration-amber-500/50">
+          {staleCount} {staleCount === 1 ? "memory" : "memories"}
+        </span>{" "}
+        older than {STALE_MEMORY_DAYS} days — consider reviewing them.
+      </button>
+      <button
+        type="button"
+        title="Dismiss for 7 days"
+        onClick={onDismiss}
+        className="shrink-0 h-6 w-6 flex items-center justify-center text-amber-500/60 hover:text-amber-500 rounded-md hover:bg-amber-500/10 transition-colors text-sm leading-none"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 const CATEGORY_COLORS: Record<string, string> = {
   rules: "indigo",
   projects: "emerald",
@@ -1566,6 +1631,26 @@ function Dashboard() {
     return counts;
   }, [memories]);
 
+  const staleCount = useMemo(
+    () => memories.filter((m) => Date.now() - new Date(m.timestamp).getTime() > STALE_MEMORY_MS).length,
+    [memories]
+  );
+
+  const [staleFilterActive, setStaleFilterActive] = useState(false);
+  const { visible: staleBannerVisible, dismiss: dismissStaleBanner } = useStaleMemoryBanner(staleCount);
+
+  function activateStaleFilter() {
+    setStaleFilterActive(true);
+    setCategoryFilter("");
+    setSearchQuery("");
+    setSortBy("oldest");
+  }
+
+  function deactivateStaleFilter() {
+    setStaleFilterActive(false);
+    setSortBy("newest");
+  }
+
   async function triggerExport() {
     try {
       const res = await fetch("/api/export", { method: "POST" });
@@ -2025,6 +2110,31 @@ function Dashboard() {
           )}
         </div>
 
+        {/* Stale memories alert banner */}
+        {staleBannerVisible && !isLoading && (
+          <StaleMemoryBanner
+            staleCount={staleCount}
+            onFilter={activateStaleFilter}
+            onDismiss={dismissStaleBanner}
+          />
+        )}
+
+        {/* Active stale filter indicator */}
+        {staleFilterActive && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/8 border border-amber-500/20 rounded-lg text-xs">
+            <span className="text-amber-600 font-semibold flex-1">
+              Showing memories older than {STALE_MEMORY_DAYS} days
+            </span>
+            <button
+              type="button"
+              onClick={deactivateStaleFilter}
+              className="text-amber-500/70 hover:text-amber-500 font-semibold transition-colors"
+            >
+              Clear filter ✕
+            </button>
+          </div>
+        )}
+
         {/* Memories Content Table */}
         {isLoading ? (
           <MemorySkeletonLoader viewMode={viewMode} />
@@ -2059,13 +2169,17 @@ function Dashboard() {
           )
         ) : (
           <MemoryTable
-            memories={memories}
+            memories={
+              staleFilterActive
+                ? memories.filter((m) => Date.now() - new Date(m.timestamp).getTime() > STALE_MEMORY_MS)
+                : memories
+            }
             filter={searchQuery}
             categoryFilter={categoryFilter}
             onCategoryChange={setCategoryFilter}
             sortBy={sortBy}
-            dateStart={dateStart}
-            dateEnd={dateEnd}
+            dateStart={staleFilterActive ? "" : dateStart}
+            dateEnd={staleFilterActive ? "" : dateEnd}
             onShowHistory={(id) => setShowHistoryModal(id)}
             onExportZip={triggerExport}
             workspaces={workspaces}
