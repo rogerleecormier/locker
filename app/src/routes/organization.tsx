@@ -734,7 +734,7 @@ function OrganizationPage() {
           </div>
         )}
 
-        {currentOrg && <OrgVaultView org={currentOrg} onRefetch={refetch} />}
+        {currentOrg && <OrgVaultView org={currentOrg} />}
       </PageContainer>
     </div>
   );
@@ -1337,7 +1337,7 @@ function IntegrationsPanel({ org }: { org: any }) {
   const [githubSecret, setGithubSecret] = useState("");
   const [linearSecret, setLinearSecret] = useState("");
 
-  const { data: webhookEvents = [], isLoading: eventsLoading, refetch: refetchEvents } = useQuery({
+  const { data: webhookEventsData, isLoading: eventsLoading, refetch: refetchEvents } = useQuery({
     queryKey: ["webhook-events", org.id],
     queryFn: () => getWebhookEventLog({ data: { orgId: org.id, limit: 50 } }),
   });
@@ -1364,7 +1364,7 @@ function IntegrationsPanel({ org }: { org: any }) {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const events = webhookEvents.events ?? [];
+  const events = webhookEventsData?.events ?? [];
 
   return (
     <div className="flex flex-col gap-6 select-none">

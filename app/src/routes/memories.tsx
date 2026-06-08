@@ -1530,6 +1530,14 @@ function Dashboard() {
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [selectedContributionDate, setSelectedContributionDate] = useState<Date | null>(null);
 
+  useEffect(() => {
+    if (activeTab === "contributions") {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      setSelectedContributionDate(new Date(today));
+    }
+  }, [activeTab]);
+
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("locker-view-mode");
@@ -1701,8 +1709,12 @@ function Dashboard() {
 
   const selectedDayMemories = useMemo(() => {
     if (!selectedContributionDate) return [];
-    const dateStr = selectedContributionDate.toDateString();
-    return memories.filter((m) => new Date(m.timestamp).toDateString() === dateStr);
+    const selectedStr = selectedContributionDate.toDateString();
+    return memories.filter((m) => {
+      const memDate = new Date(m.timestamp);
+      memDate.setHours(0, 0, 0, 0);
+      return memDate.toDateString() === selectedStr;
+    });
   }, [memories, selectedContributionDate]);
 
   const [staleFilterActive, setStaleFilterActive] = useState(false);
@@ -1844,7 +1856,7 @@ function Dashboard() {
               activeTab === "contributions" ? "text-accent" : "text-text-muted hover:text-text"
             }`}
           >
-            Contributions
+            Activity
             {activeTab === "contributions" && (
               <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full" />
             )}
@@ -1895,7 +1907,7 @@ function Dashboard() {
               )}
             </div>
 
-            {selectedContributionDate && selectedDayMemories.length > 0 && (
+            {selectedContributionDate && (
               <div className="bg-surface border border-border rounded-xl p-6">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
@@ -1912,22 +1924,28 @@ function Dashboard() {
                     ✕
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {selectedDayMemories.map((m) => (
-                    <MemoryCard
-                      key={m.id}
-                      memory={m}
-                      selected={false}
-                      onToggleSelect={() => {}}
-                      onExport={() => {}}
-                      workspaces={workspaces}
-                      currentProjectKey={projectKey}
-                      isSelected={false}
-                      isFocused={false}
-                      onSelect={() => {}}
-                    />
-                  ))}
-                </div>
+                {selectedDayMemories.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {selectedDayMemories.map((m) => (
+                      <MemoryCard
+                        key={m.id}
+                        memory={m}
+                        selected={false}
+                        onToggleSelect={() => {}}
+                        onExport={() => {}}
+                        workspaces={workspaces}
+                        currentProjectKey={projectKey}
+                        isSelected={false}
+                        isFocused={false}
+                        onSelect={() => {}}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-text-muted">
+                    <p className="text-sm">No memories created on this day</p>
+                  </div>
+                )}
               </div>
             )}
           </div>

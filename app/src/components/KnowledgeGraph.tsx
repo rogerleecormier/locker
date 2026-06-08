@@ -170,59 +170,28 @@ export function KnowledgeGraph({
   const nodeCount = graph.nodes.length;
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Stats header */}
-      <div className="flex items-center justify-between gap-4 px-1">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
+    <div className="rounded-xl border border-border overflow-hidden bg-surface2 flex flex-col" style={{ height: 660 }}>
+      {/* Toolbar — fixed height, no wrapping, no reflow */}
+      <div className="flex items-center gap-3 px-3 py-2 border-b border-border bg-surface shrink-0 overflow-hidden">
+        {/* Stats */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-1">
             <span className="text-xs font-bold text-text tabular-nums">{nodeCount}</span>
             <span className="text-[10px] text-text-muted uppercase tracking-wider">entities</span>
           </div>
           <div className="w-px h-3 bg-border" />
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <span className="text-xs font-bold text-text tabular-nums">{edgeCount}</span>
             <span className="text-[10px] text-text-muted uppercase tracking-wider">relations</span>
           </div>
           <div className="w-px h-3 bg-border" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-text-muted">Updated</span>
-            <span className="text-[10px] font-medium text-text">{formatRelativeTime(graph.fetchedAt)}</span>
-          </div>
+          <span className="text-[10px] text-text-muted">{formatRelativeTime(graph.fetchedAt)}</span>
         </div>
 
-        {/* Top connected nodes */}
-        {topNodes.length > 0 && (
-          <div className="flex items-center gap-2 overflow-hidden">
-            <span className="text-[10px] text-text-muted uppercase tracking-wider shrink-0">Top</span>
-            <div className="flex items-center gap-1.5 overflow-hidden">
-              {topNodes.map((n) => (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery(n.label);
-                    setJumpTarget(n.id);
-                    handleNodeClick(n.id, n.label, n.type, n.value);
-                  }}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface border border-border hover:border-accent/40 transition-colors shrink-0"
-                >
-                  <div
-                    className="w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{ backgroundColor: NODE_TYPE_COLORS[n.type] ?? '#64748b' }}
-                  />
-                  <span className="text-[10px] text-text truncate max-w-[80px]">{n.label}</span>
-                  <span className="text-[9px] text-text-muted tabular-nums">{n.value - 1}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+        <div className="w-px h-3 bg-border shrink-0" />
 
-      {/* Controls row: search + type filters */}
-      <div className="flex items-center gap-3 flex-wrap">
         {/* Search */}
-        <div className="flex items-center gap-1.5 bg-surface border border-border rounded-lg px-2.5 py-1.5 flex-1 min-w-[160px] max-w-xs">
+        <div className="flex items-center gap-1.5 bg-surface2 border border-border rounded-lg px-2 py-1 shrink-0 w-36">
           <svg className="w-3 h-3 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
           </svg>
@@ -235,21 +204,12 @@ export function KnowledgeGraph({
             placeholder="Find entity…"
             className="bg-transparent text-xs text-text placeholder:text-text-muted/60 outline-none w-full"
           />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => { setSearchQuery(''); setJumpTarget(null); }}
-              className="text-text-muted hover:text-text transition-colors"
-            >
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
         </div>
 
-        {/* Node type filter chips */}
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="w-px h-3 bg-border shrink-0" />
+
+        {/* Type filter chips — no-wrap, scroll if needed */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1">
           {Object.entries(NODE_TYPE_LABELS).map(([type, label]) => {
             const hidden = activeTypeFilters.has(type);
             return (
@@ -257,27 +217,56 @@ export function KnowledgeGraph({
                 key={type}
                 type="button"
                 onClick={() => toggleTypeFilter(type)}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium transition-all ${
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium shrink-0 transition-colors ${
                   hidden
-                    ? 'border-border bg-transparent text-text-muted/50 line-through'
+                    ? 'border-border/40 bg-transparent text-text-muted/40'
                     : 'border-border bg-surface text-text hover:border-accent/40'
                 }`}
               >
                 <div
                   className="w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{ backgroundColor: hidden ? '#64748b' : NODE_TYPE_COLORS[type] }}
+                  style={{ backgroundColor: hidden ? '#64748b40' : NODE_TYPE_COLORS[type] }}
                 />
                 {label}
               </button>
             );
           })}
         </div>
+
+        {/* Top nodes */}
+        {topNodes.length > 0 && (
+          <>
+            <div className="w-px h-3 bg-border shrink-0" />
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
+              <span className="text-[10px] text-text-muted uppercase tracking-wider shrink-0">Top</span>
+              {topNodes.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery(n.label);
+                    setJumpTarget(n.id);
+                    handleNodeClick(n.id, n.label, n.type, n.value);
+                  }}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface2 border border-border hover:border-accent/40 transition-colors shrink-0"
+                >
+                  <div
+                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: NODE_TYPE_COLORS[n.type] ?? '#64748b' }}
+                  />
+                  <span className="text-[10px] text-text truncate max-w-[72px]">{n.label}</span>
+                  <span className="text-[9px] text-text-muted tabular-nums">{n.value - 1}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Graph canvas + drawer */}
-      <div className="relative flex rounded-xl overflow-hidden border border-border bg-surface2" style={{ height: 560 }}>
-        {/* Full-width canvas */}
-        <div className={`flex-1 relative transition-all duration-300 ${drawerOpen ? 'mr-[320px]' : ''}`}>
+      {/* Graph canvas + drawer — takes remaining height */}
+      <div className="flex flex-1 min-h-0">
+        {/* Canvas — flex-1 so it fills remaining width; ResizeObserver in canvas handles reflow */}
+        <div className="relative flex-1 min-w-0">
           <Suspense
             fallback={
               <div className="flex items-center justify-center h-full">
@@ -295,12 +284,14 @@ export function KnowledgeGraph({
           </Suspense>
         </div>
 
-        {/* Slide-out drawer */}
+        {/* Slide-out drawer — flex sibling so canvas ResizeObserver picks up the resize */}
         <div
-          className={`absolute top-0 right-0 h-full w-[320px] bg-surface border-l border-border flex flex-col transition-transform duration-300 ${
-            drawerOpen ? 'translate-x-0' : 'translate-x-full'
+          className={`flex flex-col border-l border-border bg-surface overflow-hidden transition-all duration-300 ${
+            drawerOpen ? 'w-[320px]' : 'w-0'
           }`}
         >
+          {/* Inner wrapper keeps content at full width during animation */}
+          <div className="flex flex-col h-full w-[320px]">
           {/* Drawer header */}
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border shrink-0">
             {selectedNode ? (
@@ -385,6 +376,7 @@ export function KnowledgeGraph({
               </div>
             )}
           </div>
+          </div>{/* end inner wrapper */}
         </div>
       </div>
     </div>

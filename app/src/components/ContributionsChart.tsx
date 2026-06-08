@@ -40,31 +40,31 @@ export const ContributionsChart: React.FC<ContributionsChartProps> = ({
   selectedDate,
 }) => {
   const chartData = useMemo(() => {
-    if (data.length === 0) return { weeks: [], maxCount: 0, monthLabels: new Map(), dates: [] };
-
-    const maxCount = Math.max(...data.map((d) => d.count), 1);
     const dataMap = new Map(data.map((d) => [d.date.toDateString(), d.count]));
+    const maxCount = Math.max(...data.map((d) => d.count), 1);
 
-    const startDate = new Date(data[0].date);
+    // Start from 1 year ago
+    const endDate = new Date();
+    endDate.setHours(0, 0, 0, 0);
+
+    const startDate = new Date(endDate);
+    startDate.setFullYear(startDate.getFullYear() - 1);
+
+    // Align to start of week
     startDate.setDate(startDate.getDate() - startDate.getDay());
-    if (weekStartDay === 'monday' && startDate.getDay() === 0) {
-      startDate.setDate(startDate.getDate() + 1);
-    }
 
-    const endDate = new Date(data[data.length - 1].date);
     const weeks: (number | null)[][] = [];
     const dates: Date[][] = [];
     let currentWeek: (number | null)[] = [];
     let currentWeekDates: Date[] = [];
 
     const monthLabels = new Map<number, string>();
+    let lastMonth = -1;
 
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      if (weeks.length === 0 || currentWeek.length === 7) {
-        if (currentWeek.length > 0) {
-          weeks.push(currentWeek);
-          dates.push(currentWeekDates);
-        }
+      if (currentWeek.length === 7) {
+        weeks.push(currentWeek);
+        dates.push(currentWeekDates);
         currentWeek = [];
         currentWeekDates = [];
       }
@@ -74,9 +74,13 @@ export const ContributionsChart: React.FC<ContributionsChartProps> = ({
 
       if (currentWeek.length === 0) {
         const monthDate = new Date(d);
+        const currentMonth = monthDate.getMonth();
         const monthKey = weeks.length;
-        if (!monthLabels.has(monthKey)) {
+
+        // Only add label if month changed
+        if (currentMonth !== lastMonth) {
           monthLabels.set(monthKey, getMonthLabel(monthDate));
+          lastMonth = currentMonth;
         }
       }
 
@@ -120,17 +124,20 @@ export const ContributionsChart: React.FC<ContributionsChartProps> = ({
           <div>
             {/* Month labels */}
             <div className="flex gap-1 pb-2 pl-1">
-              {Array.from(chartData.monthLabels.entries()).map(([week, month]) => (
-                <div
-                  key={`month-${week}`}
-                  style={{
-                    width: week > 0 ? `${squareSize + gap}px` : '0',
-                  }}
-                  className="text-xs text-text-muted"
-                >
-                  {week > 0 && month}
-                </div>
-              ))}
+              {chartData.weeks.map((week, weekIndex) => {
+                const month = chartData.monthLabels.get(weekIndex);
+                return (
+                  <div
+                    key={`month-${weekIndex}`}
+                    style={{
+                      width: `${squareSize + gap}px`,
+                    }}
+                    className="text-xs text-text-muted"
+                  >
+                    {month}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Grid */}

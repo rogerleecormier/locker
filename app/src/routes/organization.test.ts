@@ -247,7 +247,7 @@ describe("Organization Integrations", () => {
 
     it("maps Linear platform to __WEBHOOK_LINEAR__ credential name", () => {
       const platform = "linear";
-      const credName = platform === "github" ? "__WEBHOOK_GITHUB__" : "__WEBHOOK_LINEAR__";
+      const credName = platform === "linear" ? "__WEBHOOK_LINEAR__" : "__WEBHOOK_GITHUB__";
       expect(credName).toBe("__WEBHOOK_LINEAR__");
     });
 
@@ -288,6 +288,15 @@ describe("Organization Integrations", () => {
       const memoryId = "mem_very_long_uuid_12345678";
       const displayed = memoryId.slice(0, 8) + "…";
       expect(displayed).toBe("mem_very…");
+    });
+
+    it("event type is properly typed", () => {
+      const events = [
+        { eventType: "pr.merged" as const },
+        { eventType: "ticket.done" as const },
+      ];
+      expect(events[0].eventType).toBe("pr.merged");
+      expect(events[1].eventType).toBe("ticket.done");
     });
 
     it("displays no events state when list is empty", () => {
