@@ -14,6 +14,18 @@
       "database_name": "locker-db",
       "database_id": "6091fbef-95a2-4235-b97e-cc1f360f73b2",
       "migrations_dir": "drizzle/migrations"
+    },
+    {
+      "binding": "DB_REPLICA",
+      "database_name": "locker-db",
+      "database_id": "6091fbef-95a2-4235-b97e-cc1f360f73b2",
+      "migrations_dir": "drizzle/migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SESSION_KV",
+      "id": "REPLACE_WITH_SESSION_KV_NAMESPACE_ID"
     }
   ],
   "vectorize": [

@@ -7,6 +7,8 @@ export type ArchiveMessage = {
 
 export type CloudflareEnv = {
   DB: D1Database;
+  DB_REPLICA?: D1Database;
+  SESSION_KV: KVNamespace;
   VECTOR_INDEX: VectorizeIndex;
   AI: Ai;
   ASSETS: Fetcher;
