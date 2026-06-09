@@ -4,52 +4,17 @@ import { PLANS, SELF_SERVE_PLAN_ORDER } from "~/lib/plans";
 import { PlanCard } from "~/components/PaywallGate";
 import { LockerPadlock } from "~/components/LockerLogo";
 import { FadeIn, Counter } from "~/components/landing/LandingAnimations";
-import { Section, SectionLabel, FeatureCard, Step } from "~/components/landing/LandingPrimitives";
+import { Section, SectionLabel, Step } from "~/components/landing/LandingPrimitives";
 import { HeroStackCreatorMockup, MemoryTemplatesMockup, ReviewQueueMockup, McpCallMockup, TokenMockup, EncryptionMockup } from "~/components/landing/LandingMockups";
 import { PlatformScroller } from "~/components/landing/PlatformScroller";
 import { PlaygroundCard } from "~/components/landing/PlaygroundCard";
+import { FeatureFilter } from "~/components/landing/FeatureFilter";
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
 });
 
 // ── Shared SVG icons ──────────────────────────────────────────────────────────
-function IconSearch() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
-}
-function IconTool() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>;
-}
-function IconTemplate() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>;
-}
-function IconOrg() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>;
-}
-function IconTeam() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
-}
-function IconShield() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
-}
-function IconLink() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>;
-}
-function IconActivity() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M3 12h.01M7.05 7.05l.007.007M12 3v.01M16.95 7.05l.007.007M21 12h.01M16.95 16.95l.007.007M12 21v-.01M7.05 16.95l-.007.007"/></svg>;
-}
-function IconGraph() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="12" cy="19" r="2"/><line x1="7" y1="5" x2="17" y2="5"/><line x1="6" y1="7" x2="11" y2="17"/><line x1="18" y1="7" x2="13" y2="17"/></svg>;
-}
-function IconKey() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>;
-}
-function IconVersion() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>;
-}
-function IconConflict() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
-}
 function IconCode() {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>;
 }
@@ -386,108 +351,7 @@ function LandingPage() {
               </h2>
             </FadeIn>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              {
-                icon: <LockerPadlock size={20} />,
-                title: "Envelope Encryption",
-                desc: "AES-256-GCM with per-vault DEKs wrapped by a KEK. Database + env var must both be compromised to decrypt anything. Unwrapped keys live only in ephemeral V8 worker memory.",
-                delay: 0,
-              },
-              {
-                icon: <IconSearch />,
-                title: "GraphRAG Hybrid Retrieval",
-                desc: "bge-m3 semantic vectors, FTS5 keyword, and recency decay fused via RRF. GraphRAG entity expansion surfaces related facts automatically. Llama-3.3-70B cross-encoder reranking on top-20 candidates.",
-                delay: 60,
-              },
-              {
-                icon: <IconTool />,
-                title: "Tech Stack Wizard & CLI Sync",
-                desc: "Generate .cursorrules, CLAUDE.md, AGENTS.md, and 4 more formats from your stack. Push rules to disk with npx locker-sync sync or wire into pre-commit hooks for automatic drift prevention.",
-                delay: 120,
-              },
-              {
-                icon: <IconTemplate />,
-                title: "Memory Templates",
-                desc: "Deploy pre-built coding guidelines, DevOps runbooks, and SOC2 compliance controls directly to developer agents. One-click ingestion to any scope.",
-                delay: 180,
-              },
-              {
-                icon: <IconOrg />,
-                title: "Review & Approval Queue",
-                desc: "Agent mutations are held in the approval queue — color-coded cards for deletions (red), updates (blue), and contradictions (amber). No silent destructive changes, ever.",
-                delay: 240,
-              },
-              {
-                icon: <IconTeam />,
-                title: "Authoritative Org Vault",
-                desc: "Lock critical standards inside organization scopes. Authoritative rules always take precedence in agent contexts. Team nesting for fine-grained vault isolation.",
-                delay: 300,
-              },
-              {
-                icon: <IconKey />,
-                title: "ABAC Agent Tokens",
-                desc: "Attribute-Based Access Control per token: category filters, tag allowlist/denylist, credential vault gate. Enforced at SQL + Vectorize — encrypted data for off-limits categories is never decrypted.",
-                delay: 360,
-              },
-              {
-                icon: <IconShield />,
-                title: "Entropy-Based DLP",
-                desc: "Shannon entropy gating detects high-entropy secrets. Structural patterns catch AWS keys, Stripe keys, GitHub PATs, PEM keys, DB URIs. PII regex for emails, SSNs, credit cards. Quarantined = [REDACTED] to agents.",
-                delay: 420,
-              },
-              {
-                icon: <IconGraph />,
-                title: "Knowledge Graph Visualization",
-                desc: "Interactive canvas maps every entity — services, files, libraries, APIs — and their relationships extracted by Workers AI. Explore multi-hop connections across your vault visually.",
-                delay: 480,
-              },
-              {
-                icon: <IconLink />,
-                title: "Webhook Auto-Commit",
-                desc: "GitHub PR Merged and Linear Ticket Done events auto-pipe diffs through Workers AI, summarize, and commit an encrypted technical memory — no manual commit_memory calls needed. HMAC-signature verified.",
-                delay: 540,
-              },
-              {
-                icon: <IconDevOps />,
-                title: "CI/CD PR Policy Gatekeeper",
-                desc: "Block PRs that violate vault rules before merge. POST a package.json diff to /api/cicd/gatekeeper — Locker reads your #banned_dependencies, #rules, and #architecture vault memories, runs Workers AI evaluation, and returns a structured pass/fail verdict. Drop-in GitHub Actions template included.",
-                delay: 570,
-              },
-              {
-                icon: <IconActivity />,
-                title: "Agent Activity Dashboard",
-                desc: "Timeline of every memory operation by AI client. See which tool (Cursor, Claude Code, Windsurf…) recalled which memories, their similarity scores, and the exact facts injected into context — hallucinations debuggable in seconds.",
-                delay: 600,
-              },
-              {
-                icon: <IconConflict />,
-                title: "Conflict Resolution Hub",
-                desc: "When agents detect contradicting facts (e.g. 'Use Node 18' vs 'Use Node 20'), a navigation badge alerts you. Side-by-side diff view lets you pick the authoritative version and close the recommendation in one click.",
-                delay: 660,
-              },
-              {
-                icon: <IconVersion />,
-                title: "Memory Versioning & Rollback",
-                desc: "Every create, update, and delete is versioned with a full audit trail — actor, timestamp, change reason. Roll back any fact to a previous version. Configurable retention per org.",
-                delay: 720,
-              },
-              {
-                icon: <LockerPadlock size={20} />,
-                title: "JIT Confidential Access",
-                desc: "Memories tagged #confidential are always redacted for agents. Access triggers a Slack notification with an HMAC-signed approval URL. Approval mints a 15-minute scoped JIT token. Audit-logged.",
-                delay: 780,
-              },
-              {
-                icon: <IconActivity />,
-                title: "Stale Memory Tracking",
-                desc: "lastAccessedAt updated on every recall. The Stale sort filter and dashboard banner surface memories that haven't been accessed — clean up aging context before it misleads your agents.",
-                delay: 840,
-              },
-            ].map((f) => (
-              <FeatureCard key={f.title} icon={f.icon} title={f.title} desc={f.desc} delay={f.delay} />
-            ))}
-          </div>
+          <FeatureFilter />
         </Section>
       </div>
 
