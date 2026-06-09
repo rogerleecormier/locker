@@ -438,6 +438,19 @@ export const listNotifications = createServerFn({ method: "GET" })
     return db.select().from(notifications).where(eq(notifications.userId, user.id)).orderBy(desc(notifications.createdAt)).limit(50).all();
   });
 
+export const getUnreadNotificationCount = createServerFn({ method: "GET" })
+  .handler(async ({ context }): Promise<{ count: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env);
+    const rows = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(notifications)
+      .where(and(eq(notifications.userId, user.id), eq(notifications.status, "unread")))
+      .all();
+    return { count: Number(rows[0]?.count ?? 0) };
+  });
+
 const MarkNotificationSchema = z.object({
   id: z.string().uuid().optional(),
   all: z.boolean().optional(),

@@ -4,12 +4,13 @@ import {
   Outlet,
   Scripts,
   useRouter,
+  useNavigate,
   Link,
 } from "@tanstack/react-router";
 import { QueryClientProvider, type QueryClient, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminStatus } from "~/routes/admin";
 import { LockerLogo } from "~/components/LockerLogo";
-import { getUserWorkspaces, getUserPlan, listNotifications, markNotificationRead, getConflicts } from "~/server/memoryFunctions";
+import { getUserWorkspaces, getUserPlan, listNotifications, markNotificationRead, getConflicts, getUnreadNotificationCount } from "~/server/memoryFunctions";
 import { PlanBadge } from "~/components/PaywallGate";
 import type { PlanId } from "~/lib/plans";
 import { type ReactNode, useState, useEffect, useRef } from "react";
@@ -207,6 +208,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
     window.location.href = "/login";
   }
 
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -233,10 +235,18 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
   const { data: notificationsList = [] } = useQuery({
     queryKey: ["notifications"],
     queryFn: () => listNotifications(),
-    refetchInterval: 15000, // poll every 15 seconds
+    refetchInterval: 15000,
+  });
+
+  const { data: unreadCountData } = useQuery({
+    queryKey: ["notifications-unread-count"],
+    queryFn: () => getUnreadNotificationCount(),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 
   const notifications = Array.isArray(notificationsList) ? notificationsList : [];
+  const recentNotifications = notifications.slice(0, 10);
 
   const markReadMut = useMutation({
     mutationFn: (args: { id?: string; all?: boolean }) => markNotificationRead({ data: args }),
@@ -272,7 +282,7 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
   }, [notifications]);
 
   const currentPlan = (planData?.planId ?? "free") as PlanId;
-  const unreadCount = notifications.filter((n) => n.status === "unread").length;
+  const unreadCount = unreadCountData?.count ?? notifications.filter((n) => n.status === "unread").length;
 
   return (
     <>
@@ -403,19 +413,19 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
                   display: "flex",
                   flexDirection: "column"
                 }}>
-                  {notifications.length === 0 ? (
+                  {recentNotifications.length === 0 ? (
                     <div style={{ padding: "24px 12px", textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}>
                       No notifications yet.
                     </div>
                   ) : (
-                    notifications.map((n) => (
+                    recentNotifications.map((n) => (
                       <div
                         key={n.id}
                         onClick={() => {
                           if (n.linkUrl) {
                             markReadMut.mutate({ id: n.id });
                             setShowNotifications(false);
-                            window.location.href = n.linkUrl;
+                            navigate({ to: n.linkUrl });
                           }
                         }}
                         style={{
