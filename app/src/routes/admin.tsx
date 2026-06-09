@@ -1192,6 +1192,39 @@ export const getAdminAuditLogs = createServerFn({ method: "POST" })
     return { logs, total: countResult[0]?.count ?? 0 };
   });
 
+export const getOrgWebhookEvents = createServerFn({ method: "GET" })
+  .inputValidator((data: unknown) => {
+    const d = data as { orgId: string; limit?: number };
+    if (!d.orgId || typeof d.orgId !== "string") throw new Error("orgId is required");
+    const limit = Math.min(Math.max(1, d.limit ?? 50), 500);
+    return { orgId: d.orgId, limit };
+  })
+  .handler(async ({ data, context }): Promise<{ events: Array<{ id: string; source: "github" | "linear"; eventType: string; rawTitle: string | null; processedAt: number; memoryId: string | null; externalId: string; userName: string | null }> }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = drizzle(env.DB, { schema: { webhookEvents, users } });
+
+    const rows = await db
+      .select({
+        id: webhookEvents.id,
+        source: webhookEvents.source,
+        eventType: webhookEvents.eventType,
+        rawTitle: webhookEvents.rawTitle,
+        processedAt: webhookEvents.processedAt,
+        memoryId: webhookEvents.memoryId,
+        externalId: webhookEvents.externalId,
+        userName: users.name,
+      })
+      .from(webhookEvents)
+      .leftJoin(users, eq(webhookEvents.userId, users.id))
+      .where(eq(webhookEvents.projectKey, `org:${data.orgId}`))
+      .orderBy(desc(webhookEvents.processedAt))
+      .limit(data.limit)
+      .all();
+
+    return { events: rows ?? [] };
+  });
+
 export const Route = createFileRoute("/admin")({
   component: AdminGuard,
 });

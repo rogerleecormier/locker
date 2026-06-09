@@ -27,6 +27,7 @@ import {
   deleteOrganization,
   getSystemSettings,
   updateSystemSetting,
+  getOrgWebhookEvents,
   type UserDetails,
   type OrgWithQuota,
   type SystemSettingsData,
@@ -1034,6 +1035,97 @@ function UnifiedActivitySection({ scope }: { scope: "personal" | "org" | "site" 
   );
 }
 
+function OrgWebhookSection() {
+  const orgTeamQuery = useQuery({ queryKey: ["org-webhooks-adminpage"], queryFn: () => listAllOrgsAndQuotas() });
+  const allOrgs = orgTeamQuery.data?.orgs ?? [];
+  const [selectedOrgId, setSelectedOrgId] = useState<string>("");
+  const activeOrgId = selectedOrgId || allOrgs[0]?.id;
+
+  const { data: webhookData, isLoading } = useQuery({
+    queryKey: ["org-webhook-events", activeOrgId],
+    queryFn: () => getOrgWebhookEvents({ data: { orgId: activeOrgId, limit: 50 } }),
+    enabled: !!activeOrgId,
+  });
+
+  const events = webhookData?.events ?? [];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      {/* Configuration */}
+      <div>
+        <h3 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: "bold" }}>Configuration</h3>
+        <WebhookSecretsSection scopeType="org" />
+      </div>
+
+      {/* Event Log */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <h3 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: "bold" }}>Event Log</h3>
+
+        {allOrgs.length > 1 && (
+          <select
+            value={activeOrgId}
+            onChange={(e) => setSelectedOrgId(e.target.value)}
+            style={{ padding: "8px 12px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontWeight: 600, marginBottom: 8, maxWidth: 300 }}
+          >
+            {allOrgs.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {isLoading ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading events…</p>
+        ) : events.length === 0 ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No webhook events processed for this organization yet.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                  <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>Source</th>
+                  <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>Event Type</th>
+                  <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>Title</th>
+                  <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>Processed At</th>
+                  <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>Memory Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((event: any) => (
+                  <tr key={event.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "8px 10px", verticalAlign: "top" }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text)" }}>{event.source === "github" ? "🐙 GitHub" : "⚡ Linear"}</span>
+                    </td>
+                    <td style={{ padding: "8px 10px", verticalAlign: "top" }}>
+                      <span style={{ fontSize: 11, color: "var(--text)" }}>{event.eventType === "pr.merged" ? "PR Merged" : "Ticket Done"}</span>
+                    </td>
+                    <td style={{ padding: "8px 10px", verticalAlign: "top", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }} title={event.rawTitle || undefined}>{event.rawTitle || "—"}</span>
+                    </td>
+                    <td style={{ padding: "8px 10px", verticalAlign: "top" }}>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{new Date(event.processedAt).toLocaleString()}</span>
+                    </td>
+                    <td style={{ padding: "8px 10px", verticalAlign: "top" }}>
+                      {event.memoryId ? (
+                        <a href={`/memories?id=${event.memoryId}`} style={{ fontSize: 10, color: "var(--accent)", fontFamily: "monospace", textDecoration: "none" }} title={event.memoryId}>
+                          {event.memoryId.slice(0, 8)}…
+                        </a>
+                      ) : (
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminPage() {
   const toast = useToast();
   const [activeSection, setActiveSection] = useState<AdminSection>("personal-account");
@@ -1718,8 +1810,8 @@ function AdminPage() {
 
       {/* ── ORG WEBHOOKS ──────────────────────────────────────────────────────── */}
       {activeSection === "org-webhooks" && (
-        <OrgAdminSection title="Org Webhooks" description="Configure webhooks for your organization" icon="🔗">
-          <WebhookSecretsSection scopeType="org" />
+        <OrgAdminSection title="Org Webhooks" description="Configure webhooks and view event logs" icon="🔗">
+          <OrgWebhookSection />
         </OrgAdminSection>
       )}
 
