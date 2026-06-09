@@ -14,6 +14,7 @@ type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 export type MemoryHealthCluster = {
   clusterLabel: string;
   memoryIds: string[];
+  memoryDetails: Array<{ id: string; fact: string; category: string }>;
   reason: string;
   suggestedAction: "merge" | "review" | "delete";
 };
@@ -229,12 +230,23 @@ ${JSON.stringify(memorySummaries, null, 2)}`;
     // Validate cluster member IDs exist in the vault
     const validMemoryIds = new Set(decrypted.map((m) => m.id));
     const clusters: MemoryHealthCluster[] = (parsed.clusters ?? [])
-      .map((c) => ({
-        clusterLabel: String(c.clusterLabel ?? ""),
-        memoryIds: (c.memoryIds ?? []).filter((id) => validMemoryIds.has(id)),
-        reason: String(c.reason ?? ""),
-        suggestedAction: (["merge", "review", "delete"].includes(c.suggestedAction) ? c.suggestedAction : "review") as MemoryHealthCluster["suggestedAction"],
-      }))
+      .map((c) => {
+        const validIds = (c.memoryIds ?? []).filter((id) => validMemoryIds.has(id));
+        return {
+          clusterLabel: String(c.clusterLabel ?? ""),
+          memoryIds: validIds,
+          memoryDetails: validIds.map((id) => {
+            const mem = memoryById.get(id);
+            return {
+              id,
+              fact: mem ? (mem.fact.length > MAX_FACT_CHARS ? mem.fact.slice(0, MAX_FACT_CHARS) + "…" : mem.fact) : "",
+              category: mem?.category ?? "",
+            };
+          }),
+          reason: String(c.reason ?? ""),
+          suggestedAction: (["merge", "review", "delete"].includes(c.suggestedAction) ? c.suggestedAction : "review") as MemoryHealthCluster["suggestedAction"],
+        };
+      })
       .filter((c) => c.memoryIds.length >= 2);
 
     const anomalies: MemoryAnomaly[] = (parsed.anomalies ?? [])

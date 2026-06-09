@@ -77,12 +77,22 @@ function parseAIResponse(raw: string): ParsedAI {
 
 function normalizeCluster(
   c: { clusterLabel: string; memoryIds: string[]; reason: string; suggestedAction: string },
-  validIds: Set<string>
+  validIds: Set<string>,
+  memoryById?: Map<string, RawMemory>
 ) {
   const validActions = ["merge", "review", "delete"];
+  const validMemoryIds = (c.memoryIds ?? []).filter((id) => validIds.has(id));
   return {
     clusterLabel: String(c.clusterLabel ?? ""),
-    memoryIds: (c.memoryIds ?? []).filter((id) => validIds.has(id)),
+    memoryIds: validMemoryIds,
+    memoryDetails: validMemoryIds.map((id) => {
+      const mem = memoryById?.get(id);
+      return {
+        id,
+        fact: mem ? (mem.fact.length > MAX_FACT_CHARS ? mem.fact.slice(0, MAX_FACT_CHARS) + "…" : mem.fact) : "",
+        category: mem?.category ?? "",
+      };
+    }),
     reason: String(c.reason ?? ""),
     suggestedAction: validActions.includes(c.suggestedAction)
       ? (c.suggestedAction as "merge" | "review" | "delete")
@@ -256,30 +266,41 @@ describe("parseAIResponse", () => {
 
 describe("normalizeCluster", () => {
   const validIds = new Set(["id1", "id2", "id3"]);
+  const mem1: RawMemory = { id: "id1", fact: "test fact", category: "rules", tags: "", timestamp: 0, lastAccessedAt: null };
+  const memoryById = new Map([["id1", mem1]]);
 
   it("filters out memory IDs not in the valid set", () => {
     const cluster = { clusterLabel: "Test", memoryIds: ["id1", "unknown-id"], reason: "overlap", suggestedAction: "merge" };
-    const result = normalizeCluster(cluster, validIds);
+    const result = normalizeCluster(cluster, validIds, memoryById);
     expect(result.memoryIds).toEqual(["id1"]);
   });
 
   it("accepts merge, review, delete as valid suggestedActions", () => {
     for (const action of ["merge", "review", "delete"] as const) {
       const cluster = { clusterLabel: "T", memoryIds: ["id1"], reason: "r", suggestedAction: action };
-      expect(normalizeCluster(cluster, validIds).suggestedAction).toBe(action);
+      expect(normalizeCluster(cluster, validIds, memoryById).suggestedAction).toBe(action);
     }
   });
 
   it("falls back to 'review' for unknown suggestedAction values", () => {
     const cluster = { clusterLabel: "T", memoryIds: ["id1"], reason: "r", suggestedAction: "archive" };
-    expect(normalizeCluster(cluster, validIds).suggestedAction).toBe("review");
+    expect(normalizeCluster(cluster, validIds, memoryById).suggestedAction).toBe("review");
   });
 
   it("converts undefined labels/reasons to empty strings", () => {
     const cluster = { clusterLabel: undefined as any, memoryIds: ["id1"], reason: undefined as any, suggestedAction: "merge" };
-    const result = normalizeCluster(cluster, validIds);
+    const result = normalizeCluster(cluster, validIds, memoryById);
     expect(result.clusterLabel).toBe("");
     expect(result.reason).toBe("");
+  });
+
+  it("includes memoryDetails with fact and category for each memory ID", () => {
+    const cluster = { clusterLabel: "Test", memoryIds: ["id1"], reason: "overlap", suggestedAction: "merge" };
+    const result = normalizeCluster(cluster, validIds, memoryById);
+    expect(result.memoryDetails).toHaveLength(1);
+    expect(result.memoryDetails[0].id).toBe("id1");
+    expect(result.memoryDetails[0].fact).toBe("test fact");
+    expect(result.memoryDetails[0].category).toBe("rules");
   });
 });
 
@@ -430,7 +451,7 @@ describe("healthReportFromParsed — end-to-end assembly", () => {
     const aiStaleIds = new Set(parsed.staleIds ?? []);
 
     const clusters = (parsed.clusters ?? [])
-      .map((c) => normalizeCluster(c, validMemoryIds))
+      .map((c) => normalizeCluster(c, validMemoryIds, memoryById))
       .filter((c) => c.memoryIds.length >= 2);
 
     const staleRecords = computeStaleRecords(decrypted, aiStaleIds, analysisTimestamp);

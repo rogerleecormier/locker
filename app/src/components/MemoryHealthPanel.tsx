@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { runMemoryHealthCheck } from "~/server/memoryHealth";
+import { mergeMemories } from "~/server/memory/crud";
 import type { MemoryHealthReport, MemoryHealthCluster, StaleMemoryRecord, MemoryAnomaly } from "~/server/memoryHealth";
 import { PaywallGate } from "~/components/PaywallGate";
+import { useToast } from "~/components/ui/toast";
 import type { PlanId } from "~/lib/plans";
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
@@ -95,9 +97,38 @@ const ANOMALY_COLORS: Record<MemoryAnomaly["anomalyType"], string> = {
   malformed: "#ec4899",
 };
 
-function ClusterCard({ cluster }: { cluster: MemoryHealthCluster }) {
+function ClusterCard({ cluster, projectKey }: { cluster: MemoryHealthCluster; projectKey: string }) {
   const [expanded, setExpanded] = useState(false);
+  const [merging, setMerging] = useState(false);
   const colors = ACTION_COLORS[cluster.suggestedAction];
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
+  const mergeMutation = useMutation({
+    mutationFn: () =>
+      mergeMemories({
+        data: {
+          memoryIds: cluster.memoryIds,
+          projectKey: projectKey === "personal" ? undefined : projectKey,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Memories merged successfully");
+      queryClient.invalidateQueries({ queryKey: ["memoryHealth"] });
+      setMerging(false);
+    },
+    onError: (error) => {
+      toast.error(`Merge failed: ${(error as any)?.message}`);
+      setMerging(false);
+    },
+  });
+
+  const handleMerge = () => {
+    if (cluster.suggestedAction === "merge") {
+      setMerging(true);
+      mergeMutation.mutate();
+    }
+  };
 
   return (
     <div
@@ -156,26 +187,97 @@ function ClusterCard({ cluster }: { cluster: MemoryHealthCluster }) {
       </p>
 
       {expanded && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)" }}>
-            Memory IDs
-          </span>
-          {cluster.memoryIds.map((id) => (
-            <code
-              key={id}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {cluster.memoryDetails.map((detail) => (
+              <div
+                key={detail.id}
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <code
+                    style={{
+                      fontSize: 9,
+                      color: "var(--text-muted)",
+                      fontFamily: "monospace",
+                      backgroundColor: "var(--surface2)",
+                      padding: "2px 4px",
+                      borderRadius: 4,
+                    }}
+                  >
+                    {detail.id.slice(0, 8)}...
+                  </code>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {detail.category}
+                  </span>
+                </div>
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text)",
+                    margin: 0,
+                    lineHeight: 1.4,
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
+                  {detail.fact}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {cluster.suggestedAction === "merge" && (
+            <button
+              type="button"
+              onClick={handleMerge}
+              disabled={merging}
               style={{
                 fontSize: 11,
-                color: "var(--text-muted)",
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
+                fontWeight: 600,
+                color: "#fff",
+                background: colors.text,
+                border: "none",
+                padding: "6px 12px",
                 borderRadius: 6,
-                padding: "2px 8px",
-                fontFamily: "monospace",
+                cursor: merging ? "not-allowed" : "pointer",
+                opacity: merging ? 0.6 : 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
               }}
             >
-              {id}
-            </code>
-          ))}
+              {merging ? (
+                <>
+                  <IconSpinner />
+                  Merging…
+                </>
+              ) : (
+                <>
+                  <IconMerge />
+                  Merge Now
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 
@@ -193,7 +295,7 @@ function ClusterCard({ cluster }: { cluster: MemoryHealthCluster }) {
           fontWeight: 600,
         }}
       >
-        {expanded ? "Hide IDs ▲" : "Show IDs ▼"}
+        {expanded ? "Hide Details ▲" : "Show Details ▼"}
       </button>
     </div>
   );
@@ -247,7 +349,7 @@ function StaleCard({ record }: { record: StaleMemoryRecord }) {
       >
         {record.fact}
       </p>
-      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>{record.memoryId}</span>
+      <span style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "monospace" }}>{record.memoryId.slice(0, 8)}...</span>
     </div>
   );
 }
@@ -269,21 +371,35 @@ function AnomalyCard({ anomaly }: { anomaly: MemoryAnomaly }) {
         gap: 5,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ color }}>
-          <IconWarning />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ color }}>
+            <IconWarning />
+          </div>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.07em",
+              color,
+            }}
+          >
+            {label}
+          </span>
         </div>
-        <span
+        <code
           style={{
-            fontSize: 10,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.07em",
-            color,
+            fontSize: 8,
+            color: "var(--text-muted)",
+            fontFamily: "monospace",
+            backgroundColor: "var(--surface2)",
+            padding: "2px 4px",
+            borderRadius: 4,
           }}
         >
-          {label}
-        </span>
+          {anomaly.memoryId.slice(0, 6)}...
+        </code>
       </div>
       <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
         {anomaly.detail}
@@ -548,7 +664,7 @@ function HealthCheckContent({ projectKey, userPlan }: Props) {
           <SectionHeader title="Duplicate Clusters" count={report.clusters.length} icon={<IconMerge />} />
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {report.clusters.map((cluster, i) => (
-              <ClusterCard key={`${cluster.clusterLabel}-${i}`} cluster={cluster} />
+              <ClusterCard key={`${cluster.clusterLabel}-${i}`} cluster={cluster} projectKey={projectKey} />
             ))}
           </div>
         </div>

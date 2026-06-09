@@ -2445,3 +2445,127 @@ export const deleteWebhookSecret = createServerFn({ method: "POST" })
 
     return { ok: true, source: data.source, scopeKey: data.scopeKey ?? null };
   });
+
+// ── Merge Memories ────────────────────────────────────────────────────────────
+
+const MergeMemoriesSchema = z.object({
+  memoryIds: z.array(z.string().uuid()).min(2, "Must provide at least 2 memory IDs"),
+  projectKey: zProjectKeyFn,
+}).strict();
+
+export const mergeMemories = createServerFn({ method: "POST" })
+  .inputValidator((data) => MergeMemoriesSchema.parse(data))
+  .handler(async ({ data, context }): Promise<{ id: string; fact: string }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env) as any;
+
+    // Verify access to the vault scope
+    const { scopeType, scopeId } = parseScope(data.projectKey);
+    const { allowed } = await verifyVaultAccess(db, user.id, scopeType, scopeId);
+    if (!allowed) {
+      throw new Error(`Forbidden: no access to vault scope '${data.projectKey ?? "personal"}'`);
+    }
+
+    // Fetch the memories to be merged
+    const whereClause = scopeType === "personal"
+      ? and(eq(memories.userId, user.id), eq(memories.scopeType, "personal"), inArray(memories.id, data.memoryIds))
+      : and(eq(memories.scopeType, scopeType), eq(memories.scopeId, scopeId!), inArray(memories.id, data.memoryIds));
+
+    const rows = await db.select().from(memories).where(whereClause).all();
+
+    if (rows.length !== data.memoryIds.length) {
+      throw new Error("Some memory IDs not found or access denied");
+    }
+
+    // Decrypt all facts for merging
+    const { decryptMemories } = await import("~/server/memory/_shared");
+    const decrypted = await decryptMemories(rows, env.DB, env.ENCRYPTION_KEY);
+
+    if (decrypted.length < 2) {
+      throw new Error("Need at least 2 memories to merge");
+    }
+
+    // Use the first memory as the primary (to inherit metadata like tags, category)
+    const primary = decrypted[0];
+    const secondary = decrypted.slice(1);
+
+    // Validate that primary has actual values
+    if (!primary.userId || !primary.category) {
+      throw new Error("Invalid primary memory data for merge");
+    }
+
+    // Debug: log the primary memory structure
+    console.log("Primary memory for merge:", {
+      id: primary.id,
+      userId: primary.userId,
+      category: primary.category,
+      tags: typeof primary.tags,
+      tagsValue: primary.tags,
+    });
+
+    // Build a prompt to generate a merged fact
+    const factsToMerge = decrypted.map((m) => m.fact).join("\n\n---\n\n");
+
+    const mergePrompt = `You are a knowledge consolidation assistant. Analyze the following related memory facts and create a single, comprehensive merged memory that combines all the information without redundancy.
+
+Original memories:
+${factsToMerge}
+
+Return ONLY the merged fact text. Be concise, clear, and preserve all unique information while eliminating duplicates. Do not include any other text or explanation.`;
+
+    let mergedFact: string;
+    try {
+      const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+        messages: [{ role: "user", content: mergePrompt }],
+        max_tokens: 2048,
+      });
+      const r = result as { response?: string; result?: { response?: string } };
+      mergedFact = (r.response ?? r.result?.response ?? "").trim();
+      if (!mergedFact) {
+        throw new Error("AI returned empty response");
+      }
+    } catch (err) {
+      throw new Error(`Memory merge failed: ${String(err)}`);
+    }
+
+    // Encrypt the merged fact
+    const vaultId = scopeType === "personal" ? `personal:${user.id}` : `${scopeType}:${scopeId}`;
+    const encKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+    const encryptedFact = await encryptFact(mergedFact, encKey);
+
+    // Create the merged memory record (reusing primary memory's properties)
+    const timestamp = Date.now();
+    const mergedId = crypto.randomUUID();
+
+    // Insert the merged memory without orgId (it may be null for personal vaults)
+    await db.insert(memories).values({
+      id: mergedId,
+      userId: user.id,
+      fact: encryptedFact,
+      category: primary.category,
+      tags: primary.tags || "",
+      timestamp,
+      isActive: true,
+      projectKey: primary.projectKey ?? null,
+      scopeType: primary.scopeType,
+      scopeId: primary.scopeId ?? null,
+      isLocked: false,
+      authorityType: primary.authorityType || "contributed",
+      lastAccessedAt: timestamp,
+      isQuarantined: false,
+    }).run();
+
+    // Soft-delete the secondary memories
+    for (const mem of secondary) {
+      await db.update(memories).set({ isActive: false }).where(eq(memories.id, mem.id)).run();
+    }
+
+    // Delete graph edges and prune for merged memories
+    await pruneGraphForDeletedMemories(db, secondary.map((m) => m.id));
+
+    return {
+      id: mergedId,
+      fact: mergedFact,
+    };
+  });
