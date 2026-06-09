@@ -177,6 +177,157 @@ function ConflictActions({
   );
 }
 
+function StaleSection({
+  staleConflicts,
+  onTouchMemory,
+  onArchiveMemory,
+  onSnooze,
+}: {
+  staleConflicts: MemoryConflict[];
+  onTouchMemory: (memoryId: string, conflictId: string) => void;
+  onArchiveMemory: (memoryId: string) => void;
+  onSnooze: (conflictId: string, days: number) => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showBulkSnooze, setShowBulkSnooze] = useState(false);
+
+  const allIds = staleConflicts.map((c) => c.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
+  const someSelected = selected.size > 0;
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(allIds));
+  }
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function getSelected(): Array<{ conflictId: string; memoryId: string }> {
+    return staleConflicts
+      .filter((c) => selected.has(c.id))
+      .map((c) => ({ conflictId: c.id, memoryId: (JSON.parse(c.memoryIds) as string[])[0] }));
+  }
+
+  function bulkLooksGood() {
+    getSelected().forEach(({ memoryId, conflictId }) => onTouchMemory(memoryId, conflictId));
+    setSelected(new Set());
+  }
+
+  function bulkArchive() {
+    getSelected().forEach(({ memoryId }) => onArchiveMemory(memoryId));
+    setSelected(new Set());
+  }
+
+  function bulkSnooze(days: number) {
+    getSelected().forEach(({ conflictId }) => onSnooze(conflictId, days));
+    setSelected(new Set());
+    setShowBulkSnooze(false);
+  }
+
+  return (
+    <section>
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <h3 className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2">
+          <span style={{ display: "inline-flex", width: 22, height: 22, borderRadius: 6, background: "rgba(245,158,11,0.12)", alignItems: "center", justifyContent: "center", color: "#f59e0b", fontSize: 11, fontWeight: "bold", flexShrink: 0 }}>⏱</span>
+          Stale
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">{staleConflicts.length}</span>
+        </h3>
+      </div>
+      <p className="text-xs text-text-muted mb-3 ml-8">Never recalled or not accessed in 30+ days.</p>
+
+      {staleConflicts.length === 0 ? (
+        <div className="py-8 text-center text-text-muted text-sm bg-surface border border-border rounded-lg">
+          No stale memories
+        </div>
+      ) : (
+        <>
+          {/* Select-all + bulk toolbar */}
+          <div className="flex items-center gap-3 mb-2 px-1">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                onChange={toggleAll}
+                className="w-4 h-4 rounded border-border accent-amber-500 cursor-pointer"
+              />
+              <span className="text-xs text-text-muted font-medium">
+                {someSelected ? `${selected.size} selected` : "Select all"}
+              </span>
+            </label>
+            {someSelected && (
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  onClick={bulkLooksGood}
+                  className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-emerald-500/30 bg-emerald-500/5 text-emerald-600 hover:bg-emerald-500/15 cursor-pointer transition-colors whitespace-nowrap"
+                >
+                  Looks Good
+                </button>
+                <button
+                  onClick={bulkArchive}
+                  className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-600 hover:bg-amber-500/15 cursor-pointer transition-colors whitespace-nowrap"
+                >
+                  Archive
+                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowBulkSnooze((s) => !s)}
+                    className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-border bg-surface2 text-text-muted hover:text-text hover:bg-surface cursor-pointer transition-colors whitespace-nowrap"
+                  >
+                    Snooze
+                  </button>
+                  {showBulkSnooze && (
+                    <SnoozePicker onSnooze={bulkSnooze} onClose={() => setShowBulkSnooze(false)} />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {staleConflicts.map((conflict) => {
+              const memoryId = (JSON.parse(conflict.memoryIds) as string[])[0];
+              const isChecked = selected.has(conflict.id);
+              return (
+                <div
+                  key={conflict.id}
+                  className={`p-4 bg-surface border rounded-lg transition-colors flex items-start gap-3 ${isChecked ? "border-amber-500/40 bg-amber-500/3" : "border-border hover:border-amber-500/30"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggle(conflict.id)}
+                    className="mt-0.5 w-4 h-4 rounded border-border accent-amber-500 cursor-pointer shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-text line-clamp-3 mb-1">{conflict.label}</p>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <span className="text-[10px] text-amber-600 font-semibold">{conflict.reason}</span>
+                      <span className="text-[9px] text-text-muted font-mono">detected {ageDays(conflict.detectedAt)}</span>
+                    </div>
+                  </div>
+                  <StaleActions
+                    conflictId={conflict.id}
+                    memoryId={memoryId}
+                    onTouchMemory={onTouchMemory}
+                    onArchive={onArchiveMemory}
+                    onSnooze={(days) => onSnooze(conflict.id, days)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function VaultHealthTab({
   projectKey,
   userPlan,
@@ -318,46 +469,12 @@ export function VaultHealthTab({
           </section>
 
           {/* STALE */}
-          <section>
-            <div className="mb-3">
-              <h3 className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2">
-                <span style={{ display: "inline-flex", width: 22, height: 22, borderRadius: 6, background: "rgba(245,158,11,0.12)", alignItems: "center", justifyContent: "center", color: "#f59e0b", fontSize: 11, fontWeight: "bold", flexShrink: 0 }}>⏱</span>
-                Stale
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">{staleConflicts.length}</span>
-              </h3>
-              <p className="text-xs text-text-muted mt-1 ml-8">Never recalled or not accessed in 30+ days.</p>
-            </div>
-            {staleConflicts.length === 0 ? (
-              <div className="py-8 text-center text-text-muted text-sm bg-surface border border-border rounded-lg">
-                No stale memories
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {staleConflicts.map((conflict) => {
-                  const memIds: string[] = JSON.parse(conflict.memoryIds);
-                  const memoryId = memIds[0];
-                  return (
-                    <div key={conflict.id} className="p-4 bg-surface border border-border rounded-lg hover:border-amber-500/30 transition-colors flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-text line-clamp-3 mb-2">{conflict.label}</p>
-                        <div className="flex gap-2 items-center flex-wrap">
-                          <span className="text-[10px] text-amber-600 font-semibold">{conflict.reason}</span>
-                          <span className="text-[9px] text-text-muted font-mono">detected {ageDays(conflict.detectedAt)}</span>
-                        </div>
-                      </div>
-                      <StaleActions
-                        conflictId={conflict.id}
-                        memoryId={memoryId}
-                        onTouchMemory={onTouchMemory}
-                        onArchive={onArchiveMemory}
-                        onSnooze={(days) => onSnooze(conflict.id, days)}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
+          <StaleSection
+            staleConflicts={staleConflicts}
+            onTouchMemory={onTouchMemory}
+            onArchiveMemory={onArchiveMemory}
+            onSnooze={onSnooze}
+          />
 
           {/* QUARANTINED — from DB conflicts + live quarantined list */}
           <section>
