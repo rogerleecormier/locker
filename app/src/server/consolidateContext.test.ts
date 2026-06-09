@@ -22,8 +22,11 @@ type PackableMemory = {
   authorityType?: string;
 };
 
+import type { MockInstance } from "vitest";
+
+type AiRunFn = (...args: any[]) => Promise<unknown>;
 type FakeAi = {
-  run: ReturnType<typeof vi.fn>;
+  run: MockInstance<AiRunFn> & AiRunFn;
 };
 
 // Mirror of the production extractText helper

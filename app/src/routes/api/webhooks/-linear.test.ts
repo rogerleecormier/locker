@@ -46,7 +46,7 @@ describe("Linear webhook route (POST /api/webhooks/linear)", () => {
   });
 
   it("calls handleWebhookRequest with 'linear' source", async () => {
-    const { default: handler } = await import("./linear");
+    const { default: handler } = await import("./-linear");
     const request = new Request("https://example.com/api/webhooks/linear", {
       method: "POST",
       headers: {
@@ -58,13 +58,13 @@ describe("Linear webhook route (POST /api/webhooks/linear)", () => {
     });
 
     const response = await handler.POST(request, { env: mockEnv });
-    const result = await response?.json();
+    const result = await response?.json() as any;
     expect(response?.status).toBe(200);
     expect(result?.ok).toBe(true);
   });
 
   it("rejects requests without Authorization header", async () => {
-    const { default: handler } = await import("./linear");
+    const { default: handler } = await import("./-linear");
     const request = new Request("https://example.com/api/webhooks/linear", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -76,7 +76,7 @@ describe("Linear webhook route (POST /api/webhooks/linear)", () => {
   });
 
   it("rejects requests without x-linear-signature header", async () => {
-    const { default: handler } = await import("./linear");
+    const { default: handler } = await import("./-linear");
     const request = new Request("https://example.com/api/webhooks/linear", {
       method: "POST",
       headers: {
@@ -91,7 +91,7 @@ describe("Linear webhook route (POST /api/webhooks/linear)", () => {
   });
 
   it("handles valid done ticket payload", async () => {
-    const { default: handler } = await import("./linear");
+    const { default: handler } = await import("./-linear");
     const payload = {
       action: "update",
       type: "Issue",
@@ -118,7 +118,7 @@ describe("Linear webhook route (POST /api/webhooks/linear)", () => {
   });
 
   it("handles payload with unicode title", async () => {
-    const { default: handler } = await import("./linear");
+    const { default: handler } = await import("./-linear");
     const payload = {
       action: "update",
       type: "Issue",
@@ -145,7 +145,7 @@ describe("Linear webhook route (POST /api/webhooks/linear)", () => {
   });
 
   it("handles payload with missing description", async () => {
-    const { default: handler } = await import("./linear");
+    const { default: handler } = await import("./-linear");
     const payload = {
       action: "update",
       type: "Issue",
@@ -171,7 +171,7 @@ describe("Linear webhook route (POST /api/webhooks/linear)", () => {
   });
 
   it("exports handler with POST method", async () => {
-    const { default: handler } = await import("./linear");
+    const { default: handler } = await import("./-linear");
     expect(handler).toBeDefined();
     expect(handler.POST).toBeDefined();
     expect(typeof handler.POST).toBe("function");

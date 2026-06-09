@@ -415,7 +415,7 @@ function HealthCheckContent({ projectKey, userPlan }: Props) {
 
           {report && (
             <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 8 }}>
-              <div style={{ display: "flex", align: "center", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 28, fontWeight: 800, color: scoreColor, letterSpacing: "-0.03em", lineHeight: 1 }}>
                   {healthLabel}
                 </span>

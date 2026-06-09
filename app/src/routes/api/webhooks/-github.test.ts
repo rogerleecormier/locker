@@ -46,7 +46,7 @@ describe("GitHub webhook route (POST /api/webhooks/github)", () => {
   });
 
   it("calls handleWebhookRequest with 'github' source", async () => {
-    const { default: handler } = await import("./github");
+    const { default: handler } = await import("./-github");
     const request = new Request("https://example.com/api/webhooks/github", {
       method: "POST",
       headers: {
@@ -58,13 +58,13 @@ describe("GitHub webhook route (POST /api/webhooks/github)", () => {
     });
 
     const response = await handler.POST(request, { env: mockEnv });
-    const result = await response?.json();
+    const result = await response?.json() as any;
     expect(response?.status).toBe(200);
     expect(result?.ok).toBe(true);
   });
 
   it("rejects requests without Authorization header", async () => {
-    const { default: handler } = await import("./github");
+    const { default: handler } = await import("./-github");
     const request = new Request("https://example.com/api/webhooks/github", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -76,7 +76,7 @@ describe("GitHub webhook route (POST /api/webhooks/github)", () => {
   });
 
   it("rejects requests without x-hub-signature-256 header", async () => {
-    const { default: handler } = await import("./github");
+    const { default: handler } = await import("./-github");
     const request = new Request("https://example.com/api/webhooks/github", {
       method: "POST",
       headers: {
@@ -91,7 +91,7 @@ describe("GitHub webhook route (POST /api/webhooks/github)", () => {
   });
 
   it("handles valid merged PR payload", async () => {
-    const { default: handler } = await import("./github");
+    const { default: handler } = await import("./-github");
     const payload = {
       action: "closed",
       pull_request: {
@@ -119,7 +119,7 @@ describe("GitHub webhook route (POST /api/webhooks/github)", () => {
   });
 
   it("exports handler with POST method", async () => {
-    const { default: handler } = await import("./github");
+    const { default: handler } = await import("./-github");
     expect(handler).toBeDefined();
     expect(handler.POST).toBeDefined();
     expect(typeof handler.POST).toBe("function");

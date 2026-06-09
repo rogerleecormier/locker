@@ -66,9 +66,12 @@ describe("deriveUnreadCount (getUnreadNotificationCount core logic)", () => {
 
 function makeUnreadCountDb(unreadRows: Array<{ count: number }>) {
   return {
-    select: () => ({
-      from: () => ({
-        where: () => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    select: (..._: any[]) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      from: (..._: any[]) => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        where: (..._: any[]) => ({
           all: () => Promise.resolve(unreadRows),
         }),
       }),
