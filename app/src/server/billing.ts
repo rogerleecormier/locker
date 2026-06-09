@@ -8,9 +8,11 @@ import {
   organizations,
   organizationMembers,
   orgQuotas,
+  vaults,
   users,
   stripeEvents,
 } from "~/db/schema";
+import { getOrCreateVaultKey } from "./crypto";
 import type { CloudflareEnv } from "~/types/cloudflare";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -577,4 +579,410 @@ export async function updateSubscriptionSeats(db: any, env: CloudflareEnv, orgId
     console.error(`[stripe-sync] Failed to sync subscription seats for org ${orgId}: ${err.message}`);
   }
 }
+
+// ── Managed-Org Provisioning ─────────────────────────────────────────────────
+
+export type TenantData = {
+  orgId: string;
+  orgName: string;
+  ownerUserId: string;
+  plan?: "business" | "enterprise";
+  billingCustomerId?: string;
+  billingSubscriptionId?: string;
+};
+
+/**
+ * Provisions a fully-isolated managed org tenant on Locker Cloud.
+ *
+ * Called on successful checkout (Stripe or Paddle). Idempotent: safe to retry
+ * if the request is replayed.
+ *
+ * What it does in a single logical transaction:
+ *  1. Upserts the org row (plan, billing IDs).
+ *  2. Ensures the org owner is a member with role "owner".
+ *  3. Upserts org quotas for the chosen plan.
+ *  4. Calls getOrCreateVaultKey to pre-warm the DEK in vault_keys so the
+ *     first memory write does not hit a cold path.
+ *  5. Records a `vaults` row linking the org to its vault_id and KEK reference.
+ */
+export async function provisionManagedOrg(
+  env: CloudflareEnv,
+  tenant: TenantData,
+): Promise<{ orgId: string; vaultId: string }> {
+  const db = drizzle(env.DB, {
+    schema: { organizations, organizationMembers, orgQuotas, vaults },
+  });
+
+  const plan = tenant.plan ?? "business";
+  const now = Date.now();
+  const vaultId = `org:${tenant.orgId}`;
+
+  // 1. Upsert the organization row.
+  const existingOrg = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.id, tenant.orgId))
+    .limit(1)
+    .all();
+
+  if (existingOrg.length === 0) {
+    await db.insert(organizations).values({
+      id: tenant.orgId,
+      name: tenant.orgName,
+      plan,
+      billingCustomerId: tenant.billingCustomerId ?? null,
+      billingSubscriptionId: tenant.billingSubscriptionId ?? null,
+      planActivatedAt: now,
+      createdAt: now,
+    });
+  } else {
+    await db
+      .update(organizations)
+      .set({
+        plan,
+        billingCustomerId: tenant.billingCustomerId ?? undefined,
+        billingSubscriptionId: tenant.billingSubscriptionId ?? undefined,
+        planActivatedAt: now,
+      })
+      .where(eq(organizations.id, tenant.orgId));
+  }
+
+  // 2. Ensure the owner is a member.
+  const existingMember = await db
+    .select({ userId: organizationMembers.userId })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.orgId, tenant.orgId),
+        eq(organizationMembers.userId, tenant.ownerUserId),
+      ),
+    )
+    .limit(1)
+    .all();
+
+  if (existingMember.length === 0) {
+    await db.insert(organizationMembers).values({
+      orgId: tenant.orgId,
+      userId: tenant.ownerUserId,
+      role: "owner",
+      joinedAt: now,
+    });
+  }
+
+  // 3. Upsert org quotas.
+  const quotaValues =
+    plan === "enterprise"
+      ? { monthlyMemories: 500000, monthlyRecalls: 1000000, monthlyCommits: 200000 }
+      : { monthlyMemories: 10000, monthlyRecalls: 50000, monthlyCommits: 10000 };
+
+  const existingQuota = await db
+    .select({ orgId: orgQuotas.orgId })
+    .from(orgQuotas)
+    .where(eq(orgQuotas.orgId, tenant.orgId))
+    .limit(1)
+    .all();
+
+  if (existingQuota.length === 0) {
+    await db.insert(orgQuotas).values({ orgId: tenant.orgId, plan, ...quotaValues });
+  } else {
+    await db.update(orgQuotas).set({ plan, ...quotaValues }).where(eq(orgQuotas.orgId, tenant.orgId));
+  }
+
+  // 4. Pre-warm the vault DEK so the first memory write is not cold.
+  //    getOrCreateVaultKey is idempotent (ON CONFLICT DO NOTHING).
+  await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+
+  // 5. Record the vaults row.
+  const masterKekRef = `kek:${vaultId}`;
+  const existingVault = await db
+    .select({ id: vaults.id })
+    .from(vaults)
+    .where(eq(vaults.orgId, tenant.orgId))
+    .limit(1)
+    .all();
+
+  if (existingVault.length === 0) {
+    const { randomUUID } = await import("node:crypto");
+    await db.insert(vaults).values({
+      id: randomUUID(),
+      orgId: tenant.orgId,
+      vaultId,
+      masterKekRef,
+      provisionedAt: now,
+      status: "active",
+    });
+  }
+
+  console.log(`[provision] Managed org ${tenant.orgId} (${plan}) provisioned. vault=${vaultId}`);
+  return { orgId: tenant.orgId, vaultId };
+}
+
+// ── Paddle Webhook Handler ───────────────────────────────────────────────────
+
+/**
+ * Verifies a Paddle webhook notification signature and dispatches to the
+ * appropriate billing action.
+ *
+ * Paddle uses HMAC-SHA256 with the raw body and the notification secret.
+ * The signature arrives in the `Paddle-Signature` header as:
+ *   ts=<epoch>;<h1=<hex>>
+ *
+ * Reference: https://developer.paddle.com/webhooks/signature-verification
+ */
+export async function handlePaddleWebhook(request: Request, env: CloudflareEnv): Promise<Response> {
+  if (!env.PADDLE_WEBHOOK_SECRET) {
+    console.error("[paddle-webhook] PADDLE_WEBHOOK_SECRET not configured");
+    return new Response("Paddle webhook secret not configured", { status: 500 });
+  }
+
+  const bodyText = await request.text();
+  const signatureHeader = request.headers.get("Paddle-Signature") ?? "";
+
+  // Parse ts=<epoch>;h1=<hex> format.
+  const parts = Object.fromEntries(
+    signatureHeader.split(";").map((p) => p.split("=") as [string, string]),
+  );
+  const ts = parts["ts"];
+  const h1 = parts["h1"];
+
+  if (!ts || !h1) {
+    return new Response("Missing or malformed Paddle-Signature header", { status: 400 });
+  }
+
+  // Verify signature: HMAC-SHA256(secret, "<ts>:<body>")
+  const enc = new TextEncoder();
+  const keyBytes = enc.encode(env.PADDLE_WEBHOOK_SECRET);
+  const msgBytes = enc.encode(`${ts}:${bodyText}`);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sigBytes = new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, msgBytes));
+  const computed = Array.from(sigBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  if (!timingSafeEqual(computed, h1)) {
+    console.error("[paddle-webhook] Signature mismatch");
+    return new Response("Paddle webhook signature mismatch", { status: 401 });
+  }
+
+  // Replay-attack guard: reject events older than 5 minutes.
+  const tsMs = Number(ts) * 1000;
+  if (Math.abs(Date.now() - tsMs) > 5 * 60 * 1000) {
+    return new Response("Paddle webhook timestamp too old", { status: 400 });
+  }
+
+  let event: PaddleEvent;
+  try {
+    event = JSON.parse(bodyText) as PaddleEvent;
+  } catch {
+    return new Response("Invalid JSON body", { status: 400 });
+  }
+
+  const db = drizzle(env.DB, { schema: { organizations, orgQuotas, users, stripeEvents } });
+
+  // Idempotency: paddle event ids are stored in stripe_events (same idempotency table).
+  const eventId = event.event_id;
+  if (eventId) {
+    const existing = await db
+      .select({ id: stripeEvents.id })
+      .from(stripeEvents)
+      .where(eq(stripeEvents.id, eventId))
+      .limit(1)
+      .all();
+    if (existing.length > 0) {
+      console.log(`[paddle-webhook] event already processed: ${eventId}`);
+      return new Response("OK", { status: 200 });
+    }
+  }
+
+  console.log(`[paddle-webhook] received event: ${event.event_type} id: ${eventId}`);
+
+  try {
+    switch (event.event_type) {
+      case "transaction.completed": {
+        const txn = event.data as PaddleTransaction;
+        const customData = txn.custom_data ?? {};
+        const userId = customData.userId;
+        const orgName = customData.orgName ?? "My Organization";
+        const existingOrgId = customData.orgId;
+        const plan = (customData.plan as "business" | "enterprise") ?? "business";
+
+        if (!userId) {
+          console.error("[paddle-webhook] transaction.completed missing userId in custom_data");
+          return new Response("Missing userId in custom_data", { status: 400 });
+        }
+
+        // Verify user exists.
+        if (!(await userExists(db, userId))) {
+          console.error(`[paddle-webhook] userId does not exist: ${userId}`);
+          return new Response("Invalid userId", { status: 400 });
+        }
+
+        const orgId = existingOrgId ?? crypto.randomUUID();
+        const billingCustomerId = txn.customer_id;
+        const billingSubscriptionId = txn.subscription_id;
+
+        await provisionManagedOrg(env, {
+          orgId,
+          orgName,
+          ownerUserId: userId,
+          plan,
+          billingCustomerId,
+          billingSubscriptionId,
+        });
+
+        // Also upgrade the user's personal plan row.
+        await upsertUserPlan(db, userId, plan, billingCustomerId);
+        break;
+      }
+
+      case "subscription.activated":
+      case "subscription.updated": {
+        const sub = event.data as PaddleSubscription;
+        const customData = sub.custom_data ?? {};
+        const userId = customData.userId;
+        const orgId = customData.orgId;
+        const status = sub.status;
+        const plan = (status === "active" || status === "trialing") ? "business" : "free";
+
+        if (!userId) break;
+        if (!(await userExists(db, userId))) break;
+
+        await upsertUserPlan(db, userId, plan, sub.customer_id);
+
+        if (orgId && (await orgExists(db, orgId))) {
+          await db
+            .update(organizations)
+            .set({ plan, billingSubscriptionId: sub.id, planActivatedAt: plan === "business" ? Date.now() : null })
+            .where(eq(organizations.id, orgId));
+
+          await db.update(orgQuotas).set({
+            plan,
+            monthlyMemories: plan === "business" ? 10000 : 100,
+            monthlyRecalls: plan === "business" ? 50000 : 1000,
+            monthlyCommits: plan === "business" ? 10000 : 500,
+          }).where(eq(orgQuotas.orgId, orgId));
+        }
+        break;
+      }
+
+      case "subscription.canceled": {
+        const sub = event.data as PaddleSubscription;
+        const customData = sub.custom_data ?? {};
+        const userId = customData.userId;
+        const orgId = customData.orgId;
+
+        if (!userId) break;
+        if (!(await userExists(db, userId))) break;
+
+        await db.update(userPlans).set({
+          plan: "free",
+          billingSubscriptionId: null,
+          planExpiresAt: Date.now(),
+          updatedAt: new Date(),
+        }).where(eq(userPlans.userId, userId));
+
+        if (orgId && (await orgExists(db, orgId))) {
+          await db.update(organizations).set({
+            plan: "free",
+            billingSubscriptionId: null,
+            planExpiresAt: Date.now(),
+          }).where(eq(organizations.id, orgId));
+
+          await db.update(orgQuotas).set({
+            plan: "free",
+            monthlyMemories: 100,
+            monthlyRecalls: 1000,
+            monthlyCommits: 500,
+          }).where(eq(orgQuotas.orgId, orgId));
+        }
+        break;
+      }
+
+      default:
+        console.log(`[paddle-webhook] unhandled event type: ${event.event_type}`);
+    }
+  } catch (err: any) {
+    console.error(`[paddle-webhook] processing error: ${err.message}`);
+    return new Response(`Webhook processing error: ${err.message}`, { status: 500 });
+  }
+
+  if (eventId) {
+    await db
+      .insert(stripeEvents)
+      .values({ id: eventId, type: event.event_type, processedAt: Date.now() })
+      .catch((e) => console.error(`[paddle-webhook] failed to record event: ${e.message}`));
+  }
+
+  return new Response("OK", { status: 200 });
+}
+
+// ── Private helpers ───────────────────────────────────────────────────────────
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+async function upsertUserPlan(
+  db: ReturnType<typeof drizzle>,
+  userId: string,
+  plan: "free" | "business" | "enterprise",
+  billingCustomerId?: string,
+): Promise<void> {
+  const existing = await db
+    .select({ userId: userPlans.userId })
+    .from(userPlans)
+    .where(eq(userPlans.userId, userId))
+    .limit(1)
+    .all();
+
+  if (existing.length > 0) {
+    await db.update(userPlans).set({
+      plan,
+      billingCustomerId: billingCustomerId ?? undefined,
+      planActivatedAt: Date.now(),
+      updatedAt: new Date(),
+    }).where(eq(userPlans.userId, userId));
+  } else {
+    await db.insert(userPlans).values({
+      userId,
+      plan,
+      billingCustomerId: billingCustomerId ?? null,
+      planActivatedAt: Date.now(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+}
+
+// ── Minimal Paddle event shape ────────────────────────────────────────────────
+
+type PaddleEvent = {
+  event_id?: string;
+  event_type: string;
+  data: unknown;
+};
+
+type PaddleTransaction = {
+  id: string;
+  customer_id?: string;
+  subscription_id?: string;
+  custom_data?: Record<string, string>;
+};
+
+type PaddleSubscription = {
+  id: string;
+  customer_id?: string;
+  status: string;
+  custom_data?: Record<string, string>;
+};
 

@@ -24,6 +24,7 @@ export type CloudflareEnv = {
   STRIPE_SECRET_KEY?: string;
   STRIPE_PUBLISHABLE_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  PADDLE_WEBHOOK_SECRET?: string;
   GITHUB_WEBHOOK_SECRET?: string;
   LINEAR_WEBHOOK_SECRET?: string;
   DEMO_EMAIL?: string;

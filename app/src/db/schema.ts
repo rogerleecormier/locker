@@ -83,9 +83,29 @@ export const apiTokens = sqliteTable("api_tokens", {
   index("idx_api_tokens_prefix").on(t.tokenPrefix),
 ]);
 
+// ── Managed Vaults — one per org tenant, provisioned on checkout ─────────────
+// vaultId mirrors the vault_keys.vault_id convention: "org:<uuid>" for org vaults.
+// masterKekRef is a logical reference to the tenant-specific KEK slot in KV
+// (e.g. "kek:org:<uuid>"). The actual KEK bytes live in SESSION_KV under this key
+// and are never stored in D1.
+export const vaults = sqliteTable("vaults", {
+  id: text("id").primaryKey(),                           // UUID
+  orgId: text("orgId").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  vaultId: text("vaultId").notNull().unique(),           // "org:<orgId>" — matches vault_keys.vault_id
+  masterKekRef: text("masterKekRef").notNull(),          // KV key under which the tenant KEK is stored
+  provisionedAt: integer("provisionedAt").notNull(),
+  status: text("status", { enum: ["active", "suspended", "deleted"] }).notNull().default("active"),
+});
+
+export type Vault = typeof vaults.$inferSelect;
+export type NewVault = typeof vaults.$inferInsert;
+
 export const memories = sqliteTable("memories", {
   id: text("id").primaryKey(),
   userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // orgId scopes this memory to a managed-tier org vault; null = personal/self-hosted.
+  // All server-side queries MUST filter by orgId when a tenant context is present.
+  orgId: text("orgId").references(() => organizations.id, { onDelete: "cascade" }),
   fact: text("fact").notNull(),
   category: text("category", { enum: ["rules", "projects", "references", "configs"] }).notNull(),
   tags: text("tags").notNull().default(""),
@@ -197,7 +217,7 @@ export const oauthConsentsV2 = sqliteTable("oauthConsentV2", {
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type ApiToken = typeof apiTokens.$inferSelect;
-export type Memory = typeof memories.$inferSelect;
+export type Memory = typeof memories.$inferSelect; // now includes orgId: string | null
 export type NewMemory = typeof memories.$inferInsert;
 export type TotpSecret = typeof totpSecrets.$inferSelect;
 
