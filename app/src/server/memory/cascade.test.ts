@@ -25,7 +25,7 @@ describe("Memory Cascade Invalidation System", () => {
     // Cleanup
   });
 
-  it.skip("should record a dependency relationship between two memories", async () => {
+  it("should record a dependency relationship between two memories", async () => {
     if (!testDb) return;
     const parentMemoryId = "mem-parent-" + Date.now();
     const parentFact = "Use React 19 as the primary frontend framework for new features";
@@ -49,7 +49,7 @@ describe("Memory Cascade Invalidation System", () => {
     expect(deps[0].relationType).toBe("implements");
   });
 
-  it.skip("should prevent self-referential dependencies", async () => {
+  it("should prevent self-referential dependencies", async () => {
     if (!testDb) return;
     const memId = "mem-self-ref-" + Date.now();
     const recorded = await recordMemoryDependency(
@@ -63,7 +63,7 @@ describe("Memory Cascade Invalidation System", () => {
     expect(recorded).toBe(false);
   });
 
-  it.skip("should retrieve direct dependents of a memory", async () => {
+  it("should retrieve direct dependents of a memory", async () => {
     if (!testDb) return;
     const parentId = "mem-parent-deps-" + Date.now();
     const child1Id = "mem-child-a-" + Date.now();
@@ -79,7 +79,7 @@ describe("Memory Cascade Invalidation System", () => {
     expect(dependents.map((d) => d.childId)).toContain(child2Id);
   });
 
-  it.skip("should retrieve direct dependencies of a memory", async () => {
+  it("should retrieve direct dependencies of a memory", async () => {
     if (!testDb) return;
     const parentId = "mem-parent-int-" + Date.now();
     const childId = "mem-child-int-" + Date.now();
@@ -98,7 +98,7 @@ describe("Memory Cascade Invalidation System", () => {
     expect(dependencies[0].relationType).toBe("implements");
   });
 
-  it.skip("should remove a dependency relationship", async () => {
+  it("should remove a dependency relationship", async () => {
     if (!testDb) return;
     const parentId = "mem-parent-rm-" + Date.now();
     const childId = "mem-child-rm-" + Date.now();
@@ -121,7 +121,7 @@ describe("Memory Cascade Invalidation System", () => {
   });
 
   describe("Cascade Invalidation", () => {
-    it.skip("should invalidate a single level of children", async () => {
+    it("should invalidate a single level of children", async () => {
       if (!testDb || !db) return;
       const parentId = "mem-cascade-parent-" + Date.now();
       const childId = "mem-cascade-child-" + Date.now();
@@ -150,7 +150,7 @@ describe("Memory Cascade Invalidation System", () => {
       expect(childRow?.isQuarantined).toBe(true);
     });
 
-    it.skip("should invalidate multiple levels of children (transitive closure)", async () => {
+    it("should invalidate multiple levels of children (transitive closure)", async () => {
       if (!testDb) return;
       const parentId = "mem-grand-parent-" + Date.now();
       const childId = "mem-child-" + Date.now();
@@ -172,7 +172,7 @@ describe("Memory Cascade Invalidation System", () => {
       expect(result.invalidatedCount).toBeGreaterThanOrEqual(2);
     });
 
-    it.skip("should return affected memory details in cascade result", async () => {
+    it("should return affected memory details in cascade result", async () => {
       if (!testDb) return;
       const parentId = "mem-cascade-details-" + Date.now();
       const childId = "mem-cascade-child-details-" + Date.now();
@@ -193,7 +193,7 @@ describe("Memory Cascade Invalidation System", () => {
       expect(result.timestamp).toBeGreaterThan(0);
     });
 
-    it.skip("should handle cascade on non-existent parent gracefully", async () => {
+    it("should handle cascade on non-existent parent gracefully", async () => {
       if (!testDb) return;
       const fakeParentId = "mem-nonexistent-" + Date.now();
 
@@ -207,7 +207,7 @@ describe("Memory Cascade Invalidation System", () => {
       expect(result.affectedMemories).toHaveLength(0);
     });
 
-    it.skip("should create notification on cascade invalidation", async () => {
+    it("should create notification on cascade invalidation", async () => {
       if (!testDb) return;
       const parentId = "mem-notif-parent-" + Date.now();
       const childId = "mem-notif-child-" + Date.now();
@@ -229,7 +229,7 @@ describe("Memory Cascade Invalidation System", () => {
   });
 
   describe("Contradiction Detection", () => {
-    it.skip("should detect contradictions between parent and child", async () => {
+    it("should detect contradictions between parent and child", async () => {
       if (!testDb) return;
       const parentId = "mem-contra-parent-" + Date.now();
       const childId = "mem-contra-child-" + Date.now();
@@ -252,7 +252,7 @@ describe("Memory Cascade Invalidation System", () => {
       expect(Array.isArray(contradictions)).toBe(true);
     });
 
-    it.skip("should return empty array when no contradictions found", async () => {
+    it("should return empty array when no contradictions found", async () => {
       if (!testDb) return;
       const parentId = "mem-no-contra-parent-" + Date.now();
       const childId = "mem-no-contra-child-" + Date.now();
@@ -272,7 +272,7 @@ describe("Memory Cascade Invalidation System", () => {
   });
 
   describe("Edge Cases", () => {
-    it.skip("should handle user isolation correctly", async () => {
+    it("should handle user isolation correctly", async () => {
       if (!testDb) return;
       const user1 = "user-1-" + Date.now();
       const user2 = "user-2-" + Date.now();
@@ -296,7 +296,7 @@ describe("Memory Cascade Invalidation System", () => {
       expect(result.invalidatedCount).toBe(0);
     });
 
-    it.skip("should handle memories with no dependencies", async () => {
+    it("should handle memories with no dependencies", async () => {
       if (!testDb) return;
       const isolatedMemoryId = "mem-isolated-" + Date.now();
 
@@ -326,7 +326,7 @@ describe("Memory Cascade Invalidation System", () => {
 });
 
 describe("Cascade Integration with Memory Updates", () => {
-  it.skip("scenario: Parent memory 'Use React 19' is changed to 'Use Vue 3'", async () => {
+  it("scenario: Parent memory 'Use React 19' is changed to 'Use Vue 3'", async () => {
     if (!testDb || !db) return;
     // Setup parent: "Use React 19"
     const parentId = "mem-scenario-parent-" + Date.now();
