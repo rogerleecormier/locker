@@ -10,7 +10,7 @@ import {
 import { QueryClientProvider, type QueryClient, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminStatus } from "~/routes/admin";
 import { LockerLogo } from "~/components/LockerLogo";
-import { getUserWorkspaces, getUserPlan, listNotifications, markNotificationRead, getConflicts, getUnreadNotificationCount } from "~/server/memoryFunctions";
+import { getUserWorkspaces, getUserPlan, listNotifications, markNotificationRead, getUnreadNotificationCount } from "~/server/memoryFunctions";
 import { PlanBadge } from "~/components/PaywallGate";
 import type { PlanId } from "~/lib/plans";
 import { type ReactNode, useState, useEffect, useRef } from "react";
@@ -42,49 +42,6 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 });
 
-// ── Conflicts nav link with pending-count badge ───────────────────────────────
-function ConflictsNavLink({ mobile, onClose }: { mobile?: boolean; onClose?: () => void }) {
-  const { data: conflicts = [] } = useQuery({
-    queryKey: ["conflicts"],
-    queryFn: () => getConflicts(),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
-  const pendingCount = (conflicts as any[]).filter((r: any) => r.status === "pending").length;
-
-  if (mobile) {
-    return (
-      <Link
-        to="/conflicts"
-        onClick={onClose}
-        className="py-2.5 px-3 rounded-lg text-sm font-medium text-text-muted hover:text-text hover:bg-surface2 transition-colors no-underline flex items-center gap-2"
-        activeProps={{ className: "text-text bg-surface2 font-semibold" }}
-      >
-        Conflicts
-        {pendingCount > 0 && (
-          <span style={{ background: "var(--error, #ef4444)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "1px 6px", lineHeight: "16px" }}>
-            {pendingCount}
-          </span>
-        )}
-      </Link>
-    );
-  }
-
-  return (
-    <Link
-      to="/conflicts"
-      className="relative px-3 py-1.5 rounded-lg text-xs md:text-sm font-medium text-text-muted hover:text-text hover:bg-surface2 transition-all no-underline flex items-center gap-1.5"
-      activeProps={{ className: "text-text bg-surface2 font-semibold" }}
-    >
-      Conflicts
-      {pendingCount > 0 && (
-        <span style={{ background: "var(--error, #ef4444)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "1px 6px", lineHeight: "16px" }}>
-          {pendingCount}
-        </span>
-      )}
-    </Link>
-  );
-}
 
 function RootLayout() {
   const { queryClient } = Route.useRouteContext();
@@ -296,7 +253,6 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
             <Link to="/memories" className="px-3 py-1.5 rounded-lg text-xs md:text-sm font-medium text-text-muted hover:text-text hover:bg-surface2 transition-all no-underline" activeProps={{ className: "text-text bg-surface2 font-semibold" }}>
               Memories
             </Link>
-            <ConflictsNavLink />
             <Link to="/templates" className="px-3 py-1.5 rounded-lg text-xs md:text-sm font-medium text-text-muted hover:text-text hover:bg-surface2 transition-all no-underline" activeProps={{ className: "text-text bg-surface2 font-semibold" }}>
               Templates
             </Link>
@@ -615,7 +571,6 @@ function Nav({ user }: { user: { id: string; name: string; email: string } }) {
             >
               Memories
             </Link>
-            <ConflictsNavLink mobile onClose={() => setMobileMenuOpen(false)} />
             <Link
               to="/templates"
               onClick={() => setMobileMenuOpen(false)}
