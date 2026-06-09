@@ -48,7 +48,7 @@ import { runMemoryHealthCheck } from "~/server/memoryHealth";
 import type { MemoryHealthReport } from "~/server/memoryHealth";
 import { VaultHealthTab } from "~/components/VaultHealthTab";
 import { mergeMemories, touchMemory } from "~/server/memory/crud";
-import { listConflicts, resolveConflict, snoozeConflict } from "~/server/memoryConflicts";
+import { listConflicts, resolveConflict, snoozeConflict, syncStaleConflicts } from "~/server/memoryConflicts";
 import type { MemoryConflict } from "~/db/schema";
 import type { PlanId } from "~/lib/plans";
 
@@ -1920,15 +1920,16 @@ function Dashboard() {
   });
   const quarantineCount = quarantinedMemories.length;
 
+  // Health check is manual-only — never auto-runs
   const { data: healthReport = null, refetch: refetchHealth, isLoading: isHealthLoading } = useQuery({
     queryKey: ["memoryHealth", projectKey],
     queryFn: () => runMemoryHealthCheck({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
-    enabled: activeTab === "vault-health",
+    staleTime: Infinity,
+    gcTime: 30 * 60 * 1000,
+    enabled: false,
   });
 
-  // Persisted conflicts from DB — always loaded, refreshed when entering vault health tab
+  // Persisted conflicts from DB — load on tab entry, badge always reflects latest
   const { data: vaultConflicts = [], refetch: refetchVaultConflicts, isLoading: isConflictsLoading } = useQuery({
     queryKey: ["vault-conflicts", projectKey],
     queryFn: () => listConflicts({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
@@ -1936,10 +1937,21 @@ function Dashboard() {
   });
 
   useEffect(() => {
-    if (activeTab === "vault-health") {
+    if (activeTab !== "vault-health") return;
+    const staleMemories = memories
+      .filter(isMemoryStale)
+      .map((m) => ({ id: m.id, fact: m.fact, lastAccessedAt: m.lastAccessedAt ?? null }));
+    if (staleMemories.length > 0) {
+      syncStaleConflicts({
+        data: {
+          projectKey: projectKey === "personal" ? undefined : projectKey,
+          staleMemories,
+        },
+      }).then(() => refetchVaultConflicts()).catch(() => refetchVaultConflicts());
+    } else {
       refetchVaultConflicts();
     }
-  }, [activeTab, refetchVaultConflicts]);
+  }, [activeTab, projectKey]);
 
   const { data: workspacesList = [] } = useQuery({
     queryKey: ["workspaces"],

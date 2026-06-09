@@ -94,6 +94,52 @@ function SnoozePicker({ onSnooze, onClose }: { onSnooze: (days: number) => void;
   );
 }
 
+function StaleActions({
+  conflictId,
+  memoryId,
+  onTouchMemory,
+  onArchive,
+  onSnooze,
+}: {
+  conflictId: string;
+  memoryId: string;
+  onTouchMemory: (memoryId: string, conflictId: string) => void;
+  onArchive: (memoryId: string) => void;
+  onSnooze: (days: number) => void;
+}) {
+  const [showSnooze, setShowSnooze] = useState(false);
+  return (
+    <div className="flex gap-2 flex-shrink-0 relative items-start">
+      <button
+        onClick={() => onTouchMemory(memoryId, conflictId)}
+        title="Memory is still relevant — reset its stale timer"
+        className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-emerald-500/30 bg-emerald-500/5 text-emerald-600 hover:bg-emerald-500/15 cursor-pointer transition-colors whitespace-nowrap"
+      >
+        Looks Good
+      </button>
+      <button
+        onClick={() => onArchive(memoryId)}
+        title="Archive this memory"
+        className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-600 hover:bg-amber-500/15 cursor-pointer transition-colors whitespace-nowrap"
+      >
+        Archive
+      </button>
+      <div className="relative">
+        <button
+          onClick={() => setShowSnooze((s) => !s)}
+          title="Remind me later"
+          className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-border bg-surface2 text-text-muted hover:text-text hover:bg-surface cursor-pointer transition-colors whitespace-nowrap"
+        >
+          Snooze
+        </button>
+        {showSnooze && (
+          <SnoozePicker onSnooze={onSnooze} onClose={() => setShowSnooze(false)} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ConflictActions({
   conflict,
   onResolve,
@@ -279,11 +325,11 @@ export function VaultHealthTab({
                 Stale
                 <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">{staleConflicts.length}</span>
               </h3>
-              <p className="text-xs text-text-muted mt-1 ml-8">Never recalled or not accessed in 180+ days.</p>
+              <p className="text-xs text-text-muted mt-1 ml-8">Never recalled or not accessed in 30+ days.</p>
             </div>
             {staleConflicts.length === 0 ? (
               <div className="py-8 text-center text-text-muted text-sm bg-surface border border-border rounded-lg">
-                No stale memories flagged — run a health check to detect new ones
+                No stale memories
               </div>
             ) : (
               <div className="flex flex-col gap-3">
@@ -299,26 +345,12 @@ export function VaultHealthTab({
                           <span className="text-[9px] text-text-muted font-mono">detected {ageDays(conflict.detectedAt)}</span>
                         </div>
                       </div>
-                      <ConflictActions
-                        conflict={conflict}
-                        onResolve={() => onResolve(conflict.id)}
+                      <StaleActions
+                        conflictId={conflict.id}
+                        memoryId={memoryId}
+                        onTouchMemory={onTouchMemory}
+                        onArchive={onArchiveMemory}
                         onSnooze={(days) => onSnooze(conflict.id, days)}
-                        extraActions={
-                          <>
-                            <button
-                              onClick={() => onTouchMemory(memoryId, conflict.id)}
-                              className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-emerald-500/30 bg-emerald-500/5 text-emerald-600 hover:bg-emerald-500/15 cursor-pointer transition-colors whitespace-nowrap"
-                            >
-                              Looks Good
-                            </button>
-                            <button
-                              onClick={() => onArchiveMemory(memoryId)}
-                              className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-600 hover:bg-amber-500/15 cursor-pointer transition-colors whitespace-nowrap"
-                            >
-                              Archive
-                            </button>
-                          </>
-                        }
                       />
                     </div>
                   );

@@ -40,8 +40,13 @@ const SnoozeSchema = z.object({
   days: z.number().int().min(1).max(90).default(30),
 });
 
-const DismissStaleSchema = z.object({
-  conflictId: z.string().uuid(),
+const SyncStaleSchema = z.object({
+  projectKey: z.string().max(128).optional(),
+  staleMemories: z.array(z.object({
+    id: z.string().uuid(),
+    fact: z.string(),
+    lastAccessedAt: z.number().nullable(),
+  })),
 });
 
 // ── List conflicts ─────────────────────────────────────────────────────────────
@@ -230,3 +235,33 @@ export async function upsertConflicts(
     }
   }
 }
+
+// ── Sync stale conflicts from client-detected stale memories ──────────────────
+// Called when entering the vault-health tab. No AI required — purely timestamp-based.
+
+export const syncStaleConflicts = createServerFn({ method: "POST" })
+  .inputValidator((data) => SyncStaleSchema.parse(data))
+  .handler(async ({ data, context }): Promise<{ synced: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+
+    const { scopeType, scopeId } = parseScope(data?.projectKey);
+    const now = Date.now();
+
+    const inputs: ConflictUpsertInput[] = data.staleMemories.map((m) => {
+      const daysSince = m.lastAccessedAt != null
+        ? Math.floor((now - m.lastAccessedAt) / (1000 * 60 * 60 * 24))
+        : null;
+      return {
+        fingerprint: singleFingerprint(m.id, "stale"),
+        conflictType: "stale" as const,
+        label: m.fact.slice(0, 80) + (m.fact.length > 80 ? "…" : ""),
+        reason: daysSince != null ? `Not accessed in ${daysSince} days` : "Never recalled",
+        memoryIds: [m.id],
+        suggestedAction: "review" as const,
+      };
+    });
+
+    await upsertConflicts(env.DB, user.id, scopeType, scopeId, inputs);
+    return { synced: inputs.length };
+  });
