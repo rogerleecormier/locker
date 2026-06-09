@@ -2214,7 +2214,7 @@ function Dashboard() {
             isHealthLoading={isHealthLoading}
             healthReport={healthReport}
             quarantinedMemories={quarantinedMemories}
-            onRunHealthCheck={() => refetchHealth()}
+            onRunHealthCheck={() => refetchHealth().then(() => refetchVaultConflicts())}
             onRefreshConflicts={() => refetchVaultConflicts()}
             comparisonCluster={comparisonCluster}
             showComparisonModal={showComparisonModal}

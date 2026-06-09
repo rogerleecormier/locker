@@ -45,7 +45,8 @@ export type MemoryHealthReport = {
   summary: string;
 };
 
-const STALE_THRESHOLD_DAYS = 180;
+// Must match the client-side isMemoryStale() in memories.tsx
+const STALE_THRESHOLD_DAYS = 30;
 const STALE_THRESHOLD_MS = STALE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
 const MAX_MEMORIES_FOR_ANALYSIS = 200;
 
@@ -172,7 +173,7 @@ export const runMemoryHealthCheck = createServerFn({ method: "POST" })
 
 Rules:
 - clusters: group memories whose facts are near-identical or tightly overlap in meaning. Only include clusters with ≥2 members. Limit to 10 clusters max.
-- staleIds: IDs of memories not accessed in >180 days AND created >180 days ago (use lastAccessedDaysAgo and createdDaysAgo fields).
+- staleIds: IDs of memories where lastAccessedDaysAgo is null OR lastAccessedDaysAgo >30. These have never been recalled or haven't been accessed recently.
 - anomalies: flag oversized facts (>500 chars), empty/missing tags, apparent duplicate facts, contradictory facts, or malformed content. Limit to 15 anomalies max.
 - summary: concise health summary.
 - Return only the JSON. Do not include any text outside the JSON.
@@ -209,22 +210,20 @@ ${JSON.stringify(memorySummaries, null, 2)}`;
       parsed = { clusters: [], staleIds: [], anomalies: [], summary: `AI analysis returned non-JSON output. Raw: ${aiResponse.slice(0, 200)}` };
     }
 
-    // Build typed stale records using AI-identified IDs cross-referenced with DB data
+    // Build typed stale records — mirrors isMemoryStale() on the client:
+    // stale if never recalled (lastAccessedAt null) OR last accessed >30 days ago
     const memoryById = new Map(decrypted.map((m) => [m.id, m]));
-    const aiStaleIds = new Set(parsed.staleIds ?? []);
 
     const staleRecords: StaleMemoryRecord[] = decrypted
-      .filter((m) => {
-        const isOld = now - m.timestamp > STALE_THRESHOLD_MS;
-        const notRecentlyAccessed = m.lastAccessedAt == null || now - m.lastAccessedAt > STALE_THRESHOLD_MS;
-        return (isOld && notRecentlyAccessed) || aiStaleIds.has(m.id);
-      })
+      .filter((m) => m.lastAccessedAt == null || now - m.lastAccessedAt > STALE_THRESHOLD_MS)
       .map((m) => ({
         memoryId: m.id,
         fact: m.fact.length > MAX_FACT_CHARS ? m.fact.slice(0, MAX_FACT_CHARS) + "…" : m.fact,
         lastAccessedAt: m.lastAccessedAt ?? null,
         timestamp: m.timestamp,
-        staleDays: Math.floor((now - m.timestamp) / (1000 * 60 * 60 * 24)),
+        staleDays: m.lastAccessedAt != null
+          ? Math.floor((now - m.lastAccessedAt) / (1000 * 60 * 60 * 24))
+          : Math.floor((now - m.timestamp) / (1000 * 60 * 60 * 24)),
         category: m.category,
       }));
 
