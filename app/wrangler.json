@@ -46,6 +46,10 @@
       {
         "binding": "ARCHIVE_QUEUE",
         "queue": "locker-archive-queue"
+      },
+      {
+        "binding": "SLACK_SUMMARIZER_QUEUE",
+        "queue": "locker-slack-summarizer-queue"
       }
     ],
     "consumers": [
@@ -53,6 +57,11 @@
         "queue": "locker-archive-queue",
         "max_batch_size": 10,
         "max_batch_timeout": 5
+      },
+      {
+        "queue": "locker-slack-summarizer-queue",
+        "max_batch_size": 5,
+        "max_batch_timeout": 10
       }
     ]
   },
