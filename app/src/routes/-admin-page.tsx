@@ -27,7 +27,9 @@ import {
   deleteOrganization,
   getSystemSettings,
   updateSystemSetting,
+  getPersonalWebhookEvents,
   getOrgWebhookEvents,
+  getSiteWebhookEvents,
   type UserDetails,
   type OrgWithQuota,
   type SystemSettingsData,
@@ -777,7 +779,7 @@ function computeStatsFromLogs(logs: AgentActivityEntry[]): AgentActivityResult["
   };
 }
 
-function UnifiedActivitySection({ scope }: { scope: "personal" | "org" | "site" }) {
+function UnifiedActivitySection({ scope, orgId }: { scope: "personal" | "org" | "site"; orgId?: string }) {
   const [view, setView] = useState<ActivityView>("timeline");
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState("");
@@ -787,11 +789,46 @@ function UnifiedActivitySection({ scope }: { scope: "personal" | "org" | "site" 
   const [userFilter, setUserFilter] = useState("");
   const [orgFilter, setOrgFilter] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [activityType, setActivityType] = useState<"memory" | "webhooks">("memory");
+  const [webhookSourceFilter, setWebhookSourceFilter] = useState<"" | "github" | "linear">("");
   const PAGE_SIZE = 50;
   const offset = (page - 1) * PAGE_SIZE;
 
   const showUser = scope === "org" || scope === "site";
   const showOrgFilter = scope === "site";
+
+  // Webhook queries — each scope has its own server fn
+  const personalWebhooksQuery = useQuery({
+    queryKey: ["personal-webhook-events"],
+    queryFn: () => getPersonalWebhookEvents({ data: { limit: 50 } }),
+    enabled: scope === "personal" && activityType === "webhooks",
+  });
+
+  const orgWebhooksQuery = useQuery({
+    queryKey: ["org-webhook-events", orgId],
+    queryFn: () => getOrgWebhookEvents({ data: { orgId: orgId!, limit: 50 } }),
+    enabled: scope === "org" && activityType === "webhooks" && !!orgId,
+  });
+
+  const siteWebhooksQuery = useQuery({
+    queryKey: ["site-webhook-events", webhookSourceFilter, orgFilter],
+    queryFn: () => getSiteWebhookEvents({ data: {
+      limit: 50,
+      orgId: orgFilter || undefined,
+      source: webhookSourceFilter || undefined,
+    }}),
+    enabled: scope === "site" && activityType === "webhooks",
+  });
+
+  const webhookEvents: Array<{ id: string; source: string; eventType: string; rawTitle: string | null; processedAt: number; memoryId: string | null; externalId: string; userName: string | null }> =
+    scope === "personal" ? (personalWebhooksQuery.data?.events ?? [])
+    : scope === "org" ? (orgWebhooksQuery.data?.events ?? [])
+    : (siteWebhooksQuery.data?.events ?? []);
+
+  const webhooksLoading =
+    scope === "personal" ? personalWebhooksQuery.isLoading
+    : scope === "org" ? orgWebhooksQuery.isLoading
+    : siteWebhooksQuery.isLoading;
 
   // Personal scope: getAgentActivityLogs (returns AgentActivityResult with stats)
   const personalQuery = useQuery({
@@ -920,6 +957,86 @@ function UnifiedActivitySection({ scope }: { scope: "personal" | "org" | "site" 
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Activity type toggle */}
+      <div className="flex items-center gap-1 p-1 bg-surface2 border border-border rounded-lg self-start">
+        {(["memory", "webhooks"] as const).map((t) => (
+          <button key={t} onClick={() => { setActivityType(t); setPage(1); }}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activityType === t ? "bg-accent text-white" : "text-text-muted hover:text-text"}`}>
+            {t === "memory" ? "Memory Operations" : "🔗 Webhooks"}
+          </button>
+        ))}
+      </div>
+
+      {activityType === "webhooks" && (
+        <div className="flex flex-col gap-4">
+          {/* Scope description */}
+          <p className="text-sm text-text-muted leading-relaxed m-0">
+            {scope === "personal" && "GitHub and Linear webhook events processed using your personal API token."}
+            {scope === "org" && "GitHub and Linear webhook events processed for your organization."}
+            {scope === "site" && "All webhook events across every organization — site admin access only."}
+          </p>
+
+          {/* Source + org filters for site scope */}
+          {scope === "site" && (
+            <div className="flex gap-2 flex-wrap">
+              <select value={webhookSourceFilter} onChange={(e) => setWebhookSourceFilter(e.target.value as "" | "github" | "linear")}
+                className="h-8 px-3 text-xs bg-surface border border-border rounded-md text-text focus:outline-none focus:border-accent/50">
+                <option value="">All sources</option>
+                <option value="github">🐙 GitHub</option>
+                <option value="linear">⚡ Linear</option>
+              </select>
+              <input value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)} placeholder="Org ID"
+                className="h-8 px-3 text-xs bg-surface border border-border rounded-md text-text placeholder:text-text-muted focus:outline-none focus:border-accent/50 w-48" />
+            </div>
+          )}
+
+          {webhooksLoading && <p className="text-text-muted text-sm py-4">Loading webhook events…</p>}
+
+          {!webhooksLoading && webhookEvents.length === 0 && (
+            <p className="text-text-muted text-sm py-4">No webhook events found.</p>
+          )}
+
+          {!webhooksLoading && webhookEvents.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-left">
+                <thead className="bg-surface2 border-b border-border">
+                  <tr>
+                    {["Source", "Event Type", "Ticket / PR Title", "Processed At", "Memory"].map((h) => (
+                      <th key={h} className="px-3 py-2 text-[10px] uppercase tracking-wide text-text-muted font-semibold whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {webhookEvents.map((ev) => (
+                    <tr key={ev.id} className="border-b border-border/50 hover:bg-surface2/40 transition-colors">
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="text-[11px] font-semibold">{ev.source === "github" ? "🐙 GitHub" : "⚡ Linear"}</span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="text-[11px] text-text">{ev.eventType === "pr.merged" ? "PR Merged" : "Ticket Done"}</span>
+                      </td>
+                      <td className="px-3 py-2.5 max-w-xs">
+                        <span className="text-[11px] text-text-muted truncate block" title={ev.rawTitle ?? undefined}>{ev.rawTitle ?? "—"}</span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="text-[10px] text-text-muted">{new Date(ev.processedAt).toLocaleString()}</span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        {ev.memoryId
+                          ? <a href={`/memories?id=${ev.memoryId}`} className="text-[10px] font-mono text-accent hover:underline" title={ev.memoryId}>{ev.memoryId.slice(0, 8)}…</a>
+                          : <span className="text-[10px] text-text-muted">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activityType === "memory" && (<>
+
       {/* Scope description */}
       <p className="text-sm text-text-muted leading-relaxed m-0">
         {scope === "personal" && "Every memory operation your AI tools have performed — which tool called, what it asked for, what filters it used, and exactly which facts were injected into context."}
@@ -1031,100 +1148,12 @@ function UnifiedActivitySection({ scope }: { scope: "personal" | "org" | "site" 
       {scope === "personal" && !isLoading && entries.length > 0 && (
         <p className="text-center text-[10px] text-text-muted">Auto-refreshes every 30s</p>
       )}
+
+      </>)}
     </div>
   );
 }
 
-function OrgWebhookSection() {
-  const orgTeamQuery = useQuery({ queryKey: ["org-webhooks-adminpage"], queryFn: () => listAllOrgsAndQuotas() });
-  const allOrgs = orgTeamQuery.data?.orgs ?? [];
-  const [selectedOrgId, setSelectedOrgId] = useState<string>("");
-  const activeOrgId = selectedOrgId || allOrgs[0]?.id;
-
-  const { data: webhookData, isLoading } = useQuery({
-    queryKey: ["org-webhook-events", activeOrgId],
-    queryFn: () => getOrgWebhookEvents({ data: { orgId: activeOrgId, limit: 50 } }),
-    enabled: !!activeOrgId,
-  });
-
-  const events = webhookData?.events ?? [];
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {/* Configuration */}
-      <div>
-        <h3 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: "bold" }}>Configuration</h3>
-        <WebhookSecretsSection scopeType="org" />
-      </div>
-
-      {/* Event Log */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <h3 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: "bold" }}>Event Log</h3>
-
-        {allOrgs.length > 1 && (
-          <select
-            value={activeOrgId}
-            onChange={(e) => setSelectedOrgId(e.target.value)}
-            style={{ padding: "8px 12px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontWeight: 600, marginBottom: 8, maxWidth: 300 }}
-          >
-            {allOrgs.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-        )}
-
-        {isLoading ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading events…</p>
-        ) : events.length === 0 ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No webhook events processed for this organization yet.</p>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>Source</th>
-                  <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>Event Type</th>
-                  <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>Title</th>
-                  <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>Processed At</th>
-                  <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>Memory Link</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((event: any) => (
-                  <tr key={event.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "8px 10px", verticalAlign: "top" }}>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text)" }}>{event.source === "github" ? "🐙 GitHub" : "⚡ Linear"}</span>
-                    </td>
-                    <td style={{ padding: "8px 10px", verticalAlign: "top" }}>
-                      <span style={{ fontSize: 11, color: "var(--text)" }}>{event.eventType === "pr.merged" ? "PR Merged" : "Ticket Done"}</span>
-                    </td>
-                    <td style={{ padding: "8px 10px", verticalAlign: "top", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      <span style={{ fontSize: 11, color: "var(--text-muted)" }} title={event.rawTitle || undefined}>{event.rawTitle || "—"}</span>
-                    </td>
-                    <td style={{ padding: "8px 10px", verticalAlign: "top" }}>
-                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{new Date(event.processedAt).toLocaleString()}</span>
-                    </td>
-                    <td style={{ padding: "8px 10px", verticalAlign: "top" }}>
-                      {event.memoryId ? (
-                        <a href={`/memories?id=${event.memoryId}`} style={{ fontSize: 10, color: "var(--accent)", fontFamily: "monospace", textDecoration: "none" }} title={event.memoryId}>
-                          {event.memoryId.slice(0, 8)}…
-                        </a>
-                      ) : (
-                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function AdminPage() {
   const toast = useToast();
@@ -1804,14 +1833,14 @@ function AdminPage() {
       {/* ── AUDIT LOGS ───────────────────────────────────────────────────────── */}
       {activeSection === "org-audit-logs" && (
         <OrgAdminSection title="Org Activity" description="All actions taken within your organization" icon="📋">
-          <UnifiedActivitySection scope="org" />
+          <UnifiedActivitySection scope="org" orgId={activeOrg?.id} />
         </OrgAdminSection>
       )}
 
       {/* ── ORG WEBHOOKS ──────────────────────────────────────────────────────── */}
       {activeSection === "org-webhooks" && (
-        <OrgAdminSection title="Org Webhooks" description="Configure webhooks and view event logs" icon="🔗">
-          <OrgWebhookSection />
+        <OrgAdminSection title="Org Webhooks" description="Configure GitHub and Linear webhook signing secrets" icon="🔗">
+          <WebhookSecretsSection scopeType="org" />
         </OrgAdminSection>
       )}
 

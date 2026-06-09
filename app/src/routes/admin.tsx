@@ -1192,6 +1192,49 @@ export const getAdminAuditLogs = createServerFn({ method: "POST" })
     return { logs, total: countResult[0]?.count ?? 0 };
   });
 
+type WebhookEventRow = {
+  id: string;
+  source: "github" | "linear";
+  eventType: string;
+  rawTitle: string | null;
+  processedAt: number;
+  memoryId: string | null;
+  externalId: string;
+  userName: string | null;
+};
+
+export const getPersonalWebhookEvents = createServerFn({ method: "GET" })
+  .inputValidator((data: unknown) => {
+    const d = data as { limit?: number };
+    const limit = Math.min(Math.max(1, d?.limit ?? 50), 500);
+    return { limit };
+  })
+  .handler(async ({ data, context }): Promise<{ events: WebhookEventRow[] }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB, { schema: { webhookEvents, users } });
+
+    const rows = await db
+      .select({
+        id: webhookEvents.id,
+        source: webhookEvents.source,
+        eventType: webhookEvents.eventType,
+        rawTitle: webhookEvents.rawTitle,
+        processedAt: webhookEvents.processedAt,
+        memoryId: webhookEvents.memoryId,
+        externalId: webhookEvents.externalId,
+        userName: users.name,
+      })
+      .from(webhookEvents)
+      .leftJoin(users, eq(webhookEvents.userId, users.id))
+      .where(and(eq(webhookEvents.userId, user.id), sql`${webhookEvents.projectKey} IS NULL`))
+      .orderBy(desc(webhookEvents.processedAt))
+      .limit(data.limit)
+      .all();
+
+    return { events: rows ?? [] };
+  });
+
 export const getOrgWebhookEvents = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => {
     const d = data as { orgId: string; limit?: number };
@@ -1199,7 +1242,7 @@ export const getOrgWebhookEvents = createServerFn({ method: "GET" })
     const limit = Math.min(Math.max(1, d.limit ?? 50), 500);
     return { orgId: d.orgId, limit };
   })
-  .handler(async ({ data, context }): Promise<{ events: Array<{ id: string; source: "github" | "linear"; eventType: string; rawTitle: string | null; processedAt: number; memoryId: string | null; externalId: string; userName: string | null }> }> => {
+  .handler(async ({ data, context }): Promise<{ events: WebhookEventRow[] }> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     await requireAdmin(env);
     const db = drizzle(env.DB, { schema: { webhookEvents, users } });
@@ -1218,6 +1261,43 @@ export const getOrgWebhookEvents = createServerFn({ method: "GET" })
       .from(webhookEvents)
       .leftJoin(users, eq(webhookEvents.userId, users.id))
       .where(eq(webhookEvents.projectKey, `org:${data.orgId}`))
+      .orderBy(desc(webhookEvents.processedAt))
+      .limit(data.limit)
+      .all();
+
+    return { events: rows ?? [] };
+  });
+
+export const getSiteWebhookEvents = createServerFn({ method: "GET" })
+  .inputValidator((data: unknown) => {
+    const d = data as { limit?: number; orgId?: string; source?: string };
+    const limit = Math.min(Math.max(1, d?.limit ?? 50), 500);
+    return { limit, orgId: d?.orgId ?? null, source: d?.source ?? null };
+  })
+  .handler(async ({ data, context }): Promise<{ events: WebhookEventRow[] }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = drizzle(env.DB, { schema: { webhookEvents, users } });
+
+    const conditions = [];
+    if (data.orgId) conditions.push(eq(webhookEvents.projectKey, `org:${data.orgId}`));
+    if (data.source === "github" || data.source === "linear")
+      conditions.push(eq(webhookEvents.source, data.source));
+
+    const rows = await db
+      .select({
+        id: webhookEvents.id,
+        source: webhookEvents.source,
+        eventType: webhookEvents.eventType,
+        rawTitle: webhookEvents.rawTitle,
+        processedAt: webhookEvents.processedAt,
+        memoryId: webhookEvents.memoryId,
+        externalId: webhookEvents.externalId,
+        userName: users.name,
+      })
+      .from(webhookEvents)
+      .leftJoin(users, eq(webhookEvents.userId, users.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(webhookEvents.processedAt))
       .limit(data.limit)
       .all();
