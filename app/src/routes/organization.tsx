@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { BYOKSetup } from "~/components/Vault/BYOKSetup";
 import { useToast } from "~/components/ui/toast";
 import { InfoTooltip } from "~/components/InfoTooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -743,7 +744,7 @@ function OrganizationPage() {
 function OrgVaultView({ org }: { org: any }) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<"vault" | "recommendations" | "members" | "integrations">("vault");
+  const [activeTab, setActiveTab] = useState<"vault" | "recommendations" | "members" | "security">("vault");
   const [recFact, setRecFact] = useState("");
   const [recCategory, setRecCategory] = useState<"rules" | "projects" | "references">("references");
   const [recTags, setRecTags] = useState("");
@@ -817,7 +818,7 @@ function OrgVaultView({ org }: { org: any }) {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const tabBtn = (id: "vault" | "recommendations" | "members" | "integrations", label: string, tooltip?: string) => {
+  const tabBtn = (id: "vault" | "recommendations" | "members" | "security", label: string, tooltip?: string) => {
     const active = activeTab === id;
     return (
       <button
@@ -863,11 +864,11 @@ function OrgVaultView({ org }: { org: any }) {
             "Members",
             "View current org members and pending invitations. To invite someone new, use Admin → Organizations."
           )}
-        {isAdmin &&
+        {isAdmin && org.plan === "enterprise" &&
           tabBtn(
-            "integrations",
-            "Integrations",
-            "Manage webhook configurations for GitHub and Linear integrations, and review processed webhook events."
+            "security",
+            "Security",
+            "Configure Enterprise SSO (SAML/OIDC) and Bring Your Own Key (BYOK) end-to-end encryption."
           )}
       </div>
 
@@ -1324,8 +1325,8 @@ function OrgVaultView({ org }: { org: any }) {
         </div>
       )}
 
-      {activeTab === "integrations" && isAdmin && (
-        <IntegrationsPanel org={org} />
+      {activeTab === "security" && isAdmin && org.plan === "enterprise" && (
+        <SecurityPanel org={org} />
       )}
     </div>
   );
@@ -1496,6 +1497,69 @@ function IntegrationsPanel({ org }: { org: any }) {
             </table>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── SecurityPanel ─────────────────────────────────────────────────────────────
+
+function SecurityPanel({ org }: { org: any }) {
+  return (
+    <div className="flex flex-col gap-8">
+      {/* ── BYOK ── */}
+      <div className="bg-surface border border-border rounded-xl p-5 shadow-xs flex flex-col gap-4">
+        <div>
+          <h3 className="text-sm font-bold text-text uppercase tracking-wider">
+            End-to-End Encryption (BYOK)
+          </h3>
+          <p className="text-xs text-text-muted mt-1">
+            Memories are encrypted in your browser before leaving your device.
+            The Locker server only stores the ciphertext — it never sees
+            plaintext content.
+          </p>
+        </div>
+        <BYOKSetup
+          orgId={org.id}
+          onSaved={() => {}}
+        />
+      </div>
+
+      {/* ── SSO ── */}
+      <div className="bg-surface border border-border rounded-xl p-5 shadow-xs flex flex-col gap-4">
+        <div>
+          <h3 className="text-sm font-bold text-text uppercase tracking-wider">
+            Single Sign-On (SSO)
+          </h3>
+          <p className="text-xs text-text-muted mt-1">
+            Configure SAML 2.0 (Okta, Entra ID, PingFederate) or OIDC for
+            your organization. Contact{" "}
+            <a
+              href="mailto:support@locker.app"
+              className="text-accent hover:underline"
+            >
+              support@locker.app
+            </a>{" "}
+            to provision your IdP metadata and ACS URL, then your IdP
+            credentials will appear here for activation.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-border bg-surface2 p-4 text-xs text-text-muted space-y-2">
+          <p className="font-semibold text-text">Supported providers</p>
+          <ul className="list-disc list-inside space-y-0.5">
+            <li>Okta (SAML 2.0)</li>
+            <li>Microsoft Entra ID / Azure AD (SAML 2.0)</li>
+            <li>Google Workspace (OIDC)</li>
+            <li>PingFederate / PingOne (SAML 2.0)</li>
+            <li>Any OIDC-compliant IdP</li>
+          </ul>
+          <p className="pt-2">
+            Your Service Provider (SP) entity ID and ACS URL will be
+            provisioned when SSO is enabled. IdP certificate and client
+            secrets are encrypted at rest with your org vault key.
+          </p>
+        </div>
       </div>
     </div>
   );
