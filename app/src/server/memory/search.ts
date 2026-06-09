@@ -125,6 +125,8 @@ const RRF_K = 60;
 const RECENCY_LAMBDA = 0.005;
 const CROSS_ENCODER_TOP = 20;
 const CROSS_ENCODER_OUTPUT = 10;
+const DECAY_LAMBDA = 0.003; // Exponential decay coefficient for access staleness
+const DECAY_HALF_LIFE_DAYS = 231; // Half-life: ~231 days for decay factor
 
 function rrfScore(ranks: number[]): number {
   return ranks.reduce((sum, r) => sum + 1 / (RRF_K + r + 1), 0);
@@ -133,6 +135,14 @@ function rrfScore(ranks: number[]): number {
 function recencyScore(timestamp: number): number {
   const ageDays = (Date.now() - timestamp) / 86_400_000;
   return Math.exp(-RECENCY_LAMBDA * ageDays);
+}
+
+function decayFactor(lastAccessedAt: number | null, accessCount: number): number {
+  if (!lastAccessedAt || accessCount === 0) return 1.0;
+  const daysSinceAccess = (Date.now() - lastAccessedAt) / 86_400_000;
+  const decayMultiplier = Math.exp(-DECAY_LAMBDA * daysSinceAccess);
+  const accessCountBoost = Math.log(accessCount + 1); // Log boost to prevent infinite scaling
+  return decayMultiplier * (0.5 + 0.5 * Math.tanh(accessCountBoost / 5));
 }
 
 function tokenise(text: string): Set<string> {
@@ -251,11 +261,16 @@ export const recallContext = createServerFn({ method: "POST" })
       .map((r) => ({
         row: r,
         rfScore: rrfScore([vectorRankMap.get(r.id) ?? rows.length, keywordRankMap.get(r.id) ?? rows.length, recencyRankMap.get(r.id) ?? rows.length]),
+        decay: decayFactor(r.lastAccessedAt, r.accessCount),
+      }))
+      .map((item) => ({
+        ...item,
+        finalScore: item.rfScore * item.decay,
       }))
       .sort((a, b) => {
         if (a.row.authorityType === "authoritative" && b.row.authorityType !== "authoritative") return -1;
         if (a.row.authorityType !== "authoritative" && b.row.authorityType === "authoritative") return 1;
-        return b.rfScore - a.rfScore;
+        return b.finalScore - a.finalScore;
       });
 
     const vaultId = (data.projectKey && (data.projectKey.startsWith("team:") || data.projectKey.startsWith("org:"))) ? data.projectKey : user.id;
@@ -326,10 +341,13 @@ Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
 
       const returnedIds = result.map((r) => r.id);
       if (returnedIds.length > 0) {
-        db.update(memories).set({ lastAccessedAt: Date.now() })
+        db.update(memories).set({
+          lastAccessedAt: Date.now(),
+          accessCount: sql`${memories.accessCount} + 1`,
+        })
           .where(sql`${memories.id} IN (${sql.join(returnedIds.map((id) => sql`${id}`), sql`, `)})`)
           .run()
-          .catch((err) => console.error("[recallContext] lastAccessedAt update failed:", err));
+          .catch((err) => console.error("[recallContext] accessCount/lastAccessedAt update failed:", err));
       }
 
       await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "recall_context", metadata: { query: data.query, projectKey: data.projectKey, matchCount: result.length } });

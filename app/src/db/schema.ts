@@ -117,6 +117,7 @@ export const memories = sqliteTable("memories", {
   isLocked: integer("isLocked", { mode: "boolean" }).notNull().default(false),
   authorityType: text("authorityType", { enum: ["authoritative", "contributed"] }).notNull().default("contributed"),
   lastAccessedAt: integer("lastAccessedAt"),
+  accessCount: integer("accessCount").notNull().default(0),
   isQuarantined: integer("isQuarantined", { mode: "boolean" }).notNull().default(false),
   // 'ui' = written via ConfigBuilder UI, 'mcp' = written via store_config/update_config MCP tool.
   // Only configs-category memories use this field; other categories leave it null.
