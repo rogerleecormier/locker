@@ -41,6 +41,12 @@ export const DOC_GROUPS: DocGroup[] = [
     ],
   },
   {
+    title: "CI/CD",
+    sections: [
+      { id: "cicd-gatekeeper", label: "PR Policy Gatekeeper", icon: "🚦" },
+    ],
+  },
+  {
     title: "MCP Reference",
     sections: [
       { id: "mcp-about", label: "About MCP", icon: "💡" },

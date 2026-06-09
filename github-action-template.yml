@@ -1,0 +1,163 @@
+# Locker CI/CD Gatekeeper — drop this file into your project at:
+#   .github/workflows/locker-gatekeeper.yml
+#
+# Required secrets in your GitHub repo settings:
+#   LOCKER_PROJECT_TOKEN  — a Locker API token (lkr_...) with read access to your vault
+#   LOCKER_GATEKEEPER_URL — base URL of your Locker deployment, e.g. https://locker.example.com
+#
+# Optional secrets / variables:
+#   LOCKER_PROJECT_KEY    — vault scope: "org:<uuid>" or "team:<uuid>"; leave unset for personal vault
+
+name: Locker Gatekeeper
+
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "pnpm-lock.yaml"
+      - "yarn.lock"
+      - "docs/architecture/**"
+      - "**/*.arch.md"
+
+jobs:
+  gatekeeper:
+    name: Vault Policy Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read        # to check out the repo
+      pull-requests: write  # to post a comment with the violation reason
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history needed for accurate diffs
+
+      # ── Build package.json diff ────────────────────────────────────────────────
+      - name: Compute package.json diff
+        id: pkg_diff
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          # Extract dependency sections from both commits
+          git show "${BASE_SHA}:package.json" > /tmp/pkg_base.json 2>/dev/null || echo '{}' > /tmp/pkg_base.json
+          git show "${HEAD_SHA}:package.json"  > /tmp/pkg_head.json 2>/dev/null || echo '{}' > /tmp/pkg_head.json
+
+          # Build structured diff using node (available on ubuntu-latest by default)
+          node - <<'EOF'
+          const fs = require("fs");
+          const base = JSON.parse(fs.readFileSync("/tmp/pkg_base.json", "utf8"));
+          const head = JSON.parse(fs.readFileSync("/tmp/pkg_head.json", "utf8"));
+
+          const baseDeps = { ...(base.dependencies ?? {}), ...(base.devDependencies ?? {}) };
+          const headDeps = { ...(head.dependencies ?? {}), ...(head.devDependencies ?? {}) };
+
+          const added = [], removed = [];
+          const updated = {};
+
+          for (const [pkg, ver] of Object.entries(headDeps)) {
+            if (!(pkg in baseDeps)) added.push(pkg);
+            else if (baseDeps[pkg] !== ver) updated[pkg] = { from: baseDeps[pkg], to: ver };
+          }
+          for (const pkg of Object.keys(baseDeps)) {
+            if (!(pkg in headDeps)) removed.push(pkg);
+          }
+
+          const diff = { added, removed, updated };
+          fs.writeFileSync("/tmp/pkg_diff.json", JSON.stringify(diff));
+          console.log("Package diff:", JSON.stringify(diff, null, 2));
+          EOF
+
+      # ── Build architecture diff (optional) ────────────────────────────────────
+      - name: Compute architecture diff
+        id: arch_diff
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          # Collect changed architecture docs as a single unified diff string
+          git diff "${BASE_SHA}"...HEAD -- 'docs/architecture/**' '**/*.arch.md' \
+            > /tmp/arch_diff.txt 2>/dev/null || true
+          echo "arch_diff_size=$(wc -c < /tmp/arch_diff.txt)" >> "$GITHUB_OUTPUT"
+
+      # ── Call Locker Gatekeeper API ─────────────────────────────────────────────
+      - name: Call Locker Gatekeeper
+        id: gatekeeper
+        env:
+          LOCKER_PROJECT_TOKEN: ${{ secrets.LOCKER_PROJECT_TOKEN }}
+          LOCKER_GATEKEEPER_URL: ${{ secrets.LOCKER_GATEKEEPER_URL }}
+          LOCKER_PROJECT_KEY: ${{ vars.LOCKER_PROJECT_KEY || '' }}
+        run: |
+          PKG_DIFF=$(cat /tmp/pkg_diff.json)
+          ARCH_DIFF=$(cat /tmp/arch_diff.txt | head -c 40000)  # cap at 40 KB
+
+          # Build the JSON payload
+          PAYLOAD=$(node -e "
+            const pkgDiff = JSON.parse(process.env.PKG_DIFF || '{}');
+            const archDiff = process.env.ARCH_DIFF || '';
+            const payload = {
+              project_token: process.env.LOCKER_PROJECT_TOKEN,
+              package_json_diff: pkgDiff,
+            };
+            if (process.env.LOCKER_PROJECT_KEY) {
+              payload.project_key = process.env.LOCKER_PROJECT_KEY;
+            }
+            if (archDiff.trim()) {
+              payload.architecture_diff = archDiff;
+            }
+            console.log(JSON.stringify(payload));
+          " PKG_DIFF="$PKG_DIFF" ARCH_DIFF="$ARCH_DIFF")
+
+          HTTP_STATUS=$(curl -s -o /tmp/gatekeeper_response.json -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "${LOCKER_GATEKEEPER_URL}/api/cicd/gatekeeper")
+
+          RESPONSE=$(cat /tmp/gatekeeper_response.json)
+          echo "HTTP status: $HTTP_STATUS"
+          echo "Response: $RESPONSE"
+
+          echo "http_status=$HTTP_STATUS" >> "$GITHUB_OUTPUT"
+          echo "response=$RESPONSE"       >> "$GITHUB_OUTPUT"
+
+          # Propagate the violation reason for the PR comment step
+          VIOLATION=$(node -e "
+            try {
+              const r = JSON.parse(process.env.RESPONSE);
+              console.log(r.violation_reason || '');
+            } catch { console.log(''); }
+          " RESPONSE="$RESPONSE")
+          echo "violation_reason=$VIOLATION" >> "$GITHUB_OUTPUT"
+
+      # ── Post PR comment when the gate fails ───────────────────────────────────
+      - name: Comment on PR (on failure)
+        if: steps.gatekeeper.outputs.http_status != '200'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const violation = `${{ steps.gatekeeper.outputs.violation_reason }}`;
+            const body = [
+              "## Locker Gatekeeper: Policy Violation :x:",
+              "",
+              violation
+                ? `**Reason:** ${violation}`
+                : "The PR was rejected by the vault policy engine. Check the workflow logs for details.",
+              "",
+              "_Fix the issue and push a new commit to re-run this check._",
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      # ── Fail the check if the gate returned non-200 ────────────────────────────
+      - name: Enforce gate result
+        if: steps.gatekeeper.outputs.http_status != '200'
+        run: |
+          echo "Locker Gatekeeper rejected this PR."
+          echo "Violation: ${{ steps.gatekeeper.outputs.violation_reason }}"
+          exit 1

@@ -449,6 +449,12 @@ function LandingPage() {
                 delay: 540,
               },
               {
+                icon: <IconDevOps />,
+                title: "CI/CD PR Policy Gatekeeper",
+                desc: "Block PRs that violate vault rules before merge. POST a package.json diff to /api/cicd/gatekeeper — Locker reads your #banned_dependencies, #rules, and #architecture vault memories, runs Workers AI evaluation, and returns a structured pass/fail verdict. Drop-in GitHub Actions template included.",
+                delay: 570,
+              },
+              {
                 icon: <IconActivity />,
                 title: "Agent Activity Dashboard",
                 desc: "Timeline of every memory operation by AI client. See which tool (Cursor, Claude Code, Windsurf…) recalled which memories, their similarity scores, and the exact facts injected into context — hallucinations debuggable in seconds.",
@@ -529,7 +535,7 @@ function LandingPage() {
               },
               {
                 title: "DevOps & Infrastructure",
-                desc: "Maintain memory templates for CI/CD pipelines, Docker security policies, and deployment runbooks. Register GitHub and Linear webhooks to auto-commit PR summaries and ticket learnings to the team vault.",
+                desc: "Maintain memory templates for CI/CD pipelines, Docker security policies, and deployment runbooks. Register GitHub and Linear webhooks to auto-commit PR summaries and ticket learnings to the team vault. Use the PR Policy Gatekeeper to block banned dependencies and architectural drift before they ever merge.",
                 icon: <IconDevOps />,
               },
               {

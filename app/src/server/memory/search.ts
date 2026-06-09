@@ -295,26 +295,16 @@ export const recallContext = createServerFn({ method: "POST" })
       let finalOrder: string[] | null = null;
 
       if (decryptedPool.length > 1) {
-        const candidateLines = decryptedPool.map((c, i) => `[${i}] ${c.fact.slice(0, 300)}`).join("\n");
-        const cePrompt = `You are a precision memory retrieval ranker. Given the user's query and a numbered list of candidate memory facts, output ONLY a JSON array of the candidate indices (integers), ordered from most relevant to least relevant. Include only indices whose facts are genuinely useful for answering the query. Omit irrelevant facts entirely. No explanation, no markdown.
-
-Query: "${queryTrimmed}"
-
-Candidates:
-${candidateLines}
-
-Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
-
         try {
-          const ceResult = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { prompt: cePrompt, max_tokens: Math.max(64, decryptedPool.length * 6) });
-          const ceText = extractText(ceResult).trim();
-          const match = ceText.match(/\[[\s\S]*?\]/);
-          if (match) {
-            const parsed: unknown[] = JSON.parse(match[0]);
-            const indices = parsed
-              .filter((v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < decryptedPool.length)
-              .slice(0, CROSS_ENCODER_OUTPUT);
-            if (indices.length > 0) finalOrder = indices.map((i) => decryptedPool[i].row.id);
+          const contexts = decryptedPool.map((c) => c.fact.slice(0, 512));
+          const ceResult = await env.AI.run("@cf/baai/bge-reranker-base", { query: queryTrimmed, contexts });
+          const scores = (ceResult as { data?: Array<{ score: number }> }).data ?? [];
+          if (scores.length === decryptedPool.length) {
+            finalOrder = decryptedPool
+              .map((c, i) => ({ id: c.row.id, score: scores[i]?.score ?? -Infinity }))
+              .sort((a, b) => b.score - a.score)
+              .slice(0, CROSS_ENCODER_OUTPUT)
+              .map((x) => x.id);
           }
         } catch (ceErr) {
           console.error("[recallContext] cross-encoder failed, falling back to RRF order:", ceErr);

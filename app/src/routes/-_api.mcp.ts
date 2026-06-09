@@ -1959,32 +1959,21 @@ export async function handleMcpRequest(
 
         // Determine final order via cross-encoder or fallback to RRF order
         if (ceDecryptedPool.length > 1) {
-          const candidateLines = ceDecryptedPool.map((c, i) => `[${i}] ${c.fact.slice(0, 300)}`).join("\n");
-          const cePrompt = `You are a precision memory retrieval ranker. Given the user's query and a numbered list of candidate memory facts, output ONLY a JSON array of the candidate indices (integers), ordered from most relevant to least relevant. Include only indices whose facts are genuinely useful for answering the query. Omit irrelevant facts entirely. No explanation, no markdown.
-
-Query: "${query}"
-
-Candidates:
-${candidateLines}
-
-Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
-
           try {
-            const ceResult = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { prompt: cePrompt, max_tokens: Math.max(64, ceDecryptedPool.length * 6) });
-            const ceText = extractText(ceResult).trim();
-            const match = ceText.match(/\[[\s\S]*?\]/);
-            if (match) {
-              const parsed: unknown[] = JSON.parse(match[0]);
-              const indices = parsed
-                .filter((v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < ceDecryptedPool.length)
+            const contexts = ceDecryptedPool.map((c) => c.fact.slice(0, 512));
+            const ceResult = await env.AI.run("@cf/baai/bge-reranker-base", { query, contexts });
+            const scores = (ceResult as { data?: Array<{ score: number }> }).data ?? [];
+            if (scores.length === ceDecryptedPool.length) {
+              const ranked_ce = ceDecryptedPool
+                .map((c, i) => ({ id: c.row.id, score: scores[i]?.score ?? -Infinity }))
+                .sort((a, b) => b.score - a.score)
                 .slice(0, CROSS_ENCODER_OUTPUT);
-              if (indices.length > 0) {
-                const ceOrdered = indices.map((i) => crossEncoderPool.find((p) => p.row.id === ceDecryptedPool[i].row.id) ?? null).filter((c): c is typeof ranked[0] => c !== null && c !== undefined);
-                const remaining = crossEncoderPool.filter((c) => !indices.some((i) => ceDecryptedPool[i].row.id === c.row.id));
-                finalResults = [...ceOrdered, ...remaining].slice(0, topK);
-              } else {
-                finalResults = ranked.slice(0, topK);
-              }
+              const ceOrdered = ranked_ce
+                .map(({ id }) => crossEncoderPool.find((p) => p.row.id === id) ?? null)
+                .filter((c): c is typeof ranked[0] => c !== null && c !== undefined);
+              const ceIds = new Set(ranked_ce.map((x) => x.id));
+              const remaining = crossEncoderPool.filter((c) => !ceIds.has(c.row.id));
+              finalResults = [...ceOrdered, ...remaining].slice(0, topK);
             } else {
               finalResults = ranked.slice(0, topK);
             }

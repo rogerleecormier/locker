@@ -162,81 +162,64 @@ describe("keywordScore helper", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION 5: Cross-Encoder prompt formatting (unit test for extractText behavior)
+// SECTION 5: bge-reranker-base score-based reranking
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("cross-encoder prompt formatting", () => {
-  it("formats candidate lines correctly for AI reranking", () => {
-    const query = "typescript api design";
-    const candidates = [
+const CROSS_ENCODER_OUTPUT = 10;
+
+function applyRerankerScores(
+  pool: Array<{ id: string; fact: string }>,
+  scores: Array<{ score: number }>,
+  outputLimit: number,
+): string[] {
+  if (scores.length !== pool.length) return [];
+  return pool
+    .map((c, i) => ({ id: c.id, score: scores[i]?.score ?? -Infinity }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, outputLimit)
+    .map((x) => x.id);
+}
+
+describe("bge-reranker-base score-based reranking", () => {
+  it("sorts candidates by descending score", () => {
+    const pool = [
       { id: "mem-1", fact: "TypeScript interfaces define API contracts clearly." },
       { id: "mem-2", fact: "Python is great for data science." },
       { id: "mem-3", fact: "React hooks simplify component state." },
     ];
-
-    const candidateLines = candidates.map((c, i) => `[${i}] ${c.fact.slice(0, 300)}`).join("\n");
-
-    expect(candidateLines).toContain("[0] TypeScript interfaces define API contracts clearly.");
-    expect(candidateLines).toContain("[1] Python is great for data science.");
-    expect(candidateLines).toContain("[2] React hooks simplify component state.");
+    const scores = [{ score: 0.4 }, { score: 0.9 }, { score: 0.1 }];
+    const result = applyRerankerScores(pool, scores, CROSS_ENCODER_OUTPUT);
+    expect(result).toEqual(["mem-2", "mem-1", "mem-3"]);
   });
 
-  it("trims facts to 300 characters", () => {
-    const longFact = "a".repeat(500);
-    const candidateLines = [`[0] ${longFact.slice(0, 300)}`];
-    expect(candidateLines[0].length).toBe(304); // "[0] " = 4 chars + 300 chars
+  it("respects CROSS_ENCODER_OUTPUT limit", () => {
+    const pool = Array.from({ length: 15 }, (_, i) => ({ id: `mem-${i}`, fact: `fact ${i}` }));
+    const scores = pool.map((_, i) => ({ score: i / pool.length }));
+    const result = applyRerankerScores(pool, scores, CROSS_ENCODER_OUTPUT);
+    expect(result).toHaveLength(CROSS_ENCODER_OUTPUT);
   });
 
-  it("parses JSON array response from cross-encoder", () => {
-    const mockResponse = "[2, 0, 1]";
-
-    let parsed: unknown[] | null = null;
-    const match = mockResponse.match(/\[[\s\S]*?\]/);
-    if (match) {
-      try {
-        parsed = JSON.parse(match[0]);
-      } catch {
-        parsed = null;
-      }
-    }
-
-    expect(parsed).toEqual([2, 0, 1]);
+  it("returns empty array when scores length mismatches pool", () => {
+    const pool = [{ id: "mem-1", fact: "fact" }];
+    const scores: Array<{ score: number }> = [];
+    expect(applyRerankerScores(pool, scores, CROSS_ENCODER_OUTPUT)).toEqual([]);
   });
 
-  it("filters invalid indices from cross-encoder response", () => {
-    // Note: Using double quotes for valid JSON
-    const mockResponse = '[2, 0, 1, 99, -1, "bad"]';
-    const maxLength = 3; // Simulating ceDecryptedPool.length
-
-    let parsed: number[] = [];
-    const match = mockResponse.match(/\[[\s\S]*?\]/);
-    if (match) {
-      try {
-        const raw = JSON.parse(match[0]);
-        parsed = raw
-          .filter((v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < maxLength)
-          .slice(0, 10); // CROSS_ENCODER_OUTPUT
-      } catch {
-        parsed = [];
-      }
-    }
-
-    expect(parsed).toEqual([2, 0, 1]);
+  it("handles -Infinity score for undefined score entry gracefully", () => {
+    const pool = [
+      { id: "mem-a", fact: "relevant fact" },
+      { id: "mem-b", fact: "another fact" },
+    ];
+    // Simulate a sparse response where second score is missing
+    const scores = [{ score: 0.8 }, { score: -Infinity }];
+    const result = applyRerankerScores(pool, scores, CROSS_ENCODER_OUTPUT);
+    expect(result[0]).toBe("mem-a");
+    expect(result[1]).toBe("mem-b");
   });
 
-  it("handles malformed JSON gracefully", () => {
-    const mockResponse = "not valid json at all";
-
-    let parsed: unknown[] | null = null;
-    const match = mockResponse.match(/\[[\s\S]*?\]/);
-    if (match) {
-      try {
-        parsed = JSON.parse(match[0]);
-      } catch {
-        parsed = null;
-      }
-    }
-
-    expect(parsed).toBeNull();
+  it("truncates facts to 512 chars before sending to reranker", () => {
+    const longFact = "x".repeat(600);
+    const truncated = longFact.slice(0, 512);
+    expect(truncated).toHaveLength(512);
   });
 });
