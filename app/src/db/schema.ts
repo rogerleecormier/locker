@@ -439,9 +439,9 @@ export const featureOverrides = sqliteTable("feature_overrides", {
   createdAt: integer("createdAt").notNull(),
 });
 
-export const stripeEvents = sqliteTable("stripe_events", {
-  id: text("id").primaryKey(), // Stripe event.id
-  type: text("type").notNull(), // e.g., 'checkout.session.completed', 'customer.subscription.updated'
+export const billingEvents = sqliteTable("billing_events", {
+  id: text("id").primaryKey(), // Paddle or Stripe event.id
+  type: text("type").notNull(), // e.g., 'transaction.completed', 'subscription.activated'
   processedAt: integer("processedAt").notNull(),
 });
 

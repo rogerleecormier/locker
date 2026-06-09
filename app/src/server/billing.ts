@@ -22,7 +22,7 @@ import {
   orgQuotas,
   vaults,
   users,
-  stripeEvents,
+  billingEvents,
 } from "~/db/schema";
 import { getOrCreateVaultKey } from "./crypto";
 import type { CloudflareEnv } from "~/types/cloudflare";
@@ -236,14 +236,14 @@ export async function handlePaddleWebhook(request: Request, env: any): Promise<R
     return new Response("Invalid JSON body", { status: 400 });
   }
 
-  const db = drizzle(env.DB, { schema: { organizations, orgQuotas, users, stripeEvents } });
+  const db = drizzle(env.DB, { schema: { organizations, orgQuotas, users, billingEvents } });
 
   const eventId = event.event_id;
   if (eventId) {
     const existing = await db
-      .select({ id: stripeEvents.id })
-      .from(stripeEvents)
-      .where(eq(stripeEvents.id, eventId))
+      .select({ id: billingEvents.id })
+      .from(billingEvents)
+      .where(eq(billingEvents.id, eventId))
       .limit(1)
       .all();
     if (existing.length > 0) {
@@ -361,7 +361,7 @@ export async function handlePaddleWebhook(request: Request, env: any): Promise<R
 
   if (eventId) {
     await db
-      .insert(stripeEvents)
+      .insert(billingEvents)
       .values({ id: eventId, type: event.event_type, processedAt: Date.now() })
       .catch((e) => console.error(`[paddle-webhook] failed to record: ${e.message}`));
   }
