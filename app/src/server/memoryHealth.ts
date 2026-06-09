@@ -44,7 +44,7 @@ export type MemoryHealthReport = {
   summary: string;
 };
 
-const STALE_THRESHOLD_DAYS = 90;
+const STALE_THRESHOLD_DAYS = 180;
 const STALE_THRESHOLD_MS = STALE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
 const MAX_MEMORIES_FOR_ANALYSIS = 200;
 
@@ -171,7 +171,7 @@ export const runMemoryHealthCheck = createServerFn({ method: "POST" })
 
 Rules:
 - clusters: group memories whose facts are near-identical or tightly overlap in meaning. Only include clusters with ≥2 members. Limit to 10 clusters max.
-- staleIds: IDs of memories not accessed in >90 days AND created >90 days ago (use lastAccessedDaysAgo and createdDaysAgo fields).
+- staleIds: IDs of memories not accessed in >180 days AND created >180 days ago (use lastAccessedDaysAgo and createdDaysAgo fields).
 - anomalies: flag oversized facts (>500 chars), empty/missing tags, apparent duplicate facts, contradictory facts, or malformed content. Limit to 15 anomalies max.
 - summary: concise health summary.
 - Return only the JSON. Do not include any text outside the JSON.

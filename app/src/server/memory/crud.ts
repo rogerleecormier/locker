@@ -2569,3 +2569,98 @@ Return ONLY the merged fact text. Be concise, clear, and preserve all unique inf
       fact: mergedFact,
     };
   });
+
+const QuarantineConflictsSchema = z.object({
+  memoryIds: z.array(z.string().uuid()),
+  projectKey: zProjectKeyFn,
+}).strict();
+
+export const quarantineConflicts = createServerFn({ method: "POST" })
+  .inputValidator((data) => QuarantineConflictsSchema.parse(data))
+  .handler(async ({ data, context }): Promise<{ count: number }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env) as any;
+
+    // Verify access to the vault scope
+    const { scopeType, scopeId } = parseScope(data.projectKey);
+    const { allowed } = await verifyVaultAccess(db, user.id, scopeType, scopeId);
+    if (!allowed) {
+      throw new Error(`Forbidden: no access to vault scope '${data.projectKey ?? "personal"}'`);
+    }
+
+    // Quarantine all memories in the conflict cluster
+    const whereClause = scopeType === "personal"
+      ? and(eq(memories.userId, user.id), eq(memories.scopeType, "personal"), inArray(memories.id, data.memoryIds))
+      : and(eq(memories.scopeType, scopeType), eq(memories.scopeId, scopeId!), inArray(memories.id, data.memoryIds));
+
+    const result = await db
+      .update(memories)
+      .set({ isQuarantined: true })
+      .where(whereClause)
+      .run();
+
+    return { count: data.memoryIds.length };
+  });
+
+const UnquarantineSchema = z.object({
+  memoryId: z.string().uuid(),
+}).strict();
+
+export const unquarantineMemory = createServerFn({ method: "POST" })
+  .inputValidator((data) => UnquarantineSchema.parse(data))
+  .handler(async ({ data, context }): Promise<{ id: string }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env) as any;
+
+    const row = await db
+      .select()
+      .from(memories)
+      .where(
+        and(
+          eq(memories.id, data.memoryId),
+          eq(memories.userId, user.id)
+        )
+      )
+      .get();
+
+    if (!row) {
+      throw new Error("Memory not found");
+    }
+
+    await db
+      .update(memories)
+      .set({ isQuarantined: false })
+      .where(eq(memories.id, data.memoryId))
+      .run();
+
+    return { id: data.memoryId };
+  });
+
+export const touchMemory = createServerFn({ method: "POST" })
+  .inputValidator((data) => IdSchema.parse(data))
+  .handler(async ({ data, context }): Promise<{ id: string }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env) as any;
+
+    const row = await db
+      .select()
+      .from(memories)
+      .where(eq(memories.id, data.id))
+      .get();
+
+    if (!row) throw new Error("Memory not found");
+
+    const { allowed } = await verifyVaultAccess(db, user.id, row.scopeType, row.scopeId ?? undefined);
+    if (!allowed) throw new Error("Forbidden");
+
+    await db
+      .update(memories)
+      .set({ lastAccessedAt: Date.now() })
+      .where(eq(memories.id, data.id))
+      .run();
+
+    return { id: data.id };
+  });

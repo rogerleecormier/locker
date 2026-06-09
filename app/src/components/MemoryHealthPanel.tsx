@@ -97,10 +97,12 @@ const ANOMALY_COLORS: Record<MemoryAnomaly["anomalyType"], string> = {
   malformed: "#ec4899",
 };
 
-function ClusterCard({ cluster, projectKey }: { cluster: MemoryHealthCluster; projectKey: string }) {
-  const [expanded, setExpanded] = useState(false);
+function ClusterCard({ cluster, projectKey, onDefer, isDeferred = false }: { cluster: MemoryHealthCluster; projectKey: string; onDefer?: (cluster: MemoryHealthCluster) => void; isDeferred?: boolean }) {
+  const [showReview, setShowReview] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [justDeferred, setJustDeferred] = useState(false);
   const colors = ACTION_COLORS[cluster.suggestedAction];
+  const deferredNow = isDeferred || justDeferred;
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -116,6 +118,7 @@ function ClusterCard({ cluster, projectKey }: { cluster: MemoryHealthCluster; pr
       toast.success("Memories merged successfully");
       queryClient.invalidateQueries({ queryKey: ["memoryHealth"] });
       setMerging(false);
+      setShowReview(false);
     },
     onError: (error) => {
       toast.error(`Merge failed: ${(error as any)?.message}`);
@@ -124,10 +127,8 @@ function ClusterCard({ cluster, projectKey }: { cluster: MemoryHealthCluster; pr
   });
 
   const handleMerge = () => {
-    if (cluster.suggestedAction === "merge") {
-      setMerging(true);
-      mergeMutation.mutate();
-    }
+    setMerging(true);
+    mergeMutation.mutate();
   };
 
   return (
@@ -143,29 +144,20 @@ function ClusterCard({ cluster, projectKey }: { cluster: MemoryHealthCluster; pr
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
           <div style={{ color: colors.text, flexShrink: 0 }}>
             <IconMerge />
           </div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.01em" }}>
-            {cluster.clusterLabel}
-          </span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.01em" }}>
+              {cluster.clusterLabel}
+            </span>
+            <p style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, margin: "4px 0 0 0" }}>
+              {cluster.reason}
+            </p>
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              padding: "2px 8px",
-              borderRadius: 20,
-              background: colors.chip,
-              color: colors.text,
-            }}
-          >
-            {cluster.suggestedAction}
-          </span>
           <span
             style={{
               fontSize: 10,
@@ -182,69 +174,147 @@ function ClusterCard({ cluster, projectKey }: { cluster: MemoryHealthCluster; pr
         </div>
       </div>
 
-      <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 }}>
-        {cluster.reason}
-      </p>
+      {!showReview && (
+        <button
+          type="button"
+          onClick={() => setShowReview(true)}
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: "#fff",
+            background: colors.text,
+            border: "none",
+            padding: "6px 12px",
+            borderRadius: 6,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            alignSelf: "flex-start",
+            marginTop: 4,
+          }}
+        >
+          <IconMerge />
+          Review
+        </button>
+      )}
 
-      {expanded && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {cluster.memoryDetails.map((detail) => (
+      {showReview && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${colors.border}` }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Side-by-Side Comparison
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowReview(false)}
+              disabled={merging}
+              style={{
+                fontSize: 10,
+                color: "var(--text-muted)",
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: merging ? "not-allowed" : "pointer",
+                fontWeight: 600,
+                opacity: merging ? 0.5 : 1,
+              }}
+            >
+              ✕ Close
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: cluster.memoryDetails.length > 1 ? "1fr 1fr" : "1fr",
+              gap: 12,
+              maxHeight: 280,
+              overflowY: "auto",
+              paddingRight: 8,
+            }}
+          >
+            {cluster.memoryDetails.map((detail, idx) => (
               <div
                 key={detail.id}
                 style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "8px 10px",
+                  background: "rgba(99,102,241,0.06)",
+                  border: "1px solid rgba(99,102,241,0.15)",
+                  borderRadius: 10,
+                  padding: "12px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: 4,
+                  gap: 8,
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: colors.text }}>
+                    Memory {idx + 1}
+                  </span>
                   <code
                     style={{
-                      fontSize: 9,
+                      fontSize: 8,
                       color: "var(--text-muted)",
                       fontFamily: "monospace",
                       backgroundColor: "var(--surface2)",
-                      padding: "2px 4px",
-                      borderRadius: 4,
+                      padding: "1px 4px",
+                      borderRadius: 3,
                     }}
                   >
-                    {detail.id.slice(0, 8)}...
+                    {detail.id.slice(0, 6)}...
                   </code>
-                  <span
-                    style={{
-                      fontSize: 9,
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {detail.category}
-                  </span>
                 </div>
                 <p
                   style={{
                     fontSize: 11,
                     color: "var(--text)",
                     margin: 0,
-                    lineHeight: 1.4,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
+                    lineHeight: 1.5,
+                    fontWeight: 500,
                   }}
                 >
                   {detail.fact}
                 </p>
+                <div style={{ fontSize: 9, color: "var(--text-muted)", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ background: "var(--surface2)", padding: "2px 6px", borderRadius: 4 }}>{detail.category}</span>
+                </div>
               </div>
             ))}
           </div>
 
-          {cluster.suggestedAction === "merge" && (
+          <div
+            style={{
+              background: "rgba(34,197,94,0.05)",
+              border: "1px solid rgba(34,197,94,0.2)",
+              borderRadius: 10,
+              padding: "12px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ color: "#22c55e" }}>
+                <IconCheck />
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#22c55e" }}>
+                AI Consolidation
+              </span>
+            </div>
+            <p
+              style={{
+                fontSize: 11,
+                color: "var(--text-muted)",
+                margin: 0,
+                lineHeight: 1.5,
+              }}
+            >
+              Llama 3.3 will merge these into one comprehensive memory, keeping all unique information and eliminating redundancy.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
               onClick={handleMerge}
@@ -255,7 +325,7 @@ function ClusterCard({ cluster, projectKey }: { cluster: MemoryHealthCluster; pr
                 color: "#fff",
                 background: colors.text,
                 border: "none",
-                padding: "6px 12px",
+                padding: "8px 14px",
                 borderRadius: 6,
                 cursor: merging ? "not-allowed" : "pointer",
                 opacity: merging ? 0.6 : 1,
@@ -263,6 +333,7 @@ function ClusterCard({ cluster, projectKey }: { cluster: MemoryHealthCluster; pr
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 6,
+                flex: 1,
               }}
             >
               {merging ? (
@@ -277,31 +348,60 @@ function ClusterCard({ cluster, projectKey }: { cluster: MemoryHealthCluster; pr
                 </>
               )}
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => {
+                if (deferredNow) return;
+                setJustDeferred(true);
+                if (onDefer) {
+                  onDefer(cluster);
+                  toast.success("Saved to Review Queue");
+                }
+              }}
+              disabled={merging || deferredNow}
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: deferredNow ? "var(--text-muted)" : colors.text,
+                background: deferredNow ? "var(--surface2)" : colors.chip,
+                border: `1px solid ${deferredNow ? "var(--border)" : colors.border}`,
+                padding: "8px 14px",
+                borderRadius: 6,
+                cursor: merging || deferredNow ? "not-allowed" : "pointer",
+                opacity: merging ? 0.6 : 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                flex: 1,
+              }}
+            >
+              {deferredNow ? "✓ Saved to Review Queue" : "📋 Review Later"}
+            </button>
+          </div>
         </div>
       )}
-
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          alignSelf: "flex-start",
-          fontSize: 11,
-          color: colors.text,
-          background: "none",
-          border: "none",
-          padding: 0,
-          cursor: "pointer",
-          fontWeight: 600,
-        }}
-      >
-        {expanded ? "Hide Details ▲" : "Show Details ▼"}
-      </button>
     </div>
   );
 }
 
-function StaleCard({ record }: { record: StaleMemoryRecord }) {
+function StaleCard({
+  record,
+  onTouch,
+  onDefer,
+  isDeferred = false,
+}: {
+  record: StaleMemoryRecord;
+  onTouch?: (id: string) => void;
+  onDefer?: (id: string) => void;
+  isDeferred?: boolean;
+}) {
+  const [touched, setTouched] = useState(false);
+  const [justDeferred, setJustDeferred] = useState(false);
+  const deferredNow = isDeferred || justDeferred;
+
+  if (touched) return null;
+
   return (
     <div
       style={{
@@ -311,7 +411,7 @@ function StaleCard({ record }: { record: StaleMemoryRecord }) {
         padding: "12px 14px",
         display: "flex",
         flexDirection: "column",
-        gap: 6,
+        gap: 8,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -350,6 +450,41 @@ function StaleCard({ record }: { record: StaleMemoryRecord }) {
         {record.fact}
       </p>
       <span style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "monospace" }}>{record.memoryId.slice(0, 8)}...</span>
+      <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
+        <button
+          type="button"
+          onClick={() => {
+            setTouched(true);
+            onTouch?.(record.memoryId);
+          }}
+          style={{
+            flex: 1, fontSize: 10, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.05em",
+            padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(34,197,94,0.3)",
+            background: "rgba(34,197,94,0.06)", color: "#16a34a", cursor: "pointer",
+          }}
+        >
+          ✓ Looks Good
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (deferredNow) return;
+            setJustDeferred(true);
+            onDefer?.(record.memoryId);
+          }}
+          disabled={deferredNow}
+          style={{
+            flex: 1, fontSize: 10, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.05em",
+            padding: "5px 10px", borderRadius: 6,
+            border: `1px solid ${deferredNow ? "var(--border)" : "rgba(245,158,11,0.3)"}`,
+            background: deferredNow ? "var(--surface2)" : "rgba(245,158,11,0.06)",
+            color: deferredNow ? "var(--text-muted)" : "#d97706",
+            cursor: deferredNow ? "not-allowed" : "pointer",
+          }}
+        >
+          {deferredNow ? "✓ In Review Queue" : "📋 Review Later"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -454,9 +589,14 @@ function SectionHeader({ title, count, icon }: { title: string; count: number; i
 type Props = {
   projectKey: string;
   userPlan: PlanId;
+  onDefer?: (cluster: MemoryHealthCluster) => void;
+  deferredClusterLabels?: string[];
+  onDeferStale?: (memoryId: string) => void;
+  deferredStaleIds?: string[];
+  onTouchMemory?: (memoryId: string) => void;
 };
 
-function HealthCheckContent({ projectKey, userPlan }: Props) {
+function HealthCheckContent({ projectKey, userPlan, onDefer, deferredClusterLabels = [], onDeferStale, deferredStaleIds = [], onTouchMemory }: Props) {
   const [report, setReport] = useState<MemoryHealthReport | null>(null);
 
   const mutation = useMutation({
@@ -664,7 +804,7 @@ function HealthCheckContent({ projectKey, userPlan }: Props) {
           <SectionHeader title="Duplicate Clusters" count={report.clusters.length} icon={<IconMerge />} />
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {report.clusters.map((cluster, i) => (
-              <ClusterCard key={`${cluster.clusterLabel}-${i}`} cluster={cluster} projectKey={projectKey} />
+              <ClusterCard key={`${cluster.clusterLabel}-${i}`} cluster={cluster} projectKey={projectKey} onDefer={onDefer} isDeferred={deferredClusterLabels.includes(cluster.clusterLabel)} />
             ))}
           </div>
         </div>
@@ -676,7 +816,13 @@ function HealthCheckContent({ projectKey, userPlan }: Props) {
           <SectionHeader title="Stale Records" count={report.staleRecords.length} icon={<IconClock />} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
             {report.staleRecords.map((rec) => (
-              <StaleCard key={rec.memoryId} record={rec} />
+              <StaleCard
+                key={rec.memoryId}
+                record={rec}
+                onTouch={onTouchMemory}
+                onDefer={onDeferStale}
+                isDeferred={deferredStaleIds.includes(rec.memoryId)}
+              />
             ))}
           </div>
         </div>
@@ -775,10 +921,18 @@ function HealthCheckContent({ projectKey, userPlan }: Props) {
   );
 }
 
-export function MemoryHealthPanel({ projectKey, userPlan }: Props) {
+export function MemoryHealthPanel({ projectKey, userPlan, onDefer, deferredClusterLabels, onDeferStale, deferredStaleIds, onTouchMemory }: Props) {
   return (
     <PaywallGate feature="usageAnalytics" currentPlan={userPlan} requiredPlan="business">
-      <HealthCheckContent projectKey={projectKey} userPlan={userPlan} />
+      <HealthCheckContent
+        projectKey={projectKey}
+        userPlan={userPlan}
+        onDefer={onDefer}
+        deferredClusterLabels={deferredClusterLabels}
+        onDeferStale={onDeferStale}
+        deferredStaleIds={deferredStaleIds}
+        onTouchMemory={onTouchMemory}
+      />
     </PaywallGate>
   );
 }

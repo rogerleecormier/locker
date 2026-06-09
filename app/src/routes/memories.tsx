@@ -21,6 +21,7 @@ import {
   unmaskMemory,
   semanticSearchMemories,
   getQuarantinedMemories,
+  unquarantineMemory,
   getMemoryTimeline,
   revertMemoryVersion,
   getUserPlan,
@@ -44,6 +45,9 @@ import { PaywallGate } from "~/components/PaywallGate";
 import { KnowledgeGraph } from "~/components/KnowledgeGraph";
 import { ContributionsChart } from "~/components/ContributionsChart";
 import { MemoryHealthPanel } from "~/components/MemoryHealthPanel";
+import { runMemoryHealthCheck } from "~/server/memoryHealth";
+import type { MemoryHealthReport } from "~/server/memoryHealth";
+import { mergeMemories, touchMemory } from "~/server/memory/crud";
 import type { PlanId } from "~/lib/plans";
 
 export const Route = createFileRoute("/memories")({
@@ -72,9 +76,18 @@ export const getGraphMemoriesByIdsFn = createServerFn({ method: "POST" })
     return getMemoriesByIds(env.DB, user.id, data.memoryIds, env.ENCRYPTION_KEY);
   });
 
-// Memories older than this threshold are considered stale
-const STALE_MEMORY_DAYS = 90;
+// A memory is stale if it has never been recalled, or was last recalled more than this many days ago
+const STALE_LAST_ACCESS_DAYS = 30;
+const STALE_LAST_ACCESS_MS = STALE_LAST_ACCESS_DAYS * 24 * 60 * 60 * 1000;
+
+// Legacy creation-date threshold used only for the old banner filter
+const STALE_MEMORY_DAYS = 180;
 const STALE_MEMORY_MS = STALE_MEMORY_DAYS * 24 * 60 * 60 * 1000;
+
+function isMemoryStale(m: { lastAccessedAt?: number | null; timestamp: number | string }): boolean {
+  if (!m.lastAccessedAt) return true; // never recalled
+  return Date.now() - m.lastAccessedAt > STALE_LAST_ACCESS_MS;
+}
 
 // localStorage key and TTL for banner dismissal
 const STALE_BANNER_DISMISS_KEY = "locker-stale-banner-dismissed-at";
@@ -123,7 +136,7 @@ function StaleMemoryBanner({
         <span className="font-bold underline underline-offset-2 decoration-amber-500/50">
           {staleCount} {staleCount === 1 ? "memory" : "memories"}
         </span>{" "}
-        older than {STALE_MEMORY_DAYS} days — consider reviewing them.
+        not recalled in {STALE_LAST_ACCESS_DAYS}+ days (or never recalled) — consider reviewing them.
       </button>
       <button
         type="button"
@@ -1770,6 +1783,39 @@ function ConflictCard({ rec, onResolved }: { rec: any; onResolved: () => void })
 // ── MAIN DASHBOARD ──────────────────────────────────────────────────────────
 type DashboardTab = "memories" | "knowledge-graph" | "contributions" | "conflicts" | "health";
 
+const DEFERRED_CLUSTERS_KEY = "locker-deferred-clusters";
+const DEFERRED_STALE_KEY = "locker-deferred-stale";
+
+function loadDeferredClusters(): any[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(DEFERRED_CLUSTERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeferredClusters(clusters: any[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(DEFERRED_CLUSTERS_KEY, JSON.stringify(clusters));
+}
+
+function loadDeferredStale(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(DEFERRED_STALE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeferredStale(ids: string[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(DEFERRED_STALE_KEY, JSON.stringify(ids));
+}
+
 function Dashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -1781,6 +1827,54 @@ function Dashboard() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("memories");
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [selectedContributionDate, setSelectedContributionDate] = useState<Date | null>(null);
+  const [showComparisonModal, setShowComparisonModal] = useState(false);
+  const [comparisonCluster, setComparisonCluster] = useState<any>(null);
+  const [merging, setMerging] = useState(false);
+  const [deferredClusters, setDeferredClusters] = useState<any[]>(() => loadDeferredClusters());
+  const [deferredStaleIds, setDeferredStaleIds] = useState<string[]>(() => loadDeferredStale());
+
+  function deferCluster(cluster: any) {
+    setDeferredClusters((prev) => {
+      const alreadyDeferred = prev.some((c) => c.clusterLabel === cluster.clusterLabel);
+      if (alreadyDeferred) return prev;
+      const next = [...prev, cluster];
+      saveDeferredClusters(next);
+      return next;
+    });
+  }
+
+  function removeDeferredCluster(clusterLabel: string) {
+    setDeferredClusters((prev) => {
+      const next = prev.filter((c) => c.clusterLabel !== clusterLabel);
+      saveDeferredClusters(next);
+      return next;
+    });
+  }
+
+  function deferStale(memoryId: string) {
+    setDeferredStaleIds((prev) => {
+      if (prev.includes(memoryId)) return prev;
+      const next = [...prev, memoryId];
+      saveDeferredStale(next);
+      return next;
+    });
+  }
+
+  function removeDeferredStale(memoryId: string) {
+    setDeferredStaleIds((prev) => {
+      const next = prev.filter((id) => id !== memoryId);
+      saveDeferredStale(next);
+      return next;
+    });
+  }
+
+  function handleTouchMemory(memoryId: string) {
+    touchMemory({ data: { id: memoryId } }).then(() => {
+      toast.success("Memory validated — stale timer reset");
+      queryClient.invalidateQueries({ queryKey: ["memories", projectKey] });
+      removeDeferredStale(memoryId);
+    }).catch((e) => toast.error(`Failed: ${(e as any).message}`));
+  }
 
   useEffect(() => {
     if (activeTab === "contributions") {
@@ -1888,6 +1982,21 @@ function Dashboard() {
   });
   const quarantineCount = quarantinedMemories.length;
 
+  const { data: healthReport = null, refetch: refetchHealth, isLoading: isHealthLoading } = useQuery({
+    queryKey: ["memoryHealth", projectKey],
+    queryFn: () => runMemoryHealthCheck({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
+    staleTime: 0, // Always refetch when enabled
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    enabled: activeTab === "conflicts",
+  });
+
+  // Refetch health report when entering Conflicts tab
+  useEffect(() => {
+    if (activeTab === "conflicts") {
+      refetchHealth();
+    }
+  }, [activeTab, refetchHealth]);
+
   const { data: workspacesList = [] } = useQuery({
     queryKey: ["workspaces"],
     queryFn: () => getUserWorkspaces(),
@@ -1948,10 +2057,7 @@ function Dashboard() {
     return counts;
   }, [memories]);
 
-  const staleCount = useMemo(
-    () => memories.filter((m) => Date.now() - new Date(m.timestamp).getTime() > STALE_MEMORY_MS).length,
-    [memories]
-  );
+  const staleCount = useMemo(() => memories.filter(isMemoryStale).length, [memories]);
 
   const contributionData = useMemo(() => {
     const dateMap = new Map<string, number>();
@@ -2134,23 +2240,6 @@ function Dashboard() {
               )}
             </button>
           </PaywallGate>
-          <button
-            type="button"
-            onClick={() => setActiveTab("conflicts")}
-            className={`px-4 py-3 text-sm font-semibold transition-colors relative select-none flex items-center gap-1.5 ${
-              activeTab === "conflicts" ? "text-accent" : "text-text-muted hover:text-text"
-            }`}
-          >
-            Conflicts
-            {pendingConflicts.length > 0 && (
-              <span style={{ background: "var(--error, #ef4444)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "1px 6px", lineHeight: "16px" }}>
-                {pendingConflicts.length}
-              </span>
-            )}
-            {activeTab === "conflicts" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full" />
-            )}
-          </button>
           <PaywallGate feature="usageAnalytics" currentPlan={userPlan} requiredPlan="business" compact>
             <button
               type="button"
@@ -2165,35 +2254,322 @@ function Dashboard() {
               )}
             </button>
           </PaywallGate>
+          <button
+            type="button"
+            onClick={() => setActiveTab("conflicts")}
+            className={`px-4 py-3 text-sm font-semibold transition-colors relative select-none flex items-center gap-1.5 ${
+              activeTab === "conflicts" ? "text-accent" : "text-text-muted hover:text-text"
+            }`}
+          >
+            Review Queue
+            {(quarantineCount + deferredClusters.length + staleCount) > 0 && (
+              <span style={{ background: "var(--error, #ef4444)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "1px 6px", lineHeight: "16px" }}>
+                {quarantineCount + deferredClusters.length + staleCount}
+              </span>
+            )}
+            {activeTab === "conflicts" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full" />
+            )}
+          </button>
         </div>
 
         {activeTab === "health" ? (
-          <MemoryHealthPanel projectKey={projectKey} userPlan={userPlan} />
+          <MemoryHealthPanel
+            projectKey={projectKey}
+            userPlan={userPlan}
+            onDefer={deferCluster}
+            deferredClusterLabels={deferredClusters.map((c) => c.clusterLabel)}
+            onDeferStale={deferStale}
+            deferredStaleIds={deferredStaleIds}
+            onTouchMemory={handleTouchMemory}
+          />
         ) : activeTab === "conflicts" ? (
-          <div className="flex flex-col gap-3">
-            {pendingConflicts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
-                <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(34,197,94,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--success, #22c55e)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </div>
-                <p className="text-text font-medium text-sm">All clear</p>
-                <p className="text-text-muted text-xs max-w-xs">No pending agent changes require your review. Any future update or deletion requests from AI agents will appear here.</p>
+          <div className="flex flex-col gap-8">
+            {/* QUARANTINED SECTION */}
+            <div>
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                  <span style={{ display: "inline-flex", width: 22, height: 22, borderRadius: 6, background: "rgba(239,68,68,0.12)", alignItems: "center", justifyContent: "center", color: "#ef4444", fontSize: 11, fontWeight: "bold", flexShrink: 0 }}>!</span>
+                  Quarantined
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-error/10 text-error border border-error/20">{quarantinedMemories.length}</span>
+                </h3>
+                <p className="text-xs text-text-muted mt-1 ml-8">Hidden from memory retrieval until reviewed. Restore or permanently delete.</p>
               </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs text-text-muted">{pendingConflicts.length} pending {pendingConflicts.length === 1 ? "request" : "requests"}</span>
+              {quarantinedMemories.length === 0 ? (
+                <div className="py-8 text-center text-text-muted text-sm bg-surface border border-border rounded-lg">
+                  No quarantined memories
                 </div>
-                {pendingConflicts.map((rec: any) => (
-                  <ConflictCard
-                    key={rec.id}
-                    rec={rec}
-                    onResolved={() => queryClient.invalidateQueries({ queryKey: ["conflicts"] })}
-                  />
-                ))}
-              </>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {quarantinedMemories.map((memory: any) => (
+                    <div
+                      key={memory.id}
+                      className="p-4 bg-surface border border-border rounded-lg hover:border-error/30 transition-colors flex items-start justify-between gap-4"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-text line-clamp-3 mb-2">{memory.fact}</p>
+                        <div className="flex gap-2 items-center flex-wrap">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-surface2 text-text-muted">
+                            {memory.category}
+                          </span>
+                          <span className="text-[10px] text-text-muted font-mono">{memory.id.slice(0, 8)}…</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => {
+                            unquarantineMemory({ data: { memoryId: memory.id } }).then(() => {
+                              toast.success("Memory restored to active");
+                              queryClient.invalidateQueries({ queryKey: ["quarantined-memories"] });
+                            }).catch((e) => { toast.error(`Failed: ${e.message}`); });
+                          }}
+                          className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-accent/30 bg-accent/5 text-accent hover:bg-accent/15 cursor-pointer transition-colors whitespace-nowrap"
+                        >
+                          Restore
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm("Delete this memory permanently?")) {
+                              deleteMemory({ data: { id: memory.id } }).then(() => {
+                                toast.success("Memory deleted");
+                                queryClient.invalidateQueries({ queryKey: ["quarantined-memories"] });
+                              }).catch((e) => { toast.error(`Failed: ${e.message}`); });
+                            }
+                          }}
+                          className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-error/30 bg-error/5 text-error hover:bg-error/15 cursor-pointer transition-colors whitespace-nowrap"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* DUPLICATE CLUSTERS SECTION */}
+            <div>
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                  <span style={{ display: "inline-flex", width: 22, height: 22, borderRadius: 6, background: "rgba(99,102,241,0.12)", alignItems: "center", justifyContent: "center", color: "#6366f1", fontSize: 11, fontWeight: "bold", flexShrink: 0 }}>~</span>
+                  Flagged Duplicates
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">{deferredClusters.length}</span>
+                </h3>
+                <p className="text-xs text-text-muted mt-1 ml-8">Saved from Memory Health for later review. Still active in your vault. Compare and merge using AI.</p>
+              </div>
+              {deferredClusters.length === 0 ? (
+                <div className="py-8 text-center text-text-muted text-sm bg-surface border border-border rounded-lg flex flex-col items-center gap-2">
+                  <p>No flagged duplicates</p>
+                  <p className="text-xs">Use "Review Later" in the Memory Health tab to send clusters here.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {deferredClusters.map((cluster: any) => (
+                    <div key={cluster.clusterLabel} className="p-4 bg-surface border border-border rounded-lg hover:border-indigo-500/30 transition-colors">
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-semibold text-text mb-1">{cluster.clusterLabel}</h4>
+                          <p className="text-xs text-text-muted mb-3">{cluster.reason}</p>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => { setComparisonCluster(cluster); setShowComparisonModal(true); }}
+                            className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-indigo-500/30 bg-indigo-500/5 text-indigo-600 hover:bg-indigo-500/15 cursor-pointer transition-colors whitespace-nowrap"
+                          >
+                            Compare
+                          </button>
+                          <button
+                            onClick={() => {
+                              setMerging(true);
+                              mergeMemories({ data: { memoryIds: cluster.memoryIds, projectKey: projectKey === "personal" ? undefined : projectKey } }).then(() => {
+                                toast.success("Memories merged successfully");
+                                removeDeferredCluster(cluster.clusterLabel);
+                                queryClient.invalidateQueries({ queryKey: ["memoryHealth"] });
+                                setMerging(false);
+                              }).catch((e) => { toast.error(`Failed: ${e.message}`); setMerging(false); });
+                            }}
+                            disabled={merging}
+                            className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-indigo-500/30 bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer transition-colors whitespace-nowrap disabled:opacity-50"
+                          >
+                            {merging ? "Merging..." : "Merge"}
+                          </button>
+                          <button
+                            onClick={() => removeDeferredCluster(cluster.clusterLabel)}
+                            className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-border bg-surface2 text-text-muted hover:text-text hover:bg-surface cursor-pointer transition-colors whitespace-nowrap"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                      {/* Side-by-side comparison */}
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: `repeat(${Math.min(cluster.memoryDetails?.length ?? 1, 2)}, 1fr)`,
+                          gap: 10,
+                        }}
+                      >
+                        {(cluster.memoryDetails ?? []).map((detail: any, idx: number) => (
+                          <div
+                            key={detail.id}
+                            className="p-3 bg-indigo-500/5 border border-indigo-500/15 rounded-lg flex flex-col gap-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600">Memory {idx + 1}</span>
+                              <code className="text-[8px] bg-surface2 px-1.5 py-0.5 rounded text-text-muted font-mono">{detail.id.slice(0, 6)}...</code>
+                            </div>
+                            <p className="text-xs text-text leading-relaxed">{detail.fact}</p>
+                            <span className="text-[9px] bg-surface2 border border-border px-2 py-0.5 rounded self-start text-text-muted">{detail.category}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* STALE SECTION — derived directly from loaded memories, same threshold as the stale banner */}
+            {(() => {
+              const staleMemories = memories.filter(isMemoryStale);
+              return (
+                <div>
+                  <div className="mb-4">
+                    <h3 className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                      <span style={{ display: "inline-flex", width: 22, height: 22, borderRadius: 6, background: "rgba(245,158,11,0.12)", alignItems: "center", justifyContent: "center", color: "#f59e0b", fontSize: 11, fontWeight: "bold", flexShrink: 0 }}>⏱</span>
+                      Stale Records
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">{staleMemories.length}</span>
+                    </h3>
+                    <p className="text-xs text-text-muted mt-1 ml-8">Never recalled, or not accessed in {STALE_LAST_ACCESS_DAYS}+ days. Validate or archive to clean up.</p>
+                  </div>
+                  {staleMemories.length === 0 ? (
+                    <div className="py-8 text-center text-text-muted text-sm bg-surface border border-border rounded-lg">
+                      No stale memories
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {/* Deferred-for-review first, then the rest */}
+                      {[...staleMemories].sort((a, b) => {
+                        const aDeferred = deferredStaleIds.includes(a.id) ? 0 : 1;
+                        const bDeferred = deferredStaleIds.includes(b.id) ? 0 : 1;
+                        return aDeferred - bDeferred;
+                      }).map((m) => {
+                        const staleLabel = !m.lastAccessedAt
+                          ? "Never recalled"
+                          : `${Math.floor((Date.now() - m.lastAccessedAt) / (1000 * 60 * 60 * 24))}d since last recall`;
+                        const savedForReview = deferredStaleIds.includes(m.id);
+                        return (
+                          <div key={m.id} className={`p-4 bg-surface border rounded-lg transition-colors flex items-start justify-between gap-4 ${savedForReview ? "border-amber-500/40 bg-amber-500/3" : "border-border hover:border-amber-500/30"}`}>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-text line-clamp-3 mb-2">{m.fact}</p>
+                              <div className="flex gap-2 items-center flex-wrap">
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-surface2 text-text-muted">{m.category}</span>
+                                <span className="text-[10px] text-amber-600 font-semibold">{staleLabel}</span>
+                                <span className="text-[10px] text-text-muted font-mono">{m.id.slice(0, 8)}…</span>
+                                {savedForReview && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/25">Saved for Review</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0">
+                              <button
+                                onClick={() => {
+                                  handleTouchMemory(m.id);
+                                }}
+                                className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-emerald-500/30 bg-emerald-500/5 text-emerald-600 hover:bg-emerald-500/15 cursor-pointer transition-colors whitespace-nowrap"
+                              >
+                                Looks Good
+                              </button>
+                              <button
+                                onClick={() => {
+                                  archiveMemory({ data: { id: m.id } }).then(() => {
+                                    toast.success("Memory archived");
+                                    removeDeferredStale(m.id);
+                                    queryClient.invalidateQueries({ queryKey: ["memories", projectKey] });
+                                  }).catch((e) => { toast.error(`Failed: ${e.message}`); });
+                                }}
+                                className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-600 hover:bg-amber-500/15 cursor-pointer transition-colors whitespace-nowrap"
+                              >
+                                Archive
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* COMPARISON MODAL */}
+            {showComparisonModal && comparisonCluster && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-surface border border-border rounded-xl shadow-lg max-w-4xl w-full max-h-[80vh] overflow-auto flex flex-col">
+                  <div className="sticky top-0 bg-surface border-b border-border p-6 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold text-text">{comparisonCluster.clusterLabel}</h3>
+                      <p className="text-sm text-text-muted mt-1">{comparisonCluster.reason}</p>
+                    </div>
+                    <button
+                      onClick={() => { setShowComparisonModal(false); setComparisonCluster(null); }}
+                      className="text-text-muted hover:text-text text-2xl leading-none"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="p-6 flex-1">
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                      {(comparisonCluster.memoryDetails ?? []).map((detail: any, idx: number) => (
+                        <div key={detail.id} className="p-4 bg-indigo-500/6 border border-indigo-500/15 rounded-lg flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600">Memory {idx + 1}</span>
+                            <code className="text-[8px] bg-surface2 px-2 py-1 rounded text-text-muted font-mono">{detail.id.slice(0, 6)}...</code>
+                          </div>
+                          <p className="text-sm text-text leading-relaxed font-medium">{detail.fact}</p>
+                          <div className="text-[9px] text-text-muted flex gap-2">
+                            <span className="bg-surface2 px-2 py-1 rounded">{detail.category}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="p-4 bg-success/5 border border-success/20 rounded-lg mb-6">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-success text-sm">✓</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-success">AI Consolidation</span>
+                      </div>
+                      <p className="text-xs text-text-muted">
+                        Llama 3.3 will intelligently merge these memories into one comprehensive memory, preserving all unique information while eliminating redundancy.
+                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => { setShowComparisonModal(false); setComparisonCluster(null); }}
+                        className="flex-1 h-9 px-4 text-xs font-bold uppercase tracking-wider rounded-md border border-border bg-surface2 text-text hover:bg-surface transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMerging(true);
+                          mergeMemories({ data: { memoryIds: comparisonCluster.memoryIds, projectKey: projectKey === "personal" ? undefined : projectKey } }).then(() => {
+                            toast.success("Memories merged successfully");
+                            removeDeferredCluster(comparisonCluster.clusterLabel);
+                            queryClient.invalidateQueries({ queryKey: ["memoryHealth"] });
+                            setShowComparisonModal(false);
+                            setComparisonCluster(null);
+                            setMerging(false);
+                          }).catch((e) => { toast.error(`Failed: ${e.message}`); setMerging(false); });
+                        }}
+                        disabled={merging}
+                        className="flex-1 h-9 px-4 text-xs font-bold uppercase tracking-wider rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                      >
+                        {merging ? "Merging..." : "Confirm Merge"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         ) : activeTab === "knowledge-graph" ? (
@@ -2666,7 +3042,7 @@ function Dashboard() {
         {staleFilterActive && (
           <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/8 border border-amber-500/20 rounded-lg text-xs">
             <span className="text-amber-600 font-semibold flex-1">
-              Showing memories older than {STALE_MEMORY_DAYS} days
+              Showing stale memories (never recalled or not accessed in {STALE_LAST_ACCESS_DAYS}+ days)
             </span>
             <button
               type="button"
@@ -2714,7 +3090,7 @@ function Dashboard() {
           <MemoryTable
             memories={
               staleFilterActive
-                ? memories.filter((m) => Date.now() - new Date(m.timestamp).getTime() > STALE_MEMORY_MS)
+                ? memories.filter(isMemoryStale)
                 : memories
             }
             filter={searchQuery}
