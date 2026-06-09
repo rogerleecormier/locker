@@ -22,6 +22,7 @@ import {
   checkTokenRateLimit,
   tooManyRequests,
 } from "./server/rateLimit";
+import { validateAuthorizeRequest, validateTokenRequest } from "./server/pkce";
 
 const handler = createStartHandler(defaultStreamHandler);
 
@@ -293,8 +294,27 @@ h2{color:#16a34a}code{background:#f3f4f6;padding:2px 6px;border-radius:4px;font-
     // Rewrite the URL in-process to the better-auth OAuth2 endpoints.
     if (url.pathname === "/authorize" || url.pathname === "/token" || url.pathname === "/register") {
       const segment = url.pathname === "/authorize" ? "authorize" : url.pathname === "/register" ? "register" : "token";
+
+      // ── OAuth 2.1 PKCE enforcement (CVE-2025-4144) ───────────────────────────
+      // Reject before reading the body or touching the upstream provider so that
+      // a stripped code_challenge can never reach a potentially lenient handler.
+      if (segment === "authorize") {
+        const pkce = validateAuthorizeRequest(url);
+        if (!pkce.ok) return pkce.response;
+      }
+
       const body = request.body ? await request.arrayBuffer() : null;
       const bodyText = body ? new TextDecoder().decode(body) : "(empty)";
+
+      // Token endpoint: validate code_verifier for authorization_code grants.
+      if (segment === "token") {
+        const contentType = request.headers.get("content-type") ?? "";
+        const params = contentType.includes("application/x-www-form-urlencoded")
+          ? new URLSearchParams(bodyText)
+          : url.searchParams;
+        const pkce = validateTokenRequest(params);
+        if (!pkce.ok) return pkce.response;
+      }
 
       // Intercept dynamic client registration (RFC 7591) for known clients.
       // Claude always tries to register dynamically, but we keep allowDynamicClientRegistration=false
