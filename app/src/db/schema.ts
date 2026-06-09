@@ -646,3 +646,62 @@ export const webhookEvents = sqliteTable("webhook_events", {
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type NewWebhookEvent = typeof webhookEvents.$inferInsert;
 
+// ── Enterprise SSO Configuration ──────────────────────────────────────────────
+// One row per enterprise org tenant. Supports SAML 2.0 (Okta, Entra, Ping)
+// and generic OIDC providers. Only orgs on the "enterprise" plan may activate SSO.
+// The idpCert / clientSecret fields store PEM / secret material encrypted with
+// the org vault DEK — they must never be stored in plaintext.
+export const ssoConfigs = sqliteTable("sso_configs", {
+  id: text("id").primaryKey(),
+  orgId: text("orgId").notNull().unique().references(() => organizations.id, { onDelete: "cascade" }),
+  // "saml" for Okta / Entra SAML 2.0; "oidc" for generic OIDC providers
+  provider: text("provider", { enum: ["saml", "oidc"] }).notNull(),
+  // SAML-specific fields
+  idpEntityId: text("idpEntityId"),      // IdP entity ID / issuer
+  idpSsoUrl: text("idpSsoUrl"),          // IdP SSO redirect URL
+  idpCert: text("idpCert"),              // Encrypted PEM of the IdP signing cert
+  spEntityId: text("spEntityId"),        // SP entity ID (our ACS URL base)
+  // OIDC-specific fields
+  issuerUrl: text("issuerUrl"),          // OIDC issuer (discovery base)
+  clientId: text("clientId"),            // OIDC client_id
+  clientSecret: text("clientSecret"),    // Encrypted OIDC client_secret
+  // Shared
+  attributeMap: text("attributeMap"),    // JSON: { email, firstName, lastName, groups? }
+  isActive: integer("isActive", { mode: "boolean" }).notNull().default(false),
+  enforced: integer("enforced", { mode: "boolean" }).notNull().default(false), // block non-SSO logins
+  createdAt: integer("createdAt").notNull(),
+  updatedAt: integer("updatedAt").notNull(),
+}, (t) => [
+  index("idx_sso_configs_org").on(t.orgId),
+]);
+
+export type SsoConfig = typeof ssoConfigs.$inferSelect;
+export type NewSsoConfig = typeof ssoConfigs.$inferInsert;
+
+// ── BYOK (Bring Your Own Key) Configuration ───────────────────────────────────
+// Org admins on Enterprise plan may supply an external KMS URL or a local master
+// key. When a byokConfig row exists and is active, the vault DEK is wrapped by
+// the external KMS instead of the server ENCRYPTION_KEY.
+// kmsApiKeyHash stores a PBKDF2 hash of the KMS API credential so we can verify
+// connectivity without storing the secret. The raw key is never persisted here.
+export const byokConfigs = sqliteTable("byok_configs", {
+  id: text("id").primaryKey(),
+  orgId: text("orgId").notNull().unique().references(() => organizations.id, { onDelete: "cascade" }),
+  // "local" = org admin provided a raw hex master key (stored encrypted in kmsKeyRef KV slot)
+  // "kms"   = external KMS endpoint (e.g., AWS KMS, HashiCorp Vault, Cloudflare KMS)
+  keySource: text("keySource", { enum: ["local", "kms"] }).notNull(),
+  // For "kms": URL of the KMS wrap/unwrap endpoint
+  kmsUrl: text("kmsUrl"),
+  // KV reference key for the wrapped client master key (for "local") or the encrypted KMS API credential
+  kmsKeyRef: text("kmsKeyRef"),
+  // PBKDF2 hash of the raw KMS API key — used to verify the credential is still valid
+  kmsApiKeyHash: text("kmsApiKeyHash"),
+  isActive: integer("isActive", { mode: "boolean" }).notNull().default(false),
+  lastVerifiedAt: integer("lastVerifiedAt"),
+  createdAt: integer("createdAt").notNull(),
+  updatedAt: integer("updatedAt").notNull(),
+});
+
+export type ByokConfig = typeof byokConfigs.$inferSelect;
+export type NewByokConfig = typeof byokConfigs.$inferInsert;
+

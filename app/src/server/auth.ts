@@ -2,11 +2,180 @@ import { betterAuth } from "better-auth";
 import type { BetterAuthOptions } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
+import { eq } from "drizzle-orm";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { jwt } from "better-auth/plugins";
 import * as schema from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { persistChunkedVectors } from "~/server/memory/_shared";
+
+// ── Enterprise SSO helpers ────────────────────────────────────────────────────
+
+export interface SsoProviderConfig {
+  provider: "saml" | "oidc";
+  // OIDC fields (used when provider === "oidc")
+  issuerUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
+  // SAML fields (used when provider === "saml")
+  idpEntityId?: string;
+  idpSsoUrl?: string;
+  idpCert?: string;
+  spEntityId?: string;
+  // Attribute mapping: IdP claim name → Locker profile field
+  attributeMap?: {
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    groups?: string;
+  };
+}
+
+/**
+ * Resolve the active SSO configuration for an org.
+ * Returns null when no active SSO config exists or the org is not on the enterprise plan.
+ *
+ * Callers (e.g. the /api/auth/sso/:orgSlug endpoint) use this to decide whether to
+ * redirect to the IdP or fall through to the standard email/password flow.
+ */
+export async function resolveSsoConfig(
+  orgId: string,
+  env: CloudflareEnv,
+): Promise<SsoProviderConfig | null> {
+  const db = drizzle(env.DB, { schema });
+
+  const org = await db.query.organizations.findFirst({
+    where: (orgs, { eq }) => eq(orgs.id, orgId),
+    columns: { plan: true },
+  });
+  if (org?.plan !== "enterprise") return null;
+
+  const sso = await db.query.ssoConfigs.findFirst({
+    where: (c, { and, eq }) => and(eq(c.orgId, orgId), eq(c.isActive, true)),
+  });
+  if (!sso) return null;
+
+  // Decrypt sensitive fields (idpCert / clientSecret) before returning.
+  // They are stored encrypted with the org vault DEK.
+  const { getOrCreateVaultKey, decrypt } = await import("./crypto");
+  const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, `org:${orgId}`);
+
+  const decryptField = async (v: string | null | undefined) =>
+    v ? decrypt(v, vaultKey) : undefined;
+
+  if (sso.provider === "oidc") {
+    return {
+      provider: "oidc",
+      issuerUrl: sso.issuerUrl ?? undefined,
+      clientId: sso.clientId ?? undefined,
+      clientSecret: await decryptField(sso.clientSecret),
+      attributeMap: sso.attributeMap ? JSON.parse(sso.attributeMap) : undefined,
+    };
+  }
+
+  // SAML
+  return {
+    provider: "saml",
+    idpEntityId: sso.idpEntityId ?? undefined,
+    idpSsoUrl: sso.idpSsoUrl ?? undefined,
+    idpCert: await decryptField(sso.idpCert),
+    spEntityId: sso.spEntityId ?? undefined,
+    attributeMap: sso.attributeMap ? JSON.parse(sso.attributeMap) : undefined,
+  };
+}
+
+/**
+ * Upsert an SSO configuration for an enterprise org.
+ * Sensitive fields (idpCert, clientSecret) are encrypted with the org vault DEK
+ * before being persisted to D1.
+ *
+ * Throws if the org is not on the enterprise plan.
+ */
+export async function upsertSsoConfig(
+  orgId: string,
+  config: SsoProviderConfig,
+  env: CloudflareEnv,
+): Promise<void> {
+  const db = drizzle(env.DB, { schema });
+
+  const org = await db.query.organizations.findFirst({
+    where: (orgs, { eq }) => eq(orgs.id, orgId),
+    columns: { plan: true },
+  });
+  if (org?.plan !== "enterprise") {
+    throw new Error("SSO configuration requires an enterprise plan");
+  }
+
+  const { getOrCreateVaultKey, encrypt, isEncrypted } = await import("./crypto");
+  const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, `org:${orgId}`);
+
+  const encryptField = async (v: string | undefined) => {
+    if (!v) return undefined;
+    // Avoid double-encrypting if it was already encrypted (e.g. partial update)
+    return isEncrypted(v) ? v : encrypt(v, vaultKey);
+  };
+
+  const now = Date.now();
+  const existing = await db.query.ssoConfigs.findFirst({
+    where: (c, { eq }) => eq(c.orgId, orgId),
+    columns: { id: true },
+  });
+
+  const row: schema.NewSsoConfig = {
+    id: existing?.id ?? crypto.randomUUID(),
+    orgId,
+    provider: config.provider,
+    idpEntityId: config.idpEntityId ?? null,
+    idpSsoUrl: config.idpSsoUrl ?? null,
+    idpCert: (await encryptField(config.idpCert)) ?? null,
+    spEntityId: config.spEntityId ?? null,
+    issuerUrl: config.issuerUrl ?? null,
+    clientId: config.clientId ?? null,
+    clientSecret: (await encryptField(config.clientSecret)) ?? null,
+    attributeMap: config.attributeMap ? JSON.stringify(config.attributeMap) : null,
+    isActive: false, // Requires explicit activation via setSsoActive()
+    enforced: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await db
+    .insert(schema.ssoConfigs)
+    .values(row)
+    .onConflictDoUpdate({
+      target: schema.ssoConfigs.orgId,
+      set: {
+        provider: row.provider,
+        idpEntityId: row.idpEntityId,
+        idpSsoUrl: row.idpSsoUrl,
+        idpCert: row.idpCert,
+        spEntityId: row.spEntityId,
+        issuerUrl: row.issuerUrl,
+        clientId: row.clientId,
+        clientSecret: row.clientSecret,
+        attributeMap: row.attributeMap,
+        updatedAt: now,
+      },
+    });
+}
+
+/**
+ * Activate or deactivate SSO for an org (separate step from upsert so admins
+ * can configure first, test, then flip the switch).
+ * Pass `enforced: true` to block all non-SSO logins for the org.
+ */
+export async function setSsoActive(
+  orgId: string,
+  active: boolean,
+  enforced: boolean,
+  env: CloudflareEnv,
+): Promise<void> {
+  const db = drizzle(env.DB, { schema });
+  await db
+    .update(schema.ssoConfigs)
+    .set({ isActive: active, enforced, updatedAt: Date.now() })
+    .where(eq(schema.ssoConfigs.orgId, orgId));
+}
 
 // ── Module-level cache ────────────────────────────────────────────────────────
 // betterAuth instance is cached for the isolate lifetime. No D1 bootstrap

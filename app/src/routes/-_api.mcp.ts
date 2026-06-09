@@ -21,6 +21,18 @@ const zFact = z.string().min(1).max(10000).transform((s) => s.trim());
 const zTags = z.string().max(500).default("").transform((s) => s.trim());
 const zMemoryCategory = z.enum(["rules", "projects", "references"]);
 const zAllCategory = z.enum(["rules", "projects", "references", "configs"]);
+
+// BYOK ciphertext: Base64(12-byte IV || AES-GCM ciphertext).
+// Minimum: 12 bytes IV + 1 byte plaintext + 16 bytes GCM tag = 29 bytes → ceil(29/3)*4 = 40 base64 chars.
+// Maximum: same bound as zFact (10000 bytes plaintext → ~13336 base64 chars after encryption).
+const zByokCiphertext = z
+  .string()
+  .min(40, "BYOK ciphertext too short to be valid (must include 12-byte IV + GCM tag)")
+  .max(14000, "BYOK ciphertext exceeds maximum allowed length")
+  .regex(
+    /^[A-Za-z0-9+/]+=*$/,
+    "BYOK fact must be a Base64-encoded ciphertext — plaintext strings are rejected in BYOK mode",
+  );
 // projectKey must be empty/null (personal), "org:<uuid>", or "team:<uuid>"
 const zProjectKey = z
   .string()
@@ -78,6 +90,25 @@ const CommitMemoryArgsSchema = z.object({
   tags: zTags,
   source: zSource,
   projectKey: zProjectKey,
+}).strict();
+
+// BYOK variant: `fact` must be Base64(IV || ciphertext); optionally carries a
+// client-generated embedding vector so the server never touches plaintext.
+const CommitMemoryByokArgsSchema = z.object({
+  // Encrypted fact — Base64(12-byte IV || AES-GCM ciphertext)
+  fact: zByokCiphertext,
+  category: zMemoryCategory.optional(),
+  tags: zTags,
+  source: zSource,
+  projectKey: zProjectKey,
+  // Client-generated 384-dim float embedding (Transformers.js all-MiniLM-L6-v2).
+  // When present the server skips its own Workers AI embedding call and stores
+  // this vector directly in Vectorize.
+  embedding: z
+    .array(z.number())
+    .min(64, "Embedding vector too short")
+    .max(4096, "Embedding vector too long")
+    .optional(),
 }).strict();
 
 const UpdateMemoryArgsSchema = z.object({
@@ -1449,11 +1480,21 @@ export async function handleMcpRequest(
   const toolName = params?.name;
   const rawArgs = params?.arguments ?? {};
 
+  // BYOK mode: when the client sets X-Locker-BYOK: 1, the `fact` field of
+  // commit_memory must be a Base64 AES-GCM ciphertext (not plaintext).
+  // We swap in the stricter schema so plaintext is hard-rejected at the edge
+  // before any handler logic runs.
+  const isByokRequest = request.headers.get("X-Locker-BYOK") === "1";
+
   // Validate and coerce args against the per-tool schema before any handler runs.
   // Unknown fields are rejected by .strict() schemas, guarding against parameter pollution.
   let args: Record<string, unknown> = rawArgs;
   if (toolName && toolName in TOOL_ARG_SCHEMAS) {
-    const argsResult = TOOL_ARG_SCHEMAS[toolName].safeParse(rawArgs);
+    const schema =
+      isByokRequest && toolName === "commit_memory"
+        ? CommitMemoryByokArgsSchema
+        : TOOL_ARG_SCHEMAS[toolName];
+    const argsResult = schema.safeParse(rawArgs);
     if (!argsResult.success) {
       const firstIssue = argsResult.error.issues[0];
       const path = firstIssue?.path?.join(".") ?? "unknown";
@@ -2338,6 +2379,74 @@ Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
     if (!tagsList.includes(source)) tagsList.push(source);
     const finalTags = tagsList.join(", ");
 
+    // BYOK path: fact is already a Base64 AES-GCM ciphertext produced by the client.
+    // We store it verbatim — no server-side decryption or re-encryption occurs.
+    // DLP scanning, graph extraction, and keyword blind-indexing are intentionally
+    // skipped because we cannot read the plaintext.
+    if (isByokRequest) {
+      // fact is validated as Base64 ciphertext by CommitMemoryByokArgsSchema.
+      const clientEmbedding = args.embedding as number[] | undefined;
+      const memId = crypto.randomUUID();
+      const timestamp = Date.now();
+      const vaultId = (projectKey && (projectKey.startsWith("team:") || projectKey.startsWith("org:"))) ? projectKey : claims.userId;
+      const blindIndexHash = await computeBlindIndex(vaultId, finalTags);
+
+      let scopeType: "personal" | "organization" | "team" = "personal";
+      let scopeId: string | null = null;
+      if (projectKey) {
+        if (projectKey.startsWith("org:")) { scopeType = "organization"; scopeId = projectKey.slice(4); }
+        else if (projectKey.startsWith("team:")) { scopeType = "team"; scopeId = projectKey.slice(5); }
+      }
+
+      await db.insert(memories).values({
+        id: memId,
+        userId: claims.userId,
+        fact, // already a Base64 ciphertext — stored opaque
+        category,
+        tags: finalTags,
+        timestamp,
+        isActive: true,
+        projectKey: projectKey || null,
+        scopeType,
+        scopeId,
+        isQuarantined: false, // cannot DLP-scan ciphertext
+        blind_index_hash: blindIndexHash,
+        keyword_blind_index: null, // keyword index requires plaintext
+      });
+
+      await db.insert(memoryVersions).values({
+        id: crypto.randomUUID(),
+        memoryId: memId,
+        fact,
+        category,
+        tags: finalTags,
+        changedBy: claims.userId,
+        changeReason: "created",
+        timestamp,
+      });
+
+      // If the client supplied an embedding, write it to Vectorize directly.
+      if (clientEmbedding && clientEmbedding.length > 0) {
+        try {
+          await env.VECTOR_INDEX.upsert([{
+            id: memId,
+            values: clientEmbedding,
+            metadata: { userId: claims.userId, category, tags: finalTags, projectKey: projectKey ?? "", byok: "1" },
+          }]);
+        } catch (err) {
+          console.error("[mcp commit_memory byok] vector upsert failed:", err);
+        }
+      }
+
+      await Promise.all([
+        logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "commit_memory", memoryId: memId, ipAddress, userAgent, metadata: { category, projectKey, quarantined: false, byok: true } }),
+        logTokenUsage(db, claims.tokenId, "commit", 0),
+      ]);
+
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ id: memId, category, tags: finalTags, timestamp, byok: true }) }] });
+    }
+
+    // Standard (non-BYOK) path: server handles sanitization, DLP, and encryption.
     const sanitizedFact = sanitizeMemory(fact.trim());
     if (!sanitizedFact) {
       return mcpError(id, -32602, "Invalid params: fact was empty or contained adversarial instructions");
