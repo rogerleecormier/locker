@@ -57,6 +57,16 @@ const PILLARS = [
     title: "Ephemeral V8 Sandboxing",
     body: "All execution runs inside Cloudflare Workers ephemeral V8 isolates with no persistent process memory between requests. Workers AI calls for entity extraction and adversarial sanitization are also ephemeral. There is zero persistent server-side state across invocations.",
   },
+  {
+    icon: "🌐",
+    title: "BYOK Client-Side Encryption (Enterprise)",
+    body: "Bring Your Own Key enables true end-to-end encryption where the plaintext never leaves your browser. Memories are encrypted using AES-256-GCM with Web Crypto API before transmission. The server receives only opaque Base64 ciphertext and never decrypts on your behalf. Supports local hex keys or external KMS endpoints (AWS KMS, HashiCorp Vault, Cloudflare KMS).",
+  },
+  {
+    icon: "🔑",
+    title: "Enterprise SSO (SAML/OIDC)",
+    body: "Organizations can enforce centralized identity management via SAML 2.0 (Okta, Microsoft Entra ID, PingFederate) or generic OIDC providers. IdP certificates and client secrets are encrypted with the org vault Key Encryption Key. Admins can enforce SSO-only access, eliminating password-based authentication while maintaining per-user audit trails.",
+  },
 ];
 
 export default function SecurityPrivacy(_props: SectionProps) {
@@ -94,8 +104,9 @@ export default function SecurityPrivacy(_props: SectionProps) {
         <strong style={{ color: "var(--text)", display: "block", marginBottom: 6 }}>
           Defense-in-depth summary
         </strong>
-        Envelope encryption protects data at rest. DLP and AI sanitization protect data at write time.
-        PBKDF2 and TOTP protect token and identity surfaces. ABAC and JIT gating protect runtime agent access.
+        Server-side envelope encryption (all plans) + BYOK client-side encryption (Enterprise) protect data at rest.
+        DLP and AI sanitization protect data at write time. PBKDF2 and TOTP protect token and identity surfaces.
+        ABAC and JIT gating protect runtime agent access. Enterprise SSO enforces centralized identity with audit trails.
         The human approval queue and audit trail protect against autonomous agent mutation. Ephemeral V8 isolates
         ensure no cross-request memory leakage at the infrastructure layer.
       </div>

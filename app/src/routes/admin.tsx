@@ -4,7 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
 import { sql, eq, and, or, like, desc } from "drizzle-orm";
 import { z } from "zod";
-import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, systemSettings, auditLogs, apiTokens, memoryVersions, tokenUsages, webhookEvents, featureOverrides } from "~/db/schema";
+import { memories, organizations, orgQuotas, organizationMembers, users, accounts, userPlans, planEvents, systemSettings, auditLogs, apiTokens, memoryVersions, tokenUsages, webhookEvents, featureOverrides, vaults } from "~/db/schema";
 import { requireAdmin } from "~/server/session";
 import { updateSubscriptionSeats } from "~/server/billing";
 import { seedNewUserMemory } from "~/server/auth";
@@ -241,7 +241,55 @@ export const listAllOrgsAndQuotas = createServerFn({ method: "GET" }).handler(
   }
 );
 
+export type ManagedTierInfo = {
+  vaultId: string | null;
+  vaultStatus: "active" | "suspended" | "deleted" | null;
+  provisionedAt: number | null;
+  masterKekRef: string | null;
+  billingCustomerId: string | null;
+  billingSubscriptionId: string | null;
+  billingPlan: "free" | "business" | "business_comp" | "enterprise";
+};
 
+export const getManagedTierInfo = createServerFn({ method: "GET" })
+  .inputValidator((data: unknown): { orgId: string } => {
+    const d = data as { orgId?: string };
+    if (!d.orgId) throw new Error("orgId required");
+    return { orgId: d.orgId };
+  })
+  .handler(async ({ data, context }): Promise<ManagedTierInfo> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = drizzle(env.DB, { schema: { organizations, vaults } });
+
+    // Fetch org billing info
+    const orgRows = await db
+      .select({ billingCustomerId: organizations.billingCustomerId, billingSubscriptionId: organizations.billingSubscriptionId, plan: organizations.plan })
+      .from(organizations)
+      .where(eq(organizations.id, data.orgId))
+      .limit(1)
+      .all();
+    const org = orgRows[0];
+
+    // Fetch vault info if it exists
+    const vaultRows = await db
+      .select({ vaultId: vaults.vaultId, status: vaults.status, provisionedAt: vaults.provisionedAt, masterKekRef: vaults.masterKekRef })
+      .from(vaults)
+      .where(eq(vaults.orgId, data.orgId))
+      .limit(1)
+      .all();
+    const vault = vaultRows[0];
+
+    return {
+      vaultId: vault?.vaultId ?? null,
+      vaultStatus: (vault?.status as "active" | "suspended" | "deleted") ?? null,
+      provisionedAt: vault?.provisionedAt ?? null,
+      masterKekRef: vault?.masterKekRef ?? null,
+      billingCustomerId: org?.billingCustomerId ?? null,
+      billingSubscriptionId: org?.billingSubscriptionId ?? null,
+      billingPlan: org?.plan ?? "free",
+    };
+  });
 
 export const updateOrgQuota = createServerFn({ method: "POST" })
   .inputValidator((data) => UpdateOrgQuotaSchema.parse(data))

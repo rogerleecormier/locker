@@ -14,7 +14,7 @@ import { hashToken } from "./server/crypto";
 import { archiveContradictingMemories } from "./server/memoryFunctions";
 import { isEncrypted, decrypt, deriveUserKey, getOrCreateVaultKey, decryptEphemeral, EphemeralPlaintext } from "./server/crypto";
 import { logAudit } from "./server/enterprise";
-import { handleStripeWebhook } from "./server/billing";
+import { handlePaddleWebhook } from "./server/billing";
 import { handleWebhookRequest } from "./server/webhooks";
 import {
   isStaticPath,
@@ -215,8 +215,8 @@ h2{color:#16a34a}code{background:#f3f4f6;padding:2px 6px;border-radius:4px;font-
       return handleExportRequest(request, env);
     }
 
-    if (url.pathname === "/api/webhooks/stripe" && request.method === "POST") {
-      return handleStripeWebhook(request, env);
+    if (url.pathname === "/api/webhooks/paddle" && request.method === "POST") {
+      return handlePaddleWebhook(request, env);
     }
 
     if (url.pathname === "/api/webhooks/github" && request.method === "POST") {

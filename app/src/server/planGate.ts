@@ -46,11 +46,24 @@ export class PlanLimitError extends Error {
   }
 }
 
+/**
+ * Returns the user's best plan across all contexts (personal + orgs).
+ * Used for feature gating (e.g., "does this user have API tokens feature?").
+ *
+ * IMPORTANT for SaaS: This returns the highest plan tier the user can access.
+ * For quota enforcement, use checkQuota() which respects org context.
+ * For personal-vault-only limits, use checkMemoryLimit().
+ *
+ * Returns both planId (for feature gating) and orgId (the org that provides this plan).
+ * If user is in multiple orgs, returns the highest-tier org's ID.
+ */
 export async function getUserEffectivePlan(
   db: any,
   userId: string
 ): Promise<{ planId: PlanId; orgId: string | null }> {
   const now = Date.now();
+
+  // Check for admin feature overrides (highest priority)
   const overrideRows = await db
     .select({ planId: featureOverrides.planId })
     .from(featureOverrides)
@@ -70,15 +83,16 @@ export async function getUserEffectivePlan(
     return { planId: overrideRows[0].planId as PlanId, orgId: null };
   }
 
+  // User's personal plan
   const userPlanRow = await db
     .select({ plan: userPlans.plan })
     .from(userPlans)
     .where(eq(userPlans.userId, userId))
     .limit(1)
     .all();
-
   const userPlan = userPlanRow[0] ? resolvePlan(userPlanRow[0].plan) : "free";
 
+  // User's org memberships (may be multiple)
   const orgRows = await db
     .select({
       orgId: organizationMembers.orgId,
@@ -89,6 +103,7 @@ export async function getUserEffectivePlan(
     .where(eq(organizationMembers.userId, userId))
     .all();
 
+  // Pick the highest-tier plan across personal + all orgs
   let best: PlanId = userPlan;
   let bestOrgId: string | null = null;
 
@@ -150,12 +165,22 @@ export async function requireFeature(
 
 export async function checkMemoryLimit(
   db: any,
-  userId: string
+  userId: string,
+  orgId?: string | null
 ): Promise<void> {
+  // For org context: use org quotas (checkQuota handles this)
+  // For personal context: use user plan limits
+  if (orgId) {
+    // Org memory limits are checked in checkQuota(), not here.
+    // This function is for legacy personal-scope limits.
+    return;
+  }
+
   const { planId } = await getUserEffectivePlan(db, userId);
   const limits = PLANS[planId].limits;
   if (limits.maxMemories === Infinity) return;
 
+  // Count only personal memories (orgId IS NULL, not in any org vault)
   const countRows = await db
     .select({ count: sql<number>`COUNT(*)` })
     .from(memories)
@@ -163,6 +188,7 @@ export async function checkMemoryLimit(
       and(
         eq(memories.userId, userId),
         eq(memories.isActive, true),
+        sql`${memories.orgId} IS NULL`,
         sql`(${memories.projectKey} IS NULL OR ${memories.projectKey} = '')`
       )
     )

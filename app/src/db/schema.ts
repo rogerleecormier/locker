@@ -646,6 +646,31 @@ export const webhookEvents = sqliteTable("webhook_events", {
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type NewWebhookEvent = typeof webhookEvents.$inferInsert;
 
+// ── Memory Dependency Graph — Causal Invalidation ─────────────────────────────
+// Records parent→child causal dependencies for memories. When a "parent" memory
+// is fundamentally altered (e.g., "Use React 19" changed to "Use Vue 3"), all
+// dependent ("child") memories are automatically flagged with status="needs_review"
+// for the next recall cycle.
+//
+// Example: parentId="Use React 19", childId="useActionState hook", relationType="implements"
+// Invalidating the parent automatically flags the child as stale.
+export const memoryDependencies = sqliteTable("memory_dependencies", {
+  id: text("id").primaryKey(),
+  parentId: text("parentId").notNull().references(() => memories.id, { onDelete: "cascade" }),
+  childId: text("childId").notNull().references(() => memories.id, { onDelete: "cascade" }),
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  relationType: text("relationType", {
+    enum: ["implements", "depends_on", "extends", "overrides", "documents", "related_to", "contradiction"]
+  }).notNull().default("related_to"),
+  createdAt: integer("createdAt").notNull(),
+}, (t) => [
+  index("idx_memory_dependencies_parent").on(t.parentId),
+  index("idx_memory_dependencies_child").on(t.childId),
+]);
+
+export type MemoryDependency = typeof memoryDependencies.$inferSelect;
+export type NewMemoryDependency = typeof memoryDependencies.$inferInsert;
+
 // ── Enterprise SSO Configuration ──────────────────────────────────────────────
 // One row per enterprise org tenant. Supports SAML 2.0 (Okta, Entra, Ping)
 // and generic OIDC providers. Only orgs on the "enterprise" plan may activate SSO.

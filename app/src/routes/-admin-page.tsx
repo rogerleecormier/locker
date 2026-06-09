@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { planHasFeature, type PlanId } from "~/lib/plans";
 import { AdminLayout, type AdminSection } from "~/components/AdminLayout";
-import { SiteAdminSection, OrgAdminSection, AdminCard } from "~/components/AdminSections";
+import { SiteAdminSection, OrgAdminSection, AdminCard, StatBox } from "~/components/AdminSections";
 import { SystemOverviewSection } from "~/components/AdminSystemOverview";
 import { UserManagementSection } from "~/components/AdminUserManagement";
 import { UnifiedActivitySection } from "~/components/AdminActivitySection";
@@ -141,9 +141,11 @@ function OrgSecuritySection({ managedOrgs }: { managedOrgs: any[] }) {
   if (managedOrgs.length === 0) {
     return (
       <OrgAdminSection title="Org Security" description="BYOK encryption and SSO configuration" icon="🔐">
-        <p style={{ color: "var(--text-muted)", fontSize: 14 }}>
-          You are not an admin of any organization.
-        </p>
+        <AdminCard>
+          <p style={{ margin: 0, fontSize: 13 }}>
+            You are not an admin of any organization.
+          </p>
+        </AdminCard>
       </OrgAdminSection>
     );
   }
@@ -152,76 +154,85 @@ function OrgSecuritySection({ managedOrgs }: { managedOrgs: any[] }) {
     <OrgAdminSection title="Org Security" description="Bring Your Own Key (BYOK) encryption and Enterprise SSO" icon="🔐">
       {/* Org picker — only shown when the admin manages multiple orgs */}
       {managedOrgs.length > 1 && (
-        <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
-            Organization
-          </label>
-          <select
-            value={selectedOrgId}
-            onChange={(e) => setSelectedOrgId(e.target.value)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: "1px solid var(--border)",
-              background: "var(--surface2)",
-              color: "var(--text)",
-              fontSize: 13,
-              cursor: "pointer",
-              minWidth: 240,
-            }}
-          >
-            {managedOrgs.map((org: any) => (
-              <option key={org.id} value={org.id}>
-                {org.name} ({org.plan})
-              </option>
-            ))}
-          </select>
-        </div>
+        <AdminCard>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Select Organization
+            </label>
+            <select
+              value={selectedOrgId}
+              onChange={(e) => setSelectedOrgId(e.target.value)}
+              style={{
+                padding: "9px 12px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--text)",
+                fontSize: 13,
+                cursor: "pointer",
+                minWidth: 240,
+                fontWeight: 500,
+              }}
+            >
+              {managedOrgs.map((org: any) => (
+                <option key={org.id} value={org.id}>
+                  {org.name} — {org.plan}
+                </option>
+              ))}
+            </select>
+          </div>
+        </AdminCard>
       )}
 
       {selectedOrg && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           {/* ── BYOK ── */}
-          <div>
-            <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>
-              End-to-End Encryption (BYOK)
-            </h3>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
-              Memories are encrypted in your browser before leaving your device.
-              The server only stores the ciphertext — it never sees plaintext.
-              Available on all plans; external KMS requires Enterprise.
-            </p>
-            <BYOKSetup orgId={selectedOrg.id} />
-          </div>
+          <AdminCard status="info">
+            <div style={{ marginBottom: 16 }}>
+              <h3 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
+                🔐 End-to-End Encryption (BYOK)
+              </h3>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                Memories are encrypted in your browser before leaving your device. The server only stores
+                opaque ciphertext — it never sees plaintext.{" "}
+                <strong style={{ color: "var(--text)" }}>Available on Business+ plans.</strong>
+              </p>
+            </div>
+            <div style={{ borderRadius: 6, background: "var(--surface)", padding: 12, marginBottom: 16 }}>
+              <BYOKSetup orgId={selectedOrg.id} plan={selectedOrg.plan} />
+            </div>
+          </AdminCard>
 
           {/* ── SSO ── */}
-          <div>
-            <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
-              Single Sign-On (SSO)
-              {selectedOrg.plan !== "enterprise" && (
-                <span style={{ fontSize: 10, fontWeight: 700, background: "var(--accent)", color: "white", padding: "2px 6px", borderRadius: 4 }}>
-                  Enterprise
-                </span>
-              )}
-            </h3>
+          <AdminCard
+            status={selectedOrg.plan === "enterprise" ? "info" : "warning"}
+          >
+            <div style={{ marginBottom: 12 }}>
+              <h3 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 8 }}>
+                🔑 Single Sign-On (SSO)
+                {selectedOrg.plan !== "enterprise" && (
+                  <span style={{ fontSize: 11, fontWeight: 700, background: "var(--accent)", color: "white", padding: "3px 8px", borderRadius: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Enterprise
+                  </span>
+                )}
+              </h3>
+            </div>
             {selectedOrg.plan === "enterprise" ? (
-              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
                 Contact{" "}
-                <a href="mailto:support@locker.app" style={{ color: "var(--accent)" }}>
+                <a href="mailto:support@locker.app" style={{ color: "var(--accent)", fontWeight: 500, textDecoration: "none" }}>
                   support@locker.app
                 </a>{" "}
-                to provision your SAML/OIDC IdP. Supported providers: Okta,
-                Microsoft Entra ID, Google Workspace, PingFederate, and any
-                OIDC-compliant IdP. Once provisioned, your ACS URL and SP
-                entity ID will appear here for activation.
+                to provision your SAML 2.0 or OIDC IdP. Supported providers: <strong>Okta</strong>, <strong>Microsoft Entra ID</strong>,{" "}
+                <strong>Google Workspace</strong>, <strong>PingFederate</strong>, and any OIDC-compliant IdP.
               </p>
             ) : (
-              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Upgrade <strong>{selectedOrg.name}</strong> to the Enterprise
-                plan to configure SAML or OIDC single sign-on.
+              <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
+                Upgrade <strong>{selectedOrg.name}</strong> to the <strong>Enterprise</strong> plan to unlock SAML and OIDC
+                single sign-on. Contact sales for pricing.
               </p>
             )}
-          </div>
+          </AdminCard>
         </div>
       )}
     </OrgAdminSection>

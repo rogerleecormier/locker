@@ -7,3 +7,4 @@ export * from "~/server/memory/search";
 export * from "~/server/memory/recommendations";
 export * from "~/server/memory/versions";
 export * from "~/server/memory/graph";
+export * from "~/server/memory/cascade";

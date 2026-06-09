@@ -2878,6 +2878,54 @@ Respond with ONLY a JSON array of integers, e.g.: [2,0,4]`;
       },
     );
 
+    // ── CASCADE INVALIDATION: Check for fundamental changes ────────────────────────
+    // If this is an architectural memory (rules category) and the fact substantially
+    // changed, cascade invalidation to all dependent memories.
+    if (category === "rules") {
+      try {
+        const { invalidateMemoryCascade } = await import("~/server/memory/cascade");
+        const decryptedOldFact = isEncrypted(existing.fact) ? await decrypt(existing.fact, vaultId === claims.userId ? await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, claims.userId) : await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId)) : existing.fact;
+
+        // Heuristic: consider it "fundamental" if >30% of words changed
+        const oldWords = decryptedOldFact.toLowerCase().split(/\s+/);
+        const newWords = sanitizedFact.toLowerCase().split(/\s+/);
+        const changed = new Set([...oldWords, ...newWords]);
+        const overlap = oldWords.filter(w => newWords.includes(w)).length;
+        const changePct = 1 - (overlap / Math.max(oldWords.length, newWords.length));
+
+        if (changePct > 0.3) {
+          const cascadeResult = await invalidateMemoryCascade(
+            env.DB,
+            memId,
+            claims.userId,
+            `Fundamental change to parent memory: "${sanitizedFact.slice(0, 100)}..."`
+          );
+          if (cascadeResult.invalidatedCount > 0) {
+            console.log(`[cascade] Invalidated ${cascadeResult.invalidatedCount} dependent memories for parent ${memId}`);
+            // Include cascade info in audit metadata
+            await logAudit(db, {
+              orgId,
+              userId: claims.userId,
+              tokenId: claims.tokenId,
+              action: "update_memory_cascade",
+              memoryId: memId,
+              ipAddress,
+              userAgent,
+              metadata: {
+                category,
+                quarantined: isQuarantined,
+                cascadeInvalidated: cascadeResult.invalidatedCount,
+                affectedMemories: cascadeResult.affectedMemories.slice(0, 5)
+              }
+            });
+          }
+        }
+      } catch (cascadeErr) {
+        console.error("[cascade] Error checking cascade invalidation:", cascadeErr);
+        // Non-fatal: don't block update on cascade failure
+      }
+    }
+
     // Audit log & token usage
     await logAudit(db, { orgId, userId: claims.userId, tokenId: claims.tokenId, action: "update_memory", memoryId: memId, ipAddress, userAgent, metadata: { category, quarantined: isQuarantined } });
     await logTokenUsage(db, claims.tokenId, "commit", tokensConsumed);

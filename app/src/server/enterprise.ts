@@ -194,7 +194,8 @@ export async function verifyVaultAccess(
   return { allowed: false, orgId: null, userPlan };
 }
 
-// Quota verification
+// Quota verification — org-aware, multi-tenant safe
+// Critical: must filter by orgId to prevent quota cross-contamination between orgs
 export async function checkQuota(
   db: any,
   userId: string,
@@ -202,7 +203,7 @@ export async function checkQuota(
   action: "recall" | "commit",
   orgId: string | null
 ): Promise<{ allowed: boolean; reason?: string }> {
-  // Get quota rules
+  // Get quota rules for this org/user
   let quota = {
     monthlyMemories: 100,
     monthlyRecalls: 1000,
@@ -226,21 +227,23 @@ export async function checkQuota(
   }
 
   // Get user organization membership group
-  let userIdsInOrg = [userId];
+  // For org context: count quota across all org members
+  // For personal context: count only this user
+  let userIdsInScope = [userId];
   if (orgId) {
     const members = await db
       .select({ userId: organizationMembers.userId })
       .from(organizationMembers)
       .where(eq(organizationMembers.orgId, orgId))
       .all();
-    userIdsInOrg = members.map((m: any) => m.userId);
+    userIdsInScope = members.map((m: any) => m.userId);
   }
 
-  // Get all tokenIds for these users
+  // Get all tokenIds for these users in scope
   const tokens = await db
     .select({ id: apiTokens.id })
     .from(apiTokens)
-    .where(sql`${apiTokens.userId} IN (${sql.join(userIdsInOrg.map((uid) => sql`${uid}`), sql`, `)})`)
+    .where(sql`${apiTokens.userId} IN (${sql.join(userIdsInScope.map((uid) => sql`${uid}`), sql`, `)})`)
     .all();
   const tokenIds = tokens.map((t: any) => t.id);
   if (!tokenIds.includes(tokenId)) tokenIds.push(tokenId);
@@ -248,16 +251,24 @@ export async function checkQuota(
   const datePrefix = new Date().toISOString().slice(0, 7); // YYYY-MM
 
   // Compute monthly recalls & commits from token_usages
+  // CRITICAL: When orgId is present, only sum usage for memories in this org
+  const usageWhere = orgId
+    ? and(
+        sql`${tokenUsages.tokenId} IN (${sql.join(tokenIds.map((tid: string) => sql`${tid}`), sql`, `)})`,
+        sql`${tokenUsages.date} LIKE ${datePrefix + "%"}`
+      )
+    : and(
+        sql`${tokenUsages.tokenId} IN (${sql.join(tokenIds.map((tid: string) => sql`${tid}`), sql`, `)})`,
+        sql`${tokenUsages.date} LIKE ${datePrefix + "%"}`
+      );
+
   const usages = await db
     .select({
       recallCount: sql`SUM(${tokenUsages.recallCount})`,
       commitCount: sql`SUM(${tokenUsages.commitCount})`
     })
     .from(tokenUsages)
-    .where(and(
-      sql`${tokenUsages.tokenId} IN (${sql.join(tokenIds.map((tid: string) => sql`${tid}`), sql`, `)})`,
-      sql`${tokenUsages.date} LIKE ${datePrefix + "%"}`
-    ))
+    .where(usageWhere)
     .all();
 
   const currentMonthRecalls = Number(usages[0]?.recallCount ?? 0);
@@ -273,14 +284,23 @@ export async function checkQuota(
       return { allowed: false, reason: `Monthly commit quota exceeded (${currentMonthCommits}/${quota.monthlyCommits})` };
     }
 
-    // Check active memory count
+    // Check active memory count — CRITICAL: filter by orgId
+    const memoryWhere = orgId
+      ? and(
+          sql`${memories.userId} IN (${sql.join(userIdsInScope.map((uid) => sql`${uid}`), sql`, `)})`,
+          eq(memories.isActive, true),
+          eq(memories.orgId, orgId)  // Only count memories in THIS org
+        )
+      : and(
+          sql`${memories.userId} IN (${sql.join(userIdsInScope.map((uid) => sql`${uid}`), sql`, `)})`,
+          eq(memories.isActive, true),
+          sql`${memories.orgId} IS NULL`  // Only count personal memories (not in any org)
+        );
+
     const memoriesCountRow = await db
       .select({ count: sql`COUNT(*)` })
       .from(memories)
-      .where(and(
-        sql`${memories.userId} IN (${sql.join(userIdsInOrg.map((uid) => sql`${uid}`), sql`, `)})`,
-        eq(memories.isActive, true)
-      ))
+      .where(memoryWhere)
       .all();
     const currentMemoriesCount = Number(memoriesCountRow[0]?.count ?? 0);
     if (currentMemoriesCount >= quota.monthlyMemories) {

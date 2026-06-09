@@ -79,6 +79,14 @@ function PricingPage() {
             q: "Do shared vaults count against personal limits?",
             a: "No. Organization and team vault memories count against the org's quota, not your personal quota.",
           },
+          {
+            q: "What is BYOK (Bring Your Own Key)?",
+            a: "BYOK enables true client-side end-to-end encryption. Memories are encrypted in your browser using the Web Crypto API before leaving your device. The server only stores opaque ciphertext and never sees plaintext. Local master key available on Business+; external KMS (AWS KMS, HashiCorp Vault, Cloudflare KMS) requires Enterprise.",
+          },
+          {
+            q: "What is Enterprise SSO?",
+            a: "Enterprise plan supports SAML 2.0 (Okta, Entra ID, PingFederate) and generic OIDC providers. Admins can enforce single sign-on for all org members, eliminating password-based auth. IdP certificates and secrets are encrypted at rest with your org vault key.",
+          },
         ].map(({ q, a }) => (
           <div key={q} style={{ padding: "16px 18px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>{q}</div>
@@ -90,7 +98,7 @@ function PricingPage() {
       <div style={{ textAlign: "center", marginTop: 40, padding: "24px", background: "rgba(245,158,11,0.05)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 12 }}>
         <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>Need more than Business?</div>
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
-          Enterprise plan includes SAML SSO, unlimited seats, custom contracts, and dedicated support.
+          Enterprise plan includes SAML/OIDC single sign-on, Bring Your Own Key (BYOK) end-to-end encryption, unlimited seats, custom contracts, and dedicated support.
         </p>
         <div style={{ position: "relative", display: "inline-block" }} className="group">
           <a

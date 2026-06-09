@@ -21,10 +21,8 @@ export type CloudflareEnv = {
   CLAUDE_CLIENT_SECRET: string;
   ARCHIVE_QUEUE: Queue<ArchiveMessage>;
   SE_EMAIL?: any;
-  STRIPE_SECRET_KEY?: string;
-  STRIPE_PUBLISHABLE_KEY?: string;
-  STRIPE_WEBHOOK_SECRET?: string;
   PADDLE_WEBHOOK_SECRET?: string;
+  PADDLE_CHECKOUT_URL?: string;
   GITHUB_WEBHOOK_SECRET?: string;
   LINEAR_WEBHOOK_SECRET?: string;
   DEMO_EMAIL?: string;

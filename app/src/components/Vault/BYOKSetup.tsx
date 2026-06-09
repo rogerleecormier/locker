@@ -54,6 +54,7 @@ interface ByokState {
 
 interface BYOKSetupProps {
   orgId: string;
+  plan?: "free" | "business" | "business_comp" | "enterprise";
   currentState?: ByokState;
   onSaved?: (state: ByokState) => void;
 }
@@ -98,7 +99,32 @@ async function validateLocalKey(hexKey: string): Promise<CryptoKey> {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function BYOKSetup({ orgId, currentState, onSaved }: BYOKSetupProps) {
+export function BYOKSetup({ orgId, plan = "free", currentState, onSaved }: BYOKSetupProps) {
+  const canUseLocalKey = plan !== "free";
+  const canUseKms = plan === "enterprise";
+
+  if (!canUseLocalKey) {
+    return (
+      <div className="w-full max-w-2xl rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold">End-to-End Encryption (BYOK)</h2>
+          <p className="text-xs text-muted-foreground">
+            Upgrade to <strong>Business</strong> plan to configure Bring Your Own Key encryption.
+            Your memories will be encrypted in the browser using Web Crypto API before transmission to the server.
+          </p>
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">
+              <strong>Free plan:</strong> Server-side AES-256-GCM encryption only (no plaintext on disk).
+              <br />
+              <strong>Business+:</strong> Client-side BYOK encryption option available.
+              <br />
+              <strong>Enterprise:</strong> BYOK + external KMS support (AWS KMS, Vault, etc.).
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const [activeTab, setActiveTab] = useState<KeySource>(
     currentState?.keySource ?? "local",
   );
@@ -228,21 +254,32 @@ export function BYOKSetup({ orgId, currentState, onSaved }: BYOKSetupProps) {
 
       {/* Tab bar */}
       <div className="flex border-b">
-        {(["local", "kms"] as KeySource[]).map((tab) => (
+        <button
+          type="button"
+          onClick={() => setActiveTab("local")}
+          className={[
+            "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+            activeTab === "local"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          ].join(" ")}
+        >
+          Local Master Key
+        </button>
+        {canUseKms && (
           <button
-            key={tab}
             type="button"
-            onClick={() => setActiveTab(tab)}
+            onClick={() => setActiveTab("kms")}
             className={[
               "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-              activeTab === tab
+              activeTab === "kms"
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground",
             ].join(" ")}
           >
-            {tab === "local" ? "Local Master Key" : "External KMS"}
+            External KMS
           </button>
-        ))}
+        )}
       </div>
 
       {/* Local key tab */}
@@ -305,7 +342,15 @@ export function BYOKSetup({ orgId, currentState, onSaved }: BYOKSetupProps) {
       )}
 
       {/* KMS tab */}
-      {activeTab === "kms" && (
+      {activeTab === "kms" && !canUseKms && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950 p-4">
+          <p className="text-sm text-amber-800 dark:text-amber-200">
+            External KMS is available on the <strong>Enterprise</strong> plan only.
+            Contact <a href="mailto:support@locker.app" className="underline font-semibold">support@locker.app</a> to upgrade.
+          </p>
+        </div>
+      )}
+      {activeTab === "kms" && canUseKms && (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Connect an external Key Management Service (KMS) such as AWS KMS,

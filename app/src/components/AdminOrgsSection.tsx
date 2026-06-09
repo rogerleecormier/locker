@@ -8,6 +8,7 @@ import {
   MemberRow, InviteForm, CreateOrgModal,
 } from "~/routes/organization";
 import { OrgAdminSection } from "~/components/AdminSections";
+import { AdminManagedTierCard } from "~/components/AdminManagedTierCard";
 
 export function AdminOrgsSection() {
   const toast = useToast();
@@ -148,6 +149,9 @@ export function AdminOrgsSection() {
                 ))}
               </div>
             </div>
+
+            {/* Managed Tier Settings */}
+            <AdminManagedTierCard orgId={activeOrg.id} orgName={activeOrg.name} />
 
             {/* Quotas */}
             <div style={{ background: "var(--surface2)", borderRadius: 10, padding: "14px 16px", border: "1px solid var(--border)" }}>

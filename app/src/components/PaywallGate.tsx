@@ -303,6 +303,30 @@ export function AdminUpgradeButton({
   );
 }
 
+function FeatureList({ features, plan }: { features: Array<{ key: keyof PlanFeatures; included: boolean }>; plan: typeof PLANS[PlanId] }) {
+  return (
+    <>
+      {features.map(({ key, included }) => (
+        <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "7px 0" }}>
+          {included ? (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          )}
+          <span style={{ color: included ? "var(--text)" : "var(--text-muted)", opacity: included ? 1 : 0.5 }}>
+            {FEATURE_DESCRIPTIONS[key].label}
+          </span>
+          {!plan.available && included && <ComingSoonChip plan={plan.id} />}
+        </div>
+      ))}
+    </>
+  );
+}
+
 export function PlanCard({
   plan,
   isCurrentPlan,
@@ -318,17 +342,20 @@ export function PlanCard({
   isLoggedIn?: boolean;
   upgradesEnabled?: boolean;
 }) {
-  const featureList: Array<{ key: keyof PlanFeatures; included: boolean }> = [
-    { key: "organizations", included: plan.features.organizations },
-    { key: "teams", included: plan.features.teams },
-    { key: "sharedVault", included: plan.features.sharedVault },
-    { key: "auditLogs", included: plan.features.auditLogs },
-    { key: "usageAnalytics", included: plan.features.usageAnalytics },
-    { key: "customProjectKeys", included: plan.features.customProjectKeys },
-    { key: "crossWorkspaceSearch", included: plan.features.crossWorkspaceSearch },
-    { key: "bulkExport", included: plan.features.bulkExport },
-    { key: "priorityAI", included: plan.features.priorityAI },
+  const coreFeaturesOrder: Array<keyof PlanFeatures> = [
+    "coreVault", "semanticSearch", "apiAccess", "cliTool", "conflictDetection", "memoryHealth", "bulkExport",
   ];
+  const collaborationFeaturesOrder: Array<keyof PlanFeatures> = [
+    "organizations", "teams", "sharedVault", "auditLogs", "usageAnalytics",
+    "customProjectKeys", "crossWorkspaceSearch", "knowledgeGraph",
+  ];
+  const enterpriseFeaturesOrder: Array<keyof PlanFeatures> = [
+    "advancedSecurityControls", "byokEncryption", "enterpriseSSO", "dedicatedSupport", "priorityAI",
+  ];
+
+  const coreFeatures = coreFeaturesOrder.map(key => ({ key, included: plan.features[key] }));
+  const collaborationFeatures = collaborationFeaturesOrder.map(key => ({ key, included: plan.features[key] }));
+  const enterpriseFeatures = enterpriseFeaturesOrder.map(key => ({ key, included: plan.features[key] }));
 
   const isBusiness = plan.id === "business";
 
@@ -399,24 +426,24 @@ export function PlanCard({
         ))}
       </div>
 
-      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 7 }}>
-        {featureList.map(({ key, included }) => (
-          <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-            {included ? (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            ) : (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            )}
-            <span style={{ color: included ? "var(--text)" : "var(--text-muted)", opacity: included ? 1 : 0.5 }}>
-              {FEATURE_DESCRIPTIONS[key].label}
-            </span>
-            {!plan.available && included && <ComingSoonChip plan={plan.id} />}
-          </div>
-        ))}
+      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 1 }}>
+        {plan.id === "free" ? (
+          <FeatureList features={coreFeatures} plan={plan} />
+        ) : plan.id === "enterprise" ? (
+          <>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, lineHeight: 1.4, marginBottom: 4 }}>
+              Everything in <strong style={{ color: "#a855f7" }}>Business</strong>, plus:
+            </div>
+            <FeatureList features={enterpriseFeatures} plan={plan} />
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, lineHeight: 1.4, marginBottom: 4 }}>
+              Everything in <strong style={{ color: "var(--accent)" }}>Personal</strong>, plus:
+            </div>
+            <FeatureList features={collaborationFeatures} plan={plan} />
+          </>
+        )}
       </div>
 
       {!isCurrentPlan && (
@@ -458,7 +485,7 @@ export function PlanCard({
                   opacity: upgradesEnabled ? 1 : 0.6,
                 }}
               >
-                Upgrade to {plan.label}
+                {plan.id === "free" ? "Downgrade to" : "Upgrade to"} {plan.label}
               </button>
               {!upgradesEnabled && (
                 <div style={{
