@@ -671,6 +671,57 @@ export const memoryDependencies = sqliteTable("memory_dependencies", {
 export type MemoryDependency = typeof memoryDependencies.$inferSelect;
 export type NewMemoryDependency = typeof memoryDependencies.$inferInsert;
 
+// ── Memory Conflicts ───────────────────────────────────────────────────────────
+// Persists health-check findings across sessions. Each row represents one
+// detected issue: a duplicate cluster, a stale memory, or a quarantined memory.
+// Re-running the health check deduplicates by fingerprint before inserting new rows.
+export const memoryConflicts = sqliteTable("memory_conflicts", {
+  id: text("id").primaryKey(),
+  // Scope — mirrors the memories table scope fields
+  userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  scopeType: text("scopeType").notNull().default("personal"),
+  scopeId: text("scopeId"),
+  // What kind of conflict this is
+  conflictType: text("conflictType", {
+    enum: ["duplicate", "stale", "quarantined"],
+  }).notNull(),
+  // Stable fingerprint used to deduplicate re-runs.
+  // duplicate: SHA-1 of sorted memoryIds joined with "|"
+  // stale / quarantined: the single memoryId
+  fingerprint: text("fingerprint").notNull(),
+  // Human-readable label (cluster label for duplicates, fact snippet for others)
+  label: text("label").notNull(),
+  // AI-generated reason for duplicates; null for stale/quarantined
+  reason: text("reason"),
+  // JSON array of memory IDs involved (1 for stale/quarantined, ≥2 for duplicate)
+  memoryIds: text("memoryIds").notNull(), // JSON string
+  // Serialised memory details for side-by-side display without extra fetches
+  memoryDetails: text("memoryDetails"), // JSON string | null
+  // AI suggested action for duplicate clusters
+  suggestedAction: text("suggestedAction", {
+    enum: ["merge", "review", "delete"],
+  }),
+  // Workflow status
+  status: text("status", {
+    enum: ["open", "snoozed", "resolved"],
+  }).notNull().default("open"),
+  // When to resurface a snoozed conflict (unix ms)
+  snoozeUntil: integer("snoozeUntil"),
+  // How long this conflict has been open (set on first insert)
+  detectedAt: integer("detectedAt").notNull(),
+  // When it was last surfaced by a health check run
+  lastSeenAt: integer("lastSeenAt").notNull(),
+  // When it was resolved / snoozed
+  resolvedAt: integer("resolvedAt"),
+}, (t) => [
+  index("idx_memory_conflicts_user_scope").on(t.userId, t.scopeType, t.scopeId),
+  index("idx_memory_conflicts_fingerprint").on(t.fingerprint),
+  index("idx_memory_conflicts_status").on(t.status),
+]);
+
+export type MemoryConflict = typeof memoryConflicts.$inferSelect;
+export type NewMemoryConflict = typeof memoryConflicts.$inferInsert;
+
 // ── Enterprise SSO Configuration ──────────────────────────────────────────────
 // One row per enterprise org tenant. Supports SAML 2.0 (Okta, Entra, Ping)
 // and generic OIDC providers. Only orgs on the "enterprise" plan may activate SSO.

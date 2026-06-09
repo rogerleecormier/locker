@@ -2,12 +2,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
-import { memories, userPlans } from "~/db/schema";
+import { memories, userPlans, memoryConflicts } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { requireSession } from "~/server/session";
 import { verifyVaultAccess, parseScope } from "~/server/enterprise";
 import { getUserEffectivePlan } from "~/server/planGate";
 import { isBusinessOrAbove } from "~/lib/plans";
+import { upsertConflicts, clusterFingerprint, singleFingerprint, type ConflictUpsertInput } from "~/server/memoryConflicts";
 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
@@ -68,7 +69,7 @@ export const runMemoryHealthCheck = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<MemoryHealthReport> => {
     const { env } = (context as unknown as CFContext).cloudflare;
     const user = await requireSession(env);
-    const db = drizzle(env.DB, { schema: { memories, userPlans } });
+    const db = drizzle(env.DB, { schema: { memories, userPlans, memoryConflicts } });
 
     // Gate: business plan or above required
     const { planId } = await getUserEffectivePlan(db, user.id);
@@ -262,6 +263,39 @@ ${JSON.stringify(memorySummaries, null, 2)}`;
           detail: String(a.detail ?? ""),
         };
       });
+
+    // Persist detected conflicts so they survive page refresh and deduplicate on re-run
+    const conflictInputs: ConflictUpsertInput[] = [
+      ...clusters.map((c) => ({
+        fingerprint: clusterFingerprint(c.memoryIds),
+        conflictType: "duplicate" as const,
+        label: c.clusterLabel,
+        reason: c.reason,
+        memoryIds: c.memoryIds,
+        memoryDetails: c.memoryDetails,
+        suggestedAction: c.suggestedAction,
+      })),
+      ...staleRecords.map((s) => ({
+        fingerprint: singleFingerprint(s.memoryId, "stale"),
+        conflictType: "stale" as const,
+        label: s.fact.slice(0, 80) + (s.fact.length > 80 ? "…" : ""),
+        reason: s.lastAccessedAt
+          ? `Not accessed in ${s.staleDays} days`
+          : "Never recalled",
+        memoryIds: [s.memoryId],
+        suggestedAction: "review" as const,
+      })),
+      ...anomalies.map((a) => ({
+        fingerprint: singleFingerprint(a.memoryId, "quarantined"),
+        conflictType: "quarantined" as const,
+        label: a.fact.slice(0, 80) + (a.fact.length > 80 ? "…" : ""),
+        reason: `${a.anomalyType}: ${a.detail}`,
+        memoryIds: [a.memoryId],
+        suggestedAction: "review" as const,
+      })),
+    ];
+
+    await upsertConflicts(env.DB, user.id, scopeType, scopeId, conflictInputs);
 
     return {
       analysisTimestamp,

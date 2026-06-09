@@ -23,6 +23,7 @@ import {
   type NewMemory,
 } from "~/db/schema";
 import { persistChunkedVectors, deleteChunkVectors } from "~/server/memory/_shared";
+import { autoResolveConflictsForMemories } from "~/server/memoryConflicts";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { encrypt, isEncrypted, hashToken, extractTokenPrefix, getOrCreateVaultKey } from "~/server/crypto";
 import { extractGraphEntities, persistGraphData } from "~/server/graphRag";
@@ -624,6 +625,7 @@ export const deleteMemory = createServerFn({ method: "POST" })
     await db.delete(memories).where(eq(memories.id, data.id));
     await pruneGraphForDeletedMemories(db, [data.id]);
     await env.VECTOR_INDEX.deleteByIds([data.id]);
+    await autoResolveConflictsForMemories(env.DB, user.id, [data.id]);
 
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "delete_memory", memoryId: data.id });
     await logTokenUsage(db, "session", "commit", 0);
@@ -659,6 +661,7 @@ export const archiveMemory = createServerFn({ method: "POST" })
 
     await db.update(memories).set({ isActive: false }).where(eq(memories.id, data.id));
     await env.VECTOR_INDEX.deleteByIds([data.id]);
+    await autoResolveConflictsForMemories(env.DB, user.id, [data.id]);
 
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId: data.id, metadata: { archived: true } });
 
@@ -2563,6 +2566,9 @@ Return ONLY the merged fact text. Be concise, clear, and preserve all unique inf
 
     // Delete graph edges and prune for merged memories
     await pruneGraphForDeletedMemories(db, secondary.map((m) => m.id));
+
+    // Auto-resolve any conflicts that involved the now-merged memory IDs
+    await autoResolveConflictsForMemories(env.DB, user.id, data.memoryIds);
 
     return {
       id: mergedId,
