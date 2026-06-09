@@ -567,6 +567,37 @@ export const memoryGraphEdges = sqliteTable("memory_graph_edges", {
 export type MemoryGraphNode = typeof memoryGraphNodes.$inferSelect;
 export type MemoryGraphEdge = typeof memoryGraphEdges.$inferSelect;
 
+// ── Project Aliases — workspace routing disambiguation ────────────────────────
+// Maps arbitrary workspace identifiers (folder paths, git remote URLs, local
+// directory slugs, workspace URIs) back to a single authoritative projectKey.
+// Prevents orphaned context records when the same vault is reached via multiple
+// different path strings or clone URLs from different machines / CI environments.
+//
+// alias types:
+//   "path"       — absolute or relative folder path, e.g. "/home/user/my-app"
+//   "git_remote" — git remote origin URL, e.g. "git@github.com:org/repo.git"
+//   "uri"        — standardised workspace URI, e.g. "vscode://folder/my-app"
+//   "slug"       — short local directory name or human-readable slug
+export const projectAliases = sqliteTable("project_aliases", {
+  id: text("id").primaryKey(),
+  // The canonical vault scope key this alias resolves to.
+  // Matches the format used in memories.projectKey: null/"personal", "org:<uuid>", "team:<uuid>".
+  projectKey: text("project_key").notNull(),
+  aliasType: text("alias_type", { enum: ["path", "git_remote", "uri", "slug"] }).notNull(),
+  // The raw alias string as provided by the workspace client.
+  aliasValue: text("alias_value").notNull(),
+  // Optional owning user — personal-scope aliases are user-scoped; shared scopes may be null.
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, (t) => [
+  index("idx_project_aliases_value").on(t.aliasValue),
+  index("idx_project_aliases_project_key").on(t.projectKey),
+]);
+
+export type ProjectAlias = typeof projectAliases.$inferSelect;
+export type NewProjectAlias = typeof projectAliases.$inferInsert;
+
 export const systemSettings = sqliteTable("system_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

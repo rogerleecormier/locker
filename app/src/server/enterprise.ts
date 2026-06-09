@@ -10,7 +10,8 @@ import {
   orgQuotas,
   memories,
   apiTokens,
-  userPlans
+  userPlans,
+  projectAliases,
 } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
 import { PLAN_ORDER, resolvePlan, planAtLeast } from "~/lib/plans";
@@ -50,6 +51,57 @@ export async function getUserOrg(db: any, userId: string): Promise<string | null
 }
 
 
+// Resolve an incoming workspace identifier to its authoritative projectKey.
+//
+// Checks project_aliases before treating the value as a literal projectKey so
+// that folder paths, git remote URLs, workspace URIs, and local slugs all
+// collapse to the same canonical vault scope key, preventing orphaned records.
+//
+// Resolution order:
+//   1. Trivially canonical inputs (null / "personal" / "org:*" / "team:*") → returned as-is.
+//   2. DB lookup in project_aliases scoped to the requesting userId when provided,
+//      falling back to shared-scope aliases (user_id IS NULL) on miss.
+//   3. If no alias row is found, return the raw value unchanged so callers can
+//      decide whether to reject or treat it as a new personal workspace.
+export async function resolveProjectKey(
+  db: any,
+  rawKey: string | null | undefined,
+  userId?: string | null
+): Promise<string | null | undefined> {
+  if (!rawKey || rawKey === "personal") return rawKey;
+  if (rawKey.startsWith("org:") || rawKey.startsWith("team:")) return rawKey;
+
+  // Look up user-scoped alias first, then fall back to shared (user_id IS NULL).
+  if (userId) {
+    const userRow = await db
+      .select({ projectKey: projectAliases.projectKey })
+      .from(projectAliases)
+      .where(
+        and(
+          eq(projectAliases.aliasValue, rawKey),
+          eq(projectAliases.userId, userId)
+        )
+      )
+      .limit(1)
+      .all();
+    if (userRow.length > 0) return userRow[0].projectKey;
+  }
+
+  const sharedRow = await db
+    .select({ projectKey: projectAliases.projectKey })
+    .from(projectAliases)
+    .where(
+      and(
+        eq(projectAliases.aliasValue, rawKey),
+        sql`${projectAliases.userId} IS NULL`
+      )
+    )
+    .limit(1)
+    .all();
+
+  return sharedRow.length > 0 ? sharedRow[0].projectKey : rawKey;
+}
+
 export function parseScope(projectKey: string | undefined | null): {
   scopeType: "personal" | "organization" | "team";
   scopeId: string | null;
@@ -70,7 +122,10 @@ export function parseScope(projectKey: string | undefined | null): {
   throw new Error(`Invalid workspace scope key: ${projectKey}`);
 }
 
-// Verify vault scoping access and return the organization ID and user's plan
+// Verify vault scoping access and return the organization ID and user's plan.
+// When scopeId is omitted, scopeTypeOrProjectKey is treated as a raw workspace
+// identifier and resolved through project_aliases before parsing so that any
+// registered alias (folder path, git remote, URI, slug) maps to the correct vault.
 export async function verifyVaultAccess(
   db: any,
   userId: string,
@@ -84,7 +139,9 @@ export async function verifyVaultAccess(
     scopeType = scopeTypeOrProjectKey as "personal" | "organization" | "team";
     finalScopeId = scopeId;
   } else {
-    const parsed = parseScope(scopeTypeOrProjectKey);
+    // Resolve alias before parsing so arbitrary workspace identifiers work.
+    const resolved = await resolveProjectKey(db, scopeTypeOrProjectKey, userId);
+    const parsed = parseScope(resolved);
     scopeType = parsed.scopeType;
     finalScopeId = parsed.scopeId;
   }

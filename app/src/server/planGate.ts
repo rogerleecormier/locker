@@ -385,10 +385,10 @@ export async function grantFeatureOverride(
       id,
       userId,
       planId,
-      reason,
+      reason: reason ?? null,
       grantedBy: grantedByUserId,
       grantedAt: now,
-      expiresAt,
+      expiresAt: expiresAt ?? null,
       createdAt: now,
     })
     .run();

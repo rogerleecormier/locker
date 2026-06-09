@@ -43,6 +43,7 @@ import { QuarantineDashboard } from "~/components/QuarantineDashboard";
 import { PaywallGate } from "~/components/PaywallGate";
 import { KnowledgeGraph } from "~/components/KnowledgeGraph";
 import { ContributionsChart } from "~/components/ContributionsChart";
+import { MemoryHealthPanel } from "~/components/MemoryHealthPanel";
 import type { PlanId } from "~/lib/plans";
 
 export const Route = createFileRoute("/memories")({
@@ -1767,7 +1768,7 @@ function ConflictCard({ rec, onResolved }: { rec: any; onResolved: () => void })
 }
 
 // ── MAIN DASHBOARD ──────────────────────────────────────────────────────────
-type DashboardTab = "memories" | "knowledge-graph" | "contributions" | "conflicts";
+type DashboardTab = "memories" | "knowledge-graph" | "contributions" | "conflicts" | "health";
 
 function Dashboard() {
   const router = useRouter();
@@ -2150,9 +2151,25 @@ function Dashboard() {
               <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full" />
             )}
           </button>
+          <PaywallGate feature="usageAnalytics" currentPlan={userPlan} requiredPlan="business" compact>
+            <button
+              type="button"
+              onClick={() => setActiveTab("health")}
+              className={`px-4 py-3 text-sm font-semibold transition-colors relative select-none flex items-center gap-1.5 ${
+                activeTab === "health" ? "text-accent" : "text-text-muted hover:text-text"
+              }`}
+            >
+              Memory Health
+              {activeTab === "health" && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full" />
+              )}
+            </button>
+          </PaywallGate>
         </div>
 
-        {activeTab === "conflicts" ? (
+        {activeTab === "health" ? (
+          <MemoryHealthPanel projectKey={projectKey} userPlan={userPlan} />
+        ) : activeTab === "conflicts" ? (
           <div className="flex flex-col gap-3">
             {pendingConflicts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
