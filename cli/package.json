@@ -15,6 +15,7 @@
     "README.md"
   ],
   "scripts": {
+    "build": "echo 'No build step for CLI'",
     "test": "node tests/run-tests.mjs"
   },
   "dependencies": {
