@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { resolveToken, readConfig, saveToken, deleteToken, promptForToken } from '../lib/auth.mjs';
 import { syncWorkspace } from '../lib/sync.mjs';
+import { statusCommand } from '../lib/status.mjs';
 
 const isTTY = process.stdout.isTTY;
 const c = {
@@ -93,6 +94,26 @@ auth
     );
   });
 
+// ── status command ───────────────────────────────────────────────────────────
+
+program
+  .command('status')
+  .description('Check credential authorization and display workspace status')
+  .option('--host <url>',            'Locker API base URL', DEFAULT_HOST)
+  .option('--token <token>',         'API token (overrides env var and config file)')
+  .action(async (opts) => {
+    const host   = opts.host.replace(/\/$/, '');
+
+    const token = await resolveToken({ flagToken: opts.token });
+    if (!token) {
+      fatal(
+        'No API token found. Run `locker auth login`, set LOCKER_API_TOKEN, or pass --token.'
+      );
+    }
+
+    await statusCommand({ host, token, colors: c, onFatal: fatal });
+  });
+
 // ── sync command ──────────────────────────────────────────────────────────────
 
 program
@@ -135,6 +156,9 @@ ${c.bold}FORMATS${c.reset}
   antigravity  → .agents/rules/rules.md
 
 ${c.bold}EXAMPLES${c.reset}
+  ${c.dim}# Check status and saved memories${c.reset}
+  locker status
+
   ${c.dim}# Sync .cursorrules for the "locker" project${c.reset}
   locker sync --format cursor --project locker
 

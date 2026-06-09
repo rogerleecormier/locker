@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, inArray, isNull } from "drizzle-orm";
-import { memoryGraphNodes, memoryGraphEdges } from "~/db/schema";
+import { memoryGraphNodes, memoryGraphEdges, memories } from "~/db/schema";
 import type { D1Database } from "@cloudflare/workers-types";
 
 export type GraphNode = {
@@ -20,6 +20,15 @@ export type MemoryGraph = {
   nodes: GraphNode[];
   edges: GraphEdge[];
   nodeMemories: Record<string, string[]>;
+  fetchedAt: number;
+};
+
+export type GraphMemorySnippet = {
+  id: string;
+  fact: string;
+  category: string;
+  tags: string;
+  timestamp: number;
 };
 
 export async function getMemoryGraph(
@@ -40,11 +49,10 @@ export async function getMemoryGraph(
     )
     .all();
 
-  // secondary filter: must also match userId
   const userNodes = nodes.filter((n) => n.userId === userId);
 
   if (userNodes.length === 0) {
-    return { nodes: [], edges: [], nodeMemories: {} };
+    return { nodes: [], edges: [], nodeMemories: {}, fetchedAt: Date.now() };
   }
 
   const nodeIds = userNodes.map((n) => n.id);
@@ -81,5 +89,42 @@ export async function getMemoryGraph(
       relation: e.relation,
     })),
     nodeMemories,
+    fetchedAt: Date.now(),
   };
+}
+
+export async function getMemoriesByIds(
+  d1: D1Database,
+  userId: string,
+  memoryIds: string[],
+  encryptionKey: string,
+): Promise<GraphMemorySnippet[]> {
+  if (memoryIds.length === 0) return [];
+  const db = drizzle(d1);
+
+  const CHUNK = 50;
+  const rows: Array<{ id: string; fact: string; category: string; tags: string; timestamp: number; userId: string }> = [];
+  for (let i = 0; i < memoryIds.length; i += CHUNK) {
+    const chunk = memoryIds.slice(i, i + CHUNK);
+    const fetched = await db
+      .select({ id: memories.id, fact: memories.fact, category: memories.category, tags: memories.tags, timestamp: memories.timestamp, userId: memories.userId })
+      .from(memories)
+      .where(inArray(memories.id, chunk))
+      .all();
+    rows.push(...fetched);
+  }
+
+  // Only return memories the requesting user owns or has access to (basic ownership check).
+  const owned = rows.filter((r) => r.userId === userId);
+
+  const { isEncrypted, decrypt } = await import("~/server/crypto");
+  const { getOrCreateVaultKey } = await import("~/server/crypto");
+  const vaultKey = await getOrCreateVaultKey(d1, encryptionKey, userId);
+
+  const results: GraphMemorySnippet[] = [];
+  for (const row of owned) {
+    const fact = isEncrypted(row.fact) ? await decrypt(row.fact, vaultKey) : row.fact;
+    results.push({ id: row.id, fact, category: row.category, tags: row.tags, timestamp: row.timestamp });
+  }
+  return results;
 }

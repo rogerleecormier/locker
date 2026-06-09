@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/d1";
-import { desc, eq, sql, and, isNull } from "drizzle-orm";
+import { desc, eq, sql, and, isNull, inArray, notInArray } from "drizzle-orm";
 import {
   memories,
   memoryChunks,
@@ -17,6 +17,8 @@ import {
   credentials,
   memoryTemplates,
   notifications,
+  memoryGraphNodes,
+  memoryGraphEdges,
   type Memory,
   type NewMemory,
 } from "~/db/schema";
@@ -35,6 +37,65 @@ type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
 function getDb(env: CloudflareEnv) {
   return drizzle(env.DB, { schema: { memories, memoryChunks, apiTokens, userPlans, organizationMembers, users } });
+}
+
+// D1 doesn't support PRAGMA foreign_keys = ON, so ON DELETE CASCADE on
+// memoryGraphEdges.memoryId never fires. After deleting memories we manually
+// delete their edges and then prune any nodes that have no remaining edges.
+async function pruneGraphForDeletedMemories(
+  db: ReturnType<typeof getDb>,
+  deletedMemoryIds: string[]
+): Promise<void> {
+  if (deletedMemoryIds.length === 0) return;
+
+  const CHUNK = 50;
+
+  // Collect node IDs referenced by the edges we're about to delete.
+  const affectedNodeIds = new Set<string>();
+  for (let i = 0; i < deletedMemoryIds.length; i += CHUNK) {
+    const chunk = deletedMemoryIds.slice(i, i + CHUNK);
+    const edges = await db
+      .select({ sourceNodeId: memoryGraphEdges.sourceNodeId, targetNodeId: memoryGraphEdges.targetNodeId })
+      .from(memoryGraphEdges)
+      .where(inArray(memoryGraphEdges.memoryId, chunk))
+      .all();
+    for (const e of edges) {
+      affectedNodeIds.add(e.sourceNodeId);
+      affectedNodeIds.add(e.targetNodeId);
+    }
+  }
+
+  // Delete the edges for the deleted memories.
+  for (let i = 0; i < deletedMemoryIds.length; i += CHUNK) {
+    const chunk = deletedMemoryIds.slice(i, i + CHUNK);
+    await db.delete(memoryGraphEdges).where(inArray(memoryGraphEdges.memoryId, chunk));
+  }
+
+  if (affectedNodeIds.size === 0) return;
+
+  // Delete nodes that now have no edges at all (neither as source nor target).
+  const nodeIds = Array.from(affectedNodeIds);
+  for (let i = 0; i < nodeIds.length; i += CHUNK) {
+    const chunk = nodeIds.slice(i, i + CHUNK);
+    const stillReferenced = await db
+      .select({ id: memoryGraphEdges.sourceNodeId })
+      .from(memoryGraphEdges)
+      .where(inArray(memoryGraphEdges.sourceNodeId, chunk))
+      .all();
+    const stillReferencedAsTarget = await db
+      .select({ id: memoryGraphEdges.targetNodeId })
+      .from(memoryGraphEdges)
+      .where(inArray(memoryGraphEdges.targetNodeId, chunk))
+      .all();
+    const referencedIds = new Set([
+      ...stillReferenced.map((r) => r.id),
+      ...stillReferencedAsTarget.map((r) => r.id),
+    ]);
+    const orphans = chunk.filter((id) => !referencedIds.has(id));
+    if (orphans.length > 0) {
+      await db.delete(memoryGraphNodes).where(inArray(memoryGraphNodes.id, orphans));
+    }
+  }
 }
 
 async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
@@ -561,6 +622,7 @@ export const deleteMemory = createServerFn({ method: "POST" })
     }
 
     await db.delete(memories).where(eq(memories.id, data.id));
+    await pruneGraphForDeletedMemories(db, [data.id]);
     await env.VECTOR_INDEX.deleteByIds([data.id]);
 
     await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "delete_memory", memoryId: data.id });
@@ -954,6 +1016,8 @@ export const bulkDeleteMemories = createServerFn({ method: "POST" })
       );
     }
 
+    await pruneGraphForDeletedMemories(db, authorizedIds);
+
     const VECTOR_CHUNK = 100;
     for (let i = 0; i < authorizedIds.length; i += VECTOR_CHUNK) {
       await env.VECTOR_INDEX.deleteByIds(authorizedIds.slice(i, i + VECTOR_CHUNK));
@@ -982,6 +1046,7 @@ export const nukeEverything = createServerFn({ method: "POST" }).handler(
           sql`${memories.id} IN (${sql.join(chunk.map((id) => sql`${id}`), sql`, `)})`
         );
       }
+      await pruneGraphForDeletedMemories(db, dbIds);
       dbDeleted = dbIds.length;
     }
 

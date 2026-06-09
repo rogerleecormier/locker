@@ -24,6 +24,9 @@ import {
   tokenUsages,
   userPlans,
   invitations,
+  credentials,
+  webhookEvents,
+  memories,
 } from "~/db/schema";
 import { requireSession } from "~/server/session";
 import { updateSubscriptionSeats } from "~/server/billing";
@@ -338,6 +341,89 @@ export const removeTeamMember = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+export const saveWebhookSecret = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown): { orgId: string; platform: "github" | "linear"; secret: string } => {
+    const d = data as { orgId: string; platform: string; secret: string };
+    if (!d.orgId || typeof d.orgId !== "string") throw new Error("orgId is required");
+    if (d.platform !== "github" && d.platform !== "linear") throw new Error("platform must be 'github' or 'linear'");
+    if (!d.secret || typeof d.secret !== "string") throw new Error("secret is required");
+    return { orgId: d.orgId, platform: d.platform, secret: d.secret };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB, { schema: { organizationMembers, credentials } });
+    await requireFeature(db, user.id, "organizations");
+    const isOrgAdmin = await verifyOrgAdminHelper(db, user.id, data.orgId);
+    if (!isOrgAdmin) throw new Error("Forbidden: Not an organization owner/admin");
+
+    const credName = data.platform === "github" ? "__WEBHOOK_GITHUB__" : "__WEBHOOK_LINEAR__";
+    const vaultId = `org:${data.orgId}`;
+    const credId = `cred_${crypto.randomUUID().replace(/-/g, "")}`;
+
+    const existing = await db
+      .select({ id: credentials.id })
+      .from(credentials)
+      .where(and(eq(credentials.projectKey, vaultId), eq(credentials.name, credName)))
+      .limit(1)
+      .all();
+
+    if (existing.length > 0) {
+      await db.update(credentials)
+        .set({ encryptedValue: data.secret, updatedAt: Date.now() })
+        .where(eq(credentials.id, existing[0].id));
+    } else {
+      await db.insert(credentials).values({
+        id: credId,
+        userId: user.id,
+        name: credName,
+        encryptedValue: data.secret,
+        projectKey: vaultId,
+        scopeType: "organization",
+        scopeId: data.orgId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+    return { success: true };
+  });
+
+export const getWebhookEventLog = createServerFn({ method: "GET" })
+  .inputValidator((data: unknown): { orgId: string; limit: number } => {
+    const d = data as { orgId: string; limit: number };
+    if (!d.orgId || typeof d.orgId !== "string") throw new Error("orgId is required");
+    const limit = Math.min(Math.max(1, d.limit || 50), 500);
+    return { orgId: d.orgId, limit };
+  })
+  .handler(async ({ data, context }) => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = drizzle(env.DB, { schema: { organizationMembers, webhookEvents, memories, users } });
+    await requireFeature(db, user.id, "organizations");
+    const isOrgAdmin = await verifyOrgAdminHelper(db, user.id, data.orgId);
+    if (!isOrgAdmin) throw new Error("Forbidden: Not an organization owner/admin");
+
+    const rows = await db
+      .select({
+        id: webhookEvents.id,
+        source: webhookEvents.source,
+        eventType: webhookEvents.eventType,
+        rawTitle: webhookEvents.rawTitle,
+        processedAt: webhookEvents.processedAt,
+        memoryId: webhookEvents.memoryId,
+        externalId: webhookEvents.externalId,
+        userName: users.name,
+      })
+      .from(webhookEvents)
+      .leftJoin(users, eq(webhookEvents.userId, users.id))
+      .where(eq(webhookEvents.projectKey, `org:${data.orgId}`))
+      .orderBy(sql`${webhookEvents.processedAt} DESC`)
+      .limit(data.limit)
+      .all();
+
+    return { events: rows ?? [] };
+  });
+
 // ── shared UI components (used here and by admin-page) ────────────────────
 
 export function MemberRow({ member, onUpdateRole, onRemove, roles, isUpdating, isRemoving, currentUserRole = "member" }: {
@@ -648,16 +734,16 @@ function OrganizationPage() {
           </div>
         )}
 
-        {currentOrg && <OrgVaultView org={currentOrg} onRefetch={refetch} />}
+        {currentOrg && <OrgVaultView org={currentOrg} />}
       </PageContainer>
     </div>
   );
 }
 
-function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
+function OrgVaultView({ org }: { org: any }) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<"vault" | "recommendations" | "members">("vault");
+  const [activeTab, setActiveTab] = useState<"vault" | "recommendations" | "members" | "integrations">("vault");
   const [recFact, setRecFact] = useState("");
   const [recCategory, setRecCategory] = useState<"rules" | "projects" | "references">("references");
   const [recTags, setRecTags] = useState("");
@@ -731,7 +817,7 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const tabBtn = (id: "vault" | "recommendations" | "members", label: string, tooltip?: string) => {
+  const tabBtn = (id: "vault" | "recommendations" | "members" | "integrations", label: string, tooltip?: string) => {
     const active = activeTab === id;
     return (
       <button
@@ -776,6 +862,12 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
             "members",
             "Members",
             "View current org members and pending invitations. To invite someone new, use Admin → Organizations."
+          )}
+        {isAdmin &&
+          tabBtn(
+            "integrations",
+            "Integrations",
+            "Manage webhook configurations for GitHub and Linear integrations, and review processed webhook events."
           )}
       </div>
 
@@ -1231,6 +1323,180 @@ function OrgVaultView({ org, onRefetch }: { org: any; onRefetch: () => void }) {
           </div>
         </div>
       )}
+
+      {activeTab === "integrations" && isAdmin && (
+        <IntegrationsPanel org={org} />
+      )}
+    </div>
+  );
+}
+
+function IntegrationsPanel({ org }: { org: any }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [githubSecret, setGithubSecret] = useState("");
+  const [linearSecret, setLinearSecret] = useState("");
+
+  const { data: webhookEventsData, isLoading: eventsLoading, refetch: refetchEvents } = useQuery({
+    queryKey: ["webhook-events", org.id],
+    queryFn: () => getWebhookEventLog({ data: { orgId: org.id, limit: 50 } }),
+  });
+
+  const saveGithubMut = useMutation({
+    mutationFn: (secret: string) =>
+      saveWebhookSecret({ data: { orgId: org.id, platform: "github", secret } }),
+    onSuccess: () => {
+      setGithubSecret("");
+      toast.success("GitHub webhook secret saved!");
+      refetchEvents();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const saveLinearMut = useMutation({
+    mutationFn: (secret: string) =>
+      saveWebhookSecret({ data: { orgId: org.id, platform: "linear", secret } }),
+    onSuccess: () => {
+      setLinearSecret("");
+      toast.success("Linear webhook secret saved!");
+      refetchEvents();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const events = webhookEventsData?.events ?? [];
+
+  return (
+    <div className="flex flex-col gap-6 select-none">
+      {/* Webhook Configuration Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* GitHub */}
+        <div className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-xs">
+          <h3 className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2">
+            🐙 GitHub Webhook
+          </h3>
+          <p className="text-xs text-text-muted leading-relaxed">
+            Configure webhook signing secret for GitHub "PR Merged" events.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="github-secret" className="text-[10px]">
+              Webhook Secret
+            </Label>
+            <Input
+              id="github-secret"
+              type="password"
+              placeholder="ghp_... or your custom secret"
+              value={githubSecret}
+              onChange={(e) => setGithubSecret(e.target.value)}
+              className="text-xs"
+            />
+          </div>
+          <Button
+            onClick={() => saveGithubMut.mutate(githubSecret)}
+            disabled={saveGithubMut.isPending || !githubSecret.trim()}
+            className="mt-1 font-bold text-xs select-none"
+          >
+            {saveGithubMut.isPending ? "Saving..." : "Save Secret"}
+          </Button>
+        </div>
+
+        {/* Linear */}
+        <div className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-xs">
+          <h3 className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2">
+            ⚡ Linear Webhook
+          </h3>
+          <p className="text-xs text-text-muted leading-relaxed">
+            Configure webhook signing secret for Linear "Ticket Done" events.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="linear-secret" className="text-[10px]">
+              Webhook Secret
+            </Label>
+            <Input
+              id="linear-secret"
+              type="password"
+              placeholder="lin_... or your custom secret"
+              value={linearSecret}
+              onChange={(e) => setLinearSecret(e.target.value)}
+              className="text-xs"
+            />
+          </div>
+          <Button
+            onClick={() => saveLinearMut.mutate(linearSecret)}
+            disabled={saveLinearMut.isPending || !linearSecret.trim()}
+            className="mt-1 font-bold text-xs select-none"
+          >
+            {saveLinearMut.isPending ? "Saving..." : "Save Secret"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Webhook Event Log Section */}
+      <div className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-xs">
+        <h3 className="text-sm font-bold text-text uppercase tracking-wider">
+          Recent Webhook Events
+        </h3>
+        {eventsLoading ? (
+          <div className="text-text-muted text-center py-6 animate-pulse font-medium text-sm">
+            Loading events…
+          </div>
+        ) : events.length === 0 ? (
+          <div className="text-text-muted text-center py-6 text-xs italic">
+            No webhook events processed yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left p-2.5 text-text-muted font-bold uppercase tracking-wider text-[10px]">Source</th>
+                  <th className="text-left p-2.5 text-text-muted font-bold uppercase tracking-wider text-[10px]">Event Type</th>
+                  <th className="text-left p-2.5 text-text-muted font-bold uppercase tracking-wider text-[10px]">Title</th>
+                  <th className="text-left p-2.5 text-text-muted font-bold uppercase tracking-wider text-[10px]">Processed At</th>
+                  <th className="text-left p-2.5 text-text-muted font-bold uppercase tracking-wider text-[10px]">Memory Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((event: any) => (
+                  <tr key={event.id} className="border-b border-border/50 hover:bg-surface2/40 transition-colors">
+                    <td className="p-2.5">
+                      <Badge variant="secondary" className="h-4 text-[9px] px-1.5 py-0">
+                        {event.source === "github" ? "🐙" : "⚡"} {event.source}
+                      </Badge>
+                    </td>
+                    <td className="p-2.5">
+                      <span className="text-text font-medium">
+                        {event.eventType === "pr.merged" ? "PR Merged" : "Ticket Done"}
+                      </span>
+                    </td>
+                    <td className="p-2.5">
+                      <span className="text-text-muted truncate max-w-xs block" title={event.rawTitle}>
+                        {event.rawTitle || "—"}
+                      </span>
+                    </td>
+                    <td className="p-2.5 text-text-muted">
+                      {new Date(event.processedAt).toLocaleString()}
+                    </td>
+                    <td className="p-2.5">
+                      {event.memoryId ? (
+                        <a
+                          href={`/memories?id=${event.memoryId}`}
+                          className="text-accent hover:underline font-mono text-[9px]"
+                          title={event.memoryId}
+                        >
+                          {event.memoryId.slice(0, 8)}…
+                        </a>
+                      ) : (
+                        <span className="text-text-muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
