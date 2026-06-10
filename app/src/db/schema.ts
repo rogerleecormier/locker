@@ -782,3 +782,23 @@ export const byokConfigs = sqliteTable("byok_configs", {
 export type ByokConfig = typeof byokConfigs.$inferSelect;
 export type NewByokConfig = typeof byokConfigs.$inferInsert;
 
+// ── Verifiable Snapshots for Compliance Audits ────────────────────────────────
+// Immutable snapshots created during batch memory commits. Each snapshot contains
+// a Merkle root hash of all active memories, allowing compliance officers to verify
+// memory integrity at a point in time using cryptographic proofs.
+export const auditSnapshots = sqliteTable("audit_snapshots", {
+  id: text("id").primaryKey(),
+  vaultId: text("vaultId").notNull(),  // userId or "org:xxx" / "team:xxx"
+  merkleRoot: text("merkleRoot").notNull(),  // 64-char hex SHA-256 root
+  timestamp: integer("timestamp").notNull(),  // Unix ms when snapshot was created
+  memoryCount: integer("memoryCount").notNull(),  // Number of memories in snapshot
+  snapshotHash: text("snapshotHash").notNull(),  // Hash of (merkleRoot|timestamp|memoryCount)
+  createdAt: integer("createdAt").notNull(),  // Insertion timestamp for ordering
+}, (t) => [
+  index("idx_audit_snapshots_vault_time").on(t.vaultId, t.timestamp),
+  index("idx_audit_snapshots_root").on(t.merkleRoot),
+]);
+
+export type AuditSnapshot = typeof auditSnapshots.$inferSelect;
+export type NewAuditSnapshot = typeof auditSnapshots.$inferInsert;
+

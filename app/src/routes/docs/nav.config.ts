@@ -41,6 +41,12 @@ export const DOC_GROUPS: DocGroup[] = [
     ],
   },
   {
+    title: "Compliance & Audit",
+    sections: [
+      { id: "verifiable-proofs", label: "Cryptographic Proofs", icon: "✓" },
+    ],
+  },
+  {
     title: "CI/CD",
     sections: [
       { id: "cicd-gatekeeper", label: "PR Policy Gatekeeper", icon: "🚦" },

@@ -221,6 +221,75 @@ function LandingPage() {
         </div>
       </Section>
 
+      {/* ── VERIFIABLE PROOFS ── */}
+      <Section>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 items-center">
+          <div className="min-w-0">
+            <FadeIn>
+              <SectionLabel>Compliance & Auditability</SectionLabel>
+              <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.2, marginBottom: 16 }}>
+                Cryptographic Merkle Snapshots for Compliance Audits
+              </h2>
+              <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 24 }}>
+                Every batch memory commit creates an immutable Merkle tree snapshot binding all active memory ciphertexts. Compliance officers can verify that a specific memory existed in the vault at a specific point in time—without decryption keys, vault access, or exposing plaintext. Single-character tampering is immediately detected.
+              </p>
+              <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+                <CheckItem>SHA-256 Merkle trees guarantee tamper detection—one bit change fails verification</CheckItem>
+                <CheckItem>Snapshot metadata binding prevents timestamp forgery and memory count manipulation</CheckItem>
+                <CheckItem>Proofs are cryptographically self-contained—no vault access required for verification</CheckItem>
+                <CheckItem>O(log n) proof generation and verification even for vaults with 1M+ memories</CheckItem>
+                <CheckItem>Perfect for SOC2 control audits, GDPR retention verification, and breach investigations</CheckItem>
+                <CheckItem>Web Crypto API only—zero external dependencies, stays under Cloudflare 1MB limit</CheckItem>
+              </ul>
+            </FadeIn>
+          </div>
+          <div className="min-w-0">
+            <FadeIn delay={150}>
+              <div style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.06) 0%, rgba(139,92,246,0.02) 100%)", border: "1px solid rgba(168,85,247,0.15)", borderRadius: 12, padding: 32 }}>
+                <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)", lineHeight: 1.8 }}>
+                  <div style={{ color: "var(--accent)", marginBottom: 12 }}>
+                    <span style={{ color: "var(--text-muted)" }}>POST /api/verify-proof</span>
+                  </div>
+                  <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>
+                    {`{`}
+                  </div>
+                  <div style={{ marginLeft: 16, color: "var(--text-muted)", marginBottom: 3 }}>
+                    <span style={{ color: "var(--accent)" }}>memoryHash</span>: "abc123...",
+                  </div>
+                  <div style={{ marginLeft: 16, color: "var(--text-muted)", marginBottom: 3 }}>
+                    <span style={{ color: "var(--accent)" }}>snapshotRoot</span>: "def456...",
+                  </div>
+                  <div style={{ marginLeft: 16, color: "var(--text-muted)", marginBottom: 3 }}>
+                    <span style={{ color: "var(--accent)" }}>proofPath</span>: [ ... ],
+                  </div>
+                  <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+                    {`}`}
+                  </div>
+                  <div style={{ color: "var(--text-muted)", marginBottom: 8, paddingTop: 12, borderTop: "1px solid rgba(168,85,247,0.2)" }}>
+                    {`// Response`}
+                  </div>
+                  <div style={{ color: "var(--text-muted)", marginBottom: 3 }}>
+                    {`{`}
+                  </div>
+                  <div style={{ marginLeft: 16, color: "var(--accent)", marginBottom: 3 }}>
+                    <span style={{ color: "var(--text-muted)" }}>valid</span>: <span style={{ color: "#10b981" }}>true</span>,
+                  </div>
+                  <div style={{ marginLeft: 16, color: "var(--accent)", marginBottom: 3 }}>
+                    <span style={{ color: "var(--text-muted)" }}>memoryExists</span>: <span style={{ color: "#10b981" }}>true</span>,
+                  </div>
+                  <div style={{ marginLeft: 16, color: "var(--accent)" }}>
+                    <span style={{ color: "var(--text-muted)" }}>snapshotIntegrity</span>: <span style={{ color: "#10b981" }}>true</span>
+                  </div>
+                  <div style={{ color: "var(--text-muted)" }}>
+                    {`}`}
+                  </div>
+                </div>
+              </div>
+            </FadeIn>
+          </div>
+        </div>
+      </Section>
+
       {/* ── GOVERNANCE & REVIEWS ── */}
       <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
         <Section>
@@ -404,7 +473,7 @@ function LandingPage() {
               },
               {
                 title: "Security & Compliance",
-                desc: "Enforce SOC2 controls and GDPR rulesets in authoritative org scopes. DLP quarantine catches secrets before they persist. ABAC agent policies prevent scope leakage. Audit logs track every MCP call with IP and user-agent.",
+                desc: "Enforce SOC2 controls and GDPR rulesets in authoritative org scopes. DLP quarantine catches secrets before they persist. ABAC agent policies prevent scope leakage. Audit logs track every MCP call with IP and user-agent. Cryptographic Merkle snapshots prove memory existence at specific times for compliance audits.",
                 icon: <IconCompliance />,
               },
               {

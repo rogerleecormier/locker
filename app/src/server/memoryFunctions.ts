@@ -8,3 +8,4 @@ export * from "~/server/memory/recommendations";
 export * from "~/server/memory/versions";
 export * from "~/server/memory/graph";
 export * from "~/server/memory/cascade";
+export * from "~/server/memory/snapshots";

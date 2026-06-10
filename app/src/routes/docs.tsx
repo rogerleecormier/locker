@@ -32,6 +32,7 @@ const SectionConnectOAuth      = lazy(() => import("./docs/sections/ConnectOAuth
 const SectionConnectManual     = lazy(() => import("./docs/sections/ConnectManual"));
 const SectionTester            = lazy(() => import("./docs/sections/Tester"));
 const SectionDlpQuarantine     = lazy(() => import("./docs/sections/DlpQuarantine"));
+const SectionVerifiableProofs  = lazy(() => import("./docs/sections/VerifiableProofs"));
 const SectionCicdGatekeeper    = lazy(() => import("./docs/sections/CicdGatekeeper"));
 
 // ── Section component map ───────────────────────────────────────────────────
@@ -64,6 +65,7 @@ const SECTION_MAP: Record<string, React.ComponentType<SectionProps>> = {
   "connect-manual":     SectionConnectManual,
   "tester":             SectionTester,
   "dlp-quarantine":     SectionDlpQuarantine,
+  "verifiable-proofs":  SectionVerifiableProofs,
   "cicd-gatekeeper":    SectionCicdGatekeeper,
 };
 
