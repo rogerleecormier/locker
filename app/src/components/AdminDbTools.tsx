@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "~/components/ui/toast";
 import { getDbStats, getVectorizeDebug, clearDatabase, clearVectorizeIndex } from "~/routes/admin";
-import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, migrateToV2, type MigrateV2Result, rebuildVectorizeIndex, type DuplicateGroup } from "~/server/memoryFunctions";
+import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, migrateToV2, type MigrateV2Result, rebuildVectorizeIndex, type DuplicateGroup, repairMergeKeyMismatch, type RepairMergeKeysResult } from "~/server/memoryFunctions";
 import { SiteAdminSection, AdminCard, StatBox } from "~/components/AdminSections";
 
 export function AdminDbTools() {
@@ -15,6 +15,7 @@ export function AdminDbTools() {
   const [scanResults, setScanResults] = useState<DuplicateGroup[] | null>(null);
   const [retainSelections, setRetainSelections] = useState<Record<number, string>>({});
   const [migrateResult, setMigrateResult] = useState<MigrateV2Result | null>(null);
+  const [repairMergeResult, setRepairMergeResult] = useState<RepairMergeKeysResult | null>(null);
   const [rebuildResult, setRebuildResult] = useState<{ processed: number; failed: number } | null>(null);
 
   const statsQuery = useQuery({
@@ -88,6 +89,12 @@ export function AdminDbTools() {
     mutationFn: () => migrateToV2({}),
     onSuccess: (data) => setMigrateResult(data),
     onError: (err) => toast.error("Migration failed: " + String(err)),
+  });
+
+  const repairMergeMutation = useMutation({
+    mutationFn: () => repairMergeKeyMismatch({}),
+    onSuccess: (data) => { setRepairMergeResult(data); qc.invalidateQueries({ queryKey: ["memories"] }); },
+    onError: (err) => toast.error("Repair failed: " + String(err)),
   });
 
   const anyDestructivePending = clearDbMutation.isPending || clearVectorizeMutation.isPending || clearAllMutation.isPending;
@@ -251,6 +258,33 @@ export function AdminDbTools() {
           {migrateMutation.isPending ? "Migrating…" : "Run v2 Security Migration"}
         </button>
         {migrateMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Migration failed. Check server logs for details.</p>}
+      </SiteAdminSection>
+
+      <SiteAdminSection title="Merge Encryption Key Repair" description="Fix memories merged under a mis-keyed vault DEK" icon="🩹">
+        <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>
+          The merge-duplicates action previously encrypted merged memories under an incorrectly
+          keyed vault DEK, making them undecryptable through normal reads. This scans every
+          memory, finds any encrypted under the wrong key, and re-encrypts them under the
+          correct one.
+        </p>
+        <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: "8px", padding: "10px 14px", marginBottom: "15px", fontSize: "12px", color: "#f59e0b" }}>
+          ⚠️ Safe to re-run — already-correct records are skipped. Run this once after deploying the mergeMemories fix.
+        </div>
+        {repairMergeResult && (
+          <AdminCard status={repairMergeResult.failed > 0 ? "warning" : "success"}>
+            <p style={{ margin: "0 0 6px 0", fontWeight: 600 }}>Repair complete</p>
+            <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: "1.8" }}>
+              <li>Repaired: {repairMergeResult.repaired}</li>
+              <li>Already correct / unencrypted: {repairMergeResult.skipped}</li>
+              {repairMergeResult.failed > 0 && <li>Failed: {repairMergeResult.failed}</li>}
+            </ul>
+          </AdminCard>
+        )}
+        <button onClick={() => { setRepairMergeResult(null); repairMergeMutation.mutate(); }} disabled={repairMergeMutation.isPending}
+          style={{ padding: "9px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer", marginTop: repairMergeResult ? "12px" : 0 }}>
+          {repairMergeMutation.isPending ? "Repairing…" : "Run Merge Key Repair"}
+        </button>
+        {repairMergeMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Repair failed. Check server logs for details.</p>}
       </SiteAdminSection>
 
       <SiteAdminSection title="Destructive Operations" description="Irreversible data deletion" icon="⚠️">

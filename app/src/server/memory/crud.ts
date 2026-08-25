@@ -233,17 +233,7 @@ export const getMemories = createServerFn({ method: "GET" })
         .all();
 
       const { decryptMemories } = await import("~/server/memory/_shared");
-      try {
-        return await decryptMemories(rows, env.DB, env.ENCRYPTION_KEY);
-      } catch (err) {
-        console.error("[getMemories] decrypt failed", {
-          userId: user.id,
-          rowCount: rows.length,
-          rowIds: rows.map((r) => r.id),
-          error: err instanceof Error ? err.stack : String(err),
-        });
-        throw err;
-      }
+      return decryptMemories(rows, env.DB, env.ENCRYPTION_KEY);
     }
   );
 
@@ -2543,7 +2533,7 @@ Return ONLY the merged fact text. Be concise, clear, and preserve all unique inf
     }
 
     // Encrypt the merged fact
-    const vaultId = scopeType === "personal" ? `personal:${user.id}` : `${scopeType}:${scopeId}`;
+    const vaultId = scopeType === "personal" ? user.id : `${scopeType === "organization" ? "org" : "team"}:${scopeId}`;
     const encKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
     const encryptedFact = await encryptFact(mergedFact, encKey);
 

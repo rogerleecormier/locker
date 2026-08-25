@@ -280,6 +280,77 @@ export const migrateToV2 = createServerFn({ method: "POST" }).handler(
   }
 );
 
+// ── Repair merge-key mismatch (mergeMemories vaultId bug) ─────────────────────
+//
+// mergeMemories previously computed vaultId as `personal:${userId}` / `${scopeType}:${scopeId}`
+// (scopeType being "organization", not "org") instead of the convention used everywhere
+// else (bare userId / "org:xxx" / "team:xxx"). This caused merged memories to be encrypted
+// under a DEK stored under the wrong vault_keys row, which every other read path can't find —
+// so those rows fail to decrypt under the correct vault key. Fixed at the call site; this
+// repairs any memories already encrypted under the wrong key before the fix.
+
+export type RepairMergeKeysResult = { repaired: number; skipped: number; failed: number };
+
+export const repairMergeKeyMismatch = createServerFn({ method: "POST" }).handler(
+  async ({ context }): Promise<RepairMergeKeysResult> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = getDb(env);
+
+    const result: RepairMergeKeysResult = { repaired: 0, skipped: 0, failed: 0 };
+
+    const rows = await db
+      .select({ id: memories.id, fact: memories.fact, userId: memories.userId, projectKey: memories.projectKey })
+      .from(memories)
+      .all();
+
+    for (const row of rows) {
+      if (!isEncrypted(row.fact)) {
+        result.skipped++;
+        continue;
+      }
+
+      const correctVaultId =
+        row.projectKey && (row.projectKey.startsWith("team:") || row.projectKey.startsWith("org:"))
+          ? row.projectKey
+          : row.userId;
+
+      try {
+        const correctKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, correctVaultId);
+        await decrypt(row.fact, correctKey);
+        // Decrypts fine under the correct key — not affected by the bug.
+        result.skipped++;
+      } catch {
+        // Try the mis-keyed vault IDs the old mergeMemories code could have produced.
+        const wrongVaultIds = correctVaultId === row.userId
+          ? [`personal:${row.userId}`]
+          : [`organization:${correctVaultId.slice(4)}`, `team:${correctVaultId.slice(5)}`];
+
+        let repaired = false;
+        for (const wrongVaultId of wrongVaultIds) {
+          try {
+            const wrongKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, wrongVaultId);
+            const plaintext = await decrypt(row.fact, wrongKey);
+            const correctKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, correctVaultId);
+            await db.update(memories).set({ fact: await encrypt(plaintext, correctKey) }).where(eq(memories.id, row.id));
+            result.repaired++;
+            repaired = true;
+            break;
+          } catch {
+            // Not encrypted under this candidate key either — try the next one.
+          }
+        }
+        if (!repaired) {
+          console.error(`[repairMergeKeyMismatch] memory ${row.id} could not be decrypted under any known key`);
+          result.failed++;
+        }
+      }
+    }
+
+    return result;
+  }
+);
+
 // ── Rebuild Vectorize Index ───────────────────────────────────────────────────
 
 export const rebuildVectorizeIndex = createServerFn({ method: "POST" }).handler(

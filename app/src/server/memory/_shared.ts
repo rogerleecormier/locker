@@ -15,7 +15,7 @@ import {
   type NewMemoryChunk,
 } from "~/db/schema";
 import type { CloudflareEnv } from "~/types/cloudflare";
-import { decrypt, isEncrypted, getOrCreateVaultKey, decryptEphemeral, type EphemeralPlaintext } from "~/server/crypto";
+import { decrypt, isEncrypted, getOrCreateVaultKey, decryptEphemeral, deriveUserKey, type EphemeralPlaintext } from "~/server/crypto";
 import { splitTextIntoChunks, type TextChunk } from "~/server/textChunker";
 
 export type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
@@ -185,9 +185,24 @@ export async function decryptMemories(rows: Memory[], db: D1Database, masterKey:
         const vaultId = (r.projectKey && (r.projectKey.startsWith("team:") || r.projectKey.startsWith("org:"))) ? r.projectKey : r.userId;
         const vaultKey = await getOrCreateVaultKey(db, masterKey, vaultId);
         if (isEncrypted(r.fact)) {
-          const eph = await decryptEphemeral(r.fact, vaultKey);
-          ephemerals.push(eph);
-          return { ...r, fact: eph.get() };
+          try {
+            const eph = await decryptEphemeral(r.fact, vaultKey);
+            ephemerals.push(eph);
+            return { ...r, fact: eph.get() };
+          } catch {
+            // Fall back to the pre-envelope-encryption legacy key. Rows still on the
+            // legacy scheme (never migrated via migrateToV2) won't decrypt under the
+            // current vault DEK.
+            try {
+              const legacyKey = await deriveUserKey(masterKey, vaultId);
+              const eph = await decryptEphemeral(r.fact, legacyKey);
+              ephemerals.push(eph);
+              return { ...r, fact: eph.get() };
+            } catch (err) {
+              console.error(`[decryptMemories] memory ${r.id} could not be decrypted:`, err);
+              return { ...r, fact: "[This memory could not be decrypted — run Admin > Migrate to V2]" };
+            }
+          }
         }
         return { ...r };
       })
