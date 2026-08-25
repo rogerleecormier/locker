@@ -1898,25 +1898,33 @@ function Dashboard() {
     if (!dismissed) setShowOnboarding(true);
   }, []);
 
-  const { data: memories = [], isLoading, isError, refetch } = useQuery({
+  const { data: memories = [], isLoading, isError, isSuccess, error: memoriesError, refetch } = useQuery({
     queryKey: ["memories", projectKey],
     queryFn: () => getMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
   });
 
+  useEffect(() => {
+    if (isError) {
+      // eslint-disable-next-line no-console
+      console.error("[memories] getMemories query failed:", memoriesError);
+    }
+  }, [isError, memoriesError]);
+
   // Route guard: redirect to onboarding when vault is empty and setup not complete
   useEffect(() => {
-    if (isLoading || projectKey !== "personal") return;
+    if (!isSuccess || isError || projectKey !== "personal") return;
     const onboardingDone = typeof window !== "undefined" && localStorage.getItem("locker_onboarding_complete") === "true";
     if (!onboardingDone && memories.length === 0) {
       router.navigate({ to: "/onboarding" });
     }
-  }, [isLoading, memories.length, projectKey, router]);
+  }, [isSuccess, isError, memories.length, projectKey, router]);
 
   const [showQuarantinePanel, setShowQuarantinePanel] = useState(false);
   const { data: quarantinedMemories = [] } = useQuery({
     queryKey: ["quarantined-memories", projectKey],
     queryFn: () => getQuarantinedMemories({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
     staleTime: 30_000,
+    enabled: isSuccess,
   });
   const quarantineCount = quarantinedMemories.length;
 
@@ -1934,6 +1942,7 @@ function Dashboard() {
     queryKey: ["vault-conflicts", projectKey],
     queryFn: () => listConflicts({ data: { projectKey: projectKey === "personal" ? undefined : projectKey } }),
     staleTime: 30_000,
+    enabled: isSuccess,
   });
 
   useEffect(() => {
@@ -1968,7 +1977,7 @@ function Dashboard() {
   const { data: usageStats } = useQuery({
     queryKey: ["usage-stats"],
     queryFn: () => getMemoryUsageStats(),
-    enabled: projectKey === "personal",
+    enabled: projectKey === "personal" && isSuccess,
   });
 
   const { data: memoryGraph = null, isLoading: isGraphLoading } = useQuery({
@@ -1982,13 +1991,14 @@ function Dashboard() {
   const { data: personalRecommendations = [], refetch: refetchRecs } = useQuery({
     queryKey: ["personal-recommendations"],
     queryFn: () => listPersonalMemoryRecommendations(),
-    enabled: projectKey === "personal",
+    enabled: projectKey === "personal" && isSuccess,
   });
 
   const { data: conflicts = [] } = useQuery({
     queryKey: ["conflicts"],
     queryFn: () => getConflicts(),
     refetchInterval: 30_000,
+    enabled: isSuccess,
   });
   const pendingConflicts = (conflicts as any[]).filter((r: any) => r.status === "pending");
 
@@ -2769,7 +2779,10 @@ function Dashboard() {
           <MemorySkeletonLoader viewMode={viewMode} />
         ) : isError ? (
           <div className="text-center py-16 px-4 text-error bg-error/5 border border-error/20 rounded-xl select-none">
-            Error loading memories. Check your server status.
+            <div>Error loading memories. Check your server status.</div>
+            <div className="mt-2 text-xs font-mono opacity-70 select-text">
+              {memoriesError instanceof Error ? memoriesError.message : String(memoriesError)}
+            </div>
           </div>
         ) : semanticMode && debouncedSemanticQuery ? (
           isSemanticFetching ? (

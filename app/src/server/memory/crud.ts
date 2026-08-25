@@ -233,7 +233,17 @@ export const getMemories = createServerFn({ method: "GET" })
         .all();
 
       const { decryptMemories } = await import("~/server/memory/_shared");
-      return decryptMemories(rows, env.DB, env.ENCRYPTION_KEY);
+      try {
+        return await decryptMemories(rows, env.DB, env.ENCRYPTION_KEY);
+      } catch (err) {
+        console.error("[getMemories] decrypt failed", {
+          userId: user.id,
+          rowCount: rows.length,
+          rowIds: rows.map((r) => r.id),
+          error: err instanceof Error ? err.stack : String(err),
+        });
+        throw err;
+      }
     }
   );
 
