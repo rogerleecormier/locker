@@ -19,6 +19,7 @@ import {
   notifications,
   memoryGraphNodes,
   memoryGraphEdges,
+  memoryConflicts,
   type Memory,
   type NewMemory,
 } from "~/db/schema";
@@ -37,7 +38,7 @@ import { WEBHOOK_SECRET_GITHUB, WEBHOOK_SECRET_LINEAR, SLACK_JIT_WEBHOOK } from 
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
 function getDb(env: CloudflareEnv) {
-  return drizzle(env.DB, { schema: { memories, memoryChunks, apiTokens, userPlans, organizationMembers, users } });
+  return drizzle(env.DB, { schema: { memories, memoryChunks, apiTokens, userPlans, organizationMembers, users, memoryConflicts } });
 }
 
 // D1 doesn't support PRAGMA foreign_keys = ON, so ON DELETE CASCADE on
@@ -2641,6 +2642,8 @@ export const unquarantineMemory = createServerFn({ method: "POST" })
       .where(eq(memories.id, data.memoryId))
       .run();
 
+    await autoResolveConflictsForMemories(env.DB, user.id, [data.memoryId]);
+
     return { id: data.memoryId };
   });
 
@@ -2669,4 +2672,80 @@ export const touchMemory = createServerFn({ method: "POST" })
       .run();
 
     return { id: data.id };
+  });
+
+// ── Bulk stale-conflict resolution ─────────────────────────────────────────────
+// Handles "Looks Good" / "Archive" / "Snooze" for a batch of stale conflicts in
+// one request, instead of the client looping N times over touchMemory/resolveConflict/
+// archiveMemory/snoozeConflict — each loop iteration was its own round trip plus its
+// own query invalidation, which is what was tripping the per-IP rate limiter on
+// larger selections.
+
+const BulkStaleActionSchema = z.object({
+  action: z.enum(["looksGood", "archive", "snooze"]),
+  items: z.array(z.object({
+    memoryId: z.string().uuid(),
+    conflictId: z.string().uuid(),
+  })).min(1).max(200),
+  snoozeDays: z.number().int().min(1).max(90).optional(),
+}).strict();
+
+export const bulkResolveStaleMemories = createServerFn({ method: "POST" })
+  .inputValidator((data) => BulkStaleActionSchema.parse(data))
+  .handler(async ({ data, context }): Promise<{ succeeded: string[]; failed: Array<{ memoryId: string; error: string }> }> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    const user = await requireSession(env);
+    const db = getDb(env) as any;
+
+    const succeeded: string[] = [];
+    const failed: Array<{ memoryId: string; error: string }> = [];
+    const now = Date.now();
+
+    if (data.action === "snooze") {
+      const snoozeUntil = now + (data.snoozeDays ?? 30) * 24 * 60 * 60 * 1000;
+      const conflictIds = data.items.map((i) => i.conflictId);
+      await db
+        .update(memoryConflicts)
+        .set({ status: "snoozed", snoozeUntil })
+        .where(and(eq(memoryConflicts.userId, user.id), inArray(memoryConflicts.id, conflictIds)))
+        .run();
+      return { succeeded: data.items.map((i) => i.memoryId), failed: [] };
+    }
+
+    // "looksGood" and "archive" both touch the memories table per-row (access checks,
+    // vector cleanup for archive), so those still iterate server-side — but as ONE
+    // client request instead of N, which is what actually matters for rate limits.
+    for (const { memoryId, conflictId } of data.items) {
+      try {
+        const row = await db.select().from(memories).where(eq(memories.id, memoryId)).get();
+        if (!row) throw new Error("Memory not found");
+
+        const { allowed, orgId } = await verifyVaultAccess(db, user.id, row.scopeType, row.scopeId ?? undefined);
+        if (!allowed) throw new Error("Forbidden");
+
+        if (data.action === "looksGood") {
+          await db.update(memories).set({ lastAccessedAt: now }).where(eq(memories.id, memoryId)).run();
+          await db.update(memoryConflicts).set({ status: "resolved", resolvedAt: now })
+            .where(and(eq(memoryConflicts.id, conflictId), eq(memoryConflicts.userId, user.id))).run();
+        } else {
+          // archive
+          if (!row.isActive) throw new Error("Memory is already archived");
+          if (row.isLocked) throw new Error("Locked memories cannot be archived");
+          if ((!row.projectKey || row.projectKey === "personal") && row.userId !== user.id) throw new Error("Unauthorized");
+
+          await db.update(memories).set({ isActive: false }).where(eq(memories.id, memoryId)).run();
+          await env.VECTOR_INDEX.deleteByIds([memoryId]);
+          await logAudit(db, { orgId, userId: user.id, tokenId: "session", action: "update_memory", memoryId, metadata: { archived: true } });
+        }
+        succeeded.push(memoryId);
+      } catch (err) {
+        failed.push({ memoryId, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    if (succeeded.length) {
+      await autoResolveConflictsForMemories(env.DB, user.id, succeeded);
+    }
+
+    return { succeeded, failed };
   });

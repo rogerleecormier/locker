@@ -47,7 +47,7 @@ import { ContributionsChart } from "~/components/ContributionsChart";
 import { runMemoryHealthCheck } from "~/server/memoryHealth";
 import type { MemoryHealthReport } from "~/server/memoryHealth";
 import { VaultHealthTab } from "~/components/VaultHealthTab";
-import { mergeMemories, touchMemory } from "~/server/memory/crud";
+import { mergeMemories, touchMemory, bulkResolveStaleMemories } from "~/server/memory/crud";
 import { listConflicts, resolveConflict, snoozeConflict, syncStaleConflicts } from "~/server/memoryConflicts";
 import type { MemoryConflict } from "~/db/schema";
 import type { PlanId } from "~/lib/plans";
@@ -1800,6 +1800,23 @@ function Dashboard() {
   const [comparisonCluster, setComparisonCluster] = useState<any>(null);
   const [merging, setMerging] = useState(false);
 
+  function handleBulkResolveStale(action: "looksGood" | "archive" | "snooze", items: Array<{ memoryId: string; conflictId: string }>, snoozeDays?: number) {
+    return bulkResolveStaleMemories({ data: { action, items, snoozeDays } }).then((result) => {
+      const label = action === "looksGood" ? "marked good" : action === "archive" ? "archived" : "snoozed";
+      if (result.failed.length > 0) {
+        toast.error(`${result.succeeded.length} ${label}, ${result.failed.length} failed`);
+      } else {
+        toast.success(`${result.succeeded.length} memories ${label}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["memories", projectKey] });
+      queryClient.invalidateQueries({ queryKey: ["vault-conflicts", projectKey] });
+      return result;
+    }).catch((e) => {
+      toast.error(`Failed: ${(e as any).message}`);
+      throw e;
+    });
+  }
+
   function handleTouchMemory(memoryId: string, conflictId?: string) {
     touchMemory({ data: { id: memoryId } }).then(() => {
       toast.success("Memory validated — stale timer reset");
@@ -2268,6 +2285,7 @@ function Dashboard() {
               }).catch((e) => { toast.error(`Failed: ${e.message}`); });
             }}
             onTouchMemory={(memoryId, conflictId) => handleTouchMemory(memoryId, conflictId)}
+            onBulkResolveStale={handleBulkResolveStale}
             onUnquarantine={(memoryId) => {
               unquarantineMemory({ data: { memoryId } }).then(() => {
                 toast.success("Memory restored to active");

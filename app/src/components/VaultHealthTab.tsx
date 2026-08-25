@@ -26,6 +26,11 @@ type Props = {
   onUnquarantine: (memoryId: string) => void;
   onDeleteMemory: (memoryId: string) => void;
   onArchiveMemory: (memoryId: string) => void;
+  onBulkResolveStale: (
+    action: "looksGood" | "archive" | "snooze",
+    items: Array<{ memoryId: string; conflictId: string }>,
+    snoozeDays?: number
+  ) => Promise<{ succeeded: string[]; failed: Array<{ memoryId: string; error: string }> }>;
 };
 
 function ageDays(ms: number): string {
@@ -182,11 +187,13 @@ function StaleSection({
   onTouchMemory,
   onArchiveMemory,
   onSnooze,
+  onBulkResolveStale,
 }: {
   staleConflicts: MemoryConflict[];
   onTouchMemory: (memoryId: string, conflictId: string) => void;
   onArchiveMemory: (memoryId: string) => void;
   onSnooze: (conflictId: string, days: number) => void;
+  onBulkResolveStale: Props["onBulkResolveStale"];
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkSnooze, setShowBulkSnooze] = useState(false);
@@ -213,20 +220,28 @@ function StaleSection({
       .map((c) => ({ conflictId: c.id, memoryId: (JSON.parse(c.memoryIds) as string[])[0] }));
   }
 
+  const [bulkPending, setBulkPending] = useState(false);
+
   function bulkLooksGood() {
-    getSelected().forEach(({ memoryId, conflictId }) => onTouchMemory(memoryId, conflictId));
+    const items = getSelected();
     setSelected(new Set());
+    setBulkPending(true);
+    onBulkResolveStale("looksGood", items).finally(() => setBulkPending(false));
   }
 
   function bulkArchive() {
-    getSelected().forEach(({ memoryId }) => onArchiveMemory(memoryId));
+    const items = getSelected();
     setSelected(new Set());
+    setBulkPending(true);
+    onBulkResolveStale("archive", items).finally(() => setBulkPending(false));
   }
 
   function bulkSnooze(days: number) {
-    getSelected().forEach(({ conflictId }) => onSnooze(conflictId, days));
+    const items = getSelected();
     setSelected(new Set());
     setShowBulkSnooze(false);
+    setBulkPending(true);
+    onBulkResolveStale("snooze", items, days).finally(() => setBulkPending(false));
   }
 
   return (
@@ -264,20 +279,23 @@ function StaleSection({
               <div className="flex items-center gap-2 ml-auto">
                 <button
                   onClick={bulkLooksGood}
-                  className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-emerald-500/30 bg-emerald-500/5 text-emerald-600 hover:bg-emerald-500/15 cursor-pointer transition-colors whitespace-nowrap"
+                  disabled={bulkPending}
+                  className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-emerald-500/30 bg-emerald-500/5 text-emerald-600 hover:bg-emerald-500/15 cursor-pointer transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Looks Good
+                  {bulkPending ? "Working…" : "Looks Good"}
                 </button>
                 <button
                   onClick={bulkArchive}
-                  className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-600 hover:bg-amber-500/15 cursor-pointer transition-colors whitespace-nowrap"
+                  disabled={bulkPending}
+                  className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-600 hover:bg-amber-500/15 cursor-pointer transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Archive
                 </button>
                 <div className="relative">
                   <button
                     onClick={() => setShowBulkSnooze((s) => !s)}
-                    className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-border bg-surface2 text-text-muted hover:text-text hover:bg-surface cursor-pointer transition-colors whitespace-nowrap"
+                    disabled={bulkPending}
+                    className="h-7 px-3 text-[10px] font-bold uppercase tracking-wider rounded-md border border-border bg-surface2 text-text-muted hover:text-text hover:bg-surface cursor-pointer transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Snooze
                   </button>
@@ -350,6 +368,7 @@ export function VaultHealthTab({
   onUnquarantine,
   onDeleteMemory,
   onArchiveMemory,
+  onBulkResolveStale,
 }: Props) {
   const duplicates = vaultConflicts.filter((c) => c.conflictType === "duplicate");
   const staleConflicts = vaultConflicts.filter((c) => c.conflictType === "stale");
@@ -474,6 +493,7 @@ export function VaultHealthTab({
             onTouchMemory={onTouchMemory}
             onArchiveMemory={onArchiveMemory}
             onSnooze={onSnooze}
+            onBulkResolveStale={onBulkResolveStale}
           />
 
           {/* QUARANTINED — from DB conflicts + live quarantined list */}
