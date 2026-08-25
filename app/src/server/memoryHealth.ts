@@ -211,11 +211,17 @@ ${JSON.stringify(memorySummaries, null, 2)}`;
     }
 
     // Build typed stale records — mirrors isMemoryStale() on the client:
-    // stale if never recalled (lastAccessedAt null) OR last accessed >30 days ago
+    // stale if last accessed >30 days ago, OR never recalled AND the memory itself
+    // is older than the threshold (a freshly created memory hasn't had the chance
+    // to be recalled yet, so it isn't stale).
     const memoryById = new Map(decrypted.map((m) => [m.id, m]));
 
     const staleRecords: StaleMemoryRecord[] = decrypted
-      .filter((m) => m.lastAccessedAt == null || now - m.lastAccessedAt > STALE_THRESHOLD_MS)
+      .filter((m) =>
+        m.lastAccessedAt != null
+          ? now - m.lastAccessedAt > STALE_THRESHOLD_MS
+          : now - m.timestamp > STALE_THRESHOLD_MS
+      )
       .map((m) => ({
         memoryId: m.id,
         fact: m.fact.length > MAX_FACT_CHARS ? m.fact.slice(0, MAX_FACT_CHARS) + "…" : m.fact,

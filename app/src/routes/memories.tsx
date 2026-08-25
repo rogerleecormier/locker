@@ -87,7 +87,12 @@ const STALE_MEMORY_DAYS = 180;
 const STALE_MEMORY_MS = STALE_MEMORY_DAYS * 24 * 60 * 60 * 1000;
 
 function isMemoryStale(m: { lastAccessedAt?: number | null; timestamp: number | string }): boolean {
-  if (!m.lastAccessedAt) return true; // never recalled
+  if (!m.lastAccessedAt) {
+    // Never recalled — only stale once the memory itself is old enough to have
+    // reasonably been recalled by now. A memory created seconds ago hasn't had
+    // the chance yet.
+    return Date.now() - new Date(m.timestamp).getTime() > STALE_LAST_ACCESS_MS;
+  }
   return Date.now() - m.lastAccessedAt > STALE_LAST_ACCESS_MS;
 }
 
@@ -857,8 +862,9 @@ function MemoryTable({
         (!endDate || mTime <= endDate + 86400000);
       const matchesStale =
         sortBy !== "stale" ||
-        !m.lastAccessedAt ||
-        Date.now() - m.lastAccessedAt > STALE_THRESHOLD_MS;
+        (m.lastAccessedAt
+          ? Date.now() - m.lastAccessedAt > STALE_THRESHOLD_MS
+          : Date.now() - new Date(m.timestamp).getTime() > STALE_THRESHOLD_MS);
       return matchesCat && matchesText && matchesDate && matchesStale;
     });
 
