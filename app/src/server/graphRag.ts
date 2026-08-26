@@ -137,6 +137,8 @@ export async function persistGraphData(
 
   const nodeIds = Array.from(new Set(labelToNodeId.values()));
 
+  const linkedNodeIds = new Set<string>();
+
   for (const edge of extraction.edges) {
     const sourceId = labelToNodeId.get(edge.source.trim());
     const targetId = labelToNodeId.get(edge.target.trim());
@@ -150,6 +152,29 @@ export async function persistGraphData(
       relation: edge.relation.trim().slice(0, 64) || "other",
       createdAt: now,
     });
+    linkedNodeIds.add(sourceId);
+    linkedNodeIds.add(targetId);
+  }
+
+  // Fallback: the AI sometimes extracts an entity but omits it from its own edges
+  // list, leaving it permanently disconnected in the graph even though it co-occurred
+  // in this fact with other entities. Anchor any such entity to the fact's first
+  // linked entity (or the first entity overall if none were linked) with a generic
+  // "mentioned_with" relation, so it's at least reachable from the graph.
+  if (nodeIds.length > 1) {
+    const anchorId = nodeIds.find((id) => linkedNodeIds.has(id)) ?? nodeIds[0];
+    for (const id of nodeIds) {
+      if (id === anchorId || linkedNodeIds.has(id)) continue;
+      await db.insert(memoryGraphEdges).values({
+        id: crypto.randomUUID(),
+        memoryId,
+        sourceNodeId: anchorId,
+        targetNodeId: id,
+        relation: "mentioned_with",
+        createdAt: now,
+      });
+      linkedNodeIds.add(id);
+    }
   }
 
   return nodeIds;

@@ -351,6 +351,61 @@ export const repairMergeKeyMismatch = createServerFn({ method: "POST" }).handler
   }
 );
 
+// ── Backfill orphaned knowledge-graph nodes ────────────────────────────────────
+//
+// Each memory's entities/edges are extracted by an LLM call scoped to that single
+// fact. The model sometimes extracts an entity without including it in its own
+// edges list, leaving that node permanently disconnected in the graph even though
+// it co-occurred with other entities in the same fact. persistGraphData now
+// auto-links any such entity to the fact's primary entity going forward — this
+// re-runs extraction across existing memories so already-orphaned nodes pick up
+// that same fallback linking. Nodes are deduped by (userId, projectKey, label),
+// so this only adds missing edges; it never creates duplicate nodes.
+
+export type BackfillGraphResult = { processed: number; linked: number; failed: number };
+
+export const backfillGraphLinks = createServerFn({ method: "POST" }).handler(
+  async ({ context }): Promise<BackfillGraphResult> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = getDb(env);
+
+    const { extractGraphEntities, persistGraphData } = await import("~/server/graphRag");
+
+    const allMemories = await db
+      .select({ id: memories.id, fact: memories.fact, userId: memories.userId, projectKey: memories.projectKey, isActive: memories.isActive })
+      .from(memories)
+      .where(eq(memories.isActive, true))
+      .all();
+
+    const result: BackfillGraphResult = { processed: 0, linked: 0, failed: 0 };
+
+    const CHUNK_SIZE = 5;
+    for (let i = 0; i < allMemories.length; i += CHUNK_SIZE) {
+      const chunk = allMemories.slice(i, i + CHUNK_SIZE);
+      await Promise.all(chunk.map(async (row) => {
+        try {
+          const vaultId = (row.projectKey && (row.projectKey.startsWith("team:") || row.projectKey.startsWith("org:"))) ? row.projectKey : row.userId;
+          const vaultKey = await getOrCreateVaultKey(env.DB, env.ENCRYPTION_KEY, vaultId);
+          const fact = await decryptFact(row.fact, vaultKey);
+
+          const extraction = await extractGraphEntities(env.AI, fact);
+          if (extraction.entities.length > 1) {
+            await persistGraphData(env.DB, row.id, row.userId, row.projectKey ?? null, extraction);
+            result.linked++;
+          }
+          result.processed++;
+        } catch (err) {
+          console.error(`[backfillGraphLinks] memory ${row.id} failed:`, err);
+          result.failed++;
+        }
+      }));
+    }
+
+    return result;
+  }
+);
+
 // ── Rebuild Vectorize Index ───────────────────────────────────────────────────
 
 export const rebuildVectorizeIndex = createServerFn({ method: "POST" }).handler(

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "~/components/ui/toast";
 import { getDbStats, getVectorizeDebug, clearDatabase, clearVectorizeIndex } from "~/routes/admin";
-import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, migrateToV2, type MigrateV2Result, rebuildVectorizeIndex, type DuplicateGroup, repairMergeKeyMismatch, type RepairMergeKeysResult } from "~/server/memoryFunctions";
+import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, migrateToV2, type MigrateV2Result, rebuildVectorizeIndex, type DuplicateGroup, repairMergeKeyMismatch, type RepairMergeKeysResult, backfillGraphLinks, type BackfillGraphResult } from "~/server/memoryFunctions";
 import { SiteAdminSection, AdminCard, StatBox } from "~/components/AdminSections";
 
 export function AdminDbTools() {
@@ -16,6 +16,7 @@ export function AdminDbTools() {
   const [retainSelections, setRetainSelections] = useState<Record<number, string>>({});
   const [migrateResult, setMigrateResult] = useState<MigrateV2Result | null>(null);
   const [repairMergeResult, setRepairMergeResult] = useState<RepairMergeKeysResult | null>(null);
+  const [backfillGraphResult, setBackfillGraphResult] = useState<BackfillGraphResult | null>(null);
   const [rebuildResult, setRebuildResult] = useState<{ processed: number; failed: number } | null>(null);
 
   const statsQuery = useQuery({
@@ -95,6 +96,12 @@ export function AdminDbTools() {
     mutationFn: () => repairMergeKeyMismatch({}),
     onSuccess: (data) => { setRepairMergeResult(data); qc.invalidateQueries({ queryKey: ["memories"] }); },
     onError: (err) => toast.error("Repair failed: " + String(err)),
+  });
+
+  const backfillGraphMutation = useMutation({
+    mutationFn: () => backfillGraphLinks({}),
+    onSuccess: (data) => { setBackfillGraphResult(data); qc.invalidateQueries({ queryKey: ["memory-graph"] }); },
+    onError: (err) => toast.error("Backfill failed: " + String(err)),
   });
 
   const anyDestructivePending = clearDbMutation.isPending || clearVectorizeMutation.isPending || clearAllMutation.isPending;
@@ -285,6 +292,34 @@ export function AdminDbTools() {
           {repairMergeMutation.isPending ? "Repairing…" : "Run Merge Key Repair"}
         </button>
         {repairMergeMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Repair failed. Check server logs for details.</p>}
+      </SiteAdminSection>
+
+      <SiteAdminSection title="Knowledge Graph Backfill" description="Reconnect entities the AI extracted without an edge" icon="🕸️">
+        <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>
+          Graph extraction runs per-memory: the AI sometimes pulls out an entity but
+          forgets to include an edge for it, leaving that node permanently disconnected
+          in the Knowledge Graph view. This re-runs extraction across all active memories
+          and links any entity that's still missing an edge to the other entities it
+          co-occurred with in the same fact.
+        </p>
+        <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: "8px", padding: "10px 14px", marginBottom: "15px", fontSize: "12px", color: "#f59e0b" }}>
+          ⚠️ Calls the AI model once per memory — can take a while and consume AI usage on large vaults. Safe to re-run; nodes are deduped by label so this never creates duplicates.
+        </div>
+        {backfillGraphResult && (
+          <AdminCard status={backfillGraphResult.failed > 0 ? "warning" : "success"}>
+            <p style={{ margin: "0 0 6px 0", fontWeight: 600 }}>Backfill complete</p>
+            <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: "1.8" }}>
+              <li>Processed: {backfillGraphResult.processed}</li>
+              <li>Re-linked: {backfillGraphResult.linked}</li>
+              {backfillGraphResult.failed > 0 && <li>Failed: {backfillGraphResult.failed}</li>}
+            </ul>
+          </AdminCard>
+        )}
+        <button onClick={() => { setBackfillGraphResult(null); backfillGraphMutation.mutate(); }} disabled={backfillGraphMutation.isPending}
+          style={{ padding: "9px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer", marginTop: backfillGraphResult ? "12px" : 0 }}>
+          {backfillGraphMutation.isPending ? "Backfilling…" : "Run Graph Backfill"}
+        </button>
+        {backfillGraphMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Backfill failed. Check server logs for details.</p>}
       </SiteAdminSection>
 
       <SiteAdminSection title="Destructive Operations" description="Irreversible data deletion" icon="⚠️">
