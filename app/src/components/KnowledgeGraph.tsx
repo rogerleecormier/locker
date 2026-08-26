@@ -73,6 +73,7 @@ export function KnowledgeGraph({
   const [activeTypeFilters, setActiveTypeFilters] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [jumpTarget, setJumpTarget] = useState<string | null>(null);
+  const [highlightedMemoryId, setHighlightedMemoryId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   // Compute top-5 most connected nodes
@@ -82,12 +83,33 @@ export function KnowledgeGraph({
         .slice(0, 5)
     : [];
 
+  // Invert nodeMemories (nodeId -> memoryIds) so a clicked memory can highlight
+  // every node it touches, not just the one whose drawer is currently open.
+  const memoryToNodeIds = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (!graph) return map;
+    for (const [nodeId, memIds] of Object.entries(graph.nodeMemories)) {
+      for (const memId of memIds) {
+        const list = map.get(memId);
+        if (list) list.push(nodeId);
+        else map.set(memId, [nodeId]);
+      }
+    }
+    return map;
+  }, [graph]);
+
+  const highlightedNodeIds = useMemo(
+    () => (highlightedMemoryId ? new Set(memoryToNodeIds.get(highlightedMemoryId) ?? []) : new Set<string>()),
+    [highlightedMemoryId, memoryToNodeIds]
+  );
+
   const handleNodeClick = useCallback(
     async (id: string, label: string, type: string, _value: number) => {
       const memCount = graph?.nodeMemories[id]?.length ?? 0;
       setSelectedNode({ id, label, type, memoryCount: memCount });
       setDrawerOpen(true);
       setDrawerMemories([]);
+      setHighlightedMemoryId(null);
       onNodeClick(id);
 
       const memIds = graph?.nodeMemories[id] ?? [];
@@ -280,6 +302,7 @@ export function KnowledgeGraph({
               onNodeClick={handleNodeClick}
               jumpToNodeId={jumpTarget}
               onJumpConsumed={handleJumpConsumed}
+              highlightedNodeIds={highlightedNodeIds}
             />
           </Suspense>
         </div>
@@ -314,7 +337,7 @@ export function KnowledgeGraph({
             )}
             <button
               type="button"
-              onClick={() => { setDrawerOpen(false); setSelectedNode(null); onNodeClick(''); }}
+              onClick={() => { setDrawerOpen(false); setSelectedNode(null); setHighlightedMemoryId(null); onNodeClick(''); }}
               className="text-text-muted hover:text-text transition-colors shrink-0 p-1 rounded hover:bg-surface2"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -340,7 +363,14 @@ export function KnowledgeGraph({
             ) : (
               <div className="flex flex-col divide-y divide-border">
                 {drawerMemories.map((mem) => (
-                  <div key={mem.id} className="px-4 py-3 hover:bg-surface2/60 transition-colors">
+                  <button
+                    key={mem.id}
+                    type="button"
+                    onClick={() => setHighlightedMemoryId((cur) => (cur === mem.id ? null : mem.id))}
+                    className={`px-4 py-3 text-left w-full transition-colors ${
+                      highlightedMemoryId === mem.id ? 'bg-accent/10' : 'hover:bg-surface2/60'
+                    }`}
+                  >
                     {/* Category + timestamp */}
                     <div className="flex items-center justify-between gap-2 mb-1.5">
                       <span
@@ -371,7 +401,7 @@ export function KnowledgeGraph({
                         ))}
                       </div>
                     )}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
