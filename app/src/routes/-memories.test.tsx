@@ -363,7 +363,10 @@ describe("Stale Memory Banner Feature", () => {
       const exactBoundary = new Date(now - STALE_MEMORY_MS).toISOString();
 
       const memories = [{ id: "1", timestamp: exactBoundary }];
-      const staleCount = memories.filter((m) => Date.now() - new Date(m.timestamp).getTime() > STALE_MEMORY_MS).length;
+      // Reuse the same `now` captured above rather than a fresh Date.now() — a second
+      // call is always slightly later, which pushed the elapsed time just past the
+      // boundary and made this test flaky (occasionally fails in CI).
+      const staleCount = memories.filter((m) => now - new Date(m.timestamp).getTime() > STALE_MEMORY_MS).length;
 
       expect(staleCount).toBe(0);
     });
@@ -373,7 +376,7 @@ describe("Stale Memory Banner Feature", () => {
       const justAfterBoundary = new Date(now - STALE_MEMORY_MS - 1).toISOString();
 
       const memories = [{ id: "1", timestamp: justAfterBoundary }];
-      const staleCount = memories.filter((m) => Date.now() - new Date(m.timestamp).getTime() > STALE_MEMORY_MS).length;
+      const staleCount = memories.filter((m) => now - new Date(m.timestamp).getTime() > STALE_MEMORY_MS).length;
 
       expect(staleCount).toBe(1);
     });
