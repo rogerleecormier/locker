@@ -33,12 +33,24 @@ function extractText(result: unknown): string {
 // never block the critical addMemory / commit_memory write path.
 export async function extractGraphEntities(ai: Ai, fact: string): Promise<ExtractionResult> {
   const systemPrompt =
-    "You are an architectural knowledge-graph extractor. " +
-    "Given a software engineering memory fact, extract named entities (services, files, concepts, libraries, people, APIs, databases, etc.) " +
-    "and the directed relationships between them. " +
+    "You are a knowledge-graph extractor for a personal memory vault. The facts you receive cover " +
+    "software engineering AND general personal/professional life (career, education, compensation, " +
+    "family, health, purchases, relationships, etc.). Extract named entities (people, organizations, " +
+    "places, services, files, concepts, libraries, APIs, databases, credentials, events, etc.) and the " +
+    "relationships between them. " +
     "Reply with ONLY valid JSON matching this exact shape — no prose, no markdown fences:\n" +
     '{"entities":[{"label":"<name>","type":"<service|file|concept|library|person|api|database|config|other>"}],' +
-    '"edges":[{"source":"<label>","target":"<label>","relation":"<calls|depends_on|implements|extends|reads|writes|configures|deployed_to|other>"}]}';
+    '"edges":[{"source":"<label>","target":"<label>","relation":"<calls|depends_on|implements|extends|reads|writes|configures|deployed_to|' +
+    'works_at|holds|located_in|related_to|part_of|attended|employed_by|other>"}]}\n\n' +
+    "IMPORTANT: every entity you list in \"entities\" MUST appear as the source or target of at least one " +
+    "edge in \"edges\". If an entity has no natural relation type from the list above, connect it to the " +
+    "most relevant other entity using \"related_to\" rather than omitting the edge. Never extract an entity " +
+    "without also linking it to something.\n\n" +
+    "ALWAYS extract the fact's owner/subject as a \"person\" entity whenever a specific named person is " +
+    "mentioned (e.g. \"Roger Cormier\"), even if the fact is really about something else they own, use, or " +
+    "are affected by (a concept, tool, benefit, policy, etc.). Link every other entity in the fact back to " +
+    "that person, directly or transitively — do not let a fact's other entities form an island with no path " +
+    "back to the named person.";
 
   try {
     const raw = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
