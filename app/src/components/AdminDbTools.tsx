@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "~/components/ui/toast";
 import { getDbStats, getVectorizeDebug, clearDatabase, clearVectorizeIndex } from "~/routes/admin";
-import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, migrateToV2, type MigrateV2Result, rebuildVectorizeIndex, type DuplicateGroup, repairMergeKeyMismatch, type RepairMergeKeysResult, backfillGraphLinks, type BackfillGraphResult } from "~/server/memoryFunctions";
+import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, migrateToV2, type MigrateV2Result, rebuildVectorizeIndex, type DuplicateGroup, repairMergeKeyMismatch, type RepairMergeKeysResult, backfillGraphLinks, type BackfillGraphResult, mergeDuplicateGraphNodes, type MergeGraphNodesResult } from "~/server/memoryFunctions";
 import { SiteAdminSection, AdminCard, StatBox } from "~/components/AdminSections";
 
 export function AdminDbTools() {
@@ -17,6 +17,7 @@ export function AdminDbTools() {
   const [migrateResult, setMigrateResult] = useState<MigrateV2Result | null>(null);
   const [repairMergeResult, setRepairMergeResult] = useState<RepairMergeKeysResult | null>(null);
   const [backfillGraphResult, setBackfillGraphResult] = useState<BackfillGraphResult | null>(null);
+  const [mergeGraphResult, setMergeGraphResult] = useState<MergeGraphNodesResult | null>(null);
   const [rebuildResult, setRebuildResult] = useState<{ processed: number; failed: number } | null>(null);
 
   const statsQuery = useQuery({
@@ -102,6 +103,12 @@ export function AdminDbTools() {
     mutationFn: () => backfillGraphLinks({}),
     onSuccess: (data) => { setBackfillGraphResult(data); qc.invalidateQueries({ queryKey: ["memory-graph"] }); },
     onError: (err) => toast.error("Backfill failed: " + String(err)),
+  });
+
+  const mergeGraphMutation = useMutation({
+    mutationFn: () => mergeDuplicateGraphNodes({}),
+    onSuccess: (data) => { setMergeGraphResult(data); qc.invalidateQueries({ queryKey: ["memory-graph"] }); },
+    onError: (err) => toast.error("Merge failed: " + String(err)),
   });
 
   const anyDestructivePending = clearDbMutation.isPending || clearVectorizeMutation.isPending || clearAllMutation.isPending;
@@ -320,6 +327,35 @@ export function AdminDbTools() {
           {backfillGraphMutation.isPending ? "Backfilling…" : "Run Graph Backfill"}
         </button>
         {backfillGraphMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Backfill failed. Check server logs for details.</p>}
+      </SiteAdminSection>
+
+      <SiteAdminSection title="Merge Duplicate Graph Nodes" description="Collapse near-identical entities created by inconsistent AI labeling" icon="🔗">
+        <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>
+          Each extraction call can label the same real-world entity slightly differently
+          (e.g. "Age-Rating" vs "age-rating", "Azure Blob Storage" vs "Azure Blob storage").
+          Since node matching used to be exact-string, re-running extraction created more
+          fragmented duplicate nodes instead of reusing existing ones. This finds nodes
+          with the same label once case and spacing are ignored, keeps the oldest, and
+          repoints all edges from the duplicates onto it before deleting them.
+        </p>
+        <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: "8px", padding: "10px 14px", marginBottom: "15px", fontSize: "12px", color: "#f59e0b" }}>
+          ⚠️ Only merges exact matches after normalizing case/whitespace — it will not merge genuinely different labels (e.g. "ACA" and "ACA age-rated small group grid" stay separate). Safe to re-run.
+        </div>
+        {mergeGraphResult && (
+          <AdminCard status="success">
+            <p style={{ margin: "0 0 6px 0", fontWeight: 600 }}>Merge complete</p>
+            <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: "1.8" }}>
+              <li>Duplicate groups found: {mergeGraphResult.groupsFound}</li>
+              <li>Nodes merged away: {mergeGraphResult.nodesMerged}</li>
+              <li>Edges repointed: {mergeGraphResult.edgesRepointed}</li>
+            </ul>
+          </AdminCard>
+        )}
+        <button onClick={() => { setMergeGraphResult(null); mergeGraphMutation.mutate(); }} disabled={mergeGraphMutation.isPending}
+          style={{ padding: "9px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer", marginTop: mergeGraphResult ? "12px" : 0 }}>
+          {mergeGraphMutation.isPending ? "Merging…" : "Run Duplicate Node Merge"}
+        </button>
+        {mergeGraphMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Merge failed. Check server logs for details.</p>}
       </SiteAdminSection>
 
       <SiteAdminSection title="Destructive Operations" description="Irreversible data deletion" icon="⚠️">

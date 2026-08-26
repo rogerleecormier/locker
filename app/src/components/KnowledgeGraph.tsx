@@ -1,4 +1,4 @@
-import { useState, useCallback, lazy, Suspense, useEffect, useRef } from 'react';
+import { useState, useCallback, lazy, Suspense, useEffect, useRef, useMemo } from 'react';
 import type { MemoryGraph, GraphMemorySnippet } from '~/server/memory/graph';
 
 const KnowledgeGraphCanvas = lazy(() =>

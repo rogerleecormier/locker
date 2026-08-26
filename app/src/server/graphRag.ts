@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { memoryGraphNodes, memoryGraphEdges } from "~/db/schema";
 import type { D1Database } from "@cloudflare/workers-types";
 
@@ -88,6 +88,18 @@ export async function extractGraphEntities(ai: Ai, fact: string): Promise<Extrac
   }
 }
 
+// Case/whitespace-insensitive normalization for label matching. The AI produces
+// slightly different casing/spacing for the same real-world entity across separate
+// extraction calls ("Age-Rating" vs "age-rating", "Azure Blob Storage" vs "Azure
+// Blob storage") — exact-string dedup treated these as different nodes, fragmenting
+// the graph further on every re-extraction. This does NOT attempt fuzzy/similarity
+// matching (e.g. "ACA" vs "ACA age-rated small group grid") since that risks
+// silently merging genuinely distinct entities; it only collapses labels that are
+// identical once case and surrounding whitespace are ignored.
+function normalizeLabelForMatch(label: string): string {
+  return label.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 // Persists extracted entities and edges, returning the IDs of all entity nodes
 // created or matched for this fact.  Deduplicates nodes by (userId, projectKey, label)
 // so repeated mentions of the same service accumulate edges without duplicating nodes.
@@ -114,14 +126,15 @@ export async function persistGraphData(
         ? isNull(memoryGraphNodes.projectKey)
         : eq(memoryGraphNodes.projectKey, projectKey);
 
-    // Check for an existing node with the same (userId, projectKey, label) tuple.
+    // Check for an existing node with the same (userId, projectKey, normalized label)
+    // tuple — case/whitespace-insensitive so re-extraction doesn't fragment nodes.
     const existing = await db
       .select({ id: memoryGraphNodes.id })
       .from(memoryGraphNodes)
       .where(
         and(
           eq(memoryGraphNodes.userId, userId),
-          eq(memoryGraphNodes.label, normalLabel),
+          sql`lower(trim(${memoryGraphNodes.label})) = ${normalizeLabelForMatch(normalLabel)}`,
           projectKeyClause
         )
       )

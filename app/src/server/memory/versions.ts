@@ -13,6 +13,8 @@ import {
   organizationMembers,
   orgQuotas,
   users,
+  memoryGraphNodes,
+  memoryGraphEdges,
 } from "~/db/schema";
 import { persistChunkedVectors, deleteChunkVectors } from "~/server/memory/_shared";
 import type { CloudflareEnv } from "~/types/cloudflare";
@@ -24,7 +26,7 @@ import { estimateEmbeddingTokens } from "~/server/enterprise";
 type CFContext = { cloudflare: { env: CloudflareEnv; ctx: ExecutionContext } };
 
 function getDb(env: CloudflareEnv) {
-  return drizzle(env.DB, { schema: { memories, apiTokens, userPlans, organizationMembers, orgQuotas, users } });
+  return drizzle(env.DB, { schema: { memories, apiTokens, userPlans, organizationMembers, orgQuotas, users, memoryGraphNodes, memoryGraphEdges } });
 }
 
 async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
@@ -400,6 +402,80 @@ export const backfillGraphLinks = createServerFn({ method: "POST" }).handler(
           result.failed++;
         }
       }));
+    }
+
+    return result;
+  }
+);
+
+// ── Merge near-duplicate knowledge-graph nodes ─────────────────────────────────
+//
+// The AI produces slightly different casing/spacing for the same real-world entity
+// across separate extraction calls ("Age-Rating" vs "age-rating", "Azure Blob
+// Storage" vs "Azure Blob storage"). persistGraphData now matches labels
+// case/whitespace-insensitively going forward, but nodes created before that fix
+// are still fragmented. This finds nodes that share the same (userId, projectKey,
+// normalized label), keeps the oldest as canonical, repoints every edge from the
+// duplicates onto it, and deletes the duplicate nodes. Does NOT attempt fuzzy/
+// similarity matching across genuinely different labels — only exact matches once
+// case and surrounding whitespace are ignored, to avoid merging distinct entities.
+
+export type MergeGraphNodesResult = { groupsFound: number; nodesMerged: number; edgesRepointed: number };
+
+export const mergeDuplicateGraphNodes = createServerFn({ method: "POST" }).handler(
+  async ({ context }): Promise<MergeGraphNodesResult> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = getDb(env);
+
+    const allNodes = await db
+      .select({ id: memoryGraphNodes.id, userId: memoryGraphNodes.userId, projectKey: memoryGraphNodes.projectKey, label: memoryGraphNodes.label, createdAt: memoryGraphNodes.createdAt })
+      .from(memoryGraphNodes)
+      .all();
+
+    const groups = new Map<string, typeof allNodes>();
+    for (const node of allNodes) {
+      const key = `${node.userId} ${node.projectKey ?? ""} ${node.label.trim().toLowerCase().replace(/\s+/g, " ")}`;
+      const list = groups.get(key);
+      if (list) list.push(node);
+      else groups.set(key, [node]);
+    }
+
+    const result: MergeGraphNodesResult = { groupsFound: 0, nodesMerged: 0, edgesRepointed: 0 };
+
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      result.groupsFound++;
+
+      // Keep the oldest node as canonical so its id (already referenced elsewhere,
+      // e.g. cached client state) stays stable.
+      const [canonical, ...duplicates] = [...group].sort((a, b) => a.createdAt - b.createdAt);
+      const duplicateIds = duplicates.map((d) => d.id);
+
+      for (const dupId of duplicateIds) {
+        const sourceEdges = await db.select().from(memoryGraphEdges).where(eq(memoryGraphEdges.sourceNodeId, dupId)).all();
+        for (const edge of sourceEdges) {
+          if (edge.targetNodeId === canonical.id) {
+            await db.delete(memoryGraphEdges).where(eq(memoryGraphEdges.id, edge.id));
+          } else {
+            await db.update(memoryGraphEdges).set({ sourceNodeId: canonical.id }).where(eq(memoryGraphEdges.id, edge.id));
+            result.edgesRepointed++;
+          }
+        }
+
+        const targetEdges = await db.select().from(memoryGraphEdges).where(eq(memoryGraphEdges.targetNodeId, dupId)).all();
+        for (const edge of targetEdges) {
+          if (edge.sourceNodeId === canonical.id) {
+            await db.delete(memoryGraphEdges).where(eq(memoryGraphEdges.id, edge.id));
+          } else {
+            await db.update(memoryGraphEdges).set({ targetNodeId: canonical.id }).where(eq(memoryGraphEdges.id, edge.id));
+            result.edgesRepointed++;
+          }
+        }
+
+        await db.delete(memoryGraphNodes).where(eq(memoryGraphNodes.id, dupId));
+        result.nodesMerged++;
+      }
     }
 
     return result;
