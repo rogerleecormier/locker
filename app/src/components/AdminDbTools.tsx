@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "~/components/ui/toast";
 import { getDbStats, getVectorizeDebug, clearDatabase, clearVectorizeIndex } from "~/routes/admin";
-import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, migrateToV2, type MigrateV2Result, rebuildVectorizeIndex, type DuplicateGroup, repairMergeKeyMismatch, type RepairMergeKeysResult, backfillGraphLinks, type BackfillGraphResult, mergeDuplicateGraphNodes, type MergeGraphNodesResult } from "~/server/memoryFunctions";
+import { nukeEverything, scanDatabaseDuplicates, bulkDeleteMemories, migrateToV2, type MigrateV2Result, rebuildVectorizeIndex, type DuplicateGroup, repairMergeKeyMismatch, type RepairMergeKeysResult, backfillGraphLinks, type BackfillGraphResult, mergeDuplicateGraphNodes, type MergeGraphNodesResult, pruneStaleGraphIslands, type PruneGraphIslandsResult } from "~/server/memoryFunctions";
 import { SiteAdminSection, AdminCard, StatBox } from "~/components/AdminSections";
 
 export function AdminDbTools() {
@@ -18,6 +18,7 @@ export function AdminDbTools() {
   const [repairMergeResult, setRepairMergeResult] = useState<RepairMergeKeysResult | null>(null);
   const [backfillGraphResult, setBackfillGraphResult] = useState<BackfillGraphResult | null>(null);
   const [mergeGraphResult, setMergeGraphResult] = useState<MergeGraphNodesResult | null>(null);
+  const [pruneGraphResult, setPruneGraphResult] = useState<PruneGraphIslandsResult | null>(null);
   const [rebuildResult, setRebuildResult] = useState<{ processed: number; failed: number } | null>(null);
 
   const statsQuery = useQuery({
@@ -109,6 +110,12 @@ export function AdminDbTools() {
     mutationFn: () => mergeDuplicateGraphNodes({}),
     onSuccess: (data) => { setMergeGraphResult(data); qc.invalidateQueries({ queryKey: ["memory-graph"] }); },
     onError: (err) => toast.error("Merge failed: " + String(err)),
+  });
+
+  const pruneGraphMutation = useMutation({
+    mutationFn: () => pruneStaleGraphIslands({}),
+    onSuccess: (data) => { setPruneGraphResult(data); qc.invalidateQueries({ queryKey: ["memory-graph"] }); },
+    onError: (err) => toast.error("Prune failed: " + String(err)),
   });
 
   const anyDestructivePending = clearDbMutation.isPending || clearVectorizeMutation.isPending || clearAllMutation.isPending;
@@ -356,6 +363,35 @@ export function AdminDbTools() {
           {mergeGraphMutation.isPending ? "Merging…" : "Run Duplicate Node Merge"}
         </button>
         {mergeGraphMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Merge failed. Check server logs for details.</p>}
+      </SiteAdminSection>
+
+      <SiteAdminSection title="Prune Stale Graph Islands" description="Delete tiny disconnected clusters left behind by inconsistent AI labeling" icon="🧹">
+        <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>
+          The AI can extract different entity labels for the SAME fact across separate
+          extraction calls (e.g. one run produces "household"/"benefits-rating", a later
+          run produces "ACA"/"Age-rated plans" for the identical text). Since labels never
+          match, re-running the backfill can't reconcile these — it just grows a second
+          cluster next to the stale one. Deletes small islands (≤3 nodes, no person
+          entity) so the next backfill regenerates them fresh instead of leaving orphaned
+          duplicates behind forever.
+        </p>
+        <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: "8px", padding: "10px 14px", marginBottom: "15px", fontSize: "12px", color: "#f59e0b" }}>
+          ⚠️ Run this BEFORE Knowledge Graph Backfill, not after — pruning clears stale scaffolding so the backfill can rebuild it fresh. Never deletes a component containing a person entity or larger clusters, so it won't touch your main hub.
+        </div>
+        {pruneGraphResult && (
+          <AdminCard status="success">
+            <p style={{ margin: "0 0 6px 0", fontWeight: 600 }}>Prune complete</p>
+            <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: "1.8" }}>
+              <li>Stale islands found: {pruneGraphResult.islandsFound}</li>
+              <li>Nodes deleted: {pruneGraphResult.nodesDeleted}</li>
+            </ul>
+          </AdminCard>
+        )}
+        <button onClick={() => { setPruneGraphResult(null); pruneGraphMutation.mutate(); }} disabled={pruneGraphMutation.isPending}
+          style={{ padding: "9px 20px", background: "var(--accent)", color: "white", border: "none", borderRadius: "var(--radius)", fontWeight: "bold", cursor: "pointer", marginTop: pruneGraphResult ? "12px" : 0 }}>
+          {pruneGraphMutation.isPending ? "Pruning…" : "Run Island Prune"}
+        </button>
+        {pruneGraphMutation.isError && <p style={{ color: "var(--error)", fontSize: "13px", marginTop: "8px" }}>Prune failed. Check server logs for details.</p>}
       </SiteAdminSection>
 
       <SiteAdminSection title="Destructive Operations" description="Irreversible data deletion" icon="⚠️">

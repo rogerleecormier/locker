@@ -482,6 +482,87 @@ export const mergeDuplicateGraphNodes = createServerFn({ method: "POST" }).handl
   }
 );
 
+// ── Prune stale, tiny knowledge-graph islands ──────────────────────────────────
+//
+// The AI's per-fact extraction produces different entity labels across separate
+// calls for the SAME fact (e.g. "household"/"benefits-rating" one run, "ACA"/
+// "Age-rated plans" the next) — re-running the backfill can never reconcile these,
+// since the labels never match, so it just grows a second cluster alongside the
+// stale one instead of replacing it. Since the backfill regenerates every active
+// memory's entities fresh on each run, deleting a small stale island isn't data
+// loss — the next backfill recreates it (likely under better labels, given prompt
+// improvements). This targets only small connected components (≤3 nodes) that
+// contain no "person" node, so it never touches the main hub or a real person.
+
+export type PruneGraphIslandsResult = { islandsFound: number; nodesDeleted: number };
+
+const MAX_ISLAND_SIZE = 3;
+
+export const pruneStaleGraphIslands = createServerFn({ method: "POST" }).handler(
+  async ({ context }): Promise<PruneGraphIslandsResult> => {
+    const { env } = (context as unknown as CFContext).cloudflare;
+    await requireAdmin(env);
+    const db = getDb(env);
+
+    const allNodes = await db
+      .select({ id: memoryGraphNodes.id, userId: memoryGraphNodes.userId, projectKey: memoryGraphNodes.projectKey, type: memoryGraphNodes.type })
+      .from(memoryGraphNodes)
+      .all();
+    const allEdges = await db
+      .select({ sourceNodeId: memoryGraphEdges.sourceNodeId, targetNodeId: memoryGraphEdges.targetNodeId })
+      .from(memoryGraphEdges)
+      .all();
+
+    // Union-find over (userId, projectKey) scoped node sets — two nodes from
+    // different scopes must never merge, matching how the graph is queried/rendered.
+    const parent = new Map<string, string>();
+    for (const n of allNodes) parent.set(n.id, n.id);
+    function find(id: string): string {
+      let root = id;
+      while (parent.get(root) !== root) root = parent.get(root)!;
+      let cur = id;
+      while (parent.get(cur) !== root) {
+        const next = parent.get(cur)!;
+        parent.set(cur, root);
+        cur = next;
+      }
+      return root;
+    }
+    function union(a: string, b: string) {
+      const ra = find(a);
+      const rb = find(b);
+      if (ra !== rb) parent.set(ra, rb);
+    }
+    for (const e of allEdges) {
+      if (e.sourceNodeId === e.targetNodeId) continue; // self-loops don't merge anything
+      if (parent.has(e.sourceNodeId) && parent.has(e.targetNodeId)) union(e.sourceNodeId, e.targetNodeId);
+    }
+
+    const components = new Map<string, typeof allNodes>();
+    for (const n of allNodes) {
+      const root = find(n.id);
+      const list = components.get(root);
+      if (list) list.push(n);
+      else components.set(root, [n]);
+    }
+
+    const result: PruneGraphIslandsResult = { islandsFound: 0, nodesDeleted: 0 };
+
+    for (const component of components.values()) {
+      if (component.length > MAX_ISLAND_SIZE) continue;
+      if (component.some((n) => n.type === "person")) continue;
+
+      result.islandsFound++;
+      for (const node of component) {
+        await db.delete(memoryGraphNodes).where(eq(memoryGraphNodes.id, node.id));
+        result.nodesDeleted++;
+      }
+    }
+
+    return result;
+  }
+);
+
 // ── Rebuild Vectorize Index ───────────────────────────────────────────────────
 
 export const rebuildVectorizeIndex = createServerFn({ method: "POST" }).handler(
