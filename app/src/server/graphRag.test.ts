@@ -278,6 +278,29 @@ describe("persistGraphData — single new entity", () => {
     );
     expect(insertNodeCalls).toHaveLength(0);
   });
+
+  it("self-loops the node when a fact extracts exactly one entity with no edges", async () => {
+    // Nodes only carry a memoryId indirectly, through memory_graph_edges — a node
+    // with zero edges is permanently invisible to "which memories mention this"
+    // lookups. A single-entity fact has nothing else to link to, so persistGraphData
+    // adds a self-referencing "self" edge to keep the node traceable.
+    const d1 = makeD1([]);
+    await persistGraphData(
+      d1,
+      MEMORY_ID,
+      USER_ID,
+      null,
+      { entities: [{ label: "FTCPEP", type: "concept" }], edges: [] },
+    );
+
+    const prepareCalls = (d1.prepare as ReturnType<typeof vi.fn>).mock.calls;
+    const edgeInserts = prepareCalls.filter(([sql]: unknown[]) =>
+      typeof sql === "string" &&
+      sql.toUpperCase().includes("INSERT") &&
+      sql.toLowerCase().includes("memory_graph_edges"),
+    );
+    expect(edgeInserts).toHaveLength(1);
+  });
 });
 
 describe("persistGraphData — edges", () => {
@@ -330,8 +353,11 @@ describe("persistGraphData — edges", () => {
     expect(edgeInsertCalls.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("skips edges where source and target resolve to the same node id", async () => {
-    // Both entities resolve to the same node (same label, deduped)
+  it("skips the AI-provided edge where source and target resolve to the same node id, but self-loops the lone node", async () => {
+    // Both entities resolve to the same node (same label, deduped) — the AI's own
+    // self-referencing edge is skipped, but since this leaves exactly one unique
+    // node with no real relation, persistGraphData adds a "self" edge so the node
+    // stays traceable to its memory (see "single entity" describe block below).
     const SAME_ID = "same-node-uuid";
     const stmt = {
       bind: vi.fn().mockReturnThis(),
@@ -364,7 +390,10 @@ describe("persistGraphData — edges", () => {
       sql.toUpperCase().includes("INSERT") &&
       sql.toLowerCase().includes("memory_graph_edges"),
     );
-    expect(edgeInserts).toHaveLength(0);
+    // Exactly one edge insert — the fallback self-loop, not the AI's "calls" edge.
+    expect(edgeInserts).toHaveLength(1);
+    const bindArgs = (stmt.bind as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    expect(bindArgs).toContain("self");
   });
 
   it("skips edges whose source label is not in the entity list", async () => {
@@ -386,7 +415,9 @@ describe("persistGraphData — edges", () => {
       sql.toUpperCase().includes("INSERT") &&
       sql.toLowerCase().includes("memory_graph_edges"),
     );
-    expect(edgeInserts).toHaveLength(0);
+    // The malformed edge (unknown source label) is skipped, but the lone resolved
+    // node ("KnownNode") still gets a self-loop so it stays traceable to its memory.
+    expect(edgeInserts).toHaveLength(1);
   });
 });
 
@@ -406,8 +437,10 @@ describe("persistGraphData — label normalisation", () => {
   it("defaults type to 'other' when an empty string type is provided", async () => {
     const d1 = makeD1([]);
 
-    // Capture the INSERT SQL bound params to verify the type value
-    let insertSql = "";
+    // Capture every INSERT SQL statement prepared, to find the node insert
+    // specifically (a single-entity fact also triggers a self-loop edge insert
+    // afterward, so we can't just check the last INSERT seen).
+    const insertSqls: string[] = [];
     const stmt = {
       bind: vi.fn().mockReturnThis(),
       all: vi.fn().mockResolvedValue({ results: [] }),
@@ -417,7 +450,7 @@ describe("persistGraphData — label normalisation", () => {
     };
     const capturingD1 = {
       prepare: vi.fn().mockImplementation((sql: string) => {
-        if (sql.toUpperCase().includes("INSERT")) insertSql = sql;
+        if (sql.toUpperCase().includes("INSERT")) insertSqls.push(sql);
         return stmt;
       }),
       batch: vi.fn().mockResolvedValue([]),
@@ -434,7 +467,7 @@ describe("persistGraphData — label normalisation", () => {
     );
 
     // An INSERT into memory_graph_nodes must have been prepared
-    expect(insertSql.toLowerCase()).toContain("memory_graph_nodes");
+    expect(insertSqls.some((sql) => sql.toLowerCase().includes("memory_graph_nodes"))).toBe(true);
   });
 });
 

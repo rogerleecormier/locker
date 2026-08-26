@@ -152,6 +152,9 @@ export function KnowledgeGraph({
         nodes: activeTypeFilters.size === 0
           ? graph.nodes
           : graph.nodes.filter((n) => !activeTypeFilters.has(n.type)),
+        // Self-loop edges (relation "self") exist only so a single-entity fact's node
+        // is traceable back to its memory — they carry no visual meaning, so drop them
+        // before rendering rather than drawing a loop on the node.
         links: (activeTypeFilters.size === 0
           ? graph.edges
           : graph.edges.filter((e) => {
@@ -160,7 +163,7 @@ export function KnowledgeGraph({
               return srcNode && !activeTypeFilters.has(srcNode.type) &&
                      tgtNode && !activeTypeFilters.has(tgtNode.type);
             })
-        ).map((e) => ({ source: e.source, target: e.target, relation: e.relation })),
+        ).filter((e) => e.source !== e.target).map((e) => ({ source: e.source, target: e.target, relation: e.relation })),
       }
     : { nodes: [], links: [] };
 

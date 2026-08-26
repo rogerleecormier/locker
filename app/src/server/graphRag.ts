@@ -200,6 +200,20 @@ export async function persistGraphData(
       });
       linkedNodeIds.add(id);
     }
+  } else if (nodeIds.length === 1) {
+    // A fact that extracts exactly one entity has nothing to link it to — but nodes
+    // are only traceable back to their source memory THROUGH an edge (memoryGraphEdges
+    // carries memoryId; nodes don't). Without any edge this node would be permanently
+    // invisible to "which memories mention this" lookups. Self-loop it so it's at
+    // least reachable; the graph view collapses/hides self-loop edges visually.
+    await db.insert(memoryGraphEdges).values({
+      id: crypto.randomUUID(),
+      memoryId,
+      sourceNodeId: nodeIds[0],
+      targetNodeId: nodeIds[0],
+      relation: "self",
+      createdAt: now,
+    });
   }
 
   return nodeIds;
