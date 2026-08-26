@@ -57,11 +57,19 @@ export async function getMemoryGraph(
 
   const nodeIds = userNodes.map((n) => n.id);
 
-  const edges = await db
-    .select()
-    .from(memoryGraphEdges)
-    .where(inArray(memoryGraphEdges.sourceNodeId, nodeIds))
-    .all();
+  // D1 caps bound parameters per query at 100 — chunk the IN clause so vaults
+  // with more graph nodes than that don't hit "too many SQL variables".
+  const NODE_ID_CHUNK = 100;
+  const edges: Array<typeof memoryGraphEdges.$inferSelect> = [];
+  for (let i = 0; i < nodeIds.length; i += NODE_ID_CHUNK) {
+    const chunk = nodeIds.slice(i, i + NODE_ID_CHUNK);
+    const rows = await db
+      .select()
+      .from(memoryGraphEdges)
+      .where(inArray(memoryGraphEdges.sourceNodeId, chunk))
+      .all();
+    edges.push(...rows);
+  }
 
   const nodeMemoriesMap: Record<string, Set<string>> = {};
   for (const n of userNodes) nodeMemoriesMap[n.id] = new Set();
